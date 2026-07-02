@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Search {
+  id              Int      @id @default(autoincrement())
+  domain          String
+  createdAt       DateTime @default(now())
+  advertiserCount Int      @default(0)
+  creativeCount   Int      @default(0)
+  totalMin        Int?
+  totalMax        Int?
+  advertisers     Advertiser[]
+  creatives       Creative[]
+}
+
+model Advertiser {
+  id        Int     @id @default(autoincrement())
+  arId      String // AR...
+  name      String
+  domain    String?
+  adCount   Int     @default(0)
+  search    Search  @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  searchId  Int
+}
+
+model Creative {
+  id           Int      @id @default(autoincrement())
+  crId         String // CR...
+  advertiserId String // AR...
+  advertiserName String @default("")
+  domain       String?
+  assetType    String   @default("unknown")
+  assetUrl     String?
+  firstShown   Int?
+  lastShown    Int?
+  search       Search   @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  searchId     Int
+}
