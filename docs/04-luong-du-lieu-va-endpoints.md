@@ -13,8 +13,13 @@ Tất cả dưới prefix `/api` (đặt trong `main.ts`).
 | POST | `/api/search` | body `{ "domain": "nike.com" }` | `{ searchId, domain, totalMin, totalMax, advertisers[], creatives[] }` | domain rỗng → 400; bị chặn trang đầu → 503 |
 | GET | `/api/creative/:advertiserId/:creativeId` | path params | `CreativeDetail { variants[], regions[], advertiserName, lastShown }` | gọi `GetCreativeById` |
 | GET | `/api/asset?url=<enc>&download=1` | query | **stream** file (ảnh) | chỉ host Google; `download=1` → tải về |
-| GET | `/api/history` | — | 20 `Search` gần nhất | từ SQLite |
+| GET | `/api/history` | — | 20 `Search` gần nhất (metadata) | từ SQLite |
+| GET | `/api/search/:id` | path id | **dữ liệu đã lưu** (cùng shape `/search`) + `createdAt` | đọc DB, KHÔNG gọi Google; 404 nếu không có |
 | GET | `/api/health` | — | `{status:'ok'}` | health check |
+
+> 💾 **Xem lại từ DB**: mỗi lượt `/api/search` lưu đầy đủ advertisers + creatives. `GET /api/search/:id`
+> dựng lại đúng shape đó từ SQLite → xem lại bất cứ lúc nào **kể cả khi đang bị Google throttle**.
+> Web: bấm 1 dòng Lịch sử = gọi endpoint này (không tra lại Google). Xem [06 §2](06-web-ui.md).
 
 ═══════════════════════════════════════════════════════════════════════
 ## 2. POST /api/search — CHI TIẾT NGHIỆP VỤ

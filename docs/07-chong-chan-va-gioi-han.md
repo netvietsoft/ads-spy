@@ -9,7 +9,10 @@
 
 | Cơ chế | Ở đâu | Tác dụng |
 |---|---|---|
-| **Phát hiện chặn** | `google.client.ts::rpc` | body không-JSON / `["5"]===400` / fetch lỗi → `GoogleBlockedError` |
+| **Phát hiện chặn** | `google.client.ts::rpcOnce` | body không-JSON / `["5"]===400` / fetch lỗi → `GoogleBlockedError` |
+| **Retry + backoff** | `google.client.ts::rpc` | throttle/mạng → thử lại 2 lần (chờ ~0.9s, ~2.5s); 400 (payload sai) KHÔNG retry |
+| **Headers giống browser** | `f-req.builder.ts::buildHeaders` | thêm `x-same-domain:1` + `origin` + `referer` |
+| **Xem lại từ DB** | `search.service.ts::getById` | tra rồi thì xem lại từ SQLite, không phụ thuộc Google (né throttle hoàn toàn) |
 | **503 thân thiện** | `google-blocked.filter.ts` | đổi `GoogleBlockedError` → HTTP 503 + message tiếng Việt (thay 500) |
 | **Chịu lỗi phân trang** | `search.service.ts` | trang >0 bị chặn → **trả phần đã lấy**; chỉ trang 0 mới ném lỗi |
 | **Delay lịch sự** | `search.service.ts` | `sleep(300ms)` giữa các trang, giảm nguy cơ throttle |

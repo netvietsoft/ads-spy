@@ -4,6 +4,18 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-02 (chiều) — Xem lại từ DB + chống throttle
+
+- **`GET /api/search/:id`** — đọc lại lượt tra cứu đã lưu từ SQLite (advertisers + creatives),
+  KHÔNG gọi Google. Web: bấm 1 dòng Lịch sử = mở dữ liệu đã lưu (banner "đang xem dữ liệu đã lưu"
+  + nút "Tra mới từ Google"). → Xem lại được kể cả khi đang bị Google throttle.
+- **Retry + backoff** trong `GoogleClient` khi bị throttle (2 lần, ~0.9s/2.5s; 400 không retry).
+- **Headers giống trình duyệt**: thêm `x-same-domain`, `origin`, `referer`.
+- Kết luận về giới hạn: Google KHÔNG có quota cứng/ngày; là rate-limit theo nhịp trên mỗi IP,
+  tự hồi sau ~15–20 phút. Bị kích khi gọi dồn dập (test lặp). Xem [docs/07](docs/07-chong-chan-va-gioi-han.md).
+
+---
+
 ## 2026-07-02 — MVP đầu tiên (chạy end-to-end)
 
 ### Khởi tạo dự án
