@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { CreativeBrief, CreativeDetail, assetProxy, getCreative } from '../api';
+import { CreativeBrief, CreativeDetail, assetProxy, embedSrc, getCreative } from '../api';
 
 function fmtDate(unix?: number) {
   if (!unix) return '—';
@@ -50,12 +50,19 @@ export function CreativeModal({ creative, onClose }: { creative: CreativeBrief; 
             </div>
             <div className="variants">
               {detail.variants.map((v, i) => (
-                <div className="v" key={i}>
+                <div className={`v ${v.assetType === 'embed' ? 'embed' : ''}`} key={i}>
                   {v.assetType === 'image' && v.assetUrl ? (
                     <img src={assetProxy(v.assetUrl)} alt={`variant ${i}`} />
+                  ) : v.assetType === 'embed' && v.assetUrl ? (
+                    <iframe
+                      className="embed-frame"
+                      src={embedSrc(v.assetUrl)}
+                      title={`quảng cáo ${i}`}
+                      sandbox="allow-scripts allow-same-origin allow-popups"
+                    />
                   ) : (
                     <div style={{ padding: 20, textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
-                      {v.assetType === 'embed' ? 'Quảng cáo dạng embed/HTML' : v.assetType}
+                      {v.assetType}
                     </div>
                   )}
                   <div className="cap">

@@ -170,7 +170,7 @@ export default function Home() {
                         <img src={assetProxy(c.assetUrl)} alt={c.advertiserName} loading="lazy" />
                       ) : (
                         <div className="embed">
-                          {c.assetType === 'embed' ? 'Embed / HTML' : c.assetType}
+                          {c.assetType === 'embed' ? '▶ Quảng cáo động — bấm để xem' : c.assetType}
                         </div>
                       )}
                     </div>

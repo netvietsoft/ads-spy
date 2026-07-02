@@ -49,6 +49,47 @@ export class SearchController {
     return saved;
   }
 
+  // Render quảng cáo động (content.js) bằng cơ chế "fletch" của Google, trả 1 trang HTML
+  // để web nhúng iframe → hiện video/app-install như trên Transparency Center.
+  @Get('embed')
+  embed(@Query('url') url: string, @Res() res: Response) {
+    if (!url || !isAllowedAssetHost(url)) {
+      throw new BadRequestException('URL embed không hợp lệ hoặc không được phép.');
+    }
+    let cb = 'fletchCallback';
+    let parentId = 'fletch-render';
+    try {
+      const q = new URL(url).searchParams;
+      cb = q.get('responseCallback') || cb;
+      parentId = q.get('htmlParentId') || parentId;
+    } catch {
+      /* dùng mặc định */
+    }
+    const safe = url.replace(/"/g, '&quot;');
+    const html = `<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;padding:0;background:#fff;overflow:hidden}#${parentId}{width:100%}</style></head>
+<body><div id="${parentId}"></div>
+<script>
+window["${cb}"]=function(payload){
+  try{
+    var host=document.getElementById("${parentId}");
+    var html=typeof payload==="string"?payload:(payload&&(payload.html||payload[0]||""));
+    host.innerHTML=html||"";
+    // chạy lại các <script> bên trong (innerHTML không tự chạy)
+    host.querySelectorAll("script").forEach(function(old){
+      var s=document.createElement("script");
+      if(old.src)s.src=old.src; else s.textContent=old.textContent;
+      old.replaceWith(s);
+    });
+  }catch(e){document.getElementById("${parentId}").textContent="Không render được quảng cáo này.";}
+};
+</script>
+<script src="${safe}"></script>
+</body></html>`;
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    res.send(html);
+  }
+
   @Get('asset')
   async asset(
     @Query('url') url: string,

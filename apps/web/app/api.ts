@@ -60,6 +60,10 @@ export function assetProxy(url: string, download = false): string {
   return `/api/asset?url=${encodeURIComponent(url)}${download ? '&download=1' : ''}`;
 }
 
+export function embedSrc(url: string): string {
+  return `/api/embed?url=${encodeURIComponent(url)}`;
+}
+
 export async function search(domain: string): Promise<SearchResponse> {
   return jsonOrThrow(
     await fetch('/api/search', {
