@@ -5,10 +5,13 @@ import {
   CreativeBrief,
   SearchHistory,
   SearchResponse,
+  Suggestions,
   assetProxy,
   getHistory,
   getSearch,
   search,
+  searchByAdvertiser,
+  suggest,
 } from './api';
 import { CreativeModal } from './components/CreativeModal';
 
@@ -18,10 +21,12 @@ function fmtDate(unix?: number) {
 }
 
 export default function Home() {
-  const [domain, setDomain] = useState('');
+  const [mode, setMode] = useState<'domain' | 'keyword'>('domain');
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [data, setData] = useState<SearchResponse | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
   const [activeAdv, setActiveAdv] = useState<string | null>(null);
   const [selected, setSelected] = useState<CreativeBrief | null>(null);
   const [history, setHistory] = useState<SearchHistory[]>([]);
@@ -32,13 +37,36 @@ export default function Home() {
     refreshHistory();
   }, []);
 
-  async function run(d: string) {
-    const q = d.trim();
-    if (!q) return;
+  function beginLoad() {
     setLoading(true);
     setErr(null);
     setActiveAdv(null);
     setSavedView(false);
+  }
+
+  // Submit ô tìm kiếm: domain → tra thẳng; keyword → lấy gợi ý.
+  async function onSubmit() {
+    const q = query.trim();
+    if (!q) return;
+    if (mode === 'domain') return runDomain(q);
+    beginLoad();
+    setData(null);
+    try {
+      const s = await suggest(q);
+      setSuggestions(s);
+    } catch (e: any) {
+      setErr(e.message || 'Không lấy được gợi ý');
+      setSuggestions(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runDomain(d: string) {
+    const q = d.trim();
+    if (!q) return;
+    beginLoad();
+    setSuggestions(null);
     try {
       const res = await search(q);
       setData(res);
@@ -51,11 +79,33 @@ export default function Home() {
     }
   }
 
-  async function openSaved(id: number, dom: string) {
+  async function openAdvertiser(id: string) {
+    beginLoad();
+    setSuggestions(null);
+    try {
+      const res = await searchByAdvertiser(id);
+      setData(res);
+      refreshHistory();
+    } catch (e: any) {
+      setErr(e.message || 'Có lỗi xảy ra');
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function pickDomain(d: string) {
+    setMode('domain');
+    setQuery(d);
+    runDomain(d);
+  }
+
+  async function openSaved(id: number, label: string) {
     setLoading(true);
     setErr(null);
     setActiveAdv(null);
-    setDomain(dom);
+    setSuggestions(null);
+    setQuery(label);
     try {
       const res = await getSearch(id);
       setData(res);
@@ -80,30 +130,80 @@ export default function Home() {
         </h1>
       </div>
       <p style={{ color: 'var(--muted)', margin: '6px 0 0' }}>
-        Nhập domain → xem tất cả quảng cáo Google, nhà quảng cáo đang chạy và tải asset.
+        Tìm theo <b>domain</b> hoặc <b>từ khóa</b> → xem quảng cáo Google, nhà quảng cáo và tải asset.
       </p>
+
+      <div className="modes">
+        <button
+          className={`ghost ${mode === 'domain' ? 'active' : ''}`}
+          onClick={() => setMode('domain')}
+          type="button"
+        >
+          🌐 Domain
+        </button>
+        <button
+          className={`ghost ${mode === 'keyword' ? 'active' : ''}`}
+          onClick={() => setMode('keyword')}
+          type="button"
+        >
+          🔤 Từ khóa
+        </button>
+      </div>
 
       <form
         className="searchbar"
         onSubmit={(e) => {
           e.preventDefault();
-          run(domain);
+          onSubmit();
         }}
       >
         <input
-          value={domain}
-          onChange={(e) => setDomain(e.target.value)}
-          placeholder="vd: nike.com, shopify.com…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={mode === 'domain' ? 'vd: nike.com, shopify.com…' : 'vd: baby photo editor, nike, canva…'}
           autoFocus
         />
         <button className="primary" disabled={loading}>
-          {loading ? <span className="spinner" /> : 'Tra cứu'}
+          {loading ? <span className="spinner" /> : mode === 'domain' ? 'Tra cứu' : 'Tìm gợi ý'}
         </button>
       </form>
 
       {err && <div className="error">{err}</div>}
-      {!data && !err && (
-        <p className="hint">Dữ liệu lấy trực tiếp từ Google Ads Transparency Center (tối đa 5 trang / lần).</p>
+      {!data && !suggestions && !err && (
+        <p className="hint">
+          {mode === 'domain'
+            ? 'Nhập domain → lấy trực tiếp từ Google Ads Transparency (tối đa 5 trang/lần).'
+            : 'Nhập từ khóa → Google gợi ý nhà quảng cáo + domain khớp, bấm để xem quảng cáo.'}
+        </p>
+      )}
+
+      {suggestions && !data && (
+        <div className="layout" style={{ marginTop: 18 }}>
+          <div className="panel">
+            <h3>Nhà quảng cáo khớp ({suggestions.advertisers.length})</h3>
+            {suggestions.advertisers.map((a) => (
+              <button key={a.id} className="adv" onClick={() => openAdvertiser(a.id)}>
+                <div className="name">{a.name}</div>
+                <div className="meta">
+                  <span>{a.id}</span>
+                  <span>{a.adCount ? `~${a.adCount} ads` : ''}</span>
+                </div>
+              </button>
+            ))}
+            {suggestions.advertisers.length === 0 && <p className="hint">Không có nhà quảng cáo khớp.</p>}
+          </div>
+          <div className="panel">
+            <h3>Domain khớp ({suggestions.domains.length})</h3>
+            <div className="chips">
+              {suggestions.domains.map((d) => (
+                <button key={d} className="chip" onClick={() => pickDomain(d)}>
+                  {d}
+                </button>
+              ))}
+            </div>
+            {suggestions.domains.length === 0 && <p className="hint">Không có domain khớp.</p>}
+          </div>
+        </div>
       )}
 
       {data && (
@@ -111,7 +211,7 @@ export default function Home() {
           {savedView && (
             <div className="saved-note">
               📁 Đang xem <b>dữ liệu đã lưu</b> cho <b>{data.domain}</b> (không gọi lại Google).
-              <button className="ghost" onClick={() => run(data.domain)} style={{ marginLeft: 10 }}>
+              <button className="ghost" onClick={() => pickDomain(data.domain)} style={{ marginLeft: 10 }}>
                 ↻ Tra mới từ Google
               </button>
             </div>

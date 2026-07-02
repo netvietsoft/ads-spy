@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { GoogleClient } from '../google/google.client';
 import { PrismaService } from '../prisma.service';
 import { parseAdvertisers } from '../google/response.parser';
-import { Advertiser, CreativeBrief, CreativeDetail } from '../google/google.types';
+import {
+  Advertiser,
+  CreativeBrief,
+  CreativeDetail,
+  SearchCreativesResult,
+  SuggestResult,
+} from '../google/google.types';
 
 const MAX_PAGES = 5;
 const ALLOWED_ASSET_HOSTS = ['tpc.googlesyndication.com', 'googleusercontent.com'];
@@ -42,20 +48,21 @@ export class SearchService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async search(rawDomain: string): Promise<SearchResponse> {
-    const domain = normalizeDomain(rawDomain);
+  // Phân trang chung: gọi fetchPage cho tới hết token hoặc chạm MAX_PAGES.
+  // Trang đầu lỗi -> ném; trang sau lỗi (throttle) -> dừng, trả phần đã lấy.
+  private async paginate(
+    fetchPage: (token?: string) => Promise<SearchCreativesResult>,
+  ): Promise<{ creatives: CreativeBrief[]; totalMin?: number; totalMax?: number }> {
     const creatives: CreativeBrief[] = [];
     let token: string | undefined = undefined;
     let totalMin: number | undefined;
     let totalMax: number | undefined;
 
     for (let page = 0; page < MAX_PAGES; page++) {
-      let res;
+      let res: SearchCreativesResult;
       try {
-        res = await this.google.searchCreativesByDomain(domain, token);
+        res = await fetchPage(token);
       } catch (e) {
-        // Trang đầu lỗi -> không có gì để hiện, báo lỗi ra ngoài.
-        // Trang sau lỗi (thường do Google throttle) -> dừng, trả phần đã lấy.
         if (page === 0) throw e;
         break;
       }
@@ -66,21 +73,28 @@ export class SearchService {
       }
       token = res.nextPageToken;
       if (!token) break;
-      await sleep(300); // lịch sự, giảm nguy cơ bị chặn khi phân trang
+      await sleep(300);
     }
+    return { creatives, totalMin, totalMax };
+  }
 
-    const advertisers = parseAdvertisers(creatives);
-
+  // Lưu 1 lượt tra cứu vào DB, trả searchId.
+  private async persist(
+    label: string,
+    creatives: CreativeBrief[],
+    advertisers: Advertiser[],
+    totalMin?: number,
+    totalMax?: number,
+  ): Promise<number> {
     const search = await this.prisma.search.create({
       data: {
-        domain,
+        domain: label,
         advertiserCount: advertisers.length,
         creativeCount: creatives.length,
         totalMin: totalMin ?? null,
         totalMax: totalMax ?? null,
       },
     });
-
     if (advertisers.length) {
       await this.prisma.advertiser.createMany({
         data: advertisers.map((a) => ({
@@ -107,8 +121,33 @@ export class SearchService {
         })),
       });
     }
+    return search.id;
+  }
 
-    return { searchId: search.id, domain, totalMin, totalMax, advertisers, creatives };
+  async search(rawDomain: string): Promise<SearchResponse> {
+    const domain = normalizeDomain(rawDomain);
+    const { creatives, totalMin, totalMax } = await this.paginate((t) =>
+      this.google.searchCreativesByDomain(domain, t),
+    );
+    const advertisers = parseAdvertisers(creatives);
+    const searchId = await this.persist(domain, creatives, advertisers, totalMin, totalMax);
+    return { searchId, domain, totalMin, totalMax, advertisers, creatives };
+  }
+
+  // Tra cứu theo 1 nhà quảng cáo (từ gợi ý từ khóa).
+  async searchByAdvertiser(advertiserId: string): Promise<SearchResponse> {
+    const { creatives, totalMin, totalMax } = await this.paginate((t) =>
+      this.google.searchCreativesByAdvertiser(advertiserId, t),
+    );
+    const advertisers = parseAdvertisers(creatives);
+    const label = advertisers[0]?.name || advertiserId;
+    const searchId = await this.persist(label, creatives, advertisers, totalMin, totalMax);
+    return { searchId, domain: label, totalMin, totalMax, advertisers, creatives };
+  }
+
+  // Gợi ý theo từ khóa: trả nhà quảng cáo + domain khớp (không lưu DB).
+  suggest(keyword: string): Promise<SuggestResult> {
+    return this.google.suggest(keyword);
   }
 
   getCreative(advertiserId: string, creativeId: string): Promise<CreativeDetail> {

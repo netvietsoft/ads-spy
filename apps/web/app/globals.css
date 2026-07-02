@@ -27,6 +27,12 @@ body {
 .brand .dot { color: var(--accent-2); }
 .brand p { color: var(--muted); margin: 6px 0 0; font-size: 14px; }
 
+.modes { display: flex; gap: 8px; margin-top: 18px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
+
 .searchbar {
   display: flex; gap: 10px; margin: 26px 0 10px;
   background: var(--panel); border: 1px solid var(--border);

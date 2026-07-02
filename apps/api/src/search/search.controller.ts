@@ -29,6 +29,17 @@ export class SearchController {
     return this.search.search(domain);
   }
 
+  @Get('suggest')
+  suggest(@Query('q') q: string) {
+    if (!q || !q.trim()) throw new BadRequestException('Vui lòng nhập từ khóa.');
+    return this.search.suggest(q.trim());
+  }
+
+  @Get('advertiser/:id')
+  byAdvertiser(@Param('id') id: string) {
+    return this.search.searchByAdvertiser(id);
+  }
+
   @Get('creative/:advertiserId/:creativeId')
   getCreative(
     @Param('advertiserId') advertiserId: string,

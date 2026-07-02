@@ -78,6 +78,19 @@ export async function getCreative(advertiserId: string, creativeId: string): Pro
   return jsonOrThrow(await fetch(`/api/creative/${advertiserId}/${creativeId}`));
 }
 
+export interface Suggestions {
+  advertisers: Advertiser[];
+  domains: string[];
+}
+
+export async function suggest(q: string): Promise<Suggestions> {
+  return jsonOrThrow(await fetch(`/api/suggest?q=${encodeURIComponent(q)}`));
+}
+
+export async function searchByAdvertiser(advertiserId: string): Promise<SearchResponse> {
+  return jsonOrThrow(await fetch(`/api/advertiser/${advertiserId}`));
+}
+
 export async function getHistory(): Promise<SearchHistory[]> {
   return jsonOrThrow(await fetch('/api/history'));
 }
