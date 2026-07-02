@@ -77,3 +77,8 @@ export async function getCreative(advertiserId: string, creativeId: string): Pro
 export async function getHistory(): Promise<SearchHistory[]> {
   return jsonOrThrow(await fetch('/api/history'));
 }
+
+// Đọc lại 1 lượt tra cứu đã lưu từ DB (không gọi Google).
+export async function getSearch(id: number): Promise<SearchResponse> {
+  return jsonOrThrow(await fetch(`/api/search/${id}`));
+}

@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -39,6 +40,13 @@ export class SearchController {
   @Get('history')
   history() {
     return this.search.history();
+  }
+
+  @Get('search/:id')
+  async getSaved(@Param('id') id: string) {
+    const saved = await this.search.getById(Number(id));
+    if (!saved) throw new NotFoundException('Không tìm thấy lượt tra cứu này.');
+    return saved;
   }
 
   @Get('asset')

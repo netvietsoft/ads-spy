@@ -9,6 +9,10 @@ export function buildHeaders(): Record<string, string> {
     accept: '*/*',
     'accept-language': 'en-US,en;q=0.9',
     'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+    // Giống request thật từ trang Transparency Center → ít bị gắn cờ bot hơn.
+    'x-same-domain': '1',
+    origin: 'https://adstransparency.google.com',
+    referer: 'https://adstransparency.google.com/?region=anywhere',
     'user-agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   };

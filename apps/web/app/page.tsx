@@ -7,6 +7,7 @@ import {
   SearchResponse,
   assetProxy,
   getHistory,
+  getSearch,
   search,
 } from './api';
 import { CreativeModal } from './components/CreativeModal';
@@ -24,6 +25,7 @@ export default function Home() {
   const [activeAdv, setActiveAdv] = useState<string | null>(null);
   const [selected, setSelected] = useState<CreativeBrief | null>(null);
   const [history, setHistory] = useState<SearchHistory[]>([]);
+  const [savedView, setSavedView] = useState(false);
 
   const refreshHistory = () => getHistory().then(setHistory).catch(() => {});
   useEffect(() => {
@@ -36,6 +38,7 @@ export default function Home() {
     setLoading(true);
     setErr(null);
     setActiveAdv(null);
+    setSavedView(false);
     try {
       const res = await search(q);
       setData(res);
@@ -43,6 +46,22 @@ export default function Home() {
     } catch (e: any) {
       setErr(e.message || 'Có lỗi xảy ra');
       setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openSaved(id: number, dom: string) {
+    setLoading(true);
+    setErr(null);
+    setActiveAdv(null);
+    setDomain(dom);
+    try {
+      const res = await getSearch(id);
+      setData(res);
+      setSavedView(true);
+    } catch (e: any) {
+      setErr(e.message || 'Không mở được dữ liệu đã lưu');
     } finally {
       setLoading(false);
     }
@@ -89,6 +108,14 @@ export default function Home() {
 
       {data && (
         <>
+          {savedView && (
+            <div className="saved-note">
+              📁 Đang xem <b>dữ liệu đã lưu</b> cho <b>{data.domain}</b> (không gọi lại Google).
+              <button className="ghost" onClick={() => run(data.domain)} style={{ marginLeft: 10 }}>
+                ↻ Tra mới từ Google
+              </button>
+            </div>
+          )}
           <div className="stats">
             <div className="stat">
               <div className="n">{data.advertisers.length}</div>
@@ -169,10 +196,7 @@ export default function Home() {
             Lịch sử tra cứu
           </h3>
           {history.map((h) => (
-            <div key={h.id} className="item" onClick={() => {
-              setDomain(h.domain);
-              run(h.domain);
-            }}>
+            <div key={h.id} className="item" onClick={() => openSaved(h.id, h.domain)} title="Xem lại dữ liệu đã lưu (không gọi lại Google)">
               <span>{h.domain}</span>
               <span className="m">
                 {h.advertiserCount} NQC · {h.creativeCount} ads · {new Date(h.createdAt).toLocaleString('vi-VN')}

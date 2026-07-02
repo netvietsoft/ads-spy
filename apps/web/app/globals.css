@@ -93,6 +93,8 @@ button.ghost.active { border-color: var(--accent); color: var(--accent); }
 .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.25); border-top-color: white; border-radius: 50%; display: inline-block; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.saved-note { background: #14251f; border: 1px solid #1c5; color: var(--accent-2); border-radius: 10px; padding: 10px 14px; margin: 18px 0 4px; font-size: 13px; }
+
 .history { margin-top: 28px; }
 .history .item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer; }
 .history .item:hover { color: var(--accent); }
