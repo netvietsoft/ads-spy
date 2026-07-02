@@ -7,6 +7,8 @@ import { Advertiser, CreativeBrief, CreativeDetail } from '../google/google.type
 const MAX_PAGES = 5;
 const ALLOWED_ASSET_HOSTS = ['tpc.googlesyndication.com', 'googleusercontent.com'];
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export function normalizeDomain(input: string): string {
   let d = (input || '').trim().toLowerCase();
   d = d.replace(/^https?:\/\//, '');
@@ -48,7 +50,15 @@ export class SearchService {
     let totalMax: number | undefined;
 
     for (let page = 0; page < MAX_PAGES; page++) {
-      const res = await this.google.searchCreativesByDomain(domain, token);
+      let res;
+      try {
+        res = await this.google.searchCreativesByDomain(domain, token);
+      } catch (e) {
+        // Trang đầu lỗi -> không có gì để hiện, báo lỗi ra ngoài.
+        // Trang sau lỗi (thường do Google throttle) -> dừng, trả phần đã lấy.
+        if (page === 0) throw e;
+        break;
+      }
       creatives.push(...res.creatives);
       if (page === 0) {
         totalMin = res.totalMin;
@@ -56,6 +66,7 @@ export class SearchService {
       }
       token = res.nextPageToken;
       if (!token) break;
+      await sleep(300); // lịch sự, giảm nguy cơ bị chặn khi phân trang
     }
 
     const advertisers = parseAdvertisers(creatives);

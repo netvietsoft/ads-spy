@@ -68,4 +68,39 @@ describe('SearchService.search', () => {
     expect(prisma.search.create).toHaveBeenCalled();
     expect(prisma.creative.createMany).toHaveBeenCalled();
   });
+
+  it('returns partial results when a later page is blocked', async () => {
+    const page1: SearchCreativesResult = {
+      creatives: [
+        { creativeId: 'CR1', advertiserId: 'AR1', advertiserName: 'Acme', assetType: 'image' },
+      ],
+      nextPageToken: 'tok1',
+      totalMin: 5,
+    };
+    const client = {
+      searchCreativesByDomain: jest
+        .fn()
+        .mockResolvedValueOnce(page1)
+        .mockRejectedValueOnce(new Error('blocked on page 2')),
+    } as any;
+    const prisma = {
+      search: { create: jest.fn().mockResolvedValue({ id: 7 }) },
+      advertiser: { createMany: jest.fn().mockResolvedValue({}) },
+      creative: { createMany: jest.fn().mockResolvedValue({}) },
+    } as any;
+
+    const svc = new SearchService(client, prisma);
+    const res = await svc.search('acme.com');
+    expect(res.creatives).toHaveLength(1);
+    expect(res.searchId).toBe(7);
+  });
+
+  it('throws when the first page fails (nothing to show)', async () => {
+    const client = {
+      searchCreativesByDomain: jest.fn().mockRejectedValue(new Error('blocked on page 1')),
+    } as any;
+    const prisma = {} as any;
+    const svc = new SearchService(client, prisma);
+    await expect(svc.search('acme.com')).rejects.toThrow('blocked on page 1');
+  });
 });
