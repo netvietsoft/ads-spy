@@ -181,6 +181,21 @@ export default function Home() {
     }
   }
 
+  async function clearProxy() {
+    setProxyBusy(true);
+    setProxyMsg('');
+    try {
+      const s = await setProxy('');
+      setProxySet(s);
+      setProxyInput('');
+      setProxyMsg('🗑️ Đã xoá proxy — Google dùng IP trực tiếp.');
+    } catch (e: any) {
+      setProxyMsg(e.message || 'Lỗi xoá proxy');
+    } finally {
+      setProxyBusy(false);
+    }
+  }
+
   async function checkProxy() {
     setProxyBusy(true);
     setProxyMsg('Đang test…');
@@ -274,6 +289,11 @@ export default function Home() {
             <button className="ghost" type="button" onClick={checkProxy} disabled={proxyBusy}>
               Test proxy
             </button>
+            {proxySet?.set && (
+              <button className="ghost danger" type="button" onClick={clearProxy} disabled={proxyBusy}>
+                🗑️ Xoá proxy
+              </button>
+            )}
             {proxyMsg && <span className="hint" style={{ margin: 0 }}>{proxyMsg}</span>}
           </div>
         </div>
