@@ -78,12 +78,9 @@ export default function Home() {
     if (!q) return;
     if (mode === 'domain') return runDomain(q);
     if (mode === 'advertiser') {
-      const m = /AR\d+/i.exec(q); // nhận cả URL adstransparency.../advertiser/AR...
-      if (!m) {
-        setErr('ID nhà quảng cáo không hợp lệ (phải dạng AR...). Dán ID hoặc link advertiser.');
-        return;
-      }
-      return openAdvertiser(m[0]);
+      const m = /AR\d+/i.exec(q); // là ID (hoặc URL advertiser/AR...) → tra thẳng
+      if (m) return openAdvertiser(m[0]);
+      // là TÊN → gợi ý danh sách nhà quảng cáo để bấm chọn (fall through xuống suggest)
     }
     beginLoad();
     setData(null);
@@ -349,7 +346,7 @@ export default function Home() {
             mode === 'domain'
               ? 'vd: nike.com, shopify.com…'
               : mode === 'advertiser'
-                ? 'AR16735076323512287233  hoặc  link .../advertiser/AR…'
+                ? 'ID (AR…), link advertiser, hoặc TÊN nhà quảng cáo (vd: Nike, Inc.)'
                 : 'vd: baby photo editor, nike, canva…'
           }
           autoFocus
@@ -371,7 +368,7 @@ export default function Home() {
           {mode === 'domain'
             ? 'Nhập domain → lấy trực tiếp từ Google Ads Transparency (tối đa 5 trang/lần).'
             : mode === 'advertiser'
-              ? 'Nhập ID nhà quảng cáo (AR…) hoặc dán link advertiser → xem toàn bộ quảng cáo của họ.'
+              ? 'Nhập ID (AR…)/link advertiser → tra thẳng; hoặc nhập TÊN nhà quảng cáo → chọn từ danh sách gợi ý.'
               : 'Nhập từ khóa → Google gợi ý nhà quảng cáo + domain khớp, bấm để xem quảng cáo.'}
         </p>
       )}
