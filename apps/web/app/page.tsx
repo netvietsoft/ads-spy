@@ -161,24 +161,26 @@ export default function Home() {
   const [gPage, setGPage] = useState(1);
   const [gSize, setGSize] = useState(100);
 
-  // Proxy Google
-  const [proxySet, setProxySet] = useState<{ set: boolean; proxy: string } | null>(null);
+  // Proxy Google (danh sách, quay vòng)
+  const [proxyStatus, setProxyStatus] = useState<{ count: number; proxies: string[] } | null>(null);
   const [showProxy, setShowProxy] = useState(false);
   const [proxyInput, setProxyInput] = useState('');
   const [proxyMsg, setProxyMsg] = useState('');
   const [proxyBusy, setProxyBusy] = useState(false);
+  const [proxyResults, setProxyResults] = useState<{ proxy: string; ok: boolean; message: string }[]>([]);
 
   useEffect(() => {
-    getProxy().then(setProxySet).catch(() => {});
+    getProxy().then(setProxyStatus).catch(() => {});
   }, []);
 
   async function saveProxy() {
     setProxyBusy(true);
     setProxyMsg('');
+    setProxyResults([]);
     try {
-      const s = await setProxy(proxyInput.trim());
-      setProxySet(s);
-      setProxyMsg(s.set ? `Đã lưu proxy: ${s.proxy}` : 'Đã xoá proxy (dùng IP trực tiếp).');
+      const s = await setProxy(proxyInput);
+      setProxyStatus(s);
+      setProxyMsg(s.count ? `Đã lưu ${s.count} proxy (quay vòng).` : 'Đã xoá hết proxy (dùng IP trực tiếp).');
     } catch (e: any) {
       setProxyMsg(e.message || 'Lỗi lưu proxy');
     } finally {
@@ -189,11 +191,12 @@ export default function Home() {
   async function clearProxy() {
     setProxyBusy(true);
     setProxyMsg('');
+    setProxyResults([]);
     try {
       const s = await setProxy('');
-      setProxySet(s);
+      setProxyStatus(s);
       setProxyInput('');
-      setProxyMsg('🗑️ Đã xoá proxy — Google dùng IP trực tiếp.');
+      setProxyMsg('🗑️ Đã xoá hết proxy — Google dùng IP trực tiếp.');
     } catch (e: any) {
       setProxyMsg(e.message || 'Lỗi xoá proxy');
     } finally {
@@ -203,10 +206,13 @@ export default function Home() {
 
   async function checkProxy() {
     setProxyBusy(true);
-    setProxyMsg('Đang test…');
+    setProxyMsg('Đang test từng proxy… (có thể lâu)');
+    setProxyResults([]);
     try {
       const r = await testProxy();
-      setProxyMsg((r.ok ? '✅ ' : '❌ ') + r.message);
+      setProxyResults(r.results);
+      const okN = r.results.filter((x) => x.ok).length;
+      setProxyMsg(`Test xong: ${okN}/${r.results.length} proxy dùng được.`);
     } catch (e: any) {
       setProxyMsg('❌ ' + (e.message || 'lỗi'));
     } finally {
@@ -264,44 +270,61 @@ export default function Home() {
       <>
       <div className="fbauth" style={{ marginTop: 12 }}>
         <span className="authstatus">
-          {proxySet?.set ? (
-            <span className="pill ok">🛡 Proxy: {proxySet.proxy}</span>
+          {proxyStatus && proxyStatus.count > 0 ? (
+            <span className="pill ok">🛡 {proxyStatus.count} proxy (quay vòng)</span>
           ) : (
             <span className="pill off">🌐 Google: IP trực tiếp (server có thể bị chặn)</span>
           )}
         </span>
         <button className="ghost" type="button" onClick={() => setShowProxy((v) => !v)}>
-          Cấu hình proxy
+          Danh sách proxy
         </button>
       </div>
       {showProxy && (
         <div className="fbauth-box">
           <p className="hint" style={{ marginTop: 0 }}>
-            IP máy chủ hay bị Google chặn (/sorry). Hỗ trợ <code>http</code>, <code>socks5</code>, <code>socks4</code>. Định dạng:{' '}
-            <code>socks5://host:port</code> · <code>http://host:port</code> · có auth: <code>socks5://user:pass@host:port</code>.
-            Nên proxy residential VN (proxy free thường chậm/chết nhanh). Để trống + Lưu = bỏ proxy.
+            Nhập <b>nhiều proxy, mỗi dòng 1 cái</b> — hệ thống <b>quay vòng</b> và tự đổi proxy khi 1 cái bị chặn.
+            Hỗ trợ <code>http</code>/<code>socks5</code>/<code>socks4</code>: <code>socks5://host:port</code>,{' '}
+            <code>http://user:pass@host:port</code>. Để trống + Lưu = bỏ hết (IP trực tiếp).
           </p>
-          <input
+          <textarea
             className="fbauth-ta"
             style={{ fontFamily: 'ui-monospace, monospace' }}
+            rows={5}
             value={proxyInput}
             onChange={(e) => setProxyInput(e.target.value)}
-            placeholder="socks5://160.250.54.9:9000  hoặc  http://103.69.96.15:7777"
+            placeholder={'socks5://160.250.54.9:9000\nhttp://103.69.96.15:7777\nsocks4://27.76.199.156:1080'}
           />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="primary" type="button" onClick={saveProxy} disabled={proxyBusy}>
-              Lưu proxy
+              Lưu danh sách
             </button>
             <button className="ghost" type="button" onClick={checkProxy} disabled={proxyBusy}>
-              Test proxy
+              Test tất cả
             </button>
-            {proxySet?.set && (
+            {proxyStatus && proxyStatus.count > 0 && (
               <button className="ghost danger" type="button" onClick={clearProxy} disabled={proxyBusy}>
-                🗑️ Xoá proxy
+                🗑️ Xoá hết
               </button>
             )}
             {proxyMsg && <span className="hint" style={{ margin: 0 }}>{proxyMsg}</span>}
           </div>
+          {proxyStatus && proxyStatus.count > 0 && proxyResults.length === 0 && (
+            <div className="chips" style={{ marginTop: 8 }}>
+              {proxyStatus.proxies.map((p, i) => (
+                <span key={i} className="chip" style={{ cursor: 'default' }}>{p}</span>
+              ))}
+            </div>
+          )}
+          {proxyResults.length > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {proxyResults.map((r, i) => (
+                <div key={i} className="hint" style={{ margin: 0 }}>
+                  {r.ok ? '✅' : '❌'} <code>{r.proxy}</code> — {r.message}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <p style={{ color: 'var(--muted)', margin: '10px 0 0' }}>

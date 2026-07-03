@@ -37,89 +37,121 @@ export class GoogleBlockedError extends Error {
   }
 }
 
+function buildDispatcher(raw: string, undiciMod: any, socksMod: any): any {
+  const p = (raw || '').trim();
+  if (!p) return null;
+  if (/^socks[45]?:\/\//i.test(p)) {
+    const u = new URL(p);
+    return socksMod.socksDispatcher({
+      type: (/^socks4/i.test(p) ? 4 : 5) as 4 | 5,
+      host: u.hostname,
+      port: Number(u.port) || 1080,
+      userId: u.username ? decodeURIComponent(u.username) : undefined,
+      password: u.password ? decodeURIComponent(u.password) : undefined,
+    });
+  }
+  const httpUrl = /^https?:\/\//i.test(p) ? p : `http://${p}`;
+  return new undiciMod.ProxyAgent(httpUrl);
+}
+
 @Injectable()
 export class GoogleClient {
-  private dispatcher: any = null;
-  private proxyUrl = '';
+  private proxies: string[] = []; // danh sách proxy (quay vòng)
+  private dispatchers: any[] = [];
+  private idx = 0;
   private loaded = false;
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // Nạp proxy: ưu tiên DB (đặt từ web), fallback biến env.
+  // Nạp danh sách proxy: DB (đặt từ web) → fallback env.
   private async ensureProxy(): Promise<void> {
     if (this.loaded) return;
     this.loaded = true;
-    let url = process.env.GOOGLE_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy || '';
+    let raw = '';
     try {
       const s = await this.prisma.fbSetting.findUnique({ where: { key: PROXY_KEY } });
-      if (s?.value) url = s.value;
+      if (s?.value) raw = s.value;
     } catch {
-      /* chưa có DB/bảng */
+      /* chưa có DB */
     }
-    await this.applyProxy(url);
+    if (!raw) raw = process.env.GOOGLE_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy || '';
+    await this.applyProxies(raw);
   }
 
-  private async applyProxy(url: string): Promise<void> {
-    this.proxyUrl = (url || '').trim();
-    this.dispatcher = null;
-    if (!this.proxyUrl) return;
-    try {
-      if (/^socks[45]?:\/\//i.test(this.proxyUrl)) {
-        // SOCKS4/5 proxy
-        const { socksDispatcher } = await import('fetch-socks');
-        const u = new URL(this.proxyUrl);
-        const type = /^socks4/i.test(this.proxyUrl) ? 4 : 5;
-        this.dispatcher = socksDispatcher({
-          type: type as 4 | 5,
-          host: u.hostname,
-          port: Number(u.port) || 1080,
-          userId: u.username ? decodeURIComponent(u.username) : undefined,
-          password: u.password ? decodeURIComponent(u.password) : undefined,
-        });
-      } else {
-        // HTTP/HTTPS proxy (thêm http:// nếu người dùng dán thiếu scheme)
-        const httpUrl = /^https?:\/\//i.test(this.proxyUrl) ? this.proxyUrl : `http://${this.proxyUrl}`;
-        const { ProxyAgent } = await import('undici');
-        this.dispatcher = new ProxyAgent(httpUrl);
+  // raw: nhiều proxy, mỗi dòng 1 cái (hoặc cách nhau bằng dấu phẩy).
+  private async applyProxies(raw: string): Promise<void> {
+    this.proxies = (raw || '')
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    this.dispatchers = [];
+    this.idx = 0;
+    if (!this.proxies.length) return;
+    const undiciMod = await import('undici');
+    let socksMod: any = null;
+    if (this.proxies.some((p) => /^socks/i.test(p))) socksMod = await import('fetch-socks');
+    for (const p of this.proxies) {
+      try {
+        this.dispatchers.push(buildDispatcher(p, undiciMod, socksMod));
+      } catch {
+        this.dispatchers.push(null);
       }
-    } catch {
-      this.dispatcher = null;
     }
   }
 
-  async setProxy(url: string): Promise<{ set: boolean; proxy: string }> {
+  async setProxy(raw: string): Promise<{ count: number; proxies: string[] }> {
     await this.prisma.fbSetting
-      .upsert({ where: { key: PROXY_KEY }, create: { key: PROXY_KEY, value: url || '' }, update: { value: url || '' } })
+      .upsert({ where: { key: PROXY_KEY }, create: { key: PROXY_KEY, value: raw || '' }, update: { value: raw || '' } })
       .catch(() => undefined);
     this.loaded = true;
-    await this.applyProxy(url);
+    await this.applyProxies(raw);
     return this.getProxyStatus();
   }
 
-  getProxyStatus(): { set: boolean; proxy: string } {
-    return { set: !!this.proxyUrl, proxy: maskProxy(this.proxyUrl) };
+  getProxyStatus(): { count: number; proxies: string[] } {
+    return { count: this.proxies.length, proxies: this.proxies.map(maskProxy) };
   }
 
-  // Test proxy: thử tra 1 domain, trả ok/thông báo.
-  async testProxy(): Promise<{ ok: boolean; message: string }> {
-    try {
-      const r = await this.searchCreativesByDomain('nike.com');
-      return { ok: true, message: `OK — lấy được ${r.creatives.length} quảng cáo qua proxy hiện tại.` };
-    } catch (e) {
-      return { ok: false, message: (e as Error).message };
-    }
-  }
-
-  // Gọi 1 lần, không retry.
-  private async rpcOnce(service: string, method: string, freq: string): Promise<any> {
+  // Test TỪNG proxy: thử tra nike.com qua mỗi proxy, trả ok/thông báo.
+  async testProxy(): Promise<{ count: number; results: { proxy: string; ok: boolean; message: string }[] }> {
     await this.ensureProxy();
+    const results: { proxy: string; ok: boolean; message: string }[] = [];
+    if (!this.proxies.length) {
+      // không proxy → test trực tiếp
+      try {
+        const r = await this.rpcWith(null, reqSearchCreativesByDomain('nike.com'));
+        const n = parseSearchCreatives(r).creatives.length;
+        results.push({ proxy: '(trực tiếp)', ok: true, message: `OK — ${n} quảng cáo` });
+      } catch (e) {
+        results.push({ proxy: '(trực tiếp)', ok: false, message: (e as Error).message });
+      }
+      return { count: 0, results };
+    }
+    for (let i = 0; i < this.dispatchers.length; i++) {
+      try {
+        const r = await this.rpcWith(this.dispatchers[i], reqSearchCreativesByDomain('nike.com'));
+        const n = parseSearchCreatives(r).creatives.length;
+        results.push({ proxy: maskProxy(this.proxies[i]), ok: true, message: `OK — ${n} quảng cáo` });
+      } catch (e) {
+        results.push({ proxy: maskProxy(this.proxies[i]), ok: false, message: (e as Error).message });
+      }
+    }
+    return { count: this.proxies.length, results };
+  }
+
+  // Gọi 1 lần qua 1 dispatcher cụ thể (dùng cho test + rpc quay vòng).
+  private async rpcWith(dispatcher: any, freq: string): Promise<any> {
+    return this.rpcOnce('SearchService', 'SearchCreatives', freq, dispatcher);
+  }
+
+  // Gọi 1 lần, không retry, qua dispatcher chỉ định.
+  private async rpcOnce(service: string, method: string, freq: string, dispatcher: any): Promise<any> {
     const url = `${BASE}/${service}/${method}?authuser=0`;
     const body = new URLSearchParams();
     body.set('f.req', freq);
 
     let text: string;
     try {
-      const dispatcher = this.dispatcher;
       const res = await fetch(url, {
         method: 'POST',
         headers: buildHeaders(),
@@ -131,11 +163,11 @@ export class GoogleClient {
       throw new GoogleBlockedError(`Không gọi được Google API: ${(e as Error).message}`);
     }
 
-    // Google chặn IP (datacenter) → 302 sang /sorry. Retry vô ích, cần proxy.
+    // Google chặn IP → 302 /sorry. Retry vô ích với CÙNG ip, nhưng nếu có nhiều proxy thì đổi proxy → cho retry.
     if (/\/sorry\/|unusual traffic|302 Moved/i.test(text)) {
       throw new GoogleBlockedError(
-        'Google chặn IP máy chủ (trang xác minh /sorry). Cần đặt GOOGLE_PROXY (proxy) để tra Google.',
-        false,
+        'Google chặn IP/proxy này (/sorry). Thêm proxy để quay vòng.',
+        this.dispatchers.length > 1, // có nhiều proxy → thử proxy khác
       );
     }
     let json: any;
@@ -154,17 +186,27 @@ export class GoogleClient {
     return json;
   }
 
-  // Gọi có retry + backoff cho lỗi throttle/mạng.
+  // Gọi có retry: QUAY VÒNG proxy khi bị chặn/lỗi.
   private async rpc(service: string, method: string, freq: string): Promise<any> {
-    for (let attempt = 0; ; attempt++) {
+    await this.ensureProxy();
+    const n = this.dispatchers.length;
+    const maxAttempts = n > 0 ? Math.min(n, 6) : RETRY_DELAYS_MS.length + 1;
+    let lastErr: any;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const disp = n > 0 ? this.dispatchers[this.idx % n] : null;
       try {
-        return await this.rpcOnce(service, method, freq);
+        const r = await this.rpcOnce(service, method, freq, disp);
+        if (n > 0) this.idx = (this.idx + 1) % n; // round-robin cho lần sau
+        return r;
       } catch (e) {
+        lastErr = e;
         const blocked = e instanceof GoogleBlockedError;
-        if (!blocked || !e.retryable || attempt >= RETRY_DELAYS_MS.length) throw e;
-        await sleep(RETRY_DELAYS_MS[attempt]);
+        if (!blocked || !e.retryable) throw e;
+        if (n > 0) this.idx = (this.idx + 1) % n; // đổi proxy
+        if (attempt < maxAttempts - 1) await sleep(n > 0 ? 400 : RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)]);
       }
     }
+    throw lastErr;
   }
 
   async searchCreativesByDomain(domain: string, pageToken?: string): Promise<SearchCreativesResult> {

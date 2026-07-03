@@ -69,11 +69,19 @@ export function embedSrc(url: string): string {
   return `${API}/api/embed?url=${encodeURIComponent(url)}`;
 }
 
-// ---- Proxy Google ----
-export async function getProxy(): Promise<{ set: boolean; proxy: string }> {
+// ---- Proxy Google (danh sách, quay vòng) ----
+export interface ProxyStatus {
+  count: number;
+  proxies: string[];
+}
+export interface ProxyTestResult {
+  count: number;
+  results: { proxy: string; ok: boolean; message: string }[];
+}
+export async function getProxy(): Promise<ProxyStatus> {
   return jsonOrThrow(await fetch(`${API}/api/settings/proxy`));
 }
-export async function setProxy(proxy: string): Promise<{ set: boolean; proxy: string }> {
+export async function setProxy(proxy: string): Promise<ProxyStatus> {
   return jsonOrThrow(
     await fetch(`${API}/api/settings/proxy`, {
       method: 'POST',
@@ -82,7 +90,7 @@ export async function setProxy(proxy: string): Promise<{ set: boolean; proxy: st
     }),
   );
 }
-export async function testProxy(): Promise<{ ok: boolean; message: string }> {
+export async function testProxy(): Promise<ProxyTestResult> {
   return jsonOrThrow(await fetch(`${API}/api/settings/proxy/test`));
 }
 
