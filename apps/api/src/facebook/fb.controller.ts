@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   NotFoundException,
   Param,
+  Post,
   Query,
 } from '@nestjs/common';
 import { FbService } from './fb.service';
@@ -15,6 +17,18 @@ export class FbController {
     private readonly fb: FbService,
     private readonly scraper: FbPlaywrightService,
   ) {}
+
+  // Đăng nhập FB bằng cách dán cookie (từ trình duyệt) — ăn ngay, không cần headful.
+  @Post('session')
+  setSession(@Body('cookie') cookie: string) {
+    if (!cookie || !cookie.trim()) throw new BadRequestException('Thiếu cookie.');
+    return this.scraper.setSession(cookie);
+  }
+
+  @Get('session')
+  sessionStatus() {
+    return this.scraper.sessionStatus();
+  }
 
   // GET /api/fb/report?country=VN&range=30  → bảng xếp hạng chi tiêu theo Page
   @Get('report')

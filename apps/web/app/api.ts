@@ -208,6 +208,19 @@ export interface FbPagePostsResult {
   posts: FbPost[];
 }
 
+export async function fbSessionStatus(): Promise<{ loggedIn: boolean; user?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/fb/session`));
+}
+export async function fbSetSession(cookie: string): Promise<{ loggedIn: boolean; user?: string }> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/fb/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ cookie }),
+    }),
+  );
+}
+
 export async function fbPagePosts(page: string, limit = 40): Promise<FbPagePostsResult> {
   return jsonOrThrow(
     await fetch(`${API}/api/fb/page-posts?page=${encodeURIComponent(page)}&limit=${limit}`),

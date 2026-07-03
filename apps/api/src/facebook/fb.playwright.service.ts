@@ -103,6 +103,32 @@ export class FbPlaywrightService implements OnModuleDestroy {
     await this.context?.close().catch(() => undefined);
   }
 
+  // Nạp cookie đăng nhập FB (dán từ trình duyệt) vào phiên bền → scrape có đăng nhập.
+  async setSession(cookieString: string): Promise<{ loggedIn: boolean }> {
+    const pairs = String(cookieString || '')
+      .split(/;\s*/)
+      .map((kv) => {
+        const i = kv.indexOf('=');
+        if (i < 1) return null;
+        return { name: kv.slice(0, i).trim(), value: kv.slice(i + 1).trim() };
+      })
+      .filter((p): p is { name: string; value: string } => !!p && !!p.name && !!p.value);
+    if (!pairs.length) throw new FbBlockedError('Chuỗi cookie không hợp lệ.');
+
+    const ctx = await this.getContext();
+    // đặt cho cả .facebook.com để mọi subdomain nhận
+    await ctx.addCookies(
+      pairs.map((p) => ({ name: p.name, value: p.value, domain: '.facebook.com', path: '/' })),
+    );
+    return this.sessionStatus();
+  }
+
+  async sessionStatus(): Promise<{ loggedIn: boolean; user?: string }> {
+    const ctx = await this.getContext();
+    const cu = (await ctx.cookies()).find((c) => c.name === 'c_user');
+    return { loggedIn: !!cu, user: cu?.value };
+  }
+
   async search(
     query: string,
     country = 'VN',

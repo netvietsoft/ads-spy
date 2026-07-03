@@ -12,6 +12,8 @@ import {
   fbPagePosts,
   fbReport,
   fbSearch,
+  fbSessionStatus,
+  fbSetSession,
 } from '../api';
 import { FbModal } from './FbModal';
 import { Favorites } from './Favorites';
@@ -82,6 +84,29 @@ export function FacebookPanel() {
   const [report, setReport] = useState<FbReportResult | null>(null);
   const [postsPage, setPostsPage] = useState('');
   const [posts, setPosts] = useState<FbPagePostsResult | null>(null);
+  const [fbLoggedIn, setFbLoggedIn] = useState<boolean | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const [cookie, setCookie] = useState('');
+
+  useEffect(() => {
+    fbSessionStatus().then((s) => setFbLoggedIn(s.loggedIn)).catch(() => {});
+  }, []);
+
+  async function saveCookie() {
+    if (!cookie.trim()) return;
+    try {
+      const s = await fbSetSession(cookie.trim());
+      setFbLoggedIn(s.loggedIn);
+      if (s.loggedIn) {
+        setShowAuth(false);
+        setCookie('');
+      } else {
+        setErr('Cookie chưa có c_user — dán thiếu, cần cả c_user và xs.');
+      }
+    } catch (e: any) {
+      setErr(e.message || 'Lỗi lưu cookie');
+    }
+  }
 
   async function runPosts() {
     if (!postsPage.trim()) return;
@@ -207,6 +232,37 @@ export function FacebookPanel() {
 
   return (
     <>
+      <div className="fbauth">
+        <span>
+          {fbLoggedIn === null
+            ? '…'
+            : fbLoggedIn
+              ? '🔒 Đã đăng nhập Facebook'
+              : '🔓 Chưa đăng nhập FB (cần cho “Bài viết Page” & tương tác)'}
+        </span>
+        <button className="ghost" type="button" onClick={() => setShowAuth((v) => !v)}>
+          {fbLoggedIn ? 'Đổi cookie' : 'Đăng nhập bằng cookie'}
+        </button>
+      </div>
+      {showAuth && (
+        <div className="fbauth-box">
+          <p className="hint" style={{ marginTop: 0 }}>
+            Mở facebook.com (đã đăng nhập, nên dùng nick phụ) → F12 → Console gõ <code>document.cookie</code> → copy toàn
+            bộ chuỗi (có <code>c_user=</code> và <code>xs=</code>) rồi dán vào đây.
+          </p>
+          <textarea
+            className="fbauth-ta"
+            value={cookie}
+            onChange={(e) => setCookie(e.target.value)}
+            placeholder="datr=...; sb=...; c_user=100...; xs=...; fr=..."
+            rows={3}
+          />
+          <button className="primary" type="button" onClick={saveCookie}>
+            Lưu cookie
+          </button>
+        </div>
+      )}
+
       <div className="modes" style={{ marginTop: 14 }}>
         <button className={`ghost ${tab === 'search' ? 'active' : ''}`} type="button" onClick={() => setTab('search')}>
           🔎 Tìm quảng cáo
@@ -245,7 +301,7 @@ export function FacebookPanel() {
             </button>
           </form>
           <p className="hint">
-            Cần <b>đăng nhập FB</b> trước: dừng API rồi chạy <code>npm --workspace @gas/api run fb:login</code> (dùng nick phụ).
+            Cần <b>đăng nhập FB</b> trước (bấm “Đăng nhập bằng cookie” ở trên, dán cookie nick phụ). Bài viết FB bị chặn nếu chưa đăng nhập.
           </p>
           {err && <div className="error">{err}</div>}
           {loading && (
