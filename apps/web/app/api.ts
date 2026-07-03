@@ -56,17 +56,21 @@ async function jsonOrThrow(res: Response) {
   return res.json();
 }
 
+// Gọi thẳng API (bỏ proxy Next để tránh timeout với FB scraping ~30-60s).
+// Đặt NEXT_PUBLIC_API_ORIGIN khi deploy; mặc định API dev ở :3100.
+const API = process.env.NEXT_PUBLIC_API_ORIGIN || 'http://localhost:3100';
+
 export function assetProxy(url: string, download = false): string {
-  return `/api/asset?url=${encodeURIComponent(url)}${download ? '&download=1' : ''}`;
+  return `${API}/api/asset?url=${encodeURIComponent(url)}${download ? '&download=1' : ''}`;
 }
 
 export function embedSrc(url: string): string {
-  return `/api/embed?url=${encodeURIComponent(url)}`;
+  return `${API}/api/embed?url=${encodeURIComponent(url)}`;
 }
 
 export async function search(domain: string): Promise<SearchResponse> {
   return jsonOrThrow(
-    await fetch('/api/search', {
+    await fetch(`${API}/api/search`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ domain }),
@@ -75,7 +79,7 @@ export async function search(domain: string): Promise<SearchResponse> {
 }
 
 export async function getCreative(advertiserId: string, creativeId: string): Promise<CreativeDetail> {
-  return jsonOrThrow(await fetch(`/api/creative/${advertiserId}/${creativeId}`));
+  return jsonOrThrow(await fetch(`${API}/api/creative/${advertiserId}/${creativeId}`));
 }
 
 export interface Suggestions {
@@ -84,18 +88,46 @@ export interface Suggestions {
 }
 
 export async function suggest(q: string): Promise<Suggestions> {
-  return jsonOrThrow(await fetch(`/api/suggest?q=${encodeURIComponent(q)}`));
+  return jsonOrThrow(await fetch(`${API}/api/suggest?q=${encodeURIComponent(q)}`));
 }
 
 export async function searchByAdvertiser(advertiserId: string): Promise<SearchResponse> {
-  return jsonOrThrow(await fetch(`/api/advertiser/${advertiserId}`));
+  return jsonOrThrow(await fetch(`${API}/api/advertiser/${advertiserId}`));
 }
 
 export async function getHistory(): Promise<SearchHistory[]> {
-  return jsonOrThrow(await fetch('/api/history'));
+  return jsonOrThrow(await fetch(`${API}/api/history`));
+}
+
+// ---- Facebook Ad Library ----
+export interface FbAd {
+  adArchiveId: string;
+  pageId?: string;
+  pageName: string;
+  startedRunning?: string;
+  isActive?: boolean;
+  platforms?: string[];
+  bodyText?: string;
+  linkUrl?: string;
+  ctaText?: string;
+  images: string[];
+  videos: string[];
+  snapshotUrl?: string;
+}
+export interface FbSearchResult {
+  query: string;
+  country: string;
+  count: number;
+  ads: FbAd[];
+}
+
+export async function fbSearch(q: string, country = 'VN'): Promise<FbSearchResult> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/fb/search?q=${encodeURIComponent(q)}&country=${encodeURIComponent(country)}`),
+  );
 }
 
 // Đọc lại 1 lượt tra cứu đã lưu từ DB (không gọi Google).
 export async function getSearch(id: number): Promise<SearchResponse> {
-  return jsonOrThrow(await fetch(`/api/search/${id}`));
+  return jsonOrThrow(await fetch(`${API}/api/search/${id}`));
 }

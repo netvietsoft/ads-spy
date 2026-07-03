@@ -92,17 +92,17 @@ export class FbPlaywrightService implements OnModuleDestroy {
               return false;
             }
           },
-          { timeout: 45000 },
+          { timeout: 25000 },
         )
         .catch(() => undefined);
 
-      // cuộn để nạp thêm cho tới khi đủ limit hoặc hết trang (tối đa 6 lần)
+      // cuộn để nạp thêm cho tới khi đủ limit hoặc hết trang (tối đa 3 lần)
       let prev = 0;
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 3; i++) {
         const ads = this.collect(chunks);
         if (ads.length >= limit) break;
-        await page.mouse.wheel(0, 4000);
-        await sleep(2200);
+        await page.mouse.wheel(0, 5000);
+        await sleep(1600);
         const now = this.collect(chunks).length;
         if (now === prev && now > 0) break; // không tăng nữa
         prev = now;

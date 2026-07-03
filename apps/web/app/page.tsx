@@ -14,6 +14,7 @@ import {
   suggest,
 } from './api';
 import { CreativeModal } from './components/CreativeModal';
+import { FacebookPanel } from './components/FacebookPanel';
 
 function fmtDate(unix?: number) {
   if (!unix) return '';
@@ -21,6 +22,7 @@ function fmtDate(unix?: number) {
 }
 
 export default function Home() {
+  const [source, setSource] = useState<'google' | 'facebook'>('google');
   const [mode, setMode] = useState<'domain' | 'keyword'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -126,9 +128,31 @@ export default function Home() {
     <div className="container">
       <div className="brand">
         <h1>
-          Google Ads <span className="dot">Spy</span>
+          Ads <span className="dot">Spy</span>
         </h1>
       </div>
+
+      <div className="sources">
+        <button
+          className={`srcbtn ${source === 'google' ? 'active' : ''}`}
+          onClick={() => setSource('google')}
+          type="button"
+        >
+          🔵 Google Ads
+        </button>
+        <button
+          className={`srcbtn ${source === 'facebook' ? 'active' : ''}`}
+          onClick={() => setSource('facebook')}
+          type="button"
+        >
+          🔷 Facebook Ads
+        </button>
+      </div>
+
+      {source === 'facebook' && <FacebookPanel />}
+
+      {source === 'google' && (
+      <>
       <p style={{ color: 'var(--muted)', margin: '6px 0 0' }}>
         Tìm theo <b>domain</b> hoặc <b>từ khóa</b> → xem quảng cáo Google, nhà quảng cáo và tải asset.
       </p>
@@ -307,6 +331,8 @@ export default function Home() {
       )}
 
       {selected && <CreativeModal creative={selected} onClose={() => setSelected(null)} />}
+      </>
+      )}
     </div>
   );
 }

@@ -11,7 +11,11 @@ import {
 } from '../google/google.types';
 
 const MAX_PAGES = 5;
-const ALLOWED_ASSET_HOSTS = ['tpc.googlesyndication.com', 'googleusercontent.com'];
+const ALLOWED_ASSET_HOSTS = [
+  'tpc.googlesyndication.com',
+  'googleusercontent.com',
+  'fbcdn.net', // ảnh/video quảng cáo Facebook
+];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
