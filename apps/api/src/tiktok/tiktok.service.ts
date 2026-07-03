@@ -49,12 +49,13 @@ export class TiktokService implements OnModuleDestroy {
     await this.browser?.close().catch(() => undefined);
   }
 
-  async topAds(country = 'VN', period = 7, limit = 30): Promise<TtTopAdsResult> {
+  async topAds(country = 'VN', period = 7, limit = 100): Promise<TtTopAdsResult> {
     const browser = await this.getBrowser();
     const context = await browser.newContext({ userAgent: UA, locale: 'en-US' });
     const page = await context.newPage();
     const byId = new Map<string, TtAd>();
     let sawList = false;
+    let hasMore = true;
 
     page.on('response', async (r) => {
       if (!r.url().includes('top_ads/v2/list')) return;
@@ -66,6 +67,9 @@ export class TiktokService implements OnModuleDestroy {
           const ad = mapMaterial(m);
           if (ad.id && !byId.has(ad.id)) byId.set(ad.id, ad);
         }
+        if (j?.data?.pagination && typeof j.data.pagination.has_more === 'boolean') {
+          hasMore = j.data.pagination.has_more;
+        }
       } catch {
         /* ignore */
       }
@@ -75,15 +79,25 @@ export class TiktokService implements OnModuleDestroy {
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
       await page.waitForResponse((r) => r.url().includes('top_ads/v2/list'), { timeout: 25000 }).catch(() => undefined);
-      await sleep(1200);
-      // cuộn nạp thêm (tối đa 4 lần), dừng sớm khi đủ hoặc không tăng
-      let prev = 0;
-      for (let i = 0; i < 4; i++) {
-        if (byId.size >= limit) break;
-        await page.mouse.wheel(0, 5000);
-        await sleep(1600);
-        if (byId.size === prev) break;
-        prev = byId.size;
+      await sleep(3000); // chờ render nút "View More"
+      // Bấm nút "View More" (là DIV) để tải thêm trang; dừng khi hết / đủ / không tăng.
+      for (let i = 0; i < 15; i++) {
+        if (byId.size >= limit || !hasMore) break;
+        const prev = byId.size;
+        const clicked = await page.evaluate(() => {
+          for (const el of Array.from(document.querySelectorAll('div, span, a, button'))) {
+            const t = ((el as HTMLElement).innerText || '').trim();
+            if (/^(view more|xem thêm|load more)$/i.test(t)) {
+              (el as HTMLElement).scrollIntoView();
+              (el as HTMLElement).click();
+              return true;
+            }
+          }
+          return false;
+        });
+        if (!clicked) break;
+        await sleep(3200); // chờ trang mới về + parse
+        if (byId.size === prev) break; // không tăng nữa
       }
     } finally {
       await context.close().catch(() => undefined);
