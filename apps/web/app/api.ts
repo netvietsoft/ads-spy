@@ -15,6 +15,7 @@ export interface CreativeBrief {
   assetUrl?: string;
   firstShown?: number;
   lastShown?: number;
+  regionCount?: number;
 }
 export interface SearchResponse {
   searchId: number;

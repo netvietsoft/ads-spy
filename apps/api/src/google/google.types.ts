@@ -16,6 +16,7 @@ export interface CreativeBrief {
   assetUrl?: string; // ảnh trực tiếp hoặc URL embed
   firstShown?: number; // unix seconds
   lastShown?: number; // unix seconds
+  regionCount?: number; // số vùng ad chạy (field 13)
 }
 
 export interface CreativeVariant {

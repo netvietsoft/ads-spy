@@ -62,8 +62,10 @@ export function parseFbTarget(input: string): { mode: 'page' | 'keyword'; value:
   if (m) {
     const seg = decodeURIComponent(m[1]);
     if (seg === 'profile.php') {
+      // Page "new experience": id trong profile.php là PROFILE id, KHÁC page id của Ad Library.
+      // Trả handle 'profile.php?id=..' để resolvePageId navigate lấy đúng page id.
       const id = /[?&]id=(\d+)/.exec(s);
-      if (id) return { mode: 'page', value: id[1] };
+      if (id) return { mode: 'page', value: `profile.php?id=${id[1]}` };
     } else if (!NON_PAGE_PATHS.has(seg.toLowerCase())) {
       return { mode: 'page', value: seg };
     }

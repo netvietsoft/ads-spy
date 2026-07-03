@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { CreativeBrief, CreativeDetail, assetProxy, embedSrc, getCreative } from '../api';
+import { regionName } from '../geo';
 
 function fmtDate(unix?: number) {
   if (!unix) return '—';
@@ -36,6 +37,22 @@ export function CreativeModal({ creative, onClose }: { creative: CreativeBrief; 
           </button>
         </div>
 
+        <div className="fbfoot" style={{ marginTop: 6 }}>
+          {creative.domain && (
+            <a className="dl" href={`https://${creative.domain}`} target="_blank" rel="noreferrer">
+              🔗 Mở domain: {creative.domain}
+            </a>
+          )}
+          <a
+            className="dl"
+            href={`https://adstransparency.google.com/advertiser/${creative.advertiserId}/creative/${creative.creativeId}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            ↗ Xem trên Google
+          </a>
+        </div>
+
         {err && <div className="error">{err}</div>}
         {!detail && !err && (
           <p className="hint">
@@ -46,8 +63,17 @@ export function CreativeModal({ creative, onClose }: { creative: CreativeBrief; 
         {detail && (
           <>
             <div className="hint" style={{ marginTop: 12 }}>
-              Lần cuối hiển thị: {fmtDate(detail.lastShown)} · Số vùng hiển thị: {detail.regions.length}
+              Lần cuối hiển thị: {fmtDate(detail.lastShown)} · Số vùng: {detail.regions.length}
             </div>
+            {detail.regions.length > 0 && (
+              <div className="chips" style={{ marginTop: 8 }}>
+                {detail.regions.map((r) => (
+                  <span key={r} className="chip" style={{ cursor: 'default' }}>
+                    {regionName(r)}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="variants">
               {detail.variants.map((v, i) => (
                 <div className={`v ${v.assetType === 'embed' ? 'embed' : ''}`} key={i}>

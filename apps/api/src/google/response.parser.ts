@@ -52,6 +52,7 @@ export function parseSearchCreatives(raw: any): SearchCreativesResult {
       assetUrl: asset.assetUrl,
       firstShown: toInt(ad?.['6']?.['1']),
       lastShown: toInt(ad?.['7']?.['1']),
+      regionCount: toInt(ad?.['13']),
     };
   });
   return {

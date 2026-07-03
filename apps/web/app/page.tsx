@@ -488,6 +488,7 @@ export default function Home() {
                       <div className="a">{c.advertiserName || c.advertiserId}</div>
                       <div className="b">
                         <span className={`badge ${c.assetType}`}>{c.assetType}</span>
+                        {c.regionCount ? <span className="badge">🌍 {c.regionCount} vùng</span> : null}
                         <span>{fmtDate(c.lastShown)}</span>
                       </div>
                     </div>
