@@ -125,6 +125,32 @@ export async function getHistory(): Promise<SearchHistory[]> {
   return jsonOrThrow(await fetch(`${API}/api/history`));
 }
 
+// ---- TikTok Creative Center Top Ads ----
+export interface TtAd {
+  id: string;
+  adTitle: string;
+  brandName?: string;
+  ctr?: number;
+  likes?: number;
+  cost?: number;
+  industryKey?: string;
+  objectiveKey?: string;
+  cover?: string;
+  videoUrl?: string;
+  duration?: number;
+}
+export interface TtTopAdsResult {
+  country: string;
+  period: number;
+  count: number;
+  ads: TtAd[];
+}
+export async function ttTopAds(country = 'VN', period = 7): Promise<TtTopAdsResult> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/tiktok/topads?country=${encodeURIComponent(country)}&period=${period}`),
+  );
+}
+
 // ---- Đối thủ theo dõi (favorites) ----
 export interface Favorite {
   id: number;

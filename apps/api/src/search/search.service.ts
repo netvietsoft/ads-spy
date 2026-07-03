@@ -15,6 +15,9 @@ const ALLOWED_ASSET_HOSTS = [
   'tpc.googlesyndication.com',
   'googleusercontent.com',
   'fbcdn.net', // ảnh/video quảng cáo Facebook
+  'tiktokcdn.com', // ảnh/video TikTok
+  'tiktokcdn-us.com',
+  'ibyteimg.com',
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

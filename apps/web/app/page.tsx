@@ -18,6 +18,7 @@ import {
 } from './api';
 import { CreativeModal } from './components/CreativeModal';
 import { FacebookPanel } from './components/FacebookPanel';
+import { TiktokPanel } from './components/TiktokPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
 import { Favorite } from './api';
@@ -38,7 +39,7 @@ function fmtDate(unix?: number) {
 
 export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [source, setSource] = useState<'google' | 'facebook'>('google');
+  const [source, setSource] = useState<'google' | 'facebook' | 'tiktok'>('google');
   const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -262,9 +263,17 @@ export default function Home() {
         >
           🔷 Facebook Ads
         </button>
+        <button
+          className={`srcbtn ${source === 'tiktok' ? 'active' : ''}`}
+          onClick={() => setSource('tiktok')}
+          type="button"
+        >
+          🎵 TikTok Ads
+        </button>
       </div>
 
       {source === 'facebook' && <FacebookPanel />}
+      {source === 'tiktok' && <TiktokPanel />}
 
       {source === 'google' && (
       <>
