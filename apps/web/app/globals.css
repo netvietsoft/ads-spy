@@ -155,6 +155,16 @@ button.ghost.active { border-color: var(--accent); color: var(--accent); }
 
 .saved-note { background: color-mix(in srgb, var(--accent-2) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent-2) 40%, var(--panel)); color: var(--accent-2); border-radius: 10px; padding: 10px 14px; margin: 18px 0 4px; font-size: 13px; }
 
+.favs { margin-top: 18px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.favs-head h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.favs-add { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.favs-add input { flex: 1; min-width: 200px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 14px; outline: none; }
+.favs-list { display: flex; flex-direction: column; gap: 6px; }
+.fav { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.fav-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fav-btns { display: flex; gap: 6px; flex-shrink: 0; }
+button.ghost.danger { color: var(--danger); }
+
 .history { margin-top: 28px; }
 .history .item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer; }
 .history .item:hover { color: var(--accent); }

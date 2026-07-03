@@ -15,6 +15,17 @@ import {
 } from './api';
 import { CreativeModal } from './components/CreativeModal';
 import { FacebookPanel } from './components/FacebookPanel';
+import { Favorites } from './components/Favorites';
+import { Favorite } from './api';
+
+function normalizeDomainClient(s: string) {
+  return (s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0];
+}
 
 function fmtDate(unix?: number) {
   if (!unix) return '';
@@ -111,6 +122,14 @@ export default function Home() {
     setMode('domain');
     setQuery(d);
     runDomain(d);
+  }
+
+  // Đối thủ Google: xem lại từ DB (khớp domain trong lịch sử) hoặc tra mới.
+  async function replayGoogleFav(f: Favorite) {
+    const norm = normalizeDomainClient(f.query);
+    const hit = history.find((h) => h.domain === norm);
+    if (hit) return openSaved(hit.id, hit.domain);
+    return runDomain(f.query); // chưa có trong lịch sử → tra mới
   }
 
   async function openSaved(id: number, label: string) {
@@ -219,6 +238,17 @@ export default function Home() {
             : 'Nhập từ khóa → Google gợi ý nhà quảng cáo + domain khớp, bấm để xem quảng cáo.'}
         </p>
       )}
+
+      <Favorites
+        source="google"
+        currentQuery={query}
+        onReplay={replayGoogleFav}
+        onFresh={(f) => {
+          setMode('domain');
+          setQuery(f.query);
+          runDomain(f.query);
+        }}
+      />
 
       {suggestions && !data && (
         <div className="layout" style={{ marginTop: 18 }}>

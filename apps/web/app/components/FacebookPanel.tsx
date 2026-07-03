@@ -12,6 +12,8 @@ import {
   fbSearch,
 } from '../api';
 import { FbModal } from './FbModal';
+import { Favorites } from './Favorites';
+import { Favorite } from '../api';
 
 const COUNTRIES = ['VN', 'US', 'TH', 'ID', 'PH', 'ALL'];
 const RANGES: { v: string; label: string }[] = [
@@ -147,6 +149,43 @@ export function FacebookPanel() {
     }
   }
 
+  // Đối thủ FB: xem lại từ DB (khớp query trong lịch sử) hoặc tra mới.
+  async function replayFav(f: Favorite) {
+    setTab('search');
+    const hit = history.find((h) => h.query === f.query);
+    if (hit) return openSaved(hit.id, hit.query);
+    setQ(f.query);
+    setLoading(true);
+    setErr(null);
+    setSavedView(false);
+    try {
+      const r = await fbSearch(f.query, f.country || country, status);
+      setRes(r);
+      refreshHistory();
+    } catch (e: any) {
+      setErr(e.message || 'Lỗi');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function freshFav(f: Favorite) {
+    setTab('search');
+    setQ(f.query);
+    setLoading(true);
+    setErr(null);
+    setSavedView(false);
+    try {
+      const r = await fbSearch(f.query, f.country || country, status);
+      setRes(r);
+      refreshHistory();
+    } catch (e: any) {
+      setErr(e.message || 'Lỗi');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <>
       <div className="modes" style={{ marginTop: 14 }}>
@@ -272,6 +311,14 @@ export function FacebookPanel() {
           Nhập từ khóa/tên Page → lấy quảng cáo đang chạy tại quốc gia đã chọn từ Meta Ad Library.
         </p>
       )}
+
+      <Favorites
+        source="facebook"
+        country={country}
+        currentQuery={q}
+        onReplay={replayFav}
+        onFresh={freshFav}
+      />
 
       {res && (
         <>

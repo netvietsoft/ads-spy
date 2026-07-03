@@ -99,6 +99,39 @@ export async function getHistory(): Promise<SearchHistory[]> {
   return jsonOrThrow(await fetch(`${API}/api/history`));
 }
 
+// ---- Đối thủ theo dõi (favorites) ----
+export interface Favorite {
+  id: number;
+  source: 'google' | 'facebook';
+  query: string;
+  country?: string | null;
+  label?: string | null;
+  createdAt: string;
+}
+
+export async function listFavorites(source: 'google' | 'facebook'): Promise<Favorite[]> {
+  return jsonOrThrow(await fetch(`${API}/api/favorites?source=${source}`));
+}
+
+export async function addFavorite(
+  source: 'google' | 'facebook',
+  query: string,
+  country?: string,
+  label?: string,
+): Promise<Favorite> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/favorites`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source, query, country, label }),
+    }),
+  );
+}
+
+export async function removeFavorite(id: number): Promise<void> {
+  await fetch(`${API}/api/favorites/${id}`, { method: 'DELETE' });
+}
+
 // ---- Facebook Ad Library ----
 export interface FbAd {
   adArchiveId: string;

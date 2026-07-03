@@ -43,6 +43,16 @@ model Creative {
   searchId     Int
 }
 
+// ---- Đối thủ theo dõi (favorites) — cho cả Google lẫn Facebook ----
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  source    String // 'google' | 'facebook'
+  query     String // domain/keyword (google) | keyword/link/page_id (fb)
+  country   String? // chỉ dùng cho facebook
+  label     String?
+  createdAt DateTime @default(now())
+}
+
 // ---- Facebook Ad Library ----
 model FbSearch {
   id        Int      @id @default(autoincrement())
