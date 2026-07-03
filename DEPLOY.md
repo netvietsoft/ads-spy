@@ -2,6 +2,46 @@
 
 Hướng dẫn cài `ads-spy` (Google Ads Transparency + Facebook Ad Library) lên VPS Linux (Ubuntu/Debian).
 
+---
+
+## ⚡ Triển khai nhanh cho server dpboss.pet (192.168.1.4)
+
+Cấu hình: **Web (Next) :3062**, **API (Nest) :3063**, domain **https://dpboss.pet**, thư mục
+`/home/netviet/projects-deploy/ads-spy`, chạy bằng **PM2**.
+
+```bash
+# 1) Lần đầu: clone vào đúng thư mục
+sudo mkdir -p /home/netviet/projects-deploy && cd /home/netviet/projects-deploy
+git clone git@github.com:netvietsoft/ads-spy.git
+cd ads-spy
+
+# 2) Cài PM2 (nếu chưa)
+sudo npm i -g pm2
+
+# 3) Deploy (kéo code + cài + build + chạy PM2) — dùng script sẵn:
+bash deploy.sh
+pm2 startup    # (chạy 1 lần) để PM2 tự bật khi reboot
+
+# 4) Nginx + SSL cho dpboss.pet
+sudo cp deploy/nginx-dpboss.conf /etc/nginx/sites-available/dpboss.pet
+sudo ln -s /etc/nginx/sites-available/dpboss.pet /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d dpboss.pet     # cấp HTTPS
+```
+
+**Cập nhật về sau:** `cd /home/netviet/projects-deploy/ads-spy && bash deploy.sh`
+
+**Đăng nhập Facebook trên server:** mở https://dpboss.pet → tab Facebook Ads → "Đăng nhập bằng
+cookie" → dán cookie (nick phụ). Cookie lưu vào DB, sống qua restart.
+
+> Ghi chú: `deploy.sh` build web với `NEXT_PUBLIC_API_ORIGIN=https://dpboss.pet`; nginx route
+> `/api/` → API :3063 (timeout 180s cho FB scraping), còn lại → Web :3062. Đổi cổng trong
+> `ecosystem.config.js`. Cần RAM ≥ 2GB cho Chromium.
+
+---
+
+## Hướng dẫn tổng quát (server khác)
+
 > **Tóm tắt:** kéo code từ git → cài deps → cài Chromium cho Playwright → tạo DB từ migration →
 > build → chạy bằng PM2. **Không cần** mang file `dev.db` lên (tự sinh ra).
 
