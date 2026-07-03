@@ -207,6 +207,22 @@ export interface FbPagePostsResult {
   loggedIn: boolean;
   count: number;
   posts: FbPost[];
+  scanId?: number;
+}
+export interface FbScanHistory {
+  id: number;
+  page: string;
+  fromDate?: string | null;
+  toDate?: string | null;
+  createdAt: string;
+  count: number;
+}
+
+export async function fbPagePostsHistory(): Promise<FbScanHistory[]> {
+  return jsonOrThrow(await fetch(`${API}/api/fb/page-posts/history`));
+}
+export async function fbPagePostsSaved(id: number): Promise<FbPagePostsResult> {
+  return jsonOrThrow(await fetch(`${API}/api/fb/page-posts/saved/${id}`));
 }
 
 export async function fbSessionStatus(): Promise<{ loggedIn: boolean; user?: string }> {

@@ -37,7 +37,7 @@ export class FbController {
     return this.scraper.report((country || 'VN').toUpperCase(), r);
   }
 
-  // GET /api/fb/page-posts?page=<url|handle>&from=YYYY-MM-DD&to=YYYY-MM-DD
+  // GET /api/fb/page-posts?page=<url|handle>&from=YYYY-MM-DD&to=YYYY-MM-DD  (quét + lưu DB)
   @Get('page-posts')
   pagePosts(
     @Query('page') pg: string,
@@ -52,7 +52,19 @@ export class FbController {
       const ms = Date.parse(`${d}T${endOfDay ? '23:59:59' : '00:00:00'}Z`);
       return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
     };
-    return this.scraper.pagePosts(pg.trim(), n, toUnix(from, false), toUnix(to, true));
+    return this.fb.pagePosts(pg.trim(), n, toUnix(from, false), toUnix(to, true), from, to);
+  }
+
+  @Get('page-posts/history')
+  pagePostsHistory() {
+    return this.fb.pagePostsHistory();
+  }
+
+  @Get('page-posts/saved/:id')
+  async pagePostsSaved(@Param('id') id: string) {
+    const saved = await this.fb.pagePostsById(Number(id));
+    if (!saved) throw new NotFoundException('Không tìm thấy lượt quét này.');
+    return saved;
   }
 
   // GET /api/fb/search?q=nike&country=VN  (scrape + lưu DB)

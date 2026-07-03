@@ -4,12 +4,15 @@ import {
   FbAd,
   FbPagePostsResult,
   FbReportResult,
+  FbScanHistory,
   FbSearchHistory,
   FbSearchResult,
   assetProxy,
   fbGetSaved,
   fbHistory,
   fbPagePosts,
+  fbPagePostsHistory,
+  fbPagePostsSaved,
   fbReport,
   fbSearch,
   fbSessionStatus,
@@ -86,13 +89,32 @@ export function FacebookPanel() {
   const [posts, setPosts] = useState<FbPagePostsResult | null>(null);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [scanHistory, setScanHistory] = useState<FbScanHistory[]>([]);
+  const [postsSaved, setPostsSaved] = useState(false);
   const [fbLoggedIn, setFbLoggedIn] = useState<boolean | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [cookie, setCookie] = useState('');
 
+  const refreshScans = () => fbPagePostsHistory().then(setScanHistory).catch(() => {});
   useEffect(() => {
     fbSessionStatus().then((s) => setFbLoggedIn(s.loggedIn)).catch(() => {});
+    refreshScans();
   }, []);
+
+  async function openScan(id: number, page: string) {
+    setPostsPage(page);
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await fbPagePostsSaved(id);
+      setPosts(r);
+      setPostsSaved(true);
+    } catch (e: any) {
+      setErr(e.message || 'Không mở được lượt quét đã lưu');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function saveCookie() {
     if (!cookie.trim()) return;
@@ -114,9 +136,11 @@ export function FacebookPanel() {
     if (!postsPage.trim()) return;
     setLoading(true);
     setErr(null);
+    setPostsSaved(false);
     try {
       const r = await fbPagePosts(postsPage.trim(), 60, fromDate || undefined, toDate || undefined);
       setPosts(r);
+      refreshScans();
     } catch (e: any) {
       setErr(e.message || 'Lỗi quét bài viết');
       setPosts(null);
@@ -322,7 +346,8 @@ export function FacebookPanel() {
             )}
           </div>
           <p className="hint">
-            Cần <b>đăng nhập FB</b> trước (bấm “Đăng nhập bằng cookie” ở trên, dán cookie nick phụ). Bài viết FB bị chặn nếu chưa đăng nhập.
+            Cần <b>đăng nhập FB</b> (dán cookie ở trên). Xếp hạng theo <b>reactions</b> (chính xác) + có ngày đăng.
+            Lưu ý: feed FB thường trả <b>comment/share = 0</b> ở bản tóm tắt — số comment/share chính xác chỉ có khi mở từng bài.
           </p>
           {err && <div className="error">{err}</div>}
           {loading && (
@@ -332,9 +357,14 @@ export function FacebookPanel() {
           )}
           {posts && !loading && (
             <>
-              {!posts.loggedIn && (
+              {postsSaved && (
+                <div className="saved-note">
+                  📁 Đang xem <b>lượt quét đã lưu</b> — {posts.count} bài (không quét lại).
+                </div>
+              )}
+              {!posts.loggedIn && !postsSaved && (
                 <div className="saved-note" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
-                  ⚠ Chưa đăng nhập FB — số liệu có thể thiếu. Chạy <code>fb:login</code> rồi thử lại.
+                  ⚠ Chưa đăng nhập FB — số liệu có thể thiếu. Dán cookie ở trên rồi thử lại.
                 </div>
               )}
               <table className="reptable">
@@ -371,6 +401,35 @@ export function FacebookPanel() {
               </table>
               {posts.count === 0 && <p className="hint">Không lấy được bài viết nào.</p>}
             </>
+          )}
+
+          {scanHistory.length > 0 && (
+            <div className="history">
+              <h3 style={{ color: 'var(--muted)', fontSize: 13, textTransform: 'uppercase' }}>
+                Lịch sử quét bài viết
+              </h3>
+              {scanHistory.map((h) => (
+                <div
+                  key={h.id}
+                  className="item"
+                  onClick={() => openScan(h.id, h.page)}
+                  title="Xem lại lượt quét đã lưu (không quét lại)"
+                >
+                  <span>
+                    {h.page}
+                    {h.fromDate || h.toDate ? (
+                      <span className="m">
+                        {' '}
+                        · {h.fromDate || '…'}→{h.toDate || '…'}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="m">
+                    {h.count} bài · {new Date(h.createdAt).toLocaleString('vi-VN')}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}

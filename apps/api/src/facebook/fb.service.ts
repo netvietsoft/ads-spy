@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { FbPlaywrightService } from './fb.playwright.service';
-import { FbAd, FbSearchResult } from './fb.types';
+import { FbAd, FbPagePostsResult, FbPost, FbSearchResult } from './fb.types';
 
 @Injectable()
 export class FbService {
@@ -44,6 +44,75 @@ export class FbService {
 
   history() {
     return this.prisma.fbSearch.findMany({ orderBy: { createdAt: 'desc' }, take: 20 });
+  }
+
+  // Quét bài viết Page rồi LƯU DB (để xem lại khỏi quét lại).
+  async pagePosts(
+    page: string,
+    limit: number,
+    fromTs?: number,
+    toTs?: number,
+    fromDate?: string,
+    toDate?: string,
+  ): Promise<FbPagePostsResult & { scanId: number }> {
+    const res = await this.scraper.pagePosts(page, limit, fromTs, toTs);
+    const rec = await this.prisma.fbPagePostsScan.create({
+      data: {
+        page: res.page,
+        fromDate: fromDate || null,
+        toDate: toDate || null,
+        count: res.posts.length,
+      },
+    });
+    if (res.posts.length) {
+      await this.prisma.fbPostRow.createMany({
+        data: res.posts.map((p) => ({
+          postId: p.postId ?? null,
+          url: p.url ?? null,
+          text: p.text ?? null,
+          time: p.time ?? null,
+          reactions: p.reactions,
+          comments: p.comments,
+          shares: p.shares,
+          total: p.total,
+          scanId: rec.id,
+        })),
+      });
+    }
+    return { ...res, scanId: rec.id };
+  }
+
+  pagePostsHistory() {
+    return this.prisma.fbPagePostsScan.findMany({ orderBy: { createdAt: 'desc' }, take: 20 });
+  }
+
+  async pagePostsById(
+    id: number,
+  ): Promise<(FbPagePostsResult & { scanId: number; createdAt: Date; fromDate?: string; toDate?: string }) | null> {
+    const rec = await this.prisma.fbPagePostsScan.findUnique({ where: { id }, include: { posts: true } });
+    if (!rec) return null;
+    const posts: FbPost[] = rec.posts
+      .map((p) => ({
+        postId: p.postId ?? undefined,
+        url: p.url ?? undefined,
+        text: p.text ?? undefined,
+        time: p.time ?? undefined,
+        reactions: p.reactions,
+        comments: p.comments,
+        shares: p.shares,
+        total: p.total,
+      }))
+      .sort((a, b) => b.total - a.total);
+    return {
+      scanId: rec.id,
+      createdAt: rec.createdAt,
+      fromDate: rec.fromDate ?? undefined,
+      toDate: rec.toDate ?? undefined,
+      page: rec.page,
+      loggedIn: true,
+      count: posts.length,
+      posts,
+    };
   }
 
   // Đọc lại từ DB (không chạy Chromium).

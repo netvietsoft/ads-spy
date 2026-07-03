@@ -50,6 +50,31 @@ model FbSetting {
   value String
 }
 
+// ---- Lịch sử quét bài viết Page ----
+model FbPagePostsScan {
+  id        Int         @id @default(autoincrement())
+  page      String
+  fromDate  String?
+  toDate    String?
+  createdAt DateTime    @default(now())
+  count     Int         @default(0)
+  posts     FbPostRow[]
+}
+
+model FbPostRow {
+  id        Int             @id @default(autoincrement())
+  postId    String?
+  url       String?
+  text      String?
+  time      Int?
+  reactions Int             @default(0)
+  comments  Int             @default(0)
+  shares    Int             @default(0)
+  total     Int             @default(0)
+  scan      FbPagePostsScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  scanId    Int
+}
+
 // ---- Đối thủ theo dõi (favorites) — cho cả Google lẫn Facebook ----
 model Favorite {
   id        Int      @id @default(autoincrement())
