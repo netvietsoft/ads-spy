@@ -157,6 +157,10 @@ button.ghost.active { border-color: var(--accent); color: var(--accent); }
 .saved-note { background: color-mix(in srgb, var(--accent-2) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--accent-2) 40%, var(--panel)); color: var(--accent-2); border-radius: 10px; padding: 10px 14px; margin: 18px 0 4px; font-size: 13px; }
 
 .fbauth { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+.authstatus { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); font-size: 13px; font-weight: 600; }
+.pill.ok { color: var(--accent-2); border-color: color-mix(in srgb, var(--accent-2) 55%, var(--panel)); background: color-mix(in srgb, var(--accent-2) 12%, var(--panel)); }
+.pill.off { color: var(--muted); }
 .fbauth-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-top: 8px; }
 .fbauth-ta { width: 100%; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; margin-bottom: 8px; }
 

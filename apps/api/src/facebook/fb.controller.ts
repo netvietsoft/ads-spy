@@ -30,6 +30,12 @@ export class FbController {
     return this.scraper.sessionStatus();
   }
 
+  // Kiểm tra cookie còn dùng được không (mở facebook.com/me kiểm tra thật)
+  @Get('session/verify')
+  verifySession() {
+    return this.scraper.verifySession();
+  }
+
   // GET /api/fb/report?country=VN&range=30  → bảng xếp hạng chi tiêu theo Page
   @Get('report')
   report(@Query('country') country?: string, @Query('range') range?: string) {
@@ -53,6 +59,31 @@ export class FbController {
       return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
     };
     return this.fb.pagePosts(pg.trim(), n, toUnix(from, false), toUnix(to, true), from, to);
+  }
+
+  // Quét DẦN (progressive): trả jobId, rồi client poll /page-posts/job/:id
+  @Get('page-posts/start')
+  startPagePosts(
+    @Query('page') pg: string,
+    @Query('limit') limit?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    if (!pg || !pg.trim()) throw new BadRequestException('Vui lòng nhập link/tên Page.');
+    const n = Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 80);
+    const toUnix = (d: string | undefined, endOfDay: boolean): number | undefined => {
+      if (!d) return undefined;
+      const ms = Date.parse(`${d}T${endOfDay ? '23:59:59' : '00:00:00'}Z`);
+      return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
+    };
+    return this.fb.startPagePosts(pg.trim(), n, toUnix(from, false), toUnix(to, true), from, to);
+  }
+
+  @Get('page-posts/job/:id')
+  pagePostsJob(@Param('id') id: string) {
+    const job = this.fb.getJob(id);
+    if (!job) throw new NotFoundException('Job không tồn tại hoặc đã hết hạn.');
+    return job;
   }
 
   @Get('page-posts/history')

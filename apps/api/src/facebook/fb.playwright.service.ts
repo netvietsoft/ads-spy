@@ -181,6 +181,25 @@ export class FbPlaywrightService implements OnModuleDestroy {
     return { loggedIn: !!cu, user: cu?.value };
   }
 
+  // Kiểm tra cookie còn hiệu lực: mở facebook.com/me, nếu bị đá về login → hết hạn.
+  async verifySession(): Promise<{ loggedIn: boolean; valid: boolean; user?: string }> {
+    const ctx = await this.getContext();
+    const cu = (await ctx.cookies()).find((c) => c.name === 'c_user');
+    if (!cu) return { loggedIn: false, valid: false };
+    const page = await ctx.newPage();
+    try {
+      await page.goto('https://www.facebook.com/me', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await sleep(1500);
+      const url = page.url();
+      const valid = !/\/login|\/checkpoint|login\.php/i.test(url);
+      return { loggedIn: true, valid, user: cu.value };
+    } catch {
+      return { loggedIn: true, valid: false, user: cu.value };
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  }
+
   async search(
     query: string,
     country = 'VN',
@@ -278,6 +297,7 @@ export class FbPlaywrightService implements OnModuleDestroy {
     limit = 40,
     fromTs?: number,
     toTs?: number,
+    onProgress?: (posts: FbPost[]) => void,
   ): Promise<FbPagePostsResult> {
     const context = await this.getContext();
     const loggedIn = (await context.cookies()).some((c) => c.name === 'c_user');
@@ -318,6 +338,7 @@ export class FbPlaywrightService implements OnModuleDestroy {
       let prev = 0;
       for (let i = 0; i < maxScroll; i++) {
         const cur = collect();
+        if (onProgress) onProgress(this.applyFilterSort(cur, fromTs, toTs, limit));
         // đủ số (không lọc) → dừng
         if (!filtering && cur.length >= limit) break;
         // đang lọc: nếu bài cũ nhất đã đăng TRƯỚC mốc from → đã bao trọn khoảng, dừng
@@ -335,19 +356,57 @@ export class FbPlaywrightService implements OnModuleDestroy {
       await page.close().catch(() => undefined);
     }
 
-    let posts = collect();
-    if (fromTs || toTs) {
-      posts = posts.filter(
-        (p) => p.time && (!fromTs || p.time >= fromTs) && (!toTs || p.time <= toTs),
-      );
-    }
-    posts = posts.sort((a, b) => b.total - a.total).slice(0, limit);
+    const posts = this.applyFilterSort(collect(), fromTs, toTs, limit);
     if (posts.length === 0 && !loggedIn) {
       throw new FbBlockedError(
         'Chưa đăng nhập Facebook (dán cookie ở trên) hoặc trang không có bài công khai.',
       );
     }
     return { page: pageInput, loggedIn, count: posts.length, posts };
+  }
+
+  private applyFilterSort(posts: FbPost[], fromTs?: number, toTs?: number, limit = 40): FbPost[] {
+    let out = posts;
+    if (fromTs || toTs) {
+      out = out.filter((p) => p.time && (!fromTs || p.time >= fromTs) && (!toTs || p.time <= toTs));
+    }
+    return out.sort((a, b) => b.total - a.total).slice(0, limit);
+  }
+
+  // Mở 1 bài viết cụ thể (đã đăng nhập) để lấy like/comment/share THẬT.
+  async fetchPostEngagement(
+    url: string,
+  ): Promise<{ reactions: number; comments: number; shares: number }> {
+    const context = await this.getContext();
+    const page = await context.newPage();
+    const chunks: string[] = [];
+    page.on('response', async (res) => {
+      if (!res.url().includes('/api/graphql')) return;
+      try {
+        const t = await res.text();
+        if (t.includes('reaction_count')) chunks.push(t);
+      } catch {
+        /* ignore */
+      }
+    });
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await sleep(3500);
+    } catch {
+      /* ignore */
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+    const all: any[] = [];
+    for (const c of chunks) for (const o of parseLoose(c)) all.push(o);
+    const parsed = parsePagePosts(all);
+    // lấy bản có tổng tương tác cao nhất (chính là bài đang mở)
+    const best = parsed.sort((a, b) => b.total - a.total)[0];
+    return {
+      reactions: best?.reactions ?? 0,
+      comments: best?.comments ?? 0,
+      shares: best?.shares ?? 0,
+    };
   }
 
   // Bảng xếp hạng chi tiêu theo Page (Ad Library Report).

@@ -10,13 +10,15 @@ import {
   assetProxy,
   fbGetSaved,
   fbHistory,
-  fbPagePosts,
   fbPagePostsHistory,
+  fbPagePostsJob,
   fbPagePostsSaved,
+  fbPagePostsStart,
   fbReport,
   fbSearch,
   fbSessionStatus,
   fbSetSession,
+  fbVerifySession,
 } from '../api';
 import { FbModal } from './FbModal';
 import { Favorites } from './Favorites';
@@ -87,10 +89,14 @@ export function FacebookPanel() {
   const [report, setReport] = useState<FbReportResult | null>(null);
   const [postsPage, setPostsPage] = useState('');
   const [posts, setPosts] = useState<FbPagePostsResult | null>(null);
-  const [fromDate, setFromDate] = useState('');
+  const oneYearAgo = () => new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+  const [fromDate, setFromDate] = useState(oneYearAgo());
   const [toDate, setToDate] = useState('');
   const [scanHistory, setScanHistory] = useState<FbScanHistory[]>([]);
   const [postsSaved, setPostsSaved] = useState(false);
+  const [scanPhase, setScanPhase] = useState<string>('');
+  const [verifying, setVerifying] = useState(false);
+  const [cookieValid, setCookieValid] = useState<boolean | null>(null);
   const [fbLoggedIn, setFbLoggedIn] = useState<boolean | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [cookie, setCookie] = useState('');
@@ -132,20 +138,51 @@ export function FacebookPanel() {
     }
   }
 
+  // Quét DẦN: start job rồi poll, hiện kết quả tăng dần.
   async function runPosts() {
     if (!postsPage.trim()) return;
     setLoading(true);
     setErr(null);
     setPostsSaved(false);
+    setPosts(null);
+    setScanPhase('scanning');
     try {
-      const r = await fbPagePosts(postsPage.trim(), 60, fromDate || undefined, toDate || undefined);
-      setPosts(r);
-      refreshScans();
+      const { jobId } = await fbPagePostsStart(postsPage.trim(), fromDate || undefined, toDate || undefined);
+      // poll
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 1500));
+        let job;
+        try {
+          job = await fbPagePostsJob(jobId);
+        } catch {
+          break; // job hết hạn/mất
+        }
+        setPosts({ page: job.page, loggedIn: true, count: job.count, posts: job.posts });
+        setScanPhase(job.phase);
+        if (job.done) {
+          if (job.error) setErr(job.error);
+          refreshScans();
+          break;
+        }
+      }
     } catch (e: any) {
       setErr(e.message || 'Lỗi quét bài viết');
-      setPosts(null);
     } finally {
       setLoading(false);
+      setScanPhase('');
+    }
+  }
+
+  async function verifyCookie() {
+    setVerifying(true);
+    try {
+      const v = await fbVerifySession();
+      setFbLoggedIn(v.loggedIn);
+      setCookieValid(v.valid);
+    } catch {
+      setCookieValid(false);
+    } finally {
+      setVerifying(false);
     }
   }
 
@@ -259,16 +296,24 @@ export function FacebookPanel() {
   return (
     <>
       <div className="fbauth">
-        <span>
-          {fbLoggedIn === null
-            ? '…'
-            : fbLoggedIn
-              ? '🔒 Đã đăng nhập Facebook'
-              : '🔓 Chưa đăng nhập FB (cần cho “Bài viết Page” & tương tác)'}
+        <span className="authstatus">
+          {fbLoggedIn === null ? (
+            <span className="pill">…</span>
+          ) : fbLoggedIn ? (
+            <span className="pill ok">🔒 Đã đăng nhập{cookieValid === false ? ' (cookie hết hạn?)' : ''}</span>
+          ) : (
+            <span className="pill off">🔓 Chưa đăng nhập FB</span>
+          )}
+          {cookieValid === true && <span className="pill ok">✔ Cookie còn hiệu lực</span>}
         </span>
-        <button className="ghost" type="button" onClick={() => setShowAuth((v) => !v)}>
-          {fbLoggedIn ? 'Đổi cookie' : 'Đăng nhập bằng cookie'}
-        </button>
+        <span className="fav-btns">
+          <button className="ghost" type="button" onClick={verifyCookie} disabled={verifying}>
+            {verifying ? <span className="spinner" /> : 'Kiểm tra cookie'}
+          </button>
+          <button className="ghost" type="button" onClick={() => setShowAuth((v) => !v)}>
+            {fbLoggedIn ? 'Đổi cookie' : 'Đăng nhập bằng cookie'}
+          </button>
+        </span>
       </div>
       {showAuth && (
         <div className="fbauth-box">
@@ -346,23 +391,26 @@ export function FacebookPanel() {
             )}
           </div>
           <p className="hint">
-            Cần <b>đăng nhập FB</b> (dán cookie ở trên). Xếp hạng theo <b>reactions</b> (chính xác) + có ngày đăng.
-            Lưu ý: feed FB thường trả <b>comment/share = 0</b> ở bản tóm tắt — số comment/share chính xác chỉ có khi mở từng bài.
+            Cần <b>đăng nhập FB</b> (dán cookie ở trên). Mặc định quét <b>1 năm gần nhất</b>. Reactions + ngày lấy khi cuộn;
+            comment/share thật được lấy thêm bằng cách <b>mở top bài</b> (hiện dần). Kết quả tự lưu để xem lại.
           </p>
           {err && <div className="error">{err}</div>}
           {loading && (
             <p className="hint">
-              <span className="spinner" /> Đang cuộn &amp; quét bài viết… (có thể ~1 phút)
+              <span className="spinner" />{' '}
+              {scanPhase === 'enriching'
+                ? `Đang lấy comment/share thật cho top bài… (đã có ${posts?.count ?? 0} bài)`
+                : `Đang cuộn & quét… (đã thấy ${posts?.count ?? 0} bài, hiện dần)`}
             </p>
           )}
-          {posts && !loading && (
+          {posts && (
             <>
               {postsSaved && (
                 <div className="saved-note">
                   📁 Đang xem <b>lượt quét đã lưu</b> — {posts.count} bài (không quét lại).
                 </div>
               )}
-              {!posts.loggedIn && !postsSaved && (
+              {!posts.loggedIn && !postsSaved && !loading && (
                 <div className="saved-note" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
                   ⚠ Chưa đăng nhập FB — số liệu có thể thiếu. Dán cookie ở trên rồi thử lại.
                 </div>

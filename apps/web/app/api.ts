@@ -228,6 +228,34 @@ export async function fbPagePostsSaved(id: number): Promise<FbPagePostsResult> {
 export async function fbSessionStatus(): Promise<{ loggedIn: boolean; user?: string }> {
   return jsonOrThrow(await fetch(`${API}/api/fb/session`));
 }
+export async function fbVerifySession(): Promise<{ loggedIn: boolean; valid: boolean; user?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/fb/session/verify`));
+}
+
+export interface FbPostsJob {
+  jobId: string;
+  page: string;
+  phase: 'scanning' | 'enriching' | 'done' | 'error';
+  done: boolean;
+  error: string | null;
+  posts: FbPost[];
+  count: number;
+  scanId: number | null;
+}
+export async function fbPagePostsStart(
+  page: string,
+  from?: string,
+  to?: string,
+  limit = 60,
+): Promise<{ jobId: string }> {
+  const qs = new URLSearchParams({ page, limit: String(limit) });
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  return jsonOrThrow(await fetch(`${API}/api/fb/page-posts/start?${qs.toString()}`));
+}
+export async function fbPagePostsJob(jobId: string): Promise<FbPostsJob> {
+  return jsonOrThrow(await fetch(`${API}/api/fb/page-posts/job/${jobId}`));
+}
 export async function fbSetSession(cookie: string): Promise<{ loggedIn: boolean; user?: string }> {
   return jsonOrThrow(
     await fetch(`${API}/api/fb/session`, {

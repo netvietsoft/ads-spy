@@ -86,6 +86,84 @@ export class FbService {
     return this.prisma.fbPagePostsScan.findMany({ orderBy: { createdAt: 'desc' }, take: 20 });
   }
 
+  // ---- Quét dần (progressive) + lấy comment/share thật cho top bài ----
+  private jobs = new Map<string, any>();
+
+  startPagePosts(
+    page: string,
+    limit: number,
+    fromTs?: number,
+    toTs?: number,
+    fromDate?: string,
+    toDate?: string,
+  ): { jobId: string } {
+    const jobId = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const job: any = { jobId, page, phase: 'scanning', done: false, error: null, posts: [], count: 0, scanId: null };
+    this.jobs.set(jobId, job);
+
+    void (async () => {
+      try {
+        const res = await this.scraper.pagePosts(page, limit, fromTs, toTs, (partial) => {
+          job.posts = partial;
+          job.count = partial.length;
+        });
+        job.posts = res.posts;
+        job.count = res.posts.length;
+
+        // Phase 2: mở top bài (theo reactions) để lấy comment/share THẬT
+        job.phase = 'enriching';
+        const top = res.posts.filter((p) => p.url).slice(0, 12);
+        for (const p of top) {
+          try {
+            const e = await this.scraper.fetchPostEngagement(p.url!);
+            if (e.reactions > p.reactions) p.reactions = e.reactions;
+            p.comments = e.comments;
+            p.shares = e.shares;
+            p.total = p.reactions + p.comments + p.shares;
+          } catch {
+            /* bỏ bài lỗi */
+          }
+          job.posts = [...res.posts].sort((a, b) => b.total - a.total);
+        }
+
+        // Lưu DB
+        const rec = await this.prisma.fbPagePostsScan.create({
+          data: { page: res.page, fromDate: fromDate || null, toDate: toDate || null, count: res.posts.length },
+        });
+        if (res.posts.length) {
+          await this.prisma.fbPostRow.createMany({
+            data: res.posts.map((p) => ({
+              postId: p.postId ?? null,
+              url: p.url ?? null,
+              text: p.text ?? null,
+              time: p.time ?? null,
+              reactions: p.reactions,
+              comments: p.comments,
+              shares: p.shares,
+              total: p.total,
+              scanId: rec.id,
+            })),
+          });
+        }
+        job.scanId = rec.id;
+        job.phase = 'done';
+        job.done = true;
+      } catch (e: any) {
+        job.error = e?.message || 'Lỗi quét';
+        job.phase = 'error';
+        job.done = true;
+      }
+      // dọn job cũ sau 10 phút
+      setTimeout(() => this.jobs.delete(jobId), 600000);
+    })();
+
+    return { jobId };
+  }
+
+  getJob(jobId: string) {
+    return this.jobs.get(jobId) || null;
+  }
+
   async pagePostsById(
     id: number,
   ): Promise<(FbPagePostsResult & { scanId: number; createdAt: Date; fromDate?: string; toDate?: string }) | null> {
