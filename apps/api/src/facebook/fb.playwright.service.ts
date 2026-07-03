@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import * as path from 'path';
 import type { BrowserContext, Page } from 'playwright';
 import { parseFbGraphql } from './fb.parser';
-import { FbAd, FbSearchResult } from './fb.types';
+import { FbAd, FbReportResult, FbSearchResult, FbSpendRow } from './fb.types';
 
 export class FbBlockedError extends Error {
   constructor(message = 'Facebook chặn/không trả kết quả (có thể cần đăng nhập hoặc thử lại sau).') {
@@ -102,7 +102,12 @@ export class FbPlaywrightService implements OnModuleDestroy {
     await this.context?.close().catch(() => undefined);
   }
 
-  async search(query: string, country = 'VN', limit = 40): Promise<FbSearchResult> {
+  async search(
+    query: string,
+    country = 'VN',
+    limit = 40,
+    activeStatus: 'all' | 'active' | 'inactive' = 'all',
+  ): Promise<FbSearchResult> {
     const context = await this.getContext();
     const page = await context.newPage();
     const chunks: string[] = [];
@@ -123,7 +128,7 @@ export class FbPlaywrightService implements OnModuleDestroy {
     // Nhận diện: link Page / @handle / page_id → tra theo Page (view_all_page_id); còn lại → từ khóa.
     const t = parseFbTarget(query);
     let target: string;
-    const base = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&media_type=all`;
+    const base = `https://www.facebook.com/ads/library/?active_status=${activeStatus}&ad_type=all&country=${encodeURIComponent(country)}&media_type=all`;
     if (t.mode === 'page') {
       const pageId = /^\d+$/.test(t.value) ? t.value : await this.resolvePageId(context, t.value);
       if (!pageId) {
@@ -185,6 +190,93 @@ export class FbPlaywrightService implements OnModuleDestroy {
     // Không có ads NHƯNG đã thấy graphql = thật sự 0 kết quả (trả rỗng, không báo lỗi).
     if (ads.length === 0 && !sawGraphql) throw new FbBlockedError();
     return { query, country, count: ads.length, ads };
+  }
+
+  // Bảng xếp hạng chi tiêu theo Page (Ad Library Report).
+  async report(country = 'VN', range = '30', limit = 50): Promise<FbReportResult> {
+    const context = await this.getContext();
+    const page = await context.newPage();
+    try {
+      await page.goto(`https://www.facebook.com/ads/library/report/?country=${encodeURIComponent(country)}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 60000,
+      });
+      if (!this.warmed) {
+        await this.dismissConsent(page);
+        this.warmed = true;
+      }
+      // Chọn khoảng thời gian bằng cách bấm tab tương ứng.
+      const tabLabel: Record<string, string> = {
+        yesterday: 'Hôm qua',
+        '7': '7 ngày qua',
+        '30': '30 ngày qua',
+        '90': '90 ngày qua',
+        all: 'Tất cả các ngày',
+      };
+      const label = tabLabel[range];
+      if (label && range !== '30') {
+        const tab = page.getByText(label, { exact: true }).first();
+        if (await tab.isVisible().catch(() => false)) {
+          await tab.click().catch(() => undefined);
+          await sleep(2500);
+        }
+      }
+      await page.waitForSelector('a[href*="view_all_page_id="]', { timeout: 25000 }).catch(() => undefined);
+
+      // cuộn nạp thêm cho tới khi đủ limit
+      let prev = 0;
+      for (let i = 0; i < 8; i++) {
+        const n = await page.$$eval('a[href*="view_all_page_id="]', (as) => as.length).catch(() => 0);
+        if (n >= limit) break;
+        await page.mouse.wheel(0, 6000);
+        await sleep(1500);
+        if (n === prev && n > 0) break;
+        prev = n;
+      }
+
+      const raw: { pid: string; parts: string[] }[] = await page.$$eval(
+        'a[href*="view_all_page_id="]',
+        (as: any[]) => {
+          const seen = new Set<string>();
+          const out: { pid: string; parts: string[] }[] = [];
+          for (const a of as) {
+            const m = /view_all_page_id=(\d+)/.exec(a.href);
+            if (!m) continue;
+            const pid = m[1];
+            if (seen.has(pid)) continue;
+            seen.add(pid);
+            const parts = (a.innerText || '')
+              .split('\n')
+              .map((s: string) => s.trim())
+              .filter(Boolean);
+            if (parts.length >= 3) out.push({ pid, parts });
+          }
+          return out;
+        },
+      );
+
+      const rows: FbSpendRow[] = raw.slice(0, limit).map(({ pid, parts }) => {
+        const name = parts[0] || '';
+        const disclaimer = parts[1] || '';
+        const spendText = parts[2] || '';
+        const adCount = parseInt((parts[3] || '').replace(/\D/g, ''), 10) || 0;
+        const spend = parseInt(spendText.replace(/[^\d]/g, ''), 10) || 0;
+        return {
+          pageId: pid,
+          pageName: name,
+          hasDisclaimer: !/không có tuyên bố/i.test(disclaimer),
+          disclaimer,
+          spendText,
+          spend,
+          adCount,
+        };
+      });
+
+      if (rows.length === 0) throw new FbBlockedError('Không lấy được báo cáo chi tiêu (thử lại sau).');
+      return { country, range, count: rows.length, rows };
+    } finally {
+      await page.close().catch(() => undefined);
+    }
   }
 
   // Mở trang Page thật, trích page_id từ HTML.

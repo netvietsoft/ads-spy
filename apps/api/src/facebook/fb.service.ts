@@ -11,8 +11,12 @@ export class FbService {
   ) {}
 
   // Scrape từ FB rồi lưu DB.
-  async search(query: string, country: string): Promise<FbSearchResult & { searchId: number }> {
-    const res = await this.scraper.search(query, country);
+  async search(
+    query: string,
+    country: string,
+    activeStatus: 'all' | 'active' | 'inactive' = 'all',
+  ): Promise<FbSearchResult & { searchId: number }> {
+    const res = await this.scraper.search(query, country, 40, activeStatus);
     const rec = await this.prisma.fbSearch.create({
       data: { query: res.query, country: res.country, adCount: res.ads.length },
     });

@@ -129,9 +129,33 @@ export interface FbSearchHistory {
   adCount: number;
 }
 
-export async function fbSearch(q: string, country = 'VN'): Promise<FbSearchResult> {
+export async function fbSearch(q: string, country = 'VN', status = 'all'): Promise<FbSearchResult> {
   return jsonOrThrow(
-    await fetch(`${API}/api/fb/search?q=${encodeURIComponent(q)}&country=${encodeURIComponent(country)}`),
+    await fetch(
+      `${API}/api/fb/search?q=${encodeURIComponent(q)}&country=${encodeURIComponent(country)}&status=${status}`,
+    ),
+  );
+}
+
+export interface FbSpendRow {
+  pageId: string;
+  pageName: string;
+  hasDisclaimer: boolean;
+  disclaimer: string;
+  spendText: string;
+  spend: number;
+  adCount: number;
+}
+export interface FbReportResult {
+  country: string;
+  range: string;
+  count: number;
+  rows: FbSpendRow[];
+}
+
+export async function fbReport(country = 'VN', range = '30'): Promise<FbReportResult> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/fb/report?country=${encodeURIComponent(country)}&range=${range}`),
   );
 }
 

@@ -2,16 +2,25 @@
 import { useEffect, useState } from 'react';
 import {
   FbAd,
+  FbReportResult,
   FbSearchHistory,
   FbSearchResult,
   assetProxy,
   fbGetSaved,
   fbHistory,
+  fbReport,
   fbSearch,
 } from '../api';
 import { FbModal } from './FbModal';
 
 const COUNTRIES = ['VN', 'US', 'TH', 'ID', 'PH', 'ALL'];
+const RANGES: { v: string; label: string }[] = [
+  { v: 'yesterday', label: 'Hôm qua' },
+  { v: '7', label: '7 ngày' },
+  { v: '30', label: '30 ngày' },
+  { v: '90', label: '90 ngày' },
+  { v: 'all', label: 'Tất cả' },
+];
 
 function FbCard({ ad, onOpen }: { ad: FbAd; onOpen: () => void }) {
   const cover = ad.images[0];
@@ -55,14 +64,51 @@ function FbCard({ ad, onOpen }: { ad: FbAd; onOpen: () => void }) {
 }
 
 export function FacebookPanel() {
+  const [tab, setTab] = useState<'search' | 'report'>('search');
   const [q, setQ] = useState('');
   const [country, setCountry] = useState('VN');
+  const [status, setStatus] = useState('all');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [res, setRes] = useState<FbSearchResult | null>(null);
   const [selected, setSelected] = useState<FbAd | null>(null);
   const [history, setHistory] = useState<FbSearchHistory[]>([]);
   const [savedView, setSavedView] = useState(false);
+  const [range, setRange] = useState('30');
+  const [report, setReport] = useState<FbReportResult | null>(null);
+
+  async function runReport(r = range) {
+    setLoading(true);
+    setErr(null);
+    try {
+      const rep = await fbReport(country, r);
+      setReport(rep);
+    } catch (e: any) {
+      setErr(e.message || 'Lỗi lấy báo cáo');
+      setReport(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Bấm 1 dòng report → xem quảng cáo của Page đó (theo page_id).
+  async function openPageAds(pageId: string) {
+    setTab('search');
+    setQ(pageId);
+    setLoading(true);
+    setErr(null);
+    setSavedView(false);
+    try {
+      const r = await fbSearch(pageId, country, status);
+      setRes(r);
+      refreshHistory();
+    } catch (e: any) {
+      setErr(e.message || 'Lỗi');
+      setRes(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const refreshHistory = () => fbHistory().then(setHistory).catch(() => {});
   useEffect(() => {
@@ -75,7 +121,7 @@ export function FacebookPanel() {
     setErr(null);
     setSavedView(false);
     try {
-      const r = await fbSearch(q.trim(), country);
+      const r = await fbSearch(q.trim(), country, status);
       setRes(r);
       refreshHistory();
     } catch (e: any) {
@@ -103,6 +149,88 @@ export function FacebookPanel() {
 
   return (
     <>
+      <div className="modes" style={{ marginTop: 14 }}>
+        <button className={`ghost ${tab === 'search' ? 'active' : ''}`} type="button" onClick={() => setTab('search')}>
+          🔎 Tìm quảng cáo
+        </button>
+        <button
+          className={`ghost ${tab === 'report' ? 'active' : ''}`}
+          type="button"
+          onClick={() => {
+            setTab('report');
+            if (!report) runReport();
+          }}
+        >
+          📊 Xếp hạng chi tiêu
+        </button>
+      </div>
+
+      {tab === 'report' && (
+        <>
+          <div className="searchbar" style={{ gap: 8 }}>
+            <select className="fbselect" value={country} onChange={(e) => setCountry(e.target.value)}>
+              {COUNTRIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <div className="chips" style={{ flex: 1, alignItems: 'center' }}>
+              {RANGES.map((r) => (
+                <button
+                  key={r.v}
+                  type="button"
+                  className={`chip ${range === r.v ? 'active-chip' : ''}`}
+                  onClick={() => {
+                    setRange(r.v);
+                    runReport(r.v);
+                  }}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            <button className="primary" type="button" onClick={() => runReport()} disabled={loading}>
+              {loading ? <span className="spinner" /> : 'Tải báo cáo'}
+            </button>
+          </div>
+          {err && <div className="error">{err}</div>}
+          {loading && (
+            <p className="hint">
+              <span className="spinner" /> Đang tải báo cáo chi tiêu…
+            </p>
+          )}
+          {report && !loading && (
+            <table className="reptable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Tên Trang</th>
+                  <th>Tuyên bố miễn trừ</th>
+                  <th style={{ textAlign: 'right' }}>Đã chi tiêu</th>
+                  <th style={{ textAlign: 'right' }}>Số ads</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.rows.map((row, i) => (
+                  <tr key={row.pageId} onClick={() => openPageAds(row.pageId)} title="Xem quảng cáo của trang này">
+                    <td className="m">{i + 1}</td>
+                    <td>{row.pageName}</td>
+                    <td className="m">
+                      {row.hasDisclaimer ? '✔ có tuyên bố' : '— không có'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.spendText}</td>
+                    <td style={{ textAlign: 'right' }}>{row.adCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+
+      {tab === 'search' && (
+      <>
       <form
         className="searchbar"
         onSubmit={(e) => {
@@ -116,6 +244,11 @@ export function FacebookPanel() {
               {c}
             </option>
           ))}
+        </select>
+        <select className="fbselect" value={status} onChange={(e) => setStatus(e.target.value)} title="Trạng thái quảng cáo">
+          <option value="all">Tất cả</option>
+          <option value="active">Đang chạy</option>
+          <option value="inactive">Đã ngừng</option>
         </select>
         <input
           value={q}
@@ -190,6 +323,8 @@ export function FacebookPanel() {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
 
       {selected && <FbModal ad={selected} onClose={() => setSelected(null)} />}

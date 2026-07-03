@@ -7,16 +7,32 @@ import {
   Query,
 } from '@nestjs/common';
 import { FbService } from './fb.service';
+import { FbPlaywrightService } from './fb.playwright.service';
 
 @Controller('fb')
 export class FbController {
-  constructor(private readonly fb: FbService) {}
+  constructor(
+    private readonly fb: FbService,
+    private readonly scraper: FbPlaywrightService,
+  ) {}
+
+  // GET /api/fb/report?country=VN&range=30  → bảng xếp hạng chi tiêu theo Page
+  @Get('report')
+  report(@Query('country') country?: string, @Query('range') range?: string) {
+    const r = ['yesterday', '7', '30', '90', 'all'].includes(range || '') ? range! : '30';
+    return this.scraper.report((country || 'VN').toUpperCase(), r);
+  }
 
   // GET /api/fb/search?q=nike&country=VN  (scrape + lưu DB)
   @Get('search')
-  search(@Query('q') q: string, @Query('country') country?: string) {
+  search(
+    @Query('q') q: string,
+    @Query('country') country?: string,
+    @Query('status') status?: string,
+  ) {
     if (!q || !q.trim()) throw new BadRequestException('Vui lòng nhập từ khóa hoặc tên Page.');
-    return this.fb.search(q.trim(), (country || 'VN').toUpperCase());
+    const active = status === 'active' || status === 'inactive' ? status : 'all';
+    return this.fb.search(q.trim(), (country || 'VN').toUpperCase(), active);
   }
 
   @Get('history')

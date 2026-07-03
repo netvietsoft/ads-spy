@@ -20,3 +20,20 @@ export interface FbSearchResult {
   count: number;
   ads: FbAd[];
 }
+
+export interface FbSpendRow {
+  pageId: string;
+  pageName: string;
+  hasDisclaimer: boolean;
+  disclaimer: string;
+  spendText: string; // vd "430.450 ₫" (thường là khoảng ước tính)
+  spend: number; // số VND parse được
+  adCount: number;
+}
+
+export interface FbReportResult {
+  country: string;
+  range: string; // yesterday | 7 | 30 | 90 | all
+  count: number;
+  rows: FbSpendRow[];
+}
