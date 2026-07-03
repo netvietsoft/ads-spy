@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .next/
+.pw-profile/
 *.db
 *.db-journal
 *.log

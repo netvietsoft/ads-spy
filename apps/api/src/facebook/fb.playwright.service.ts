@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import type { Browser } from 'playwright';
+import * as path from 'path';
+import type { BrowserContext, Page } from 'playwright';
 import { parseFbGraphql } from './fb.parser';
 import { FbAd, FbSearchResult } from './fb.types';
 
@@ -13,6 +14,28 @@ export class FbBlockedError extends Error {
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Không phải handle Page — là đường dẫn khác của facebook.com.
+const NON_PAGE_PATHS = new Set(['ads', 'profile.php', 'pages', 'watch', 'groups', 'marketplace']);
+
+// Nhận diện input: page_id (số), link facebook.com/<handle>, /profile.php?id=, @handle → mode 'page';
+// còn lại → mode 'keyword'.
+export function parseFbTarget(input: string): { mode: 'page' | 'keyword'; value: string } {
+  const s = (input || '').trim();
+  if (/^\d{5,}$/.test(s)) return { mode: 'page', value: s }; // page_id trực tiếp
+  if (s.startsWith('@')) return { mode: 'page', value: s.slice(1) };
+  const m = /facebook\.com\/([^/?#\s]+)(?:[/?#]|$)/i.exec(s);
+  if (m) {
+    const seg = decodeURIComponent(m[1]);
+    if (seg === 'profile.php') {
+      const id = /[?&]id=(\d+)/.exec(s);
+      if (id) return { mode: 'page', value: id[1] };
+    } else if (!NON_PAGE_PATHS.has(seg.toLowerCase())) {
+      return { mode: 'page', value: seg };
+    }
+  }
+  return { mode: 'keyword', value: s };
+}
 
 // Tách text response của FB (có thể có tiền tố "for (;;);" hoặc nhiều JSON nối bằng newline).
 function parseLoose(text: string): any[] {
@@ -35,37 +58,60 @@ function parseLoose(text: string): any[] {
   return out;
 }
 
+const PROFILE_DIR = path.join(__dirname, '../../.pw-profile'); // giữ cookie/phiên FB giữa các lần gọi
+
 @Injectable()
 export class FbPlaywrightService implements OnModuleDestroy {
-  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
+  private warmed = false;
 
-  private async getBrowser(): Promise<Browser> {
-    if (this.browser && this.browser.isConnected()) return this.browser;
+  // Context BỀN (persistent) → giữ cookie datr/phiên → ổn định, ít bị chặn.
+  private async getContext(): Promise<BrowserContext> {
+    if (this.context) return this.context;
     const { chromium } = await import('playwright');
-    this.browser = await chromium.launch({
+    this.context = await chromium.launchPersistentContext(PROFILE_DIR, {
       headless: true,
-      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
-    });
-    return this.browser;
-  }
-
-  async onModuleDestroy() {
-    await this.browser?.close().catch(() => undefined);
-  }
-
-  async search(query: string, country = 'VN', limit = 40): Promise<FbSearchResult> {
-    const browser = await this.getBrowser();
-    const context = await browser.newContext({
       userAgent: UA,
       locale: 'vi-VN',
       viewport: { width: 1280, height: 900 },
+      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
     });
+    return this.context;
+  }
+
+  // Tắt dialog đồng ý cookie (lần đầu) để query mới chạy.
+  private async dismissConsent(page: Page) {
+    const labels = [
+      'Allow all cookies',
+      'Cho phép tất cả cookie',
+      'Only allow essential cookies',
+      'Chỉ cho phép cookie cần thiết',
+      'Accept all',
+    ];
+    for (const l of labels) {
+      const btn = page.getByRole('button', { name: l }).first();
+      if (await btn.isVisible().catch(() => false)) {
+        await btn.click().catch(() => undefined);
+        await sleep(800);
+        return;
+      }
+    }
+  }
+
+  async onModuleDestroy() {
+    await this.context?.close().catch(() => undefined);
+  }
+
+  async search(query: string, country = 'VN', limit = 40): Promise<FbSearchResult> {
+    const context = await this.getContext();
     const page = await context.newPage();
     const chunks: string[] = [];
+    let sawGraphql = false; // đã thấy BẤT KỲ response graphql chưa (phân biệt 0 kết quả vs bị chặn)
 
     page.on('response', async (res) => {
       const url = res.url();
       if (!url.includes('/api/graphql')) return;
+      sawGraphql = true;
       try {
         const t = await res.text();
         if (t.includes('ad_archive_id') || t.includes('adArchiveID')) chunks.push(t);
@@ -74,15 +120,24 @@ export class FbPlaywrightService implements OnModuleDestroy {
       }
     });
 
-    const target =
-      `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}` +
-      `&q=${encodeURIComponent(query)}&media_type=all&search_type=keyword_unordered` +
-      `&sort_data[mode]=relevancy_monthly_grouped&sort_data[direction]=desc`;
+    // Nhận diện: link Page / @handle / page_id → tra theo Page (view_all_page_id); còn lại → từ khóa.
+    const t = parseFbTarget(query);
+    let target: string;
+    const base = `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${encodeURIComponent(country)}&media_type=all`;
+    if (t.mode === 'page') {
+      const pageId = /^\d+$/.test(t.value) ? t.value : await this.resolvePageId(context, t.value);
+      if (!pageId) {
+        // không resolve được page → fallback tra từ khóa bằng handle
+        target = `${base}&q=${encodeURIComponent(t.value)}&search_type=keyword_unordered`;
+      } else {
+        target = `${base}&view_all_page_id=${pageId}`;
+      }
+    } else {
+      target = `${base}&q=${encodeURIComponent(t.value)}&search_type=keyword_unordered&sort_data[mode]=relevancy_monthly_grouped&sort_data[direction]=desc`;
+    }
 
-    try {
-      await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      // chờ có ít nhất 1 response graphql chứa quảng cáo
-      await page
+    const waitForAds = () =>
+      page
         .waitForResponse(
           async (r) => {
             if (!r.url().includes('/api/graphql')) return false;
@@ -92,31 +147,72 @@ export class FbPlaywrightService implements OnModuleDestroy {
               return false;
             }
           },
-          { timeout: 25000 },
+          { timeout: 22000 },
         )
         .catch(() => undefined);
 
-      // cuộn để nạp thêm cho tới khi đủ limit hoặc hết trang (tối đa 3 lần)
+    try {
+      await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      if (!this.warmed) {
+        await this.dismissConsent(page);
+        this.warmed = true;
+      }
+      await waitForAds();
+
+      // Nếu chưa có ads (thường do consent/hydrate lần đầu) → tắt consent + reload 1 lần.
+      if (this.collect(chunks).length === 0) {
+        await this.dismissConsent(page);
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => undefined);
+        await waitForAds();
+      }
+
       let prev = 0;
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         const ads = this.collect(chunks);
         if (ads.length >= limit) break;
         await page.mouse.wheel(0, 5000);
-        await sleep(1600);
+        await sleep(1800);
         const now = this.collect(chunks).length;
-        if (now === prev && now > 0) break; // không tăng nữa
+        if (now === prev && now > 0) break;
         prev = now;
       }
     } finally {
-      await context.close().catch(() => undefined);
+      await page.close().catch(() => undefined); // chỉ đóng page, giữ context bền
     }
 
     const ads = this.collect(chunks).slice(0, limit);
-    if (ads.length === 0) {
-      // phân biệt: có chunk nhưng rỗng (thật sự không có ads) vs không chunk nào (bị chặn)
-      if (chunks.length === 0) throw new FbBlockedError();
-    }
+    // Không có ads VÀ chưa từng thấy graphql = trang không tải được / bị chặn.
+    // Không có ads NHƯNG đã thấy graphql = thật sự 0 kết quả (trả rỗng, không báo lỗi).
+    if (ads.length === 0 && !sawGraphql) throw new FbBlockedError();
     return { query, country, count: ads.length, ads };
+  }
+
+  // Mở trang Page thật, trích page_id từ HTML.
+  private async resolvePageId(context: any, handle: string): Promise<string | null> {
+    const p = await context.newPage();
+    try {
+      await p.goto(`https://www.facebook.com/${handle}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 45000,
+      });
+      const html = await p.content();
+      const patterns = [
+        /"pageID":"(\d+)"/,
+        /"page_id":"(\d+)"/,
+        /fb:\/\/page\/\?id=(\d+)/,
+        /"delegate_page":\{"id":"(\d+)"/,
+        /"entity_id":\{"id":"(\d+)"/,
+      ];
+      for (const re of patterns) {
+        const m = re.exec(html);
+        if (m) return m[1];
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      await p.close().catch(() => undefined);
+    }
   }
 
   private collect(chunks: string[]): FbAd[] {

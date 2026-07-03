@@ -120,7 +120,7 @@ export function FacebookPanel() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Từ khóa hoặc tên Page (vd: quần áo, nike, mỹ phẩm…)"
+          placeholder="Từ khóa, link Page (facebook.com/2Fleursvn), @handle hoặc page_id"
           autoFocus
         />
         <button className="primary" disabled={loading}>
