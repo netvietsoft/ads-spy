@@ -25,7 +25,7 @@ import { Favorites } from './Favorites';
 import { Paginator, paginate } from './Paginator';
 import { Favorite } from '../api';
 
-const COUNTRIES = ['VN', 'US', 'TH', 'ID', 'PH', 'ALL'];
+import { COUNTRIES } from '../countries';
 const RANGES: { v: string; label: string }[] = [
   { v: 'yesterday', label: 'Hôm qua' },
   { v: '7', label: '7 ngày' },
@@ -521,8 +521,8 @@ export function FacebookPanel() {
           <div className="searchbar" style={{ gap: 8 }}>
             <select className="fbselect" value={country} onChange={(e) => setCountry(e.target.value)}>
               {COUNTRIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+                <option key={c.code} value={c.code}>
+                  {c.name} ({c.code})
                 </option>
               ))}
             </select>
@@ -599,8 +599,8 @@ export function FacebookPanel() {
       >
         <select className="fbselect" value={country} onChange={(e) => setCountry(e.target.value)}>
           {COUNTRIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
+            <option key={c.code} value={c.code}>
+              {c.name} ({c.code})
             </option>
           ))}
         </select>
