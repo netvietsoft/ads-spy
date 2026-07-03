@@ -39,7 +39,7 @@ function fmtDate(unix?: number) {
 export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [source, setSource] = useState<'google' | 'facebook'>('google');
-  const [mode, setMode] = useState<'domain' | 'keyword'>('domain');
+  const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -77,6 +77,14 @@ export default function Home() {
     const q = query.trim();
     if (!q) return;
     if (mode === 'domain') return runDomain(q);
+    if (mode === 'advertiser') {
+      const m = /AR\d+/i.exec(q); // nhận cả URL adstransparency.../advertiser/AR...
+      if (!m) {
+        setErr('ID nhà quảng cáo không hợp lệ (phải dạng AR...). Dán ID hoặc link advertiser.');
+        return;
+      }
+      return openAdvertiser(m[0]);
+    }
     beginLoad();
     setData(null);
     try {
@@ -318,6 +326,13 @@ export default function Home() {
         >
           🔤 Từ khóa
         </button>
+        <button
+          className={`ghost ${mode === 'advertiser' ? 'active' : ''}`}
+          onClick={() => setMode('advertiser')}
+          type="button"
+        >
+          🏷 Nhà QC (ID)
+        </button>
       </div>
 
       <form
@@ -330,11 +345,23 @@ export default function Home() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={mode === 'domain' ? 'vd: nike.com, shopify.com…' : 'vd: baby photo editor, nike, canva…'}
+          placeholder={
+            mode === 'domain'
+              ? 'vd: nike.com, shopify.com…'
+              : mode === 'advertiser'
+                ? 'AR16735076323512287233  hoặc  link .../advertiser/AR…'
+                : 'vd: baby photo editor, nike, canva…'
+          }
           autoFocus
         />
         <button className="primary" disabled={loading}>
-          {loading ? <span className="spinner" /> : mode === 'domain' ? 'Tra cứu' : 'Tìm gợi ý'}
+          {loading ? (
+            <span className="spinner" />
+          ) : mode === 'keyword' ? (
+            'Tìm gợi ý'
+          ) : (
+            'Tra cứu'
+          )}
         </button>
       </form>
 
@@ -343,7 +370,9 @@ export default function Home() {
         <p className="hint">
           {mode === 'domain'
             ? 'Nhập domain → lấy trực tiếp từ Google Ads Transparency (tối đa 5 trang/lần).'
-            : 'Nhập từ khóa → Google gợi ý nhà quảng cáo + domain khớp, bấm để xem quảng cáo.'}
+            : mode === 'advertiser'
+              ? 'Nhập ID nhà quảng cáo (AR…) hoặc dán link advertiser → xem toàn bộ quảng cáo của họ.'
+              : 'Nhập từ khóa → Google gợi ý nhà quảng cáo + domain khớp, bấm để xem quảng cáo.'}
         </p>
       )}
 
