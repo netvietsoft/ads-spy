@@ -43,6 +43,9 @@ export interface FbPost {
   url?: string;
   text?: string;
   time?: number; // unix giây — thời điểm đăng
+  image?: string; // thumbnail (ảnh bài / thumbnail video)
+  isVideo?: boolean; // bài là video/reels
+  hasActiveAd?: boolean; // đang được chạy quảng cáo (active)
   reactions: number;
   comments: number;
   shares: number;

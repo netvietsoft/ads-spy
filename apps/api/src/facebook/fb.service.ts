@@ -126,6 +126,24 @@ export class FbService {
           job.posts = [...res.posts].sort((a, b) => b.total - a.total);
         }
 
+        // Phase 3: đánh dấu bài đang chạy QUẢNG CÁO active (khớp nội dung với ads của page)
+        job.phase = 'ads-check';
+        try {
+          const adsRes = await this.scraper.search(page, 'ALL', 60, 'active');
+          const norm = (s?: string) =>
+            (s || '').toLowerCase().replace(/\s+/g, ' ').replace(/[^\p{L}\p{N} ]/gu, '').trim();
+          const adTexts = adsRes.ads.map((a) => norm(a.bodyText)).filter((x) => x.length > 12);
+          for (const p of res.posts) {
+            const pt = norm(p.text);
+            if (pt.length > 12 && adTexts.some((at) => at.includes(pt.slice(0, 30)) || pt.includes(at.slice(0, 30)))) {
+              p.hasActiveAd = true;
+            }
+          }
+          job.posts = [...res.posts].sort((a, b) => b.total - a.total);
+        } catch {
+          /* bỏ qua nếu không lấy được ads */
+        }
+
         // Lưu DB
         const rec = await this.prisma.fbPagePostsScan.create({
           data: { page: res.page, fromDate: fromDate || null, toDate: toDate || null, count: res.posts.length },
@@ -137,6 +155,9 @@ export class FbService {
               url: p.url ?? null,
               text: p.text ?? null,
               time: p.time ?? null,
+              image: p.image ?? null,
+              isVideo: p.isVideo ?? false,
+              hasActiveAd: p.hasActiveAd ?? false,
               reactions: p.reactions,
               comments: p.comments,
               shares: p.shares,
@@ -175,6 +196,9 @@ export class FbService {
         url: p.url ?? undefined,
         text: p.text ?? undefined,
         time: p.time ?? undefined,
+        image: p.image ?? undefined,
+        isVideo: p.isVideo,
+        hasActiveAd: p.hasActiveAd,
         reactions: p.reactions,
         comments: p.comments,
         shares: p.shares,

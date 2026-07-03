@@ -197,6 +197,9 @@ export interface FbPost {
   url?: string;
   text?: string;
   time?: number;
+  image?: string;
+  isVideo?: boolean;
+  hasActiveAd?: boolean;
   reactions: number;
   comments: number;
   shares: number;

@@ -62,17 +62,20 @@ model FbPagePostsScan {
 }
 
 model FbPostRow {
-  id        Int             @id @default(autoincrement())
-  postId    String?
-  url       String?
-  text      String?
-  time      Int?
-  reactions Int             @default(0)
-  comments  Int             @default(0)
-  shares    Int             @default(0)
-  total     Int             @default(0)
-  scan      FbPagePostsScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
-  scanId    Int
+  id          Int             @id @default(autoincrement())
+  postId      String?
+  url         String?
+  text        String?
+  time        Int?
+  image       String?
+  isVideo     Boolean         @default(false)
+  hasActiveAd Boolean         @default(false)
+  reactions   Int             @default(0)
+  comments    Int             @default(0)
+  shares      Int             @default(0)
+  total       Int             @default(0)
+  scan        FbPagePostsScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  scanId      Int
 }
 
 // ---- Đối thủ theo dõi (favorites) — cho cả Google lẫn Facebook ----

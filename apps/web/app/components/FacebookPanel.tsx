@@ -410,9 +410,11 @@ export function FacebookPanel() {
           {loading && (
             <p className="hint">
               <span className="spinner" />{' '}
-              {scanPhase === 'enriching'
-                ? `Đang lấy comment/share thật cho top bài… (đã có ${posts?.count ?? 0} bài)`
-                : `Đang cuộn & quét… (đã thấy ${posts?.count ?? 0} bài, hiện dần)`}
+              {scanPhase === 'ads-check'
+                ? 'Đang đối chiếu bài nào đang chạy quảng cáo…'
+                : scanPhase === 'enriching'
+                  ? `Đang lấy comment/share thật cho top bài… (đã có ${posts?.count ?? 0} bài)`
+                  : `Đang cuộn & quét… (đã thấy ${posts?.count ?? 0} bài, hiện dần)`}
             </p>
           )}
           {posts && (
@@ -434,6 +436,7 @@ export function FacebookPanel() {
                 <thead>
                   <tr>
                     <th>#</th>
+                    <th>Thumb</th>
                     <th>Nội dung bài</th>
                     <th>Ngày đăng</th>
                     <th style={{ textAlign: 'right' }}>❤️ Reactions</th>
@@ -448,7 +451,20 @@ export function FacebookPanel() {
                     return (
                     <tr key={p.url || p.postId || i}>
                       <td className="m">{i + 1}</td>
-                      <td>{p.text || <span className="m">(không có text)</span>}</td>
+                      <td>
+                        <div className="pthumb">
+                          {p.image ? (
+                            <img src={assetProxy(p.image)} alt="" loading="lazy" />
+                          ) : (
+                            <span className="noimg">—</span>
+                          )}
+                          {p.isVideo && <span className="vbadge">🎬</span>}
+                        </div>
+                      </td>
+                      <td>
+                        {p.text || <span className="m">(không có text)</span>}
+                        {p.hasActiveAd && <span className="adbadge">🟢 Đang chạy ads</span>}
+                      </td>
                       <td className="m">{p.time ? new Date(p.time * 1000).toLocaleDateString('vi-VN') : '—'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.reactions.toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>{p.comments.toLocaleString()}</td>

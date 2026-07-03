@@ -28,9 +28,18 @@ const POST_URL_RE = /https?:\/\/[^"'\\ ]*facebook\.com\/[^"'\\ ]*(?:\/posts\/|\/
 
 export function parsePagePosts(objs: any[]): FbPost[] {
   const byKey = new Map<string, FbPost>();
+  // media gần nhất theo THỨ TỰ tài liệu (content đứng trước feedback trong mỗi bài)
+  let lastMedia: { image?: string; isVideo: boolean } | null = null;
 
   const walk = (node: any, text?: string, url?: string, time?: number) => {
     if (!node || typeof node !== 'object') return;
+
+    // node media (có field is_playable) → nhớ ảnh/thumbnail + loại video
+    if (!Array.isArray(node) && 'is_playable' in node) {
+      const img =
+        node.preferred_thumbnail?.image?.uri || node.image?.uri || node.viewer_image?.uri;
+      if (img) lastMedia = { image: img, isVideo: node.is_playable === true };
+    }
 
     // cập nhật ngữ cảnh text/url/time theo nhánh
     let curText = text;
@@ -63,6 +72,8 @@ export function parsePagePosts(objs: any[]): FbPost[] {
             url: curUrl,
             text: curText?.replace(/\s+/g, ' ').trim().slice(0, 240),
             time: curTime,
+            image: lastMedia?.image,
+            isVideo: lastMedia?.isVideo ?? false,
             reactions,
             comments,
             shares,
@@ -70,6 +81,7 @@ export function parsePagePosts(objs: any[]): FbPost[] {
           });
         }
       }
+      lastMedia = null; // reset sau mỗi bài để không rò media sang bài kế
     }
 
     if (Array.isArray(node)) {
