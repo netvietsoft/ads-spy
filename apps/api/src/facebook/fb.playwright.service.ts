@@ -16,6 +16,38 @@ const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Đọc cookie từ CẢ HAI định dạng:
+//  1) document.cookie:  "datr=...; c_user=...; xs=..."
+//  2) Netscape cookies.txt:  dòng "domain \t TRUE \t / \t TRUE \t expiry \t name \t value" (bỏ dòng #)
+export function parseCookieInput(input: string): { name: string; value: string }[] {
+  const text = (input || '').trim();
+  if (!text) return [];
+  const out: { name: string; value: string }[] = [];
+
+  // thử Netscape trước (dòng nhiều cột, cột[1] là TRUE/FALSE)
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const cols = line.includes('\t') ? line.split('\t') : line.split(/\s+/);
+    if (cols.length >= 7 && cols[0].includes('.') && /^(TRUE|FALSE)$/i.test(cols[1].trim())) {
+      const name = cols[5].trim();
+      const value = cols.slice(6).join('').trim(); // value FB không chứa khoảng trắng
+      if (name && value) out.push({ name, value });
+    }
+  }
+  if (out.length) return out;
+
+  // fallback: document.cookie (phân tách bằng ';')
+  for (const kv of text.split(/;\s*/)) {
+    const i = kv.indexOf('=');
+    if (i < 1) continue;
+    const name = kv.slice(0, i).trim();
+    const value = kv.slice(i + 1).trim();
+    if (name && value) out.push({ name, value });
+  }
+  return out;
+}
+
 // Không phải handle Page — là đường dẫn khác của facebook.com.
 const NON_PAGE_PATHS = new Set(['ads', 'profile.php', 'pages', 'watch', 'groups', 'marketplace']);
 
@@ -105,15 +137,8 @@ export class FbPlaywrightService implements OnModuleDestroy {
 
   // Nạp cookie đăng nhập FB (dán từ trình duyệt) vào phiên bền → scrape có đăng nhập.
   async setSession(cookieString: string): Promise<{ loggedIn: boolean }> {
-    const pairs = String(cookieString || '')
-      .split(/;\s*/)
-      .map((kv) => {
-        const i = kv.indexOf('=');
-        if (i < 1) return null;
-        return { name: kv.slice(0, i).trim(), value: kv.slice(i + 1).trim() };
-      })
-      .filter((p): p is { name: string; value: string } => !!p && !!p.name && !!p.value);
-    if (!pairs.length) throw new FbBlockedError('Chuỗi cookie không hợp lệ.');
+    const pairs = parseCookieInput(cookieString);
+    if (!pairs.length) throw new FbBlockedError('Không đọc được cookie (dán chuỗi document.cookie hoặc file cookies.txt).');
 
     const ctx = await this.getContext();
     // đặt cho cả .facebook.com để mọi subdomain nhận

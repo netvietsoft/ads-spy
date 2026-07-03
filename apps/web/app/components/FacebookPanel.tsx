@@ -247,8 +247,9 @@ export function FacebookPanel() {
       {showAuth && (
         <div className="fbauth-box">
           <p className="hint" style={{ marginTop: 0 }}>
-            Mở facebook.com (đã đăng nhập, nên dùng nick phụ) → F12 → Console gõ <code>document.cookie</code> → copy toàn
-            bộ chuỗi (có <code>c_user=</code> và <code>xs=</code>) rồi dán vào đây.
+            Dán 1 trong 2: (a) chuỗi <code>document.cookie</code> (F12 → Console), hoặc (b) nội dung file{' '}
+            <code>cookies.txt</code> (extension export — định dạng Netscape). Tự nhận, chỉ cần có <code>c_user</code> và{' '}
+            <code>xs</code>. Nên dùng <b>nick phụ</b>.
           </p>
           <textarea
             className="fbauth-ta"
