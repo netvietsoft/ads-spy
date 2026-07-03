@@ -22,6 +22,7 @@ function fmtDate(unix?: number) {
 }
 
 export default function Home() {
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [source, setSource] = useState<'google' | 'facebook'>('google');
   const [mode, setMode] = useState<'domain' | 'keyword'>('domain');
   const [query, setQuery] = useState('');
@@ -38,6 +39,16 @@ export default function Home() {
   useEffect(() => {
     refreshHistory();
   }, []);
+
+  // Theme sáng/tối — nạp từ localStorage, áp vào <html data-theme>.
+  useEffect(() => {
+    const saved = (localStorage.getItem('theme') as 'dark' | 'light') || 'dark';
+    setTheme(saved);
+  }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   function beginLoad() {
     setLoading(true);
@@ -126,10 +137,18 @@ export default function Home() {
 
   return (
     <div className="container">
-      <div className="brand">
+      <div className="brand" style={{ justifyContent: 'space-between', width: '100%' }}>
         <h1>
           Ads <span className="dot">Spy</span>
         </h1>
+        <button
+          className="ghost"
+          type="button"
+          onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          title="Đổi giao diện sáng/tối"
+        >
+          {theme === 'dark' ? '☀️ Sáng' : '🌙 Tối'}
+        </button>
       </div>
 
       <div className="sources">

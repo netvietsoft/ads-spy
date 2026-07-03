@@ -121,10 +121,26 @@ export interface FbSearchResult {
   ads: FbAd[];
 }
 
+export interface FbSearchHistory {
+  id: number;
+  query: string;
+  country: string;
+  createdAt: string;
+  adCount: number;
+}
+
 export async function fbSearch(q: string, country = 'VN'): Promise<FbSearchResult> {
   return jsonOrThrow(
     await fetch(`${API}/api/fb/search?q=${encodeURIComponent(q)}&country=${encodeURIComponent(country)}`),
   );
+}
+
+export async function fbHistory(): Promise<FbSearchHistory[]> {
+  return jsonOrThrow(await fetch(`${API}/api/fb/history`));
+}
+
+export async function fbGetSaved(id: number): Promise<FbSearchResult> {
+  return jsonOrThrow(await fetch(`${API}/api/fb/search/${id}`));
 }
 
 // Đọc lại 1 lượt tra cứu đã lưu từ DB (không gọi Google).

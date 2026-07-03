@@ -5,10 +5,11 @@ import { GoogleClient } from './google/google.client';
 import { SearchService } from './search/search.service';
 import { SearchController } from './search/search.controller';
 import { FbPlaywrightService } from './facebook/fb.playwright.service';
+import { FbService } from './facebook/fb.service';
 import { FbController } from './facebook/fb.controller';
 
 @Module({
   controllers: [HealthController, SearchController, FbController],
-  providers: [PrismaService, GoogleClient, SearchService, FbPlaywrightService],
+  providers: [PrismaService, GoogleClient, SearchService, FbPlaywrightService, FbService],
 })
 export class AppModule {}

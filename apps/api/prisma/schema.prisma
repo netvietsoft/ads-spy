@@ -42,3 +42,31 @@ model Creative {
   search       Search   @relation(fields: [searchId], references: [id], onDelete: Cascade)
   searchId     Int
 }
+
+// ---- Facebook Ad Library ----
+model FbSearch {
+  id        Int      @id @default(autoincrement())
+  query     String
+  country   String
+  createdAt DateTime @default(now())
+  adCount   Int      @default(0)
+  ads       FbAd[]
+}
+
+model FbAd {
+  id            Int      @id @default(autoincrement())
+  adArchiveId   String
+  pageId        String?
+  pageName      String   @default("")
+  isActive      Boolean?
+  platforms     String?  // JSON array
+  bodyText      String?
+  linkUrl       String?
+  ctaText       String?
+  images        String?  // JSON array
+  videos        String?  // JSON array
+  startedRunning String?
+  snapshotUrl   String?
+  fbSearch      FbSearch @relation(fields: [fbSearchId], references: [id], onDelete: Cascade)
+  fbSearchId    Int
+}
