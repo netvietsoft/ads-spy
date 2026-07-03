@@ -7,7 +7,8 @@ module.exports = {
       name: 'ads-spy-api',
       cwd: './apps/api',
       script: 'dist/main.js',
-      env: { PORT: '8075', NODE_ENV: 'production' },
+      // GOOGLE_PROXY: proxy để tra Google (IP server bị Google chặn). vd http://user:pass@host:port
+      env: { PORT: '8075', NODE_ENV: 'production', GOOGLE_PROXY: process.env.GOOGLE_PROXY || '' },
       max_memory_restart: '900M',
       time: true,
     },

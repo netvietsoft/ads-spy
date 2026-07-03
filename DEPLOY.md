@@ -32,6 +32,15 @@ sudo certbot --nginx -d dpboss.pet -d api.dpboss.pet     # cấp HTTPS cho cả 
 
 **Cập nhật về sau:** `cd /home/netviet/projects-deploy/ads-spy && bash deploy.sh`
 
+### ⚠️ Google chặn IP server → cần proxy
+IP máy chủ (datacenter/VN) thường bị Google Ads Transparency chặn (redirect `/sorry`). Đặt proxy:
+```bash
+# Sửa ecosystem.config.js hoặc export trước khi chạy pm2:
+GOOGLE_PROXY="http://user:pass@proxy-host:port" pm2 restart ads-spy-api --update-env
+# (hỗ trợ http/https proxy; nên dùng proxy residential VN cho ít bị chặn)
+```
+Không có proxy thì phần **Google** sẽ báo "Google chặn IP máy chủ". Phần **Facebook** không cần proxy (chạy Chromium + cookie).
+
 **Đăng nhập Facebook trên server:** mở https://dpboss.pet → tab Facebook Ads → "Đăng nhập bằng
 cookie" → dán cookie (nick phụ). Cookie lưu vào DB, sống qua restart.
 

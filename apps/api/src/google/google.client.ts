@@ -18,6 +18,25 @@ const RETRY_DELAYS_MS = [900, 2500]; // backoff khi bị throttle (2 lần thử
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Proxy cho request Google (IP server hay bị Google chặn -> /sorry). Đặt GOOGLE_PROXY hoặc HTTPS_PROXY.
+// vd: http://user:pass@host:port  hoặc  http://host:port
+let _dispatcher: any = null;
+let _dispatcherInit = false;
+async function proxyDispatcher(): Promise<any> {
+  if (_dispatcherInit) return _dispatcher;
+  _dispatcherInit = true;
+  const proxy = process.env.GOOGLE_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy;
+  if (proxy) {
+    try {
+      const { ProxyAgent } = await import('undici');
+      _dispatcher = new ProxyAgent(proxy);
+    } catch {
+      _dispatcher = null;
+    }
+  }
+  return _dispatcher;
+}
+
 export class GoogleBlockedError extends Error {
   // retryable=true: throttle/mạng (nên thử lại). false: payload sai (400, thử lại vô ích).
   retryable: boolean;
@@ -41,16 +60,25 @@ export class GoogleClient {
 
     let text: string;
     try {
+      const dispatcher = await proxyDispatcher();
       const res = await fetch(url, {
         method: 'POST',
         headers: buildHeaders(),
         body: body.toString(),
-      });
+        ...(dispatcher ? { dispatcher } : {}),
+      } as any);
       text = await res.text();
     } catch (e) {
       throw new GoogleBlockedError(`Không gọi được Google API: ${(e as Error).message}`);
     }
 
+    // Google chặn IP (datacenter) → 302 sang /sorry. Retry vô ích, cần proxy.
+    if (/\/sorry\/|unusual traffic|302 Moved/i.test(text)) {
+      throw new GoogleBlockedError(
+        'Google chặn IP máy chủ (trang xác minh /sorry). Cần đặt GOOGLE_PROXY (proxy) để tra Google.',
+        false,
+      );
+    }
     let json: any;
     try {
       json = JSON.parse(text);
