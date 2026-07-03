@@ -26,12 +26,21 @@ function readFeedback(fb: any): { reactions: number; comments: number; shares: n
 
 const POST_URL_RE = /https?:\/\/[^"'\\ ]*facebook\.com\/[^"'\\ ]*(?:\/posts\/|\/permalink\/|story_fbid=|pfbid)[^"'\\ ]*/i;
 
-export function parsePagePosts(objs: any[]): FbPost[] {
+const STORY_ID_RE = /(?:story_fbid|top_level_post_id|post_id)\\?":\\?"(\d{6,})"/;
+
+export function parsePagePosts(objs: any[], pageSlug?: string): FbPost[] {
   const byKey = new Map<string, FbPost>();
-  // media gần nhất theo THỨ TỰ tài liệu (content đứng trước feedback trong mỗi bài)
+  // media + story id gần nhất theo THỨ TỰ tài liệu (đứng trước feedback trong mỗi bài)
   let lastMedia: { image?: string; isVideo: boolean } | null = null;
+  let lastStoryId: string | null = null;
 
   const walk = (node: any, text?: string, url?: string, time?: number) => {
+    // chuỗi: dò story id trong payload đã stringify (story_fbid/top_level_post_id/post_id)
+    if (typeof node === 'string') {
+      const m = STORY_ID_RE.exec(node);
+      if (m) lastStoryId = m[1];
+      return;
+    }
     if (!node || typeof node !== 'object') return;
 
     // node media (có field is_playable) → nhớ ảnh/thumbnail + loại video
@@ -61,7 +70,12 @@ export function parsePagePosts(objs: any[]): FbPost[] {
     if (node.reaction_count && typeof node.reaction_count === 'object') {
       const { reactions, comments, shares } = readFeedback(node);
       const idFromUrl = curUrl ? (/(pfbid[\w]+|\/posts\/\d+|story_fbid=\d+|\/permalink\/\d+)/.exec(curUrl) || [])[0] : undefined;
-      const postId = node.subscription_target_id || node.associated_story_id || idFromUrl;
+      const storyId = node.subscription_target_id || node.associated_story_id || lastStoryId || undefined;
+      const postId = storyId || idFromUrl;
+      // Dựng link nếu feed không trả sẵn URL: facebook.com/<page>/posts/<storyId>
+      if (!curUrl && pageSlug && storyId && /^\d{6,}$/.test(String(storyId))) {
+        curUrl = `https://www.facebook.com/${pageSlug}/posts/${storyId}`;
+      }
       const key = curUrl || postId || `${curText?.slice(0, 40)}#${reactions}`;
       if (key && (reactions || comments || shares)) {
         const total = reactions + comments + shares;
@@ -81,7 +95,8 @@ export function parsePagePosts(objs: any[]): FbPost[] {
           });
         }
       }
-      lastMedia = null; // reset sau mỗi bài để không rò media sang bài kế
+      lastMedia = null; // reset sau mỗi bài để không rò sang bài kế
+      lastStoryId = null;
     }
 
     if (Array.isArray(node)) {

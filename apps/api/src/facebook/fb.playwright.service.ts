@@ -320,10 +320,11 @@ export class FbPlaywrightService implements OnModuleDestroy {
       }
     });
 
+    const slug = t.value; // handle/id của page để dựng link bài viết
     const collect = (): FbPost[] => {
       const all: any[] = [];
       for (const c of chunks) for (const o of parseLoose(c)) all.push(o);
-      return parsePagePosts(all);
+      return parsePagePosts(all, slug);
     };
 
     try {
