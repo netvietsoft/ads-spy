@@ -4,6 +4,14 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-03 (chiều) — FB lưu DB + modal chi tiết + theme sáng
+
+- **Lưu DB FB**: model `FbSearch`/`FbAd` (migration `fb_tables`). `FbService` scrape → lưu; `GET /api/fb/history`
+  + `GET /api/fb/search/:id` đọc lại từ DB → **xem lại không cần chạy lại Chromium**. Web có lịch sử FB + banner "đã lưu".
+- **Modal chi tiết FB** (`FbModal`): carousel toàn bộ ảnh + **video** (thẻ `<video>`), thumbnails, nút **tải**, link đích + link Meta.
+- **Theme sáng/tối**: biến CSS cho light (`:root[data-theme=light]`), nút toggle ở header, lưu `localStorage`,
+  áp `data-theme` trên `<html>`. Màu tối hardcode chuyển sang `color-mix`/biến để hợp cả 2 theme.
+
 ## 2026-07-03 — Nguồn Facebook Ad Library
 
 - **Scraper FB bằng Playwright headless** (`facebook/`): request thuần bị FB chặn 403 → mở Chromium
