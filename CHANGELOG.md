@@ -4,6 +4,14 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-03 (tối) — FB lọc trạng thái + bảng xếp hạng chi tiêu
+
+- **Bộ lọc trạng thái** ads: Tất cả / Đang chạy / Đã ngừng (`active_status`). Lưu ý: ads thương mại VN đã ngừng
+  Meta không lưu (chỉ political + EU giữ inactive) — filter hữu ích cho các nhóm đó.
+- **Bảng xếp hạng chi tiêu** (Ad Library Report `/ads/library/report/`): tab riêng, chọn quốc gia + khoảng
+  (Hôm qua/7/30/90/Tất cả) → bảng **Tên Trang · Tuyên bố miễn trừ · Đã chi tiêu (₫) · Số ads · page_id**.
+  Bấm 1 dòng → xem ngay quảng cáo của Page đó. `GET /api/fb/report?country=&range=`. Verify VN: 20 dòng ~7.6s.
+
 ## 2026-07-03 (chiều) — FB lưu DB + modal chi tiết + theme sáng
 
 - **Lưu DB FB**: model `FbSearch`/`FbAd` (migration `fb_tables`). `FbService` scrape → lưu; `GET /api/fb/history`
