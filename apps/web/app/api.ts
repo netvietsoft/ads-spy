@@ -108,6 +108,33 @@ export async function getCreative(advertiserId: string, creativeId: string): Pro
   return jsonOrThrow(await fetch(`${API}/api/creative/${advertiserId}/${creativeId}`));
 }
 
+// Lọc theo vùng (B): job mở chi tiết từng ad
+export interface RegionJob {
+  jobId: string;
+  geo: number;
+  total: number;
+  checked: number;
+  matchedIds: string[];
+  done: boolean;
+  error: string | null;
+}
+export async function startRegionCheck(
+  items: { advertiserId: string; creativeId: string }[],
+  geo: number,
+  limit = 120,
+): Promise<{ jobId: string }> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/creatives/regions/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ items, geo, limit }),
+    }),
+  );
+}
+export async function regionJob(id: string): Promise<RegionJob> {
+  return jsonOrThrow(await fetch(`${API}/api/creatives/regions/job/${id}`));
+}
+
 export interface Suggestions {
   advertisers: Advertiser[];
   domains: string[];

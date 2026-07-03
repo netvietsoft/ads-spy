@@ -56,6 +56,25 @@ export class SearchController {
     return this.search.searchByAdvertiser(id);
   }
 
+  // Lọc theo vùng (B): gửi danh sách creative đang xem + mã geo → job mở chi tiết từng ad, trả ad khớp vùng.
+  @Post('creatives/regions/start')
+  startRegionCheck(
+    @Body('items') items: { advertiserId: string; creativeId: string }[],
+    @Body('geo') geo: number,
+    @Body('limit') limit?: number,
+  ) {
+    if (!Array.isArray(items) || !items.length) throw new BadRequestException('Thiếu danh sách creative.');
+    if (!geo || !Number(geo)) throw new BadRequestException('Thiếu mã vùng (geo).');
+    return this.search.startRegionCheck(items, Number(geo), Math.min(Number(limit) || 100, 200));
+  }
+
+  @Get('creatives/regions/job/:id')
+  regionJob(@Param('id') id: string) {
+    const j = this.search.getRegionJob(id);
+    if (!j) throw new NotFoundException('Job không tồn tại/đã hết hạn.');
+    return j;
+  }
+
   @Get('creative/:advertiserId/:creativeId')
   getCreative(
     @Param('advertiserId') advertiserId: string,

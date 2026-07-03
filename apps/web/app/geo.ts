@@ -21,3 +21,13 @@ const GEO: Record<number, string> = {
 export function regionName(id: number): string {
   return GEO[id] || `#${id}`;
 }
+
+// Danh sách quốc gia kèm mã geo (cho dropdown lọc vùng Google). Ưu tiên nước phổ biến lên đầu.
+const PIN = [2704, 2840, 2826, 2392, 2410, 2764, 2360, 2608, 2458, 2702, 2356, 2036, 2158, 2344];
+export const GEO_COUNTRIES: { geo: number; name: string }[] = [
+  ...PIN.map((g) => ({ geo: g, name: GEO[g] })).filter((x) => x.name),
+  ...Object.entries(GEO)
+    .map(([g, name]) => ({ geo: Number(g), name }))
+    .filter((x) => !PIN.includes(x.geo))
+    .sort((a, b) => a.name.localeCompare(b.name)),
+];

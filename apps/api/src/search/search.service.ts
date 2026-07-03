@@ -161,6 +161,48 @@ export class SearchService {
     return this.google.getCreativeById(advertiserId, creativeId);
   }
 
+  // ---- Lọc theo vùng (B): mở chi tiết từng ad để lấy vùng thật rồi giữ ad chạy ở geo ----
+  private regionJobs = new Map<string, any>();
+
+  startRegionCheck(
+    items: { advertiserId: string; creativeId: string }[],
+    geo: number,
+    limit = 100,
+  ): { jobId: string } {
+    const jobId = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const slice = items.slice(0, limit);
+    const job: any = { jobId, geo, total: slice.length, checked: 0, matchedIds: [] as string[], done: false, error: null };
+    this.regionJobs.set(jobId, job);
+
+    void (async () => {
+      const CONC = 5;
+      for (let i = 0; i < slice.length; i += CONC) {
+        const batch = slice.slice(i, i + CONC);
+        await Promise.all(
+          batch.map(async (it) => {
+            try {
+              const d = await this.google.getCreativeById(it.advertiserId, it.creativeId);
+              if (d.regions.includes(geo)) job.matchedIds.push(it.creativeId);
+            } catch {
+              /* bỏ ad lỗi */
+            }
+            job.checked++;
+          }),
+        );
+      }
+      job.done = true;
+    })().catch((e) => {
+      job.error = e?.message || 'Lỗi lọc vùng';
+      job.done = true;
+    });
+    setTimeout(() => this.regionJobs.delete(jobId), 600000);
+    return { jobId };
+  }
+
+  getRegionJob(id: string) {
+    return this.regionJobs.get(id) || null;
+  }
+
   history() {
     return this.prisma.search.findMany({
       orderBy: { createdAt: 'desc' },

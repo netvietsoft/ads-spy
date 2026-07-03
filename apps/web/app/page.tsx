@@ -13,9 +13,12 @@ import {
   search,
   searchByAdvertiser,
   setProxy,
+  startRegionCheck,
+  regionJob,
   suggest,
   testProxy,
 } from './api';
+import { GEO_COUNTRIES } from './geo';
 import { CreativeModal } from './components/CreativeModal';
 import { FacebookPanel } from './components/FacebookPanel';
 import { TiktokPanel } from './components/TiktokPanel';
@@ -222,14 +225,63 @@ export default function Home() {
     }
   }
 
-  const creatives = useMemo(() => {
+  // Lọc theo vùng (B)
+  const [regionGeo, setRegionGeo] = useState(0);
+  const [regionMatched, setRegionMatched] = useState<Set<string> | null>(null);
+  const [regionProg, setRegionProg] = useState('');
+  const [regionBusy, setRegionBusy] = useState(false);
+
+  const baseCreatives = useMemo(() => {
     if (!data) return [];
     return activeAdv ? data.creatives.filter((c) => c.advertiserId === activeAdv) : data.creatives;
   }, [data, activeAdv]);
 
+  const creatives = useMemo(() => {
+    if (regionGeo && regionMatched) return baseCreatives.filter((c) => regionMatched.has(c.creativeId));
+    return baseCreatives;
+  }, [baseCreatives, regionGeo, regionMatched]);
+
   useEffect(() => {
     setGPage(1);
-  }, [data, activeAdv]);
+  }, [data, activeAdv, regionMatched]);
+
+  useEffect(() => {
+    setRegionGeo(0);
+    setRegionMatched(null);
+    setRegionProg('');
+  }, [data]);
+
+  async function applyRegionFilter(geo: number) {
+    setRegionGeo(geo);
+    setRegionMatched(null);
+    if (!geo || !data) return;
+    const items = baseCreatives.map((c) => ({ advertiserId: c.advertiserId, creativeId: c.creativeId }));
+    if (!items.length) return;
+    setRegionBusy(true);
+    setRegionProg('Đang lọc vùng…');
+    try {
+      const { jobId } = await startRegionCheck(items, geo, 120);
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 1500));
+        let j;
+        try {
+          j = await regionJob(jobId);
+        } catch {
+          break;
+        }
+        setRegionMatched(new Set(j.matchedIds));
+        setRegionProg(`Đang lọc: ${j.checked}/${j.total} · khớp ${j.matchedIds.length}`);
+        if (j.done) {
+          setRegionProg(`Xong: ${j.matchedIds.length} ad chạy ở vùng này (kiểm ${j.checked}/${j.total}).`);
+          break;
+        }
+      }
+    } catch (e: any) {
+      setRegionProg(e.message || 'Lỗi lọc vùng');
+    } finally {
+      setRegionBusy(false);
+    }
+  }
 
   const pagedCreatives = paginate(creatives, gPage, gSize);
 
@@ -471,6 +523,26 @@ export default function Home() {
               </div>
               <div className="l">Tổng ads (ước tính)</div>
             </div>
+          </div>
+
+          <div className="daterow">
+            <label>🌍 Chỉ hiển thị ad chạy ở:</label>
+            <select
+              className="fbselect"
+              value={regionGeo}
+              onChange={(e) => applyRegionFilter(Number(e.target.value))}
+              disabled={regionBusy}
+            >
+              <option value={0}>Tất cả vùng</option>
+              {GEO_COUNTRIES.map((c) => (
+                <option key={c.geo} value={c.geo}>{c.name}</option>
+              ))}
+            </select>
+            {regionBusy && <span className="spinner" />}
+            {regionProg && <span className="m">{regionProg}</span>}
+            {regionGeo !== 0 && !regionBusy && (
+              <span className="m">(mở chi tiết từng ad để lấy vùng — tối đa 120 ad)</span>
+            )}
           </div>
 
           <div className="layout">

@@ -11,6 +11,8 @@ const PERIODS = [
   { v: 180, label: '180 ngày' },
 ];
 const TARGETS = [60, 200, 500, 1000];
+const ttDetailLink = (id: string) =>
+  `https://ads.tiktok.com/business/creativecenter/inspiration/topads/detail/${id}/pc/en`;
 
 function TtCard({ ad, onOpen }: { ad: TtAd; onOpen: () => void }) {
   return (
@@ -26,6 +28,11 @@ function TtCard({ ad, onOpen }: { ad: TtAd; onOpen: () => void }) {
       {ad.adTitle && <div className="fbbody" style={{ maxHeight: 60 }}>{ad.adTitle}</div>}
       <div className="fbplat">
         {ad.ctr != null ? `CTR ${ad.ctr}%` : ''} {ad.likes != null ? `· ❤️ ${ad.likes.toLocaleString()}` : ''}
+      </div>
+      <div className="fbfoot">
+        <a className="dl" href={ttDetailLink(ad.id)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+          ↗ Xem trên TikTok
+        </a>
       </div>
     </div>
   );
@@ -149,6 +156,7 @@ export function TiktokPanel() {
               {selected.videoUrl && (
                 <a className="dl" href={assetProxy(selected.videoUrl, true)} target="_blank" rel="noreferrer">↓ Tải video</a>
               )}
+              <a className="dl" href={ttDetailLink(selected.id)} target="_blank" rel="noreferrer">↗ Xem trên TikTok</a>
             </div>
           </div>
         </div>
