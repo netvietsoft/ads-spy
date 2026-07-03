@@ -6,8 +6,9 @@ set -e
 # Domain công khai của API (browser gọi tới) — subdomain riêng -> API :8075.
 export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://api.dpboss.pet}"
 
-echo "==> [1/6] Kéo code mới"
-git pull
+echo "==> [1/6] Kéo code mới (ép về origin/main, bỏ thay đổi local như package-lock)"
+git fetch origin
+git reset --hard origin/main
 
 echo "==> [2/6] Cài dependencies"
 npm install
