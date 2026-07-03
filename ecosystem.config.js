@@ -1,5 +1,5 @@
 // PM2 — chạy: pm2 start ecosystem.config.js
-// Server dpboss.pet: Web (Next) :3062, API (Nest) :3063
+// Server dpboss.pet: Web (Next) :3062 -> dpboss.pet ; API (Nest) :8075 -> api.dpboss.pet
 // Dừng: pm2 delete ecosystem.config.js | Log: pm2 logs | Lưu tự chạy lại: pm2 save && pm2 startup
 module.exports = {
   apps: [
@@ -7,7 +7,7 @@ module.exports = {
       name: 'ads-spy-api',
       cwd: './apps/api',
       script: 'dist/main.js',
-      env: { PORT: '3063', NODE_ENV: 'production' },
+      env: { PORT: '8075', NODE_ENV: 'production' },
       max_memory_restart: '900M',
       time: true,
     },

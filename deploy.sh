@@ -3,8 +3,8 @@
 # Chạy TRÊN SERVER: cd /home/netviet/projects-deploy/ads-spy && bash deploy.sh
 set -e
 
-# Domain công khai của API (browser gọi tới) — nginx route /api -> API :3063.
-export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://dpboss.pet}"
+# Domain công khai của API (browser gọi tới) — subdomain riêng -> API :8075.
+export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://api.dpboss.pet}"
 
 echo "==> [1/6] Kéo code mới"
 git pull
@@ -26,4 +26,4 @@ echo "==> [6/6] Khởi động/Reload PM2"
 pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
 pm2 save
 
-echo "✅ Xong. Web :3062 · API :3063 — kiểm tra: pm2 status && pm2 logs"
+echo "✅ Xong. Web :3062 (dpboss.pet) · API :8075 (api.dpboss.pet) — kiểm tra: pm2 status && pm2 logs"
