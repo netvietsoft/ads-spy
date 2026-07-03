@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { TtAd, TtTopAdsResult, assetProxy, ttTopAds } from '../api';
+import { TtAd, TtTopAdsResult, assetProxy, ttJob, ttStart } from '../api';
 import { COUNTRIES } from '../countries';
 import { Paginator, paginate } from './Paginator';
 
@@ -9,6 +9,7 @@ const PERIODS = [
   { v: 30, label: '30 ngày' },
   { v: 180, label: '180 ngày' },
 ];
+const TARGETS = [60, 200, 500, 1000];
 
 function TtCard({ ad, onOpen }: { ad: TtAd; onOpen: () => void }) {
   return (
@@ -32,25 +33,44 @@ function TtCard({ ad, onOpen }: { ad: TtAd; onOpen: () => void }) {
 export function TiktokPanel() {
   const [country, setCountry] = useState('VN');
   const [period, setPeriod] = useState(7);
+  const [target, setTarget] = useState(200);
   const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [res, setRes] = useState<TtTopAdsResult | null>(null);
   const [selected, setSelected] = useState<TtAd | null>(null);
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(50);
 
+  // Quét dần (gộp ngành để đạt target lớn) — start + poll.
   async function run() {
     setLoading(true);
     setErr(null);
     setPage(1);
+    setRes(null);
+    setPhase('running');
     try {
-      const r = await ttTopAds(country, period);
-      setRes(r);
+      const { jobId } = await ttStart(country, period, target);
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 2000));
+        let j;
+        try {
+          j = await ttJob(jobId);
+        } catch {
+          break;
+        }
+        setRes({ country: j.country, period: j.period, count: j.count, ads: j.ads });
+        setPhase(j.phase);
+        if (j.done) {
+          if (j.error) setErr(j.error);
+          break;
+        }
+      }
     } catch (e: any) {
       setErr(e.message || 'Lỗi TikTok');
-      setRes(null);
     } finally {
       setLoading(false);
+      setPhase('');
     }
   }
 
@@ -70,6 +90,11 @@ export function TiktokPanel() {
             <option key={p.v} value={p.v}>{p.label}</option>
           ))}
         </select>
+        <select className="fbselect" value={target} onChange={(e) => setTarget(Number(e.target.value))} title="Số lượng muốn lấy">
+          {TARGETS.map((t) => (
+            <option key={t} value={t}>tối đa {t}</option>
+          ))}
+        </select>
         <button className="primary" type="button" onClick={run} disabled={loading}>
           {loading ? <span className="spinner" /> : 'Xem Top Ads'}
         </button>
@@ -77,7 +102,10 @@ export function TiktokPanel() {
 
       {err && <div className="error">{err}</div>}
       {loading && (
-        <p className="hint"><span className="spinner" /> Đang mở TikTok Creative Center… (~20-40s)</p>
+        <p className="hint">
+          <span className="spinner" /> Đang lấy TikTok Top Ads… {res ? `(${res.count} ads` : ''}
+          {phase && phase !== 'running' && phase !== 'done' ? ` · ${phase}` : ''}{res ? ')' : ''} — gộp nhiều ngành có thể vài phút.
+        </p>
       )}
       {!res && !err && !loading && (
         <p className="hint">Chọn quốc gia + khoảng thời gian → xem quảng cáo TikTok top-performing.</p>

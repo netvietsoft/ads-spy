@@ -150,6 +150,24 @@ export async function ttTopAds(country = 'VN', period = 7): Promise<TtTopAdsResu
     await fetch(`${API}/api/tiktok/topads?country=${encodeURIComponent(country)}&period=${period}`),
   );
 }
+export interface TtJob {
+  jobId: string;
+  country: string;
+  period: number;
+  phase: string;
+  done: boolean;
+  error: string | null;
+  count: number;
+  ads: TtAd[];
+}
+export async function ttStart(country: string, period: number, target: number): Promise<{ jobId: string }> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/tiktok/topads/start?country=${encodeURIComponent(country)}&period=${period}&target=${target}`),
+  );
+}
+export async function ttJob(id: string): Promise<TtJob> {
+  return jsonOrThrow(await fetch(`${API}/api/tiktok/topads/job/${id}`));
+}
 
 // ---- Đối thủ theo dõi (favorites) ----
 export interface Favorite {
