@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { TtAd, TtTopAdsResult, assetProxy, ttJob, ttStart } from '../api';
 import { COUNTRIES } from '../countries';
 import { Paginator, paginate } from './Paginator';
+import { LazyGrid } from './LazyGrid';
 
 const PERIODS = [
   { v: 7, label: '7 ngày' },
@@ -121,11 +122,11 @@ export function TiktokPanel() {
           {res.ads.length > 0 && (
             <Paginator total={res.ads.length} page={page} pageSize={size} onPage={setPage} onPageSize={setSize} />
           )}
-          <div className="fbgrid">
-            {paginate(res.ads, page, size).map((ad) => (
-              <TtCard key={ad.id} ad={ad} onOpen={() => setSelected(ad)} />
-            ))}
-          </div>
+          <LazyGrid
+            className="fbgrid"
+            items={paginate(res.ads, page, size)}
+            render={(ad) => <TtCard key={ad.id} ad={ad} onOpen={() => setSelected(ad)} />}
+          />
           {res.count === 0 && <p className="hint">Không có quảng cáo nào (thử quốc gia/khoảng khác).</p>}
         </>
       )}

@@ -23,6 +23,7 @@ import {
 import { FbModal } from './FbModal';
 import { Favorites } from './Favorites';
 import { Paginator, paginate } from './Paginator';
+import { LazyGrid } from './LazyGrid';
 import { Favorite } from '../api';
 
 import { COUNTRIES } from '../countries';
@@ -663,11 +664,11 @@ export function FacebookPanel() {
           {res.ads.length > 0 && (
             <Paginator total={res.ads.length} page={adsPage} pageSize={adsSize} onPage={setAdsPage} onPageSize={setAdsSize} />
           )}
-          <div className="fbgrid">
-            {paginate(res.ads, adsPage, adsSize).map((ad) => (
-              <FbCard key={ad.adArchiveId} ad={ad} onOpen={() => setSelected(ad)} />
-            ))}
-          </div>
+          <LazyGrid
+            className="fbgrid"
+            items={paginate(res.ads, adsPage, adsSize)}
+            render={(ad) => <FbCard key={ad.adArchiveId} ad={ad} onOpen={() => setSelected(ad)} />}
+          />
           {res.count === 0 && <p className="hint">Không có quảng cáo nào khớp.</p>}
         </>
       )}

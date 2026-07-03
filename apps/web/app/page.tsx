@@ -21,6 +21,7 @@ import { FacebookPanel } from './components/FacebookPanel';
 import { TiktokPanel } from './components/TiktokPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
+import { LazyGrid } from './components/LazyGrid';
 import { Favorite } from './api';
 
 function normalizeDomainClient(s: string) {
@@ -504,8 +505,10 @@ export default function Home() {
               {creatives.length > 0 && (
                 <Paginator total={creatives.length} page={gPage} pageSize={gSize} onPage={setGPage} onPageSize={setGSize} />
               )}
-              <div className="grid">
-                {pagedCreatives.map((c) => (
+              <LazyGrid
+                className="grid"
+                items={pagedCreatives}
+                render={(c) => (
                   <div className="card" key={c.creativeId} onClick={() => setSelected(c)}>
                     <div className="thumb">
                       {c.assetType === 'image' && c.assetUrl ? (
@@ -525,8 +528,8 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                )}
+              />
               {creatives.length === 0 && <p className="hint">Không có creative nào.</p>}
             </div>
           </div>
