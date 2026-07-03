@@ -245,7 +245,13 @@ export class FbPlaywrightService implements OnModuleDestroy {
   }
 
   // Quét bài viết của 1 Page → xếp hạng theo tương tác (cần ĐÃ ĐĂNG NHẬP).
-  async pagePosts(pageInput: string, limit = 40): Promise<FbPagePostsResult> {
+  // fromTs/toTs (unix giây) lọc theo NGÀY ĐĂNG. Khi lọc, sẽ cuộn nhiều hơn để với tới mốc thời gian.
+  async pagePosts(
+    pageInput: string,
+    limit = 40,
+    fromTs?: number,
+    toTs?: number,
+  ): Promise<FbPagePostsResult> {
     const context = await this.getContext();
     const loggedIn = (await context.cookies()).some((c) => c.name === 'c_user');
     const t = parseFbTarget(pageInput);
@@ -280,12 +286,21 @@ export class FbPlaywrightService implements OnModuleDestroy {
         this.warmed = true;
       }
       await sleep(3000);
+      const filtering = !!(fromTs || toTs);
+      const maxScroll = filtering ? 40 : 18; // lọc theo ngày → cuộn sâu hơn để với tới mốc
       let prev = 0;
-      for (let i = 0; i < 18; i++) {
-        const n = collect().length;
-        if (n >= limit) break;
+      for (let i = 0; i < maxScroll; i++) {
+        const cur = collect();
+        // đủ số (không lọc) → dừng
+        if (!filtering && cur.length >= limit) break;
+        // đang lọc: nếu bài cũ nhất đã đăng TRƯỚC mốc from → đã bao trọn khoảng, dừng
+        if (filtering && fromTs && cur.length) {
+          const oldest = Math.min(...cur.filter((p) => p.time).map((p) => p.time!));
+          if (isFinite(oldest) && oldest < fromTs) break;
+        }
         await page.mouse.wheel(0, 6000);
         await sleep(1800);
+        const n = collect().length;
         if (n === prev && i > 2) break;
         prev = n;
       }
@@ -293,10 +308,16 @@ export class FbPlaywrightService implements OnModuleDestroy {
       await page.close().catch(() => undefined);
     }
 
-    const posts = collect().sort((a, b) => b.total - a.total).slice(0, limit);
+    let posts = collect();
+    if (fromTs || toTs) {
+      posts = posts.filter(
+        (p) => p.time && (!fromTs || p.time >= fromTs) && (!toTs || p.time <= toTs),
+      );
+    }
+    posts = posts.sort((a, b) => b.total - a.total).slice(0, limit);
     if (posts.length === 0 && !loggedIn) {
       throw new FbBlockedError(
-        'Chưa đăng nhập Facebook (chạy `npm --workspace @gas/api run fb:login`) hoặc trang không có bài công khai.',
+        'Chưa đăng nhập Facebook (dán cookie ở trên) hoặc trang không có bài công khai.',
       );
     }
     return { page: pageInput, loggedIn, count: posts.length, posts };

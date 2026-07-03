@@ -196,6 +196,7 @@ export interface FbPost {
   postId?: string;
   url?: string;
   text?: string;
+  time?: number;
   reactions: number;
   comments: number;
   shares: number;
@@ -221,10 +222,16 @@ export async function fbSetSession(cookie: string): Promise<{ loggedIn: boolean;
   );
 }
 
-export async function fbPagePosts(page: string, limit = 40): Promise<FbPagePostsResult> {
-  return jsonOrThrow(
-    await fetch(`${API}/api/fb/page-posts?page=${encodeURIComponent(page)}&limit=${limit}`),
-  );
+export async function fbPagePosts(
+  page: string,
+  limit = 40,
+  from?: string,
+  to?: string,
+): Promise<FbPagePostsResult> {
+  const qs = new URLSearchParams({ page, limit: String(limit) });
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+  return jsonOrThrow(await fetch(`${API}/api/fb/page-posts?${qs.toString()}`));
 }
 
 export async function fbHistory(): Promise<FbSearchHistory[]> {

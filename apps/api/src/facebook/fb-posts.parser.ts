@@ -29,18 +29,23 @@ const POST_URL_RE = /https?:\/\/[^"'\\ ]*facebook\.com\/[^"'\\ ]*(?:\/posts\/|\/
 export function parsePagePosts(objs: any[]): FbPost[] {
   const byKey = new Map<string, FbPost>();
 
-  const walk = (node: any, text?: string, url?: string) => {
+  const walk = (node: any, text?: string, url?: string, time?: number) => {
     if (!node || typeof node !== 'object') return;
 
-    // cập nhật ngữ cảnh text/url theo nhánh
+    // cập nhật ngữ cảnh text/url/time theo nhánh
     let curText = text;
     let curUrl = url;
+    let curTime = time;
     const msg = node.message?.text || node.title?.text || node.body?.text;
     if (typeof msg === 'string' && msg.length > curText?.length!) curText = msg;
     else if (typeof msg === 'string' && !curText) curText = msg;
     for (const k of ['url', 'wwwURL', 'permalink_url', 'story_permalink_url']) {
       const u = node[k];
       if (typeof u === 'string' && POST_URL_RE.test(u)) curUrl = u;
+    }
+    for (const k of ['creation_time', 'publish_time', 'created_time']) {
+      const tt = node[k];
+      if (typeof tt === 'number' && tt > 1_000_000_000 && tt < 20_000_000_000) curTime = tt;
     }
 
     // node feedback
@@ -57,6 +62,7 @@ export function parsePagePosts(objs: any[]): FbPost[] {
             postId: typeof postId === 'string' ? postId : undefined,
             url: curUrl,
             text: curText?.replace(/\s+/g, ' ').trim().slice(0, 240),
+            time: curTime,
             reactions,
             comments,
             shares,
@@ -67,9 +73,9 @@ export function parsePagePosts(objs: any[]): FbPost[] {
     }
 
     if (Array.isArray(node)) {
-      for (const c of node) walk(c, curText, curUrl);
+      for (const c of node) walk(c, curText, curUrl, curTime);
     } else {
-      for (const k of Object.keys(node)) walk(node[k], curText, curUrl);
+      for (const k of Object.keys(node)) walk(node[k], curText, curUrl, curTime);
     }
   };
 

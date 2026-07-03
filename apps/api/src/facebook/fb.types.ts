@@ -42,6 +42,7 @@ export interface FbPost {
   postId?: string;
   url?: string;
   text?: string;
+  time?: number; // unix giây — thời điểm đăng
   reactions: number;
   comments: number;
   shares: number;

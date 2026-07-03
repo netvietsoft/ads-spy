@@ -37,12 +37,22 @@ export class FbController {
     return this.scraper.report((country || 'VN').toUpperCase(), r);
   }
 
-  // GET /api/fb/page-posts?page=<url|handle>  → bài viết của Page xếp theo tương tác (cần đăng nhập)
+  // GET /api/fb/page-posts?page=<url|handle>&from=YYYY-MM-DD&to=YYYY-MM-DD
   @Get('page-posts')
-  pagePosts(@Query('page') pg: string, @Query('limit') limit?: string) {
+  pagePosts(
+    @Query('page') pg: string,
+    @Query('limit') limit?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
     if (!pg || !pg.trim()) throw new BadRequestException('Vui lòng nhập link/tên Page.');
     const n = Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 80);
-    return this.scraper.pagePosts(pg.trim(), n);
+    const toUnix = (d: string | undefined, endOfDay: boolean): number | undefined => {
+      if (!d) return undefined;
+      const ms = Date.parse(`${d}T${endOfDay ? '23:59:59' : '00:00:00'}Z`);
+      return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
+    };
+    return this.scraper.pagePosts(pg.trim(), n, toUnix(from, false), toUnix(to, true));
   }
 
   // GET /api/fb/search?q=nike&country=VN  (scrape + lưu DB)

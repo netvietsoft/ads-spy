@@ -84,6 +84,8 @@ export function FacebookPanel() {
   const [report, setReport] = useState<FbReportResult | null>(null);
   const [postsPage, setPostsPage] = useState('');
   const [posts, setPosts] = useState<FbPagePostsResult | null>(null);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [fbLoggedIn, setFbLoggedIn] = useState<boolean | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [cookie, setCookie] = useState('');
@@ -113,7 +115,7 @@ export function FacebookPanel() {
     setLoading(true);
     setErr(null);
     try {
-      const r = await fbPagePosts(postsPage.trim(), 60);
+      const r = await fbPagePosts(postsPage.trim(), 60, fromDate || undefined, toDate || undefined);
       setPosts(r);
     } catch (e: any) {
       setErr(e.message || 'Lỗi quét bài viết');
@@ -295,12 +297,30 @@ export function FacebookPanel() {
             <input
               value={postsPage}
               onChange={(e) => setPostsPage(e.target.value)}
-              placeholder="Link/tên Page (vd: facebook.com/Camelliavnn) — quét bài viết theo tương tác"
+              placeholder="Link/tên Page (vd: facebook.com/Camelliavnn)"
             />
             <button className="primary" disabled={loading}>
               {loading ? <span className="spinner" /> : 'Quét bài viết'}
             </button>
           </form>
+          <div className="daterow">
+            <label>Từ ngày</label>
+            <input type="date" className="fbselect" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+            <label>Đến ngày</label>
+            <input type="date" className="fbselect" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            {(fromDate || toDate) && (
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => {
+                  setFromDate('');
+                  setToDate('');
+                }}
+              >
+                Xoá lọc ngày
+              </button>
+            )}
+          </div>
           <p className="hint">
             Cần <b>đăng nhập FB</b> trước (bấm “Đăng nhập bằng cookie” ở trên, dán cookie nick phụ). Bài viết FB bị chặn nếu chưa đăng nhập.
           </p>
@@ -322,6 +342,7 @@ export function FacebookPanel() {
                   <tr>
                     <th>#</th>
                     <th>Nội dung bài</th>
+                    <th>Ngày đăng</th>
                     <th style={{ textAlign: 'right' }}>❤️ Reactions</th>
                     <th style={{ textAlign: 'right' }}>💬 Bình luận</th>
                     <th style={{ textAlign: 'right' }}>🔁 Chia sẻ</th>
@@ -333,6 +354,7 @@ export function FacebookPanel() {
                     <tr key={p.url || p.postId || i}>
                       <td className="m">{i + 1}</td>
                       <td>{p.text || <span className="m">(không có text)</span>}</td>
+                      <td className="m">{p.time ? new Date(p.time * 1000).toLocaleDateString('vi-VN') : '—'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.reactions.toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>{p.comments.toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>{p.shares.toLocaleString()}</td>
