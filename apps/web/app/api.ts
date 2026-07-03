@@ -68,6 +68,23 @@ export function embedSrc(url: string): string {
   return `${API}/api/embed?url=${encodeURIComponent(url)}`;
 }
 
+// ---- Proxy Google ----
+export async function getProxy(): Promise<{ set: boolean; proxy: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/settings/proxy`));
+}
+export async function setProxy(proxy: string): Promise<{ set: boolean; proxy: string }> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/settings/proxy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ proxy }),
+    }),
+  );
+}
+export async function testProxy(): Promise<{ ok: boolean; message: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/settings/proxy/test`));
+}
+
 export async function search(domain: string): Promise<SearchResponse> {
   return jsonOrThrow(
     await fetch(`${API}/api/search`, {

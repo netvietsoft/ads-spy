@@ -29,6 +29,22 @@ export class SearchController {
     return this.search.search(domain);
   }
 
+  // Proxy cho Google (IP server hay bị Google chặn /sorry)
+  @Get('settings/proxy')
+  getProxy() {
+    return this.google.getProxyStatus();
+  }
+
+  @Post('settings/proxy')
+  setProxy(@Body('proxy') proxy: string) {
+    return this.google.setProxy((proxy || '').trim());
+  }
+
+  @Get('settings/proxy/test')
+  testProxy() {
+    return this.google.testProxy();
+  }
+
   @Get('suggest')
   suggest(@Query('q') q: string) {
     if (!q || !q.trim()) throw new BadRequestException('Vui lòng nhập từ khóa.');

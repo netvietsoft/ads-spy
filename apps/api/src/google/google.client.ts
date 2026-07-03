@@ -12,29 +12,16 @@ import {
   parseSuggest,
 } from './response.parser';
 import { CreativeDetail, SearchCreativesResult, SuggestResult } from './google.types';
+import { PrismaService } from '../prisma.service';
 
 const BASE = 'https://adstransparency.google.com/anji/_/rpc';
 const RETRY_DELAYS_MS = [900, 2500]; // backoff khi bị throttle (2 lần thử lại)
+const PROXY_KEY = 'google_proxy';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Proxy cho request Google (IP server hay bị Google chặn -> /sorry). Đặt GOOGLE_PROXY hoặc HTTPS_PROXY.
-// vd: http://user:pass@host:port  hoặc  http://host:port
-let _dispatcher: any = null;
-let _dispatcherInit = false;
-async function proxyDispatcher(): Promise<any> {
-  if (_dispatcherInit) return _dispatcher;
-  _dispatcherInit = true;
-  const proxy = process.env.GOOGLE_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy;
-  if (proxy) {
-    try {
-      const { ProxyAgent } = await import('undici');
-      _dispatcher = new ProxyAgent(proxy);
-    } catch {
-      _dispatcher = null;
-    }
-  }
-  return _dispatcher;
+function maskProxy(p: string): string {
+  return p ? p.replace(/\/\/([^:@/]+):([^@/]+)@/, '//$1:***@') : '';
 }
 
 export class GoogleBlockedError extends Error {
@@ -52,15 +39,73 @@ export class GoogleBlockedError extends Error {
 
 @Injectable()
 export class GoogleClient {
+  private dispatcher: any = null;
+  private proxyUrl = '';
+  private loaded = false;
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  // Nạp proxy: ưu tiên DB (đặt từ web), fallback biến env.
+  private async ensureProxy(): Promise<void> {
+    if (this.loaded) return;
+    this.loaded = true;
+    let url = process.env.GOOGLE_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy || '';
+    try {
+      const s = await this.prisma.fbSetting.findUnique({ where: { key: PROXY_KEY } });
+      if (s?.value) url = s.value;
+    } catch {
+      /* chưa có DB/bảng */
+    }
+    await this.applyProxy(url);
+  }
+
+  private async applyProxy(url: string): Promise<void> {
+    this.proxyUrl = (url || '').trim();
+    if (this.proxyUrl) {
+      try {
+        const { ProxyAgent } = await import('undici');
+        this.dispatcher = new ProxyAgent(this.proxyUrl);
+      } catch {
+        this.dispatcher = null;
+      }
+    } else {
+      this.dispatcher = null;
+    }
+  }
+
+  async setProxy(url: string): Promise<{ set: boolean; proxy: string }> {
+    await this.prisma.fbSetting
+      .upsert({ where: { key: PROXY_KEY }, create: { key: PROXY_KEY, value: url || '' }, update: { value: url || '' } })
+      .catch(() => undefined);
+    this.loaded = true;
+    await this.applyProxy(url);
+    return this.getProxyStatus();
+  }
+
+  getProxyStatus(): { set: boolean; proxy: string } {
+    return { set: !!this.proxyUrl, proxy: maskProxy(this.proxyUrl) };
+  }
+
+  // Test proxy: thử tra 1 domain, trả ok/thông báo.
+  async testProxy(): Promise<{ ok: boolean; message: string }> {
+    try {
+      const r = await this.searchCreativesByDomain('nike.com');
+      return { ok: true, message: `OK — lấy được ${r.creatives.length} quảng cáo qua proxy hiện tại.` };
+    } catch (e) {
+      return { ok: false, message: (e as Error).message };
+    }
+  }
+
   // Gọi 1 lần, không retry.
   private async rpcOnce(service: string, method: string, freq: string): Promise<any> {
+    await this.ensureProxy();
     const url = `${BASE}/${service}/${method}?authuser=0`;
     const body = new URLSearchParams();
     body.set('f.req', freq);
 
     let text: string;
     try {
-      const dispatcher = await proxyDispatcher();
+      const dispatcher = this.dispatcher;
       const res = await fetch(url, {
         method: 'POST',
         headers: buildHeaders(),
