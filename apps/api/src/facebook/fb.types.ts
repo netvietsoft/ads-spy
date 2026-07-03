@@ -37,3 +37,20 @@ export interface FbReportResult {
   count: number;
   rows: FbSpendRow[];
 }
+
+export interface FbPost {
+  postId?: string;
+  url?: string;
+  text?: string;
+  reactions: number;
+  comments: number;
+  shares: number;
+  total: number; // reactions+comments+shares (để xếp hạng)
+}
+
+export interface FbPagePostsResult {
+  page: string;
+  loggedIn: boolean;
+  count: number;
+  posts: FbPost[];
+}

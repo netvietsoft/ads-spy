@@ -23,6 +23,14 @@ export class FbController {
     return this.scraper.report((country || 'VN').toUpperCase(), r);
   }
 
+  // GET /api/fb/page-posts?page=<url|handle>  → bài viết của Page xếp theo tương tác (cần đăng nhập)
+  @Get('page-posts')
+  pagePosts(@Query('page') pg: string, @Query('limit') limit?: string) {
+    if (!pg || !pg.trim()) throw new BadRequestException('Vui lòng nhập link/tên Page.');
+    const n = Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 80);
+    return this.scraper.pagePosts(pg.trim(), n);
+  }
+
   // GET /api/fb/search?q=nike&country=VN  (scrape + lưu DB)
   @Get('search')
   search(

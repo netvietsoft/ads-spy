@@ -2,12 +2,14 @@
 import { useEffect, useState } from 'react';
 import {
   FbAd,
+  FbPagePostsResult,
   FbReportResult,
   FbSearchHistory,
   FbSearchResult,
   assetProxy,
   fbGetSaved,
   fbHistory,
+  fbPagePosts,
   fbReport,
   fbSearch,
 } from '../api';
@@ -66,7 +68,7 @@ function FbCard({ ad, onOpen }: { ad: FbAd; onOpen: () => void }) {
 }
 
 export function FacebookPanel() {
-  const [tab, setTab] = useState<'search' | 'report'>('search');
+  const [tab, setTab] = useState<'search' | 'report' | 'posts'>('search');
   const [q, setQ] = useState('');
   const [country, setCountry] = useState('VN');
   const [status, setStatus] = useState('all');
@@ -78,6 +80,23 @@ export function FacebookPanel() {
   const [savedView, setSavedView] = useState(false);
   const [range, setRange] = useState('30');
   const [report, setReport] = useState<FbReportResult | null>(null);
+  const [postsPage, setPostsPage] = useState('');
+  const [posts, setPosts] = useState<FbPagePostsResult | null>(null);
+
+  async function runPosts() {
+    if (!postsPage.trim()) return;
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await fbPagePosts(postsPage.trim(), 60);
+      setPosts(r);
+    } catch (e: any) {
+      setErr(e.message || 'Lỗi quét bài viết');
+      setPosts(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function runReport(r = range) {
     setLoading(true);
@@ -202,7 +221,80 @@ export function FacebookPanel() {
         >
           📊 Xếp hạng chi tiêu
         </button>
+        <button className={`ghost ${tab === 'posts' ? 'active' : ''}`} type="button" onClick={() => setTab('posts')}>
+          📈 Bài viết Page
+        </button>
       </div>
+
+      {tab === 'posts' && (
+        <>
+          <form
+            className="searchbar"
+            onSubmit={(e) => {
+              e.preventDefault();
+              runPosts();
+            }}
+          >
+            <input
+              value={postsPage}
+              onChange={(e) => setPostsPage(e.target.value)}
+              placeholder="Link/tên Page (vd: facebook.com/Camelliavnn) — quét bài viết theo tương tác"
+            />
+            <button className="primary" disabled={loading}>
+              {loading ? <span className="spinner" /> : 'Quét bài viết'}
+            </button>
+          </form>
+          <p className="hint">
+            Cần <b>đăng nhập FB</b> trước: dừng API rồi chạy <code>npm --workspace @gas/api run fb:login</code> (dùng nick phụ).
+          </p>
+          {err && <div className="error">{err}</div>}
+          {loading && (
+            <p className="hint">
+              <span className="spinner" /> Đang cuộn &amp; quét bài viết… (có thể ~1 phút)
+            </p>
+          )}
+          {posts && !loading && (
+            <>
+              {!posts.loggedIn && (
+                <div className="saved-note" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
+                  ⚠ Chưa đăng nhập FB — số liệu có thể thiếu. Chạy <code>fb:login</code> rồi thử lại.
+                </div>
+              )}
+              <table className="reptable">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Nội dung bài</th>
+                    <th style={{ textAlign: 'right' }}>❤️ Reactions</th>
+                    <th style={{ textAlign: 'right' }}>💬 Bình luận</th>
+                    <th style={{ textAlign: 'right' }}>🔁 Chia sẻ</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {posts.posts.map((p, i) => (
+                    <tr key={p.url || p.postId || i}>
+                      <td className="m">{i + 1}</td>
+                      <td>{p.text || <span className="m">(không có text)</span>}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.reactions.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right' }}>{p.comments.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right' }}>{p.shares.toLocaleString()}</td>
+                      <td>
+                        {p.url && (
+                          <a className="dl" href={p.url} target="_blank" rel="noreferrer">
+                            mở ↗
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {posts.count === 0 && <p className="hint">Không lấy được bài viết nào.</p>}
+            </>
+          )}
+        </>
+      )}
 
       {tab === 'report' && (
         <>

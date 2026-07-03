@@ -192,6 +192,28 @@ export async function fbReport(country = 'VN', range = '30'): Promise<FbReportRe
   );
 }
 
+export interface FbPost {
+  postId?: string;
+  url?: string;
+  text?: string;
+  reactions: number;
+  comments: number;
+  shares: number;
+  total: number;
+}
+export interface FbPagePostsResult {
+  page: string;
+  loggedIn: boolean;
+  count: number;
+  posts: FbPost[];
+}
+
+export async function fbPagePosts(page: string, limit = 40): Promise<FbPagePostsResult> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/fb/page-posts?page=${encodeURIComponent(page)}&limit=${limit}`),
+  );
+}
+
 export async function fbHistory(): Promise<FbSearchHistory[]> {
   return jsonOrThrow(await fetch(`${API}/api/fb/history`));
 }

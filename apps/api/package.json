@@ -8,7 +8,8 @@
     "start": "node dist/main.js",
     "test": "jest",
     "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "fb:login": "node scripts/fb-login.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

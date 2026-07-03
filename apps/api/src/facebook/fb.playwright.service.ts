@@ -2,7 +2,8 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import * as path from 'path';
 import type { BrowserContext, Page } from 'playwright';
 import { parseFbGraphql } from './fb.parser';
-import { FbAd, FbReportResult, FbSearchResult, FbSpendRow } from './fb.types';
+import { parsePagePosts } from './fb-posts.parser';
+import { FbAd, FbPagePostsResult, FbPost, FbReportResult, FbSearchResult, FbSpendRow } from './fb.types';
 
 export class FbBlockedError extends Error {
   constructor(message = 'Facebook chặn/không trả kết quả (có thể cần đăng nhập hoặc thử lại sau).') {
@@ -190,6 +191,64 @@ export class FbPlaywrightService implements OnModuleDestroy {
     // Không có ads NHƯNG đã thấy graphql = thật sự 0 kết quả (trả rỗng, không báo lỗi).
     if (ads.length === 0 && !sawGraphql) throw new FbBlockedError();
     return { query, country, count: ads.length, ads };
+  }
+
+  // Quét bài viết của 1 Page → xếp hạng theo tương tác (cần ĐÃ ĐĂNG NHẬP).
+  async pagePosts(pageInput: string, limit = 40): Promise<FbPagePostsResult> {
+    const context = await this.getContext();
+    const loggedIn = (await context.cookies()).some((c) => c.name === 'c_user');
+    const t = parseFbTarget(pageInput);
+    const url = /facebook\.com/i.test(pageInput)
+      ? pageInput.startsWith('http')
+        ? pageInput
+        : `https://${pageInput.replace(/^\/+/, '')}`
+      : `https://www.facebook.com/${t.value}`;
+
+    const page = await context.newPage();
+    const chunks: string[] = [];
+    page.on('response', async (res) => {
+      if (!res.url().includes('/api/graphql')) return;
+      try {
+        const t2 = await res.text();
+        if (t2.includes('reaction_count')) chunks.push(t2);
+      } catch {
+        /* ignore */
+      }
+    });
+
+    const collect = (): FbPost[] => {
+      const all: any[] = [];
+      for (const c of chunks) for (const o of parseLoose(c)) all.push(o);
+      return parsePagePosts(all);
+    };
+
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      if (!this.warmed) {
+        await this.dismissConsent(page);
+        this.warmed = true;
+      }
+      await sleep(3000);
+      let prev = 0;
+      for (let i = 0; i < 18; i++) {
+        const n = collect().length;
+        if (n >= limit) break;
+        await page.mouse.wheel(0, 6000);
+        await sleep(1800);
+        if (n === prev && i > 2) break;
+        prev = n;
+      }
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+
+    const posts = collect().sort((a, b) => b.total - a.total).slice(0, limit);
+    if (posts.length === 0 && !loggedIn) {
+      throw new FbBlockedError(
+        'Chưa đăng nhập Facebook (chạy `npm --workspace @gas/api run fb:login`) hoặc trang không có bài công khai.',
+      );
+    }
+    return { page: pageInput, loggedIn, count: posts.length, posts };
   }
 
   // Bảng xếp hạng chi tiêu theo Page (Ad Library Report).

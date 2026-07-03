@@ -4,6 +4,15 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-03 (tối 2) — Đối thủ theo dõi + đăng nhập FB + quét bài viết Page
+
+- **Đối thủ theo dõi (favorites)** cho Google + FB: model `Favorite` (+migration), CRUD `/api/favorites` (chống trùng);
+  UI component `Favorites` trong cả 2 tab — mỗi đối thủ có **Xem lại** (từ DB) + **Tìm mới** (live) + xoá.
+- **Đăng nhập FB 1 lần**: `npm --workspace @gas/api run fb:login` (headful, nick phụ) → lưu phiên vào `.pw-profile`.
+- **Quét bài viết Page** → xếp hạng theo tương tác: `GET /api/fb/page-posts?page=&limit=`; tab **📈 Bài viết Page**
+  hiện bảng reactions/comments/shares. Cần đăng nhập (post FB gated login). Parser `fb-posts.parser` là best-effort,
+  sẽ tinh chỉnh theo response thật sau khi đăng nhập.
+
 ## 2026-07-03 (tối) — FB lọc trạng thái + bảng xếp hạng chi tiêu
 
 - **Bộ lọc trạng thái** ads: Tất cả / Đang chạy / Đã ngừng (`active_status`). Lưu ý: ads thương mại VN đã ngừng
