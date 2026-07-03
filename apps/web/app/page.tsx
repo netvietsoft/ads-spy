@@ -16,6 +16,7 @@ import {
 import { CreativeModal } from './components/CreativeModal';
 import { FacebookPanel } from './components/FacebookPanel';
 import { Favorites } from './components/Favorites';
+import { Paginator, paginate } from './components/Paginator';
 import { Favorite } from './api';
 
 function normalizeDomainClient(s: string) {
@@ -149,10 +150,19 @@ export default function Home() {
     }
   }
 
+  const [gPage, setGPage] = useState(1);
+  const [gSize, setGSize] = useState(100);
+
   const creatives = useMemo(() => {
     if (!data) return [];
     return activeAdv ? data.creatives.filter((c) => c.advertiserId === activeAdv) : data.creatives;
   }, [data, activeAdv]);
+
+  useEffect(() => {
+    setGPage(1);
+  }, [data, activeAdv]);
+
+  const pagedCreatives = paginate(creatives, gPage, gSize);
 
   return (
     <div className="container">
@@ -335,8 +345,11 @@ export default function Home() {
             </div>
 
             <div>
+              {creatives.length > 0 && (
+                <Paginator total={creatives.length} page={gPage} pageSize={gSize} onPage={setGPage} onPageSize={setGSize} />
+              )}
               <div className="grid">
-                {creatives.map((c) => (
+                {pagedCreatives.map((c) => (
                   <div className="card" key={c.creativeId} onClick={() => setSelected(c)}>
                     <div className="thumb">
                       {c.assetType === 'image' && c.assetUrl ? (

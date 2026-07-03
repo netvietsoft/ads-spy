@@ -22,6 +22,7 @@ import {
 } from '../api';
 import { FbModal } from './FbModal';
 import { Favorites } from './Favorites';
+import { Paginator, paginate } from './Paginator';
 import { Favorite } from '../api';
 
 const COUNTRIES = ['VN', 'US', 'TH', 'ID', 'PH', 'ALL'];
@@ -97,6 +98,17 @@ export function FacebookPanel() {
   const [scanPhase, setScanPhase] = useState<string>('');
   const [verifying, setVerifying] = useState(false);
   const [cookieValid, setCookieValid] = useState<boolean | null>(null);
+  // phân trang: ads 100/trang, bài viết 50/trang, report 100/trang
+  const [adsPage, setAdsPage] = useState(1);
+  const [adsSize, setAdsSize] = useState(100);
+  const [ppPage, setPpPage] = useState(1);
+  const [ppSize, setPpSize] = useState(50);
+  const [repPage, setRepPage] = useState(1);
+  const [repSize, setRepSize] = useState(100);
+
+  useEffect(() => setAdsPage(1), [res]);
+  useEffect(() => setPpPage(1), [posts]);
+  useEffect(() => setRepPage(1), [report]);
   const [fbLoggedIn, setFbLoggedIn] = useState<boolean | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [cookie, setCookie] = useState('');
@@ -415,6 +427,9 @@ export function FacebookPanel() {
                   ⚠ Chưa đăng nhập FB — số liệu có thể thiếu. Dán cookie ở trên rồi thử lại.
                 </div>
               )}
+              {posts.posts.length > 0 && (
+                <Paginator total={posts.posts.length} page={ppPage} pageSize={ppSize} onPage={setPpPage} onPageSize={setPpSize} />
+              )}
               <table className="reptable">
                 <thead>
                   <tr>
@@ -428,7 +443,9 @@ export function FacebookPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {posts.posts.map((p, i) => (
+                  {paginate(posts.posts, ppPage, ppSize).map((p, idx) => {
+                    const i = (ppPage - 1) * ppSize + idx;
+                    return (
                     <tr key={p.url || p.postId || i}>
                       <td className="m">{i + 1}</td>
                       <td>{p.text || <span className="m">(không có text)</span>}</td>
@@ -444,7 +461,8 @@ export function FacebookPanel() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
               {posts.count === 0 && <p className="hint">Không lấy được bài viết nào.</p>}
@@ -518,6 +536,10 @@ export function FacebookPanel() {
             </p>
           )}
           {report && !loading && (
+            <>
+            {report.rows.length > 0 && (
+              <Paginator total={report.rows.length} page={repPage} pageSize={repSize} onPage={setRepPage} onPageSize={setRepSize} />
+            )}
             <table className="reptable">
               <thead>
                 <tr>
@@ -529,7 +551,9 @@ export function FacebookPanel() {
                 </tr>
               </thead>
               <tbody>
-                {report.rows.map((row, i) => (
+                {paginate(report.rows, repPage, repSize).map((row, idx) => {
+                  const i = (repPage - 1) * repSize + idx;
+                  return (
                   <tr key={row.pageId} onClick={() => openPageAds(row.pageId)} title="Xem quảng cáo của trang này">
                     <td className="m">{i + 1}</td>
                     <td>{row.pageName}</td>
@@ -539,9 +563,11 @@ export function FacebookPanel() {
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{row.spendText}</td>
                     <td style={{ textAlign: 'right' }}>{row.adCount}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
+            </>
           )}
         </>
       )}
@@ -618,8 +644,11 @@ export function FacebookPanel() {
               <div className="l">Quốc gia</div>
             </div>
           </div>
+          {res.ads.length > 0 && (
+            <Paginator total={res.ads.length} page={adsPage} pageSize={adsSize} onPage={setAdsPage} onPageSize={setAdsSize} />
+          )}
           <div className="fbgrid">
-            {res.ads.map((ad) => (
+            {paginate(res.ads, adsPage, adsSize).map((ad) => (
               <FbCard key={ad.adArchiveId} ad={ad} onOpen={() => setSelected(ad)} />
             ))}
           </div>

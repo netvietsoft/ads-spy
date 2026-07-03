@@ -16,7 +16,7 @@ export class FbService {
     country: string,
     activeStatus: 'all' | 'active' | 'inactive' = 'all',
   ): Promise<FbSearchResult & { searchId: number }> {
-    const res = await this.scraper.search(query, country, 40, activeStatus);
+    const res = await this.scraper.search(query, country, 100, activeStatus);
     const rec = await this.prisma.fbSearch.create({
       data: { query: res.query, country: res.country, adCount: res.ads.length },
     });

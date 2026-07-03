@@ -86,6 +86,10 @@ body {
 .reptable tbody tr:hover { background: var(--panel-2); }
 .reptable td.m { color: var(--muted); font-size: 12px; }
 
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 12px 0; font-size: 13px; }
+.pager-ctrl { display: flex; align-items: center; gap: 8px; }
+.pager .fbselect { padding: 4px 8px; }
+
 .searchbar {
   display: flex; gap: 10px; margin: 26px 0 10px;
   background: var(--panel); border: 1px solid var(--border);
