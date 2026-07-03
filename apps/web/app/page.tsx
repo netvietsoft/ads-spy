@@ -272,15 +272,16 @@ export default function Home() {
       {showProxy && (
         <div className="fbauth-box">
           <p className="hint" style={{ marginTop: 0 }}>
-            IP máy chủ hay bị Google chặn (trang /sorry). Nhập proxy để tra Google. Định dạng:{' '}
-            <code>http://user:pass@host:port</code> (nên proxy residential VN). Để trống + Lưu = bỏ proxy.
+            IP máy chủ hay bị Google chặn (/sorry). Hỗ trợ <code>http</code>, <code>socks5</code>, <code>socks4</code>. Định dạng:{' '}
+            <code>socks5://host:port</code> · <code>http://host:port</code> · có auth: <code>socks5://user:pass@host:port</code>.
+            Nên proxy residential VN (proxy free thường chậm/chết nhanh). Để trống + Lưu = bỏ proxy.
           </p>
           <input
             className="fbauth-ta"
             style={{ fontFamily: 'ui-monospace, monospace' }}
             value={proxyInput}
             onChange={(e) => setProxyInput(e.target.value)}
-            placeholder="http://user:pass@host:port"
+            placeholder="socks5://160.250.54.9:9000  hoặc  http://103.69.96.15:7777"
           />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="primary" type="button" onClick={saveProxy} disabled={proxyBusy}>

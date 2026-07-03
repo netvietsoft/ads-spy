@@ -61,14 +61,28 @@ export class GoogleClient {
 
   private async applyProxy(url: string): Promise<void> {
     this.proxyUrl = (url || '').trim();
-    if (this.proxyUrl) {
-      try {
+    this.dispatcher = null;
+    if (!this.proxyUrl) return;
+    try {
+      if (/^socks[45]?:\/\//i.test(this.proxyUrl)) {
+        // SOCKS4/5 proxy
+        const { socksDispatcher } = await import('fetch-socks');
+        const u = new URL(this.proxyUrl);
+        const type = /^socks4/i.test(this.proxyUrl) ? 4 : 5;
+        this.dispatcher = socksDispatcher({
+          type: type as 4 | 5,
+          host: u.hostname,
+          port: Number(u.port) || 1080,
+          userId: u.username ? decodeURIComponent(u.username) : undefined,
+          password: u.password ? decodeURIComponent(u.password) : undefined,
+        });
+      } else {
+        // HTTP/HTTPS proxy (thêm http:// nếu người dùng dán thiếu scheme)
+        const httpUrl = /^https?:\/\//i.test(this.proxyUrl) ? this.proxyUrl : `http://${this.proxyUrl}`;
         const { ProxyAgent } = await import('undici');
-        this.dispatcher = new ProxyAgent(this.proxyUrl);
-      } catch {
-        this.dispatcher = null;
+        this.dispatcher = new ProxyAgent(httpUrl);
       }
-    } else {
+    } catch {
       this.dispatcher = null;
     }
   }
