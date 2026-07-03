@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import * as path from 'path';
 import type { BrowserContext, Page } from 'playwright';
+import { PrismaService } from '../prisma.service';
 import { parseFbGraphql } from './fb.parser';
 import { parsePagePosts } from './fb-posts.parser';
 import { FbAd, FbPagePostsResult, FbPost, FbReportResult, FbSearchResult, FbSpendRow } from './fb.types';
@@ -93,10 +94,14 @@ function parseLoose(text: string): any[] {
 
 const PROFILE_DIR = path.join(__dirname, '../../.pw-profile'); // giữ cookie/phiên FB giữa các lần gọi
 
+const COOKIE_KEY = 'fb_cookie';
+
 @Injectable()
 export class FbPlaywrightService implements OnModuleDestroy {
   private context: BrowserContext | null = null;
   private warmed = false;
+
+  constructor(private readonly prisma: PrismaService) {}
 
   // Context BỀN (persistent) → giữ cookie datr/phiên → ổn định, ít bị chặn.
   private async getContext(): Promise<BrowserContext> {
@@ -109,6 +114,20 @@ export class FbPlaywrightService implements OnModuleDestroy {
       viewport: { width: 1280, height: 900 },
       args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
     });
+    // Nạp lại cookie FB đã lưu trong DB → đăng nhập sống sót qua restart/kill.
+    try {
+      const saved = await this.prisma.fbSetting.findUnique({ where: { key: COOKIE_KEY } });
+      if (saved?.value) {
+        const pairs = parseCookieInput(saved.value);
+        if (pairs.length) {
+          await this.context.addCookies(
+            pairs.map((p) => ({ name: p.name, value: p.value, domain: '.facebook.com', path: '/' })),
+          );
+        }
+      }
+    } catch {
+      /* chưa có bảng/DB → bỏ qua */
+    }
     return this.context;
   }
 
@@ -145,6 +164,14 @@ export class FbPlaywrightService implements OnModuleDestroy {
     await ctx.addCookies(
       pairs.map((p) => ({ name: p.name, value: p.value, domain: '.facebook.com', path: '/' })),
     );
+    // Lưu vào DB để tự nạp lại khi khởi động (sống qua restart).
+    await this.prisma.fbSetting
+      .upsert({
+        where: { key: COOKIE_KEY },
+        create: { key: COOKIE_KEY, value: cookieString },
+        update: { value: cookieString },
+      })
+      .catch(() => undefined);
     return this.sessionStatus();
   }
 

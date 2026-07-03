@@ -43,6 +43,13 @@ model Creative {
   searchId     Int
 }
 
+// ---- Cấu hình FB (lưu cookie phiên để sống qua restart) ----
+model FbSetting {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value String
+}
+
 // ---- Đối thủ theo dõi (favorites) — cho cả Google lẫn Facebook ----
 model Favorite {
   id        Int      @id @default(autoincrement())
