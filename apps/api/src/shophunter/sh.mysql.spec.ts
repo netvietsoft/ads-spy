@@ -15,6 +15,12 @@ describe('buildOrderBy', () => {
     expect(s).not.toContain('DROP');
     expect(s).toContain('month_current_period_revenue'); // = default
   });
+  it('sort = key kế thừa từ Object.prototype (constructor/toString/__proto__) → dùng default', () => {
+    for (const key of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
+      const s = buildOrderBy(key, 'desc', SHOP_LOCAL_SORTS, 'revenue_month');
+      expect(s).toContain('month_current_period_revenue'); // = default, không lọt qua prototype chain
+    }
+  });
   it('dir lạ → mặc định DESC', () => {
     expect(buildOrderBy('revenue_month', 'weird', SHOP_LOCAL_SORTS, 'revenue_month').trim().endsWith('DESC')).toBe(true);
   });

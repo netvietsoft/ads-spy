@@ -25,7 +25,7 @@ export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   fetched_at: 'fetched_at',
 };
 export function buildOrderBy(sort: string, dir: string, map: Record<string, string>, def: string): string {
-  const expr = map[sort] || map[def];
+  const expr = Object.prototype.hasOwnProperty.call(map, sort) ? map[sort] : map[def];
   const d = String(dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
   return `ORDER BY (${expr}) IS NULL, (${expr}) ${d}`;
 }
