@@ -22,6 +22,7 @@ import { GEO_COUNTRIES } from './geo';
 import { CreativeModal } from './components/CreativeModal';
 import { FacebookPanel } from './components/FacebookPanel';
 import { TiktokPanel } from './components/TiktokPanel';
+import { ShopHunterPanel } from './components/ShopHunterPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
 import { LazyGrid } from './components/LazyGrid';
@@ -43,7 +44,7 @@ function fmtDate(unix?: number) {
 
 export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [source, setSource] = useState<'google' | 'facebook' | 'tiktok'>('google');
+  const [source, setSource] = useState<'google' | 'facebook' | 'tiktok' | 'shophunter'>('google');
   const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -323,10 +324,17 @@ export default function Home() {
         >
           🎵 TikTok Ads
         </button>
+        <button
+          className={`srcbtn ${source === 'shophunter' ? 'active' : ''}`}
+          onClick={() => setSource('shophunter')}
+        >
+          🛍 ShopHunter
+        </button>
       </div>
 
       {source === 'facebook' && <FacebookPanel />}
       {source === 'tiktok' && <TiktokPanel />}
+      {source === 'shophunter' && <ShopHunterPanel />}
 
       {source === 'google' && (
       <>
