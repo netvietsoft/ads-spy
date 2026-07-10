@@ -4,6 +4,7 @@ import { ShClient, ShBlockedError } from './sh.client';
 import { ShService } from './sh.service';
 import { ShMysql, HarvestState, SliceState } from './sh.mysql';
 import { parseSearch, parseShopColumns } from './sh.parser';
+import { shouldRunNow, pickSip, randInt } from './sh.harvest.util';
 
 const HARVEST_ID = 'shops';
 
@@ -35,15 +36,45 @@ export class ShHarvestService {
     private readonly mysql: ShMysql,
   ) {}
 
-  @Cron(process.env.SH_HARVEST_CRON || '0 3 * * *')
+  @Cron(process.env.SH_HARVEST_CRON || '*/30 * * * *')
   async scheduled(): Promise<void> {
-    if (process.env.SH_HARVEST_ENABLED !== 'true') return;
     try {
-      const r = await this.runHarvest({});
-      this.logger.log(`Cron harvest xong: ${JSON.stringify(r)}`);
+      const r = await this.tick();
+      if (r.ran) this.logger.log(`Cron tick: ${JSON.stringify(r)}`);
     } catch (e) {
-      this.logger.error(`Cron harvest lỗi: ${(e as Error).message}`);
+      this.logger.error(`Cron tick lỗi: ${(e as Error).message}`);
     }
+  }
+
+  async tick(): Promise<{ ran: boolean; reason: string; processed?: number; sliceKey?: string }> {
+    if (process.env.SH_HARVEST_ENABLED !== 'true') return { ran: false, reason: 'disabled' };
+    const cap = Number(process.env.SH_HARVEST_DAILY) || 500;
+    const activeStart = Number(process.env.SH_HARVEST_ACTIVE_START) || 8;
+    const activeEnd = Number(process.env.SH_HARVEST_ACTIVE_END) || 23;
+    const skipPctRaw = Number(process.env.SH_HARVEST_SKIP_PCT);
+    const skipPct = Number.isFinite(skipPctRaw) ? skipPctRaw : 30;
+    const today = new Date().toISOString().slice(0, 10);
+    const used = await this.mysql.getDailyCount(today);
+    const decision = shouldRunNow({ hour: new Date().getHours(), rand: Math.random(), used, cap, activeStart, activeEnd, skipPct });
+    if (!decision.run) return { ran: false, reason: decision.reason };
+
+    const jitterRaw = Number(process.env.SH_HARVEST_JITTER_MS);
+    const jitterMs = Number.isFinite(jitterRaw) ? jitterRaw : 480000;
+    if (jitterMs > 0) await this.sleep(randInt(0, jitterMs));
+
+    const sipMin = Number(process.env.SH_HARVEST_SIP_MIN) || 10;
+    const sipMax = Number(process.env.SH_HARVEST_SIP_MAX) || 25;
+    const sip = pickSip(cap - used, sipMin, sipMax);
+    const summary: any = await this.runHarvest({ daily: sip });
+    const processed = Number(summary?.processed) || 0;
+    await this.mysql.addDailyCount(today, processed);
+    return { ran: true, reason: 'ok', processed, sliceKey: summary?.sliceKey };
+  }
+
+  getDaily(): Promise<{ day: string; used: number; cap: number }> {
+    const day = new Date().toISOString().slice(0, 10);
+    const cap = Number(process.env.SH_HARVEST_DAILY) || 500;
+    return this.mysql.getDailyCount(day).then((used) => ({ day, used, cap }));
   }
 
   getStatus(): Promise<HarvestState> {
@@ -69,8 +100,7 @@ export class ShHarvestService {
 
     const sort = process.env.SH_HARVEST_SORT || 'month_current_period_revenue';
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 1000);
-    const delayMs = Number(process.env.SH_HARVEST_DELAY_MS) || 500;
-    const concurrency = Math.max(1, Number(process.env.SH_HARVEST_CONCURRENCY) || 2);
+    const concurrency = Math.max(1, Number(process.env.SH_HARVEST_CONCURRENCY) || 1);
     const maxRetries = 5;
 
     const state = await this.mysql.getHarvestState(HARVEST_ID);
@@ -121,7 +151,7 @@ export class ShHarvestService {
             if (r.ok) ok++; else failed++;
           }
           if (blockedInPage) break;
-          await this.sleep(delayMs);
+          await this.sleep(this.randDelayMs());
         }
 
         if (blockedInPage) {
@@ -165,8 +195,7 @@ export class ShHarvestService {
     this.running = true;
     const sort = process.env.SH_HARVEST_SORT || 'month_current_period_revenue';
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 1000);
-    const delayMs = Number(process.env.SH_HARVEST_DELAY_MS) || 500;
-    const concurrency = Math.max(1, Number(process.env.SH_HARVEST_CONCURRENCY) || 2);
+    const concurrency = Math.max(1, Number(process.env.SH_HARVEST_CONCURRENCY) || 1);
     const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
     const maxRetries = 5;
 
@@ -203,7 +232,7 @@ export class ShHarvestService {
             if (r.outcome === 'skip') skipped++; else if (r.outcome === 'ok') ok++; else failed++;
           }
           if (blocked) break;
-          await this.sleep(delayMs);
+          await this.sleep(this.randDelayMs());
         }
         if (blocked) { status = 'blocked'; break; }
 
@@ -283,5 +312,11 @@ export class ShHarvestService {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
+  }
+
+  private randDelayMs(): number {
+    const min = Number(process.env.SH_HARVEST_DELAY_MIN_MS) || Number(process.env.SH_HARVEST_DELAY_MS) || 1500;
+    const max = Number(process.env.SH_HARVEST_DELAY_MAX_MS) || Number(process.env.SH_HARVEST_DELAY_MS) || 3000;
+    return randInt(Math.min(min, max), Math.max(min, max));
   }
 }

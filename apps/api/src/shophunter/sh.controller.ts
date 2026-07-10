@@ -140,4 +140,14 @@ export class ShController {
     await this.harvest.resetSlices();
     return this.harvest.reset();
   }
+
+  @Post('sh/harvest/tick')
+  harvestTick() {
+    return this.harvest.tick();
+  }
+
+  @Get('sh/harvest/daily')
+  harvestDaily() {
+    return this.harvest.getDaily();
+  }
 }
