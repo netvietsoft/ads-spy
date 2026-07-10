@@ -418,12 +418,20 @@ export async function shSetToken(refreshToken: string): Promise<ShTokenStatus> {
 }
 export async function shExplore(
   type: 'shops' | 'products',
-  params: { sort?: string; q?: string; from?: number; categories?: string } = {},
+  params: { sort?: string; q?: string; from?: number; categories?: string; filters?: Record<string, { gte: number | null; lte: number | null }> } = {},
 ): Promise<ShExplore> {
   const qs = new URLSearchParams();
   if (params.sort) qs.set('sort', params.sort);
   if (params.q) qs.set('q', params.q);
   if (params.from) qs.set('from', String(params.from));
   if (params.categories) qs.set('categories', params.categories);
+  if (params.filters && Object.keys(params.filters).length) qs.set('filters', JSON.stringify(params.filters));
   return jsonOrThrow(await fetch(`${API}/api/sh/${type}?${qs.toString()}`));
+}
+export interface ShDetail { detail: any; revenueChart: { date_str: string; revenue: number | null; sale_count: number | null }[]; adsChart?: any; similar?: any[]; cached: boolean }
+export async function shShopDetail(id: string): Promise<ShDetail> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/shop/${encodeURIComponent(id)}`));
+}
+export async function shProductDetail(shopId: string, productId: string): Promise<ShDetail> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/product/${encodeURIComponent(shopId)}/${encodeURIComponent(productId)}`));
 }
