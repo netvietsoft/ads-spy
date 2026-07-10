@@ -4,6 +4,32 @@ import { ShBlockedError } from './sh.client';
 
 type Table = 'sh_shop' | 'sh_product';
 
+const numExpr = (path: string) => `CAST(JSON_EXTRACT(raw, '${path}') AS DECIMAL(30,6))`;
+export const SHOP_LOCAL_SORTS: Record<string, string> = {
+  revenue_day: numExpr('$.day_current_period_revenue'),
+  revenue_week: numExpr('$.week_current_period_revenue'),
+  revenue_month: numExpr('$.month_current_period_revenue'),
+  growth_day: numExpr('$.day_revenue_percent_change'),
+  growth_week: numExpr('$.week_revenue_percent_change'),
+  growth_month: numExpr('$.month_revenue_percent_change'),
+  followers: numExpr('$.fb_followers'),
+  ads: numExpr('$.active_ad_count'),
+  sku: numExpr('$.sku_count'),
+  harvested_at: 'harvested_at',
+  fetched_at: 'fetched_at',
+};
+export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
+  revenue_day: numExpr('$.day_current_period_revenue'),
+  revenue_month: numExpr('$.month_current_period_revenue'),
+  price: numExpr('$.price'),
+  fetched_at: 'fetched_at',
+};
+export function buildOrderBy(sort: string, dir: string, map: Record<string, string>, def: string): string {
+  const expr = map[sort] || map[def];
+  const d = String(dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  return `ORDER BY (${expr}) IS NULL, (${expr}) ${d}`;
+}
+
 export interface HarvestState {
   id: string;
   cursorFrom: number;
@@ -373,5 +399,29 @@ export class ShMysql implements OnModuleInit {
        ON DUPLICATE KEY UPDATE count = count + VALUES(count), updated_at = VALUES(updated_at)`,
       [day, n, Date.now()],
     );
+  }
+
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number }): Promise<{ items: any[]; total: number }> {
+    await this.ensureReady();
+    const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
+    const [rows] = await this.pool!.query(
+      `SELECT shop_id, raw, (detail_raw IS NOT NULL) AS harvested, harvested_at FROM sh_shop ${orderBy} LIMIT ? OFFSET ?`,
+      [o.limit, o.offset],
+    );
+    const [cnt] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_shop');
+    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at) }));
+    return { items, total: Number((cnt as any[])[0].n) || 0 };
+  }
+
+  async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number }): Promise<{ items: any[]; total: number }> {
+    await this.ensureReady();
+    const orderBy = buildOrderBy(o.sort, o.dir, PRODUCT_LOCAL_SORTS, 'revenue_month');
+    const [rows] = await this.pool!.query(
+      `SELECT product_id, raw, fetched_at FROM sh_product ${orderBy} LIMIT ? OFFSET ?`,
+      [o.limit, o.offset],
+    );
+    const [cnt] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_product');
+    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at) }));
+    return { items, total: Number((cnt as any[])[0].n) || 0 };
   }
 }

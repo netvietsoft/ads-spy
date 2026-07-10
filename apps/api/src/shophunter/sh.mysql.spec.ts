@@ -1,4 +1,24 @@
-import { rowToHarvestState } from './sh.mysql';
+import { rowToHarvestState, buildOrderBy, SHOP_LOCAL_SORTS } from './sh.mysql';
+
+describe('buildOrderBy', () => {
+  it('map key hợp lệ + dir desc, NULL xuống cuối', () => {
+    const s = buildOrderBy('revenue_month', 'desc', SHOP_LOCAL_SORTS, 'revenue_month');
+    expect(s).toContain('month_current_period_revenue');
+    expect(s).toContain('IS NULL');
+    expect(s.trim().endsWith('DESC')).toBe(true);
+  });
+  it('dir=asc → ASC', () => {
+    expect(buildOrderBy('growth_month', 'asc', SHOP_LOCAL_SORTS, 'revenue_month').trim().endsWith('ASC')).toBe(true);
+  });
+  it('sort không whitelist / injection → dùng default (không chèn input)', () => {
+    const s = buildOrderBy('x; DROP TABLE sh_shop', 'desc', SHOP_LOCAL_SORTS, 'revenue_month');
+    expect(s).not.toContain('DROP');
+    expect(s).toContain('month_current_period_revenue'); // = default
+  });
+  it('dir lạ → mặc định DESC', () => {
+    expect(buildOrderBy('revenue_month', 'weird', SHOP_LOCAL_SORTS, 'revenue_month').trim().endsWith('DESC')).toBe(true);
+  });
+});
 
 describe('rowToHarvestState', () => {
   it('row rỗng → state mặc định cursor 0', () => {
