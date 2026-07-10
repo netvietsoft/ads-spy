@@ -1,0 +1,55 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { ShDetail, shShopDetail, shAssetProxy } from '../api';
+import { ShChart } from './ShChart';
+
+const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
+
+export function ShShopModal({ shopId, onClose }: { shopId: string; onClose: () => void }) {
+  const [d, setD] = useState<ShDetail | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { shShopDetail(shopId).then(setD).catch((e) => setErr((e as Error).message)); }, [shopId]);
+  const s = d?.detail;
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="row">
+          <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {s?.shop_favicon_external ? <img src={shAssetProxy(s.shop_favicon_external)} width={28} height={28} style={{ borderRadius: 6 }} alt="" /> : null}
+            <span>{s?.shop_title || s?.url || 'Shop'}</span>
+          </div>
+          <button className="ghost" onClick={onClose}>Đóng ✕</button>
+        </div>
+        {err && <div className="err">{err}</div>}
+        {!d && !err && <p className="hint"><span className="spinner" /> Đang tải…</p>}
+        {s && (
+          <>
+            <a className="dl" href={`https://${s.url}`} target="_blank" rel="noreferrer">{s.url} ↗</a>
+            <div style={{ display: 'flex', gap: 16, margin: '12px 0', flexWrap: 'wrap' }}>
+              <span>Day <b>{money(s.day_current_period_revenue)}</b></span>
+              <span>Week <b>{money(s.week_current_period_revenue)}</b></span>
+              <span>Month <b>{money(s.month_current_period_revenue)}</b></span>
+              <span>Ads <b>{s.active_ad_count ?? 0}</b></span>
+              <span>SKU <b>{s.sku_count ?? 0}</b></span>
+              <span>{s.country} · {s.currency}</span>
+            </div>
+            <h4>Doanh thu 90 ngày</h4>
+            <ShChart points={(d!.revenueChart || []).map((p) => ({ date_str: p.date_str, value: p.revenue }))} />
+            {Array.isArray(s.top_revenue_products) && s.top_revenue_products.length > 0 && (
+              <>
+                <h4>Top Revenue Products</h4>
+                <ul>{s.top_revenue_products.slice(0, 10).map((p: any, i: number) => <li key={i}>{p.product_title || p.title || '(sp)'} — {money(p.week_current_period_revenue ?? p.revenue)}</li>)}</ul>
+              </>
+            )}
+            {Array.isArray(d!.similar) && d!.similar.length > 0 && (
+              <>
+                <h4>Shop tương tự</h4>
+                <ul>{d!.similar.slice(0, 8).map((x: any) => <li key={x.shop_id}>{x.shop_title || x.url} — Day {money(x.day_current_period_revenue)}</li>)}</ul>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

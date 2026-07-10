@@ -4,14 +4,15 @@ import {
   ShExplore, ShSort, ShTokenStatus, shExplore, shSorts, shSetToken, shTokenStatus, shAssetProxy,
 } from '../api';
 import { LazyGrid } from './LazyGrid';
+import { ShShopModal } from './ShShopModal';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '');
 
-function ShopCard({ s }: { s: any }) {
+function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
   const fav = s.shop_favicon_external || '';
   return (
-    <div className="fbcard">
+    <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
       <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         {fav ? <img src={shAssetProxy(fav)} alt="" width={24} height={24} style={{ borderRadius: 6 }} loading="lazy" /> : null}
         <span>{s.shop_title || s.url}</span>
@@ -23,7 +24,7 @@ function ShopCard({ s }: { s: any }) {
       </div>
       <div className="fbplat">Ads {s.active_ad_count ?? 0} · SKU {s.sku_count ?? 0} · {s.country} · {s.currency}</div>
       <div className="fbfoot">
-        <a className="dl" href={`https://${s.url}`} target="_blank" rel="noreferrer">↗ Mở store</a>
+        <a className="dl" href={`https://${s.url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Mở store</a>
       </div>
     </div>
   );
@@ -56,6 +57,7 @@ export function ShopHunterPanel() {
   const [err, setErr] = useState<string | null>(null);
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<ShTokenStatus | null>(null);
+  const [openShop, setOpenShop] = useState<string | null>(null);
 
   useEffect(() => { shSorts().then(setSorts).catch(() => {}); shTokenStatus().then(setStatus).catch(() => {}); }, []);
 
@@ -111,7 +113,7 @@ export function ShopHunterPanel() {
         className="fbgrid"
         items={items}
         render={(it) => tab === 'shops'
-          ? <ShopCard key={it.shop_id} s={it} />
+          ? <ShopCard key={it.shop_id} s={it} onOpen={() => setOpenShop(it.shop_id)} />
           : <ProductCard key={it.product_id} p={it} />}
       />
 
@@ -120,6 +122,8 @@ export function ShopHunterPanel() {
           <button className="srcbtn" onClick={() => load(false)} disabled={loading}>Tải thêm</button>
         </div>
       )}
+
+      {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
     </div>
   );
 }
