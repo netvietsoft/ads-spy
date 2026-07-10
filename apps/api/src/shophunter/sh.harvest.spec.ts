@@ -108,6 +108,30 @@ describe('ShHarvestService.runHarvest', () => {
   });
 });
 
+describe('ShHarvestService.runHarvestSlices — dedup skip-no-wipe', () => {
+  it('shop tươi (isShopFresh=true) → SKIP không refetch/upsert (giữ detail cũ); shop mới → enrich', async () => {
+    const { h, client, svc, mysql } = deps();
+    // slices-path mocks (deps() harness không có sẵn 4 method này)
+    mysql.ensureSlices = jest.fn().mockResolvedValue(undefined);
+    mysql.getNextSlice = jest.fn()
+      .mockResolvedValueOnce({ sliceKey: 'cat:aa', dimension: 'category', filterValue: 'aa', seq: 0, cursorFrom: 0, totalHits: 2, done: false, lastRunAt: null })
+      .mockResolvedValueOnce(null); // hết lát → vòng lặp dừng sau 1 lát
+    mysql.setSlice = jest.fn().mockResolvedValue(undefined);
+    mysql.isShopFresh = jest.fn().mockImplementation((shopId: string) => Promise.resolve(shopId === 'A')); // A tươi, B chưa
+    client.search.mockResolvedValueOnce({ items: [{ shop_id: 'A' }, { shop_id: 'B' }], next_from_value: 2, total_hits: 2 });
+
+    const r = await h.runHarvestSlices({});
+
+    // A bị skip HOÀN TOÀN: không gọi shopDetail, không upsert (đảm bảo không xoá detail cũ)
+    expect(svc.shopDetail).toHaveBeenCalledTimes(1);
+    expect(svc.shopDetail).toHaveBeenCalledWith('B');
+    expect(mysql.upsertShop).toHaveBeenCalledTimes(1);
+    expect(mysql.upsertShop.mock.calls[0][0]).toBe('B');
+    expect(r).toMatchObject({ ok: 1, skipped: 1, failed: 0, processed: 2, sliceKey: 'cat:aa' });
+    expect(['ok', 'all_done']).toContain(r.status);
+  });
+});
+
 describe('SH_HARVEST_SLICES', () => {
   it('53 lát: 25 category (seq 0-24) rồi 28 country (seq 25-52)', () => {
     expect(SH_HARVEST_SLICES).toHaveLength(53);
