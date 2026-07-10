@@ -77,8 +77,12 @@ export class ShAuth {
   async setRefreshToken(token: string): Promise<{ valid: boolean; email?: string; expiresAt?: number }> {
     const clean = (token || '').trim();
     if (!clean) return { valid: false };
-    // validate bằng cách mint thử
-    await this.mint(clean);
+    // validate bằng cách mint thử; token hỏng → không lưu, trả về valid:false
+    try {
+      await this.mint(clean);
+    } catch {
+      return { valid: false };
+    }
     await this.prisma.fbSetting
       .upsert({ where: { key: TOKEN_KEY }, create: { key: TOKEN_KEY, value: clean }, update: { value: clean } })
       .catch(() => undefined);
