@@ -1,0 +1,9 @@
+export type ShListOption = { name: string; code: string };
+export type ShListGroup = { group: string; key: string; options: ShListOption[] };
+const LOCALE: ShListOption[] = [ { name: 'English', code: 'en' }, { name: 'French', code: 'fr' }, { name: 'German', code: 'de' }, { name: 'Spanish', code: 'es' }, { name: 'Dutch', code: 'nl' } ];
+const COUNTRY: ShListOption[] = [ { name: 'United States', code: 'US' }, { name: 'Canada', code: 'CA' }, { name: 'United Kingdom', code: 'GB' }, { name: 'Germany', code: 'DE' }, { name: 'France', code: 'FR' }, { name: 'Ireland', code: 'IE' }, { name: 'Italy', code: 'IT' }, { name: 'Netherlands', code: 'NL' }, { name: 'New Zealand', code: 'NZ' }, { name: 'Norway', code: 'NO' }, { name: 'Spain', code: 'ES' }, { name: 'Sweden', code: 'SE' }, { name: 'Switzerland', code: 'CH' }, { name: 'Turkey', code: 'TR' }, { name: 'Israel', code: 'IL' }, { name: 'Finland', code: 'FI' }, { name: 'Denmark', code: 'DK' }, { name: 'Belgium', code: 'BE' }, { name: 'Greece', code: 'GR' }, { name: 'Australia', code: 'AU' }, { name: 'India', code: 'IN' }, { name: 'Pakistan', code: 'PK' }, { name: 'Austria', code: 'AT' }, { name: 'Brazil', code: 'BR' }, { name: 'Poland', code: 'PL' }, { name: 'Portugal', code: 'PT' }, { name: 'Luxembourg', code: 'LU' }, { name: 'Hungary', code: 'HU' } ];
+const EXCLUDE: ShListOption[] = [ { name: 'India', code: 'IN' }, { name: 'Pakistan', code: 'PK' } ];
+export const SH_LIST_DEFS: { shops: ShListGroup[]; products: ShListGroup[] } = {
+  shops: [ { group: 'Locale', key: 'locale', options: LOCALE }, { group: 'Country', key: 'country', options: COUNTRY }, { group: 'Exclude Country', key: 'exclude_country', options: EXCLUDE } ],
+  products: [ { group: 'Locale', key: 'shop_locale', options: LOCALE }, { group: 'Country', key: 'shop_country', options: COUNTRY }, { group: 'Exclude Country', key: 'exclude_country', options: EXCLUDE } ],
+};

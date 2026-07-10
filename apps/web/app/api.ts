@@ -418,7 +418,7 @@ export async function shSetToken(refreshToken: string): Promise<ShTokenStatus> {
 }
 export async function shExplore(
   type: 'shops' | 'products',
-  params: { sort?: string; q?: string; from?: number; categories?: string; filters?: Record<string, { gte: number | string | null; lte: number | string | null }> } = {},
+  params: { sort?: string; q?: string; from?: number; categories?: string; filters?: Record<string, { gte: number | string | null; lte: number | string | null }>; lists?: Record<string, string[]> } = {},
 ): Promise<ShExplore> {
   const qs = new URLSearchParams();
   if (params.sort) qs.set('sort', params.sort);
@@ -426,6 +426,7 @@ export async function shExplore(
   if (params.from) qs.set('from', String(params.from));
   if (params.categories) qs.set('categories', params.categories);
   if (params.filters && Object.keys(params.filters).length) qs.set('filters', JSON.stringify(params.filters));
+  if (params.lists && Object.keys(params.lists).length) qs.set('lists', JSON.stringify(params.lists));
   return jsonOrThrow(await fetch(`${API}/api/sh/${type}?${qs.toString()}`));
 }
 export interface ShDetail { detail: any; revenueChart: { date_str: string; revenue: number | null; sale_count: number | null }[]; adsChart?: any; similar?: any[]; cached: boolean }

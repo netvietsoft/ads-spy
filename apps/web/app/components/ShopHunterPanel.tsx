@@ -8,6 +8,7 @@ import { ShShopModal } from './ShShopModal';
 import { ShProductModal } from './ShProductModal';
 import { ShFilters } from './ShFilters';
 import { ShCategories } from './ShCategories';
+import { ShListFilters } from './ShListFilters';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '');
@@ -58,6 +59,7 @@ export function ShopHunterPanel() {
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState<Record<string, { gte: number | string | null; lte: number | string | null }>>({});
   const [cats, setCats] = useState<string[]>([]);
+  const [lists, setLists] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [token, setToken] = useState('');
@@ -71,7 +73,7 @@ export function ShopHunterPanel() {
     setLoading(true); setErr(null);
     try {
       const nextFrom = reset ? 0 : from;
-      const r: ShExplore = await shExplore(tab, { sort: sort || undefined, q: q || undefined, from: nextFrom, filters, categories: cats.join(',') });
+      const r: ShExplore = await shExplore(tab, { sort: sort || undefined, q: q || undefined, from: nextFrom, filters, categories: cats.join(','), lists });
       setItems(reset ? r.items : [...items, ...r.items]);
       setTotal(r.totalHits);
       setFrom(typeof r.nextFromValue === 'number' ? r.nextFromValue : nextFrom + r.items.length);
@@ -99,8 +101,8 @@ export function ShopHunterPanel() {
       {status?.valid && <div className="savedbanner">Đã kết nối ShopHunter: {status.email}</div>}
 
       <div className="sources" style={{ marginTop: 8 }}>
-        <button type="button" className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); setTotal(0); setFilters({}); setCats([]); }}>Shops</button>
-        <button type="button" className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setItems([]); setFrom(0); setTotal(0); setFilters({}); setCats([]); }}>Products</button>
+        <button type="button" className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); setTotal(0); setFilters({}); setCats([]); setLists({}); }}>Shops</button>
+        <button type="button" className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setItems([]); setFrom(0); setTotal(0); setFilters({}); setCats([]); setLists({}); }}>Products</button>
       </div>
 
       <div className="layout" style={{ marginTop: 8 }}>
@@ -109,6 +111,7 @@ export function ShopHunterPanel() {
           <ShFilters type={tab} value={filters} onChange={setFilters} />
           <div className="shfgtitle" style={{ marginTop: 14 }}>Danh mục</div>
           <ShCategories selected={cats} onChange={setCats} />
+          <ShListFilters type={tab} value={lists} onChange={setLists} />
           <button className="srcbtn active" style={{ width: '100%', marginTop: 10 }} onClick={() => load(true)} disabled={loading}>Áp dụng lọc</button>
         </div>
 
