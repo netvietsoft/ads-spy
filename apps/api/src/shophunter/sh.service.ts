@@ -45,6 +45,36 @@ export class ShService {
     return { items: parsed.items, nextFromValue: parsed.nextFromValue, totalHits: parsed.totalHits, cached: false };
   }
 
+  async shopDetail(shopId: string) {
+    const key = `shop:${shopId}`;
+    const cached = await this.mysql.getDetail(key, TTL_MS);
+    if (cached) return { ...cached, cached: true };
+    const [detailR, revR, adsR, simR] = await Promise.all([
+      this.client.shopDetail(shopId), this.client.shopChartRevenue(shopId),
+      this.client.shopChartAds(shopId), this.client.shopsSimilar(shopId),
+    ]);
+    const out = {
+      detail: detailR?.item?.item ?? null,
+      revenueChart: Array.isArray(revR?.items) ? revR.items : [],
+      adsChart: adsR?.history ?? null,
+      similar: Array.isArray(simR?.items) ? simR.items : [],
+    };
+    await this.mysql.setDetail(key, out);
+    return { ...out, cached: false };
+  }
+
+  async productDetail(shopId: string, productId: string) {
+    const key = `product:${shopId}:${productId}`;
+    const cached = await this.mysql.getDetail(key, TTL_MS);
+    if (cached) return { ...cached, cached: true };
+    const [detailR, revR] = await Promise.all([
+      this.client.productDetail(shopId, productId), this.client.productChartRevenue(shopId, productId),
+    ]);
+    const out = { detail: detailR?.item?.item ?? null, revenueChart: Array.isArray(revR?.items) ? revR.items : [] };
+    await this.mysql.setDetail(key, out);
+    return { ...out, cached: false };
+  }
+
   setToken(token: string) {
     return this.auth.setRefreshToken(token);
   }

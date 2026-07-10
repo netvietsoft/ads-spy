@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Res, UseFilters } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Res, UseFilters } from '@nestjs/common';
 import type { Response } from 'express';
 import { Readable } from 'stream';
 import { ShService } from './sh.service';
@@ -69,6 +69,18 @@ export class ShController {
     return this.svc.explore('products', {
       sort: sort || SH_SORTS_PRODUCTS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters),
     });
+  }
+
+  @Get('sh/shop/:id')
+  shopDetail(@Param('id') id: string) {
+    if (!id) throw new BadRequestException('Thiếu shop id.');
+    return this.svc.shopDetail(id);
+  }
+
+  @Get('sh/product/:shopId/:productId')
+  productDetail(@Param('shopId') shopId: string, @Param('productId') productId: string) {
+    if (!shopId || !productId) throw new BadRequestException('Thiếu id.');
+    return this.svc.productDetail(shopId, productId);
   }
 
   @Get('sh/asset')
