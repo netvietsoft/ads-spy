@@ -418,7 +418,7 @@ export async function shSetToken(refreshToken: string): Promise<ShTokenStatus> {
 }
 export async function shExplore(
   type: 'shops' | 'products',
-  params: { sort?: string; q?: string; from?: number; categories?: string; filters?: Record<string, { gte: number | null; lte: number | null }> } = {},
+  params: { sort?: string; q?: string; from?: number; categories?: string; filters?: Record<string, { gte: number | string | null; lte: number | string | null }> } = {},
 ): Promise<ShExplore> {
   const qs = new URLSearchParams();
   if (params.sort) qs.set('sort', params.sort);

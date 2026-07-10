@@ -56,7 +56,7 @@ export function ShopHunterPanel() {
   const [items, setItems] = useState<any[]>([]);
   const [from, setFrom] = useState(0);
   const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState<Record<string, { gte: number | null; lte: number | null }>>({});
+  const [filters, setFilters] = useState<Record<string, { gte: number | string | null; lte: number | string | null }>>({});
   const [cats, setCats] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
