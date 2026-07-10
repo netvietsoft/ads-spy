@@ -84,6 +84,35 @@ export class ShClient {
     }
   }
 
+  private async post(path: string, data: unknown): Promise<any> {
+    const doCall = async (token: string) =>
+      fetch(`https://app.shophunter.io/prod${path}`, {
+        method: 'POST',
+        headers: {
+          authorization: token, 'content-type': 'application/json',
+          origin: 'https://app.shophunter.io', referer: 'https://app.shophunter.io/shops/view',
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+        },
+        body: JSON.stringify(data),
+      });
+    let token = await this.auth.getToken();
+    let res: Response;
+    try {
+      res = await doCall(token);
+      if (res.status === 401 || res.status === 403) { this.auth.invalidate(); token = await this.auth.getToken(); res = await doCall(token); }
+    } catch (e) { throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`); }
+    const text = await res.text();
+    if (!res.ok) throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`);
+    try { return JSON.parse(text); } catch { throw new ShBlockedError(); }
+  }
+
+  shopDetail(shopId: string) { return this.post('/v3/shop', { shop_id: shopId }); }
+  shopChartRevenue(shopId: string) { return this.post('/v3/shop/chart/revenue', { shop_id: shopId }); }
+  shopChartAds(shopId: string) { return this.post('/v3/shop/chart/ads', { shop_id: shopId }); }
+  shopsSimilar(shopId: string) { return this.post('/v3/shops/similar', { shop_id: shopId }); }
+  productDetail(shopId: string, productId: string) { return this.post('/v3/product', { shop_id: shopId, product_id: productId }); }
+  productChartRevenue(shopId: string, productId: string) { return this.post('/v3/product/chart/revenue', { shop_id: shopId, product_id: productId }); }
+
   async fetchAsset(url: string): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
     const res = await fetch(url, {
       headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/147.0.0.0 Safari/537.36' },

@@ -41,6 +41,8 @@ export class ShMysql implements OnModuleInit {
       query_hash VARCHAR(64) PRIMARY KEY, search_type VARCHAR(16), sort_by VARCHAR(64),
       search_string VARCHAR(255), filters LONGTEXT, from_count INT,
       item_ids LONGTEXT NOT NULL, next_from_value VARCHAR(64), total_hits INT, fetched_at BIGINT NOT NULL)`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_detail_cache (
+      cache_key VARCHAR(128) PRIMARY KEY, raw LONGTEXT NOT NULL, fetched_at BIGINT NOT NULL)`);
     this.pool = pool;
   }
 
@@ -112,6 +114,24 @@ export class ShMysql implements OnModuleInit {
         meta.fromCount, JSON.stringify(meta.itemIds), meta.nextFromValue == null ? null : String(meta.nextFromValue),
         meta.totalHits, Date.now(),
       ],
+    );
+  }
+
+  async getDetail(cacheKey: string, ttlMs: number): Promise<any | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT raw, fetched_at FROM sh_detail_cache WHERE cache_key = ?', [cacheKey]);
+    const row = (rows as any[])[0];
+    if (!row) return null;
+    if (Date.now() - Number(row.fetched_at) > ttlMs) return null;
+    return JSON.parse(row.raw);
+  }
+
+  async setDetail(cacheKey: string, raw: unknown): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      `INSERT INTO sh_detail_cache (cache_key, raw, fetched_at) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE raw = VALUES(raw), fetched_at = VALUES(fetched_at)`,
+      [cacheKey, JSON.stringify(raw), Date.now()],
     );
   }
 }
