@@ -19,6 +19,23 @@ function parseCategories(csv?: string): string[] {
   return (csv || '').split(',').map((s) => s.trim()).filter(Boolean);
 }
 
+function parseFilters(raw?: string): Record<string, { gte: number | null; lte: number | null }> {
+  if (!raw) return {};
+  try {
+    const o = JSON.parse(raw);
+    const out: Record<string, { gte: number | null; lte: number | null }> = {};
+    for (const k of Object.keys(o || {})) {
+      const v = o[k] || {};
+      const gte = v.gte === '' || v.gte == null ? null : Number(v.gte);
+      const lte = v.lte === '' || v.lte == null ? null : Number(v.lte);
+      if (gte != null || lte != null) out[k] = { gte: Number.isFinite(gte as number) ? gte : null, lte: Number.isFinite(lte as number) ? lte : null };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 @Controller()
 @UseFilters(ShBlockedFilter)
 export class ShController {
@@ -41,16 +58,16 @@ export class ShController {
   }
 
   @Get('sh/shops')
-  shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string) {
+  shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string) {
     return this.svc.explore('shops', {
-      sort: sort || SH_SORTS_SHOPS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories),
+      sort: sort || SH_SORTS_SHOPS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters),
     });
   }
 
   @Get('sh/products')
-  products(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string) {
+  products(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string) {
     return this.svc.explore('products', {
-      sort: sort || SH_SORTS_PRODUCTS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories),
+      sort: sort || SH_SORTS_PRODUCTS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters),
     });
   }
 

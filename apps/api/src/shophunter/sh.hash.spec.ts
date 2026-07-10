@@ -1,7 +1,7 @@
 import { shQueryHash } from './sh.hash';
 
 describe('shQueryHash', () => {
-  const base = { sort: 'day_revenue_percent_change', q: '', categoryIds: [] as string[], from: 0 };
+  const base = { sort: 'day_revenue_percent_change', q: '', categoryIds: [] as string[], from: 0, filters: {} };
 
   it('deterministic cho cùng input', () => {
     expect(shQueryHash('shops', base)).toBe(shQueryHash('shops', base));
@@ -22,5 +22,10 @@ describe('shQueryHash', () => {
   it('không phụ thuộc thứ tự categoryIds', () => {
     expect(shQueryHash('shops', { ...base, categoryIds: ['a', 'b'] }))
       .toBe(shQueryHash('shops', { ...base, categoryIds: ['b', 'a'] }));
+  });
+
+  it('khác nhau khi filters đổi', () => {
+    const h = shQueryHash('shops', base);
+    expect(shQueryHash('shops', { ...base, filters: { day_current_period_revenue: { gte: 100, lte: null } } })).not.toBe(h);
   });
 });

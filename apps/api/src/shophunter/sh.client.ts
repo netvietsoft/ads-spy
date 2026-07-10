@@ -35,14 +35,17 @@ export class ShClient {
 
   async search(
     searchType: 'shops' | 'products',
-    opts: { sort: string; q: string; categoryIds: string[]; from: number },
+    opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | null; lte: number | null }> },
   ): Promise<any> {
+    const numeric = Object.fromEntries(
+      Object.entries(opts.filters || {}).map(([k, v]) => [k, { gte: v.gte ?? null, lte: v.lte ?? null, is_enabled: true }]),
+    );
     const body = JSON.stringify({
       query: {
         sort_by: opts.sort,
         search_string: opts.q || '',
         from_count: opts.from || 0,
-        search_filters: { must_include_category_ids: opts.categoryIds || [] },
+        search_filters: { ...numeric, must_include_category_ids: opts.categoryIds || [] },
         search_type: searchType,
         is_explore: true,
       },
