@@ -390,3 +390,40 @@ export async function fbGetSaved(id: number): Promise<FbSearchResult> {
 export async function getSearch(id: number): Promise<SearchResponse> {
   return jsonOrThrow(await fetch(`${API}/api/search/${id}`));
 }
+
+// ---- ShopHunter ----
+export interface ShShop { shop_id: string; [k: string]: any }
+export interface ShProduct { product_id: string; [k: string]: any }
+export interface ShExplore<T = any> { items: T[]; nextFromValue: string | number | null; totalHits: number; cached: boolean }
+export interface ShSort { value: string; label: string }
+export interface ShTokenStatus { valid: boolean; email?: string; expiresAt?: number }
+
+export function shAssetProxy(url: string, download = false): string {
+  return `${API}/api/sh/asset?url=${encodeURIComponent(url)}${download ? '&download=1' : ''}`;
+}
+export async function shSorts(): Promise<{ shops: ShSort[]; products: ShSort[] }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/sorts`));
+}
+export async function shTokenStatus(): Promise<ShTokenStatus> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/token/status`));
+}
+export async function shSetToken(refreshToken: string): Promise<ShTokenStatus> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/sh/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    }),
+  );
+}
+export async function shExplore(
+  type: 'shops' | 'products',
+  params: { sort?: string; q?: string; from?: number; categories?: string } = {},
+): Promise<ShExplore> {
+  const qs = new URLSearchParams();
+  if (params.sort) qs.set('sort', params.sort);
+  if (params.q) qs.set('q', params.q);
+  if (params.from) qs.set('from', String(params.from));
+  if (params.categories) qs.set('categories', params.categories);
+  return jsonOrThrow(await fetch(`${API}/api/sh/${type}?${qs.toString()}`));
+}
