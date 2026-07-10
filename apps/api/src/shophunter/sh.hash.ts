@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 // Hash ổn định cho 1 truy vấn explore → khoá cache. categoryIds sort để không phụ thuộc thứ tự.
 export function shQueryHash(
   searchType: string,
-  opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | string | null; lte: number | string | null }> },
+  opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | string | null; lte: number | string | null }>; lists?: Record<string, string[]> },
 ): string {
   const norm = JSON.stringify({
     t: searchType,
@@ -12,6 +12,7 @@ export function shQueryHash(
     c: [...(opts.categoryIds || [])].sort(),
     f: opts.from || 0,
     fl: Object.keys(opts.filters || {}).sort().map((k) => [k, opts.filters![k].gte ?? null, opts.filters![k].lte ?? null]),
+    ls: Object.keys(opts.lists || {}).sort().map((k) => [k, [...(opts.lists![k] || [])].sort()]),
   });
   return createHash('sha1').update(norm).digest('hex');
 }

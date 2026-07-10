@@ -41,6 +41,21 @@ function parseFilters(raw?: string): Record<string, { gte: number | string | nul
   }
 }
 
+function parseLists(raw?: string): Record<string, string[]> {
+  if (!raw) return {};
+  try {
+    const o = JSON.parse(raw);
+    const out: Record<string, string[]> = {};
+    for (const k of Object.keys(o || {})) {
+      const v = o[k];
+      if (Array.isArray(v)) { const arr = v.filter((x) => typeof x === 'string' && x); if (arr.length) out[k] = arr; }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 @Controller()
 @UseFilters(ShBlockedFilter)
 export class ShController {
@@ -63,16 +78,16 @@ export class ShController {
   }
 
   @Get('sh/shops')
-  shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string) {
+  shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
     return this.svc.explore('shops', {
-      sort: sort || SH_SORTS_SHOPS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters),
+      sort: sort || SH_SORTS_SHOPS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters), lists: parseLists(lists),
     });
   }
 
   @Get('sh/products')
-  products(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string) {
+  products(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
     return this.svc.explore('products', {
-      sort: sort || SH_SORTS_PRODUCTS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters),
+      sort: sort || SH_SORTS_PRODUCTS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters), lists: parseLists(lists),
     });
   }
 

@@ -17,7 +17,7 @@ export class ShService {
 
   async explore(
     searchType: 'shops' | 'products',
-    opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | string | null; lte: number | string | null }> },
+    opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | string | null; lte: number | string | null }>; lists?: Record<string, string[]> },
   ) {
     const table = searchType === 'shops' ? 'sh_shop' : 'sh_product';
     const pk = searchType === 'shops' ? 'shop_id' : 'product_id';

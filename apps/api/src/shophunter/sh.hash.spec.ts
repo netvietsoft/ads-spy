@@ -33,4 +33,11 @@ describe('shQueryHash', () => {
     const h = shQueryHash('shops', base);
     expect(shQueryHash('shops', { ...base, filters: { site_creation_date: { gte: '2024-01-01', lte: null } } })).not.toBe(h);
   });
+
+  it('bao gồm lists (country/locale) trong hash', () => {
+    const h = shQueryHash('shops', base);
+    expect(shQueryHash('shops', { ...base, lists: { country: ['CA'] } })).not.toBe(h);
+    expect(shQueryHash('shops', { ...base, lists: { country: ['CA', 'US'] } }))
+      .toBe(shQueryHash('shops', { ...base, lists: { country: ['US', 'CA'] } })); // order-independent
+  });
 });
