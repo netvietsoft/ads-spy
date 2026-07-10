@@ -80,13 +80,29 @@ export class ShHarvestService {
         const remaining = quota - processed;
         const batch = parsed.items.slice(0, remaining);
 
+        let blockedInPage = false;
         for (let i = 0; i < batch.length; i += concurrency) {
           const chunk = batch.slice(i, i + concurrency);
           const results = await Promise.all(
-            chunk.map((it) => this.harvestOne(it).then(() => true, () => false)),
+            chunk.map((it) =>
+              this.harvestOne(it).then(
+                () => ({ ok: true, blocked: false }),
+                (e) => ({ ok: false, blocked: e instanceof ShBlockedError }),
+              ),
+            ),
           );
-          for (const okd of results) { if (okd) ok++; else failed++; }
+          for (const r of results) {
+            if (r.blocked) { blockedInPage = true; continue; }
+            if (r.ok) ok++; else failed++;
+          }
+          if (blockedInPage) break;
           await this.sleep(delayMs);
+        }
+
+        if (blockedInPage) {
+          this.logger.warn(`Dừng do bị chặn khi lấy shop detail tại from=${from}.`);
+          status = 'blocked';
+          break;
         }
 
         processed += batch.length;
@@ -122,9 +138,26 @@ export class ShHarvestService {
   private async harvestOne(item: any): Promise<void> {
     const shopId = String(item.shop_id);
     if (!shopId || shopId === 'undefined') return;
-    const bundle = await this.svc.shopDetail(shopId);
+    const bundle = await this.detailWithBackoff(shopId);
     const cols = parseShopColumns(item, bundle);
     await this.mysql.upsertShop(shopId, item, bundle, cols);
+  }
+
+  private async detailWithBackoff(shopId: string): Promise<any> {
+    const maxRetries = 5;
+    let attempt = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      try {
+        return await this.svc.shopDetail(shopId);
+      } catch (e) {
+        if (!(e instanceof ShBlockedError) || attempt >= maxRetries) throw e;
+        const wait = Math.min(1000 * 2 ** attempt, 120000);
+        this.logger.warn(`Bị chặn khi lấy detail shop ${shopId} (${(e as Error).message}); backoff ${wait}ms (lần ${attempt + 1}/${maxRetries}).`);
+        await this.sleep(wait);
+        attempt++;
+      }
+    }
   }
 
   private async searchWithBackoff(sort: string, from: number, maxRetries: number): Promise<any> {

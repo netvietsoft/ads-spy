@@ -80,6 +80,32 @@ describe('ShHarvestService.runHarvest', () => {
     const r = await h.runHarvest({ daily: 2 });
     expect(r).toMatchObject({ processed: 2, ok: 1, failed: 1, status: 'ok' });
   });
+
+  it('shopDetail bị ShBlockedError 2 lần rồi thành công → backoff hoạt động, shop vẫn được lưu', async () => {
+    const { h, client, svc, mysql } = deps();
+    client.search.mockResolvedValueOnce({ items: makeItems(1), total_hits: 100 });
+    svc.shopDetail
+      .mockRejectedValueOnce(new ShBlockedError('ShopHunter trả HTTP 503.'))
+      .mockRejectedValueOnce(new ShBlockedError('ShopHunter trả HTTP 503.'))
+      .mockResolvedValueOnce({ detail: {}, revenueChart: [], adsChart: null, similar: [] });
+    const r = await h.runHarvest({ daily: 1 });
+    expect(svc.shopDetail).toHaveBeenCalledTimes(3);
+    expect(mysql.upsertShop).toHaveBeenCalledTimes(1);
+    expect(r).toMatchObject({ processed: 1, ok: 1, failed: 0, status: 'ok', cursorFrom: 1 });
+  });
+
+  it('shopDetail luôn ShBlockedError (hết retry) → dừng status=blocked, cursor KHÔNG nhảy qua trang dở', async () => {
+    const { h, client, svc, mysql } = deps();
+    client.search.mockResolvedValueOnce({ items: makeItems(2), total_hits: 100 });
+    svc.shopDetail.mockRejectedValue(new ShBlockedError('ShopHunter trả HTTP 503.'));
+    const r = await h.runHarvest({ daily: 2 });
+    expect(r.status).toBe('blocked');
+    expect(r.processed).toBe(0);
+    expect(r.cursorFrom).toBe(0);
+    expect(mysql.upsertShop).not.toHaveBeenCalled();
+    const last = mysql.setHarvestState.mock.calls.at(-1);
+    expect(last[1]).toMatchObject({ cursorFrom: 0, lastStatus: 'blocked' });
+  });
 });
 
 describe('ShHarvestService.getStatus / reset', () => {
