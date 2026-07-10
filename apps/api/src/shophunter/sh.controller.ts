@@ -121,8 +121,8 @@ export class ShController {
 
   @Post('sh/harvest/run')
   harvestRun(@Body('daily') daily?: number | string) {
-    const n = daily == null || daily === '' ? undefined : Number(daily);
-    return this.harvest.runHarvest({ daily: Number.isFinite(n as number) ? (n as number) : undefined });
+    const n = Number(daily);
+    return this.harvest.runHarvest({ daily: Number.isFinite(n) ? n : undefined });
   }
 
   @Get('sh/harvest/status')
@@ -130,8 +130,14 @@ export class ShController {
     return this.harvest.getStatus();
   }
 
+  @Get('sh/harvest/slices')
+  harvestSlices() {
+    return this.harvest.listSlices();
+  }
+
   @Post('sh/harvest/reset')
-  harvestReset() {
+  async harvestReset() {
+    await this.harvest.resetSlices();
     return this.harvest.reset();
   }
 }

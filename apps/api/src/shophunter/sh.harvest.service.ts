@@ -54,6 +54,9 @@ export class ShHarvestService {
     return this.mysql.resetHarvestState(HARVEST_ID);
   }
 
+  listSlices() { return this.mysql.listSlices(); }
+  resetSlices() { return this.mysql.resetSlices(); }
+
   async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary> {
     const mode = process.env.SH_HARVEST_MODE || 'slices';
     if (mode === 'slices') return this.runHarvestSlices(opts);
