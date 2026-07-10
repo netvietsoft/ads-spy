@@ -28,4 +28,9 @@ describe('shQueryHash', () => {
     const h = shQueryHash('shops', base);
     expect(shQueryHash('shops', { ...base, filters: { day_current_period_revenue: { gte: 100, lte: null } } })).not.toBe(h);
   });
+
+  it('hỗ trợ filter giá trị chuỗi ngày', () => {
+    const h = shQueryHash('shops', base);
+    expect(shQueryHash('shops', { ...base, filters: { site_creation_date: { gte: '2024-01-01', lte: null } } })).not.toBe(h);
+  });
 });

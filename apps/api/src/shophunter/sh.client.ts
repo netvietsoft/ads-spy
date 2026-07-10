@@ -35,7 +35,7 @@ export class ShClient {
 
   async search(
     searchType: 'shops' | 'products',
-    opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | null; lte: number | null }> },
+    opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | string | null; lte: number | string | null }> },
   ): Promise<any> {
     const numeric = Object.fromEntries(
       Object.entries(opts.filters || {}).map(([k, v]) => [k, { gte: v.gte ?? null, lte: v.lte ?? null, is_enabled: true }]),
@@ -112,6 +112,7 @@ export class ShClient {
   shopsSimilar(shopId: string) { return this.post('/v3/shops/similar', { shop_id: shopId }); }
   productDetail(shopId: string, productId: string) { return this.post('/v3/product', { shop_id: shopId, product_id: productId }); }
   productChartRevenue(shopId: string, productId: string) { return this.post('/v3/product/chart/revenue', { shop_id: shopId, product_id: productId }); }
+  productSimilar(shopId: string, productId: string) { return this.post('/v3/product/similar', { shop_id: shopId, product_id: productId }); }
 
   async fetchAsset(url: string): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
     const res = await fetch(url, {

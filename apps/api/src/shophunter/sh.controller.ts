@@ -19,16 +19,21 @@ function parseCategories(csv?: string): string[] {
   return (csv || '').split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-function parseFilters(raw?: string): Record<string, { gte: number | null; lte: number | null }> {
+function parseFilters(raw?: string): Record<string, { gte: number | string | null; lte: number | string | null }> {
   if (!raw) return {};
   try {
     const o = JSON.parse(raw);
-    const out: Record<string, { gte: number | null; lte: number | null }> = {};
+    const out: Record<string, { gte: number | string | null; lte: number | string | null }> = {};
     for (const k of Object.keys(o || {})) {
       const v = o[k] || {};
-      const gte = v.gte === '' || v.gte == null ? null : Number(v.gte);
-      const lte = v.lte === '' || v.lte == null ? null : Number(v.lte);
-      if (gte != null || lte != null) out[k] = { gte: Number.isFinite(gte as number) ? gte : null, lte: Number.isFinite(lte as number) ? lte : null };
+      const coerce = (x: any) => {
+        if (x === '' || x == null) return null;
+        const n = Number(x);
+        return Number.isFinite(n) && String(x).trim() !== '' && !isNaN(n) ? n : String(x);
+      };
+      const gte = coerce(v.gte);
+      const lte = coerce(v.lte);
+      if (gte != null || lte != null) out[k] = { gte, lte };
     }
     return out;
   } catch {

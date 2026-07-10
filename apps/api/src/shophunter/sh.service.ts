@@ -17,7 +17,7 @@ export class ShService {
 
   async explore(
     searchType: 'shops' | 'products',
-    opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | null; lte: number | null }> },
+    opts: { sort: string; q: string; categoryIds: string[]; from: number; filters?: Record<string, { gte: number | string | null; lte: number | string | null }> },
   ) {
     const table = searchType === 'shops' ? 'sh_shop' : 'sh_product';
     const pk = searchType === 'shops' ? 'shop_id' : 'product_id';
@@ -67,10 +67,16 @@ export class ShService {
     const key = `product:${shopId}:${productId}`;
     const cached = await this.mysql.getDetail(key, TTL_MS);
     if (cached) return { ...cached, cached: true };
-    const [detailR, revR] = await Promise.all([
-      this.client.productDetail(shopId, productId), this.client.productChartRevenue(shopId, productId),
+    const [detailR, revR, simR] = await Promise.all([
+      this.client.productDetail(shopId, productId),
+      this.client.productChartRevenue(shopId, productId),
+      this.client.productSimilar(shopId, productId),
     ]);
-    const out = { detail: detailR?.item?.item ?? null, revenueChart: Array.isArray(revR?.items) ? revR.items : [] };
+    const out = {
+      detail: detailR?.item?.item ?? null,
+      revenueChart: Array.isArray(revR?.items) ? revR.items : [],
+      similar: Array.isArray(simR?.items) ? simR.items : [],
+    };
     await this.mysql.setDetail(key, out);
     return { ...out, cached: false };
   }
