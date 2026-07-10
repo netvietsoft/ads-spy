@@ -35,6 +35,12 @@ export function ShShopModal({ shopId, onClose }: { shopId: string; onClose: () =
             </div>
             <h4>Doanh thu 90 ngày</h4>
             <ShChart points={(d!.revenueChart || []).map((p) => ({ date_str: p.date_str, value: p.revenue }))} />
+            {d!.adsChart?.history?.active_ad_count?.length > 0 && (
+              <>
+                <h4>Số quảng cáo 90 ngày</h4>
+                <ShChart points={d!.adsChart.history.active_ad_count.map((x: any) => ({ date_str: x.date_str, value: x.active_ad_count }))} color="#e0a53a" />
+              </>
+            )}
             {Array.isArray(s.top_revenue_products) && s.top_revenue_products.length > 0 && (
               <>
                 <h4>Top Revenue Products</h4>

@@ -31,6 +31,14 @@ export function ShProductModal({ shopId, productId, onClose }: { shopId: string;
             <h4>Doanh thu 90 ngày</h4>
             <ShChart points={(d!.revenueChart || []).map((x) => ({ date_str: x.date_str, value: x.revenue }))} color="#5b9dff" />
             {p.body ? (<><h4>Mô tả</h4><div className="fbbody" style={{ maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{p.body}</div></>) : null}
+            {Array.isArray(d!.similar) && d!.similar.length > 0 && (
+              <>
+                <h4>Sản phẩm tương tự</h4>
+                <ul>{d!.similar.slice(0, 8).map((x: any) => (
+                  <li key={x.product_id}>{x.product_title} — {money(x.price)}{typeof x.day_current_period_revenue === 'number' ? ` · Day ${money(x.day_current_period_revenue)}` : ''}</li>
+                ))}</ul>
+              </>
+            )}
           </>
         )}
       </div>
