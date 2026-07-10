@@ -9,16 +9,26 @@ import { ShProductModal } from './ShProductModal';
 import { ShFilters } from './ShFilters';
 import { ShCategories } from './ShCategories';
 import { ShListFilters } from './ShListFilters';
+import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '');
 
+const SORT_VI: Record<string, string> = {
+  day_current_period_revenue: 'Doanh thu Ngày',
+  week_current_period_revenue: 'Doanh thu Tuần',
+  month_current_period_revenue: 'Doanh thu Tháng',
+  day_revenue_percent_change: 'Tăng trưởng Ngày',
+  week_revenue_percent_change: 'Tăng trưởng Tuần',
+  active_ad_count: 'Ads',
+  day_sale_count_percent_change: 'Tăng đơn Ngày',
+};
+
 function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
-  const fav = s.shop_favicon_external || '';
   return (
     <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
       <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        {fav ? <img src={shAssetProxy(fav)} alt="" width={24} height={24} style={{ borderRadius: 6 }} loading="lazy" /> : null}
+        <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={24} />
         <span>{s.shop_title || s.url}</span>
       </div>
       <div className="fbbody">{s.url}</div>
@@ -69,11 +79,12 @@ export function ShopHunterPanel() {
 
   useEffect(() => { shSorts().then(setSorts).catch(() => {}); shTokenStatus().then(setStatus).catch(() => {}); }, []);
 
-  async function load(reset: boolean) {
+  async function load(reset: boolean, sortVal?: string) {
     setLoading(true); setErr(null);
     try {
       const nextFrom = reset ? 0 : from;
-      const r: ShExplore = await shExplore(tab, { sort: sort || undefined, q: q || undefined, from: nextFrom, filters, categories: cats.join(','), lists });
+      const useSort = sortVal ?? sort;
+      const r: ShExplore = await shExplore(tab, { sort: useSort || undefined, q: q || undefined, from: nextFrom, filters, categories: cats.join(','), lists });
       setItems(reset ? r.items : [...items, ...r.items]);
       setTotal(r.totalHits);
       setFrom(typeof r.nextFromValue === 'number' ? r.nextFromValue : nextFrom + r.items.length);
@@ -116,11 +127,18 @@ export function ShopHunterPanel() {
         </div>
 
         <div>
-          <div style={{ display: 'flex', gap: 8, margin: '0 0 10px', flexWrap: 'wrap' }}>
-            <select value={sort} onChange={(e) => setSort(e.target.value)}>
-              <option value="">{sortList[0]?.label || 'Sort'}</option>
-              {sortList.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
+          <div className="shsortbar">
+            {sortList.map((s) => {
+              const active = (sort || sortList[0]?.value) === s.value;
+              return (
+                <button key={s.value} type="button" className={`srcbtn ${active ? 'active' : ''}`}
+                  onClick={() => { setSort(s.value); setItems([]); setFrom(0); load(true, s.value); }}>
+                  {SORT_VI[s.value] || s.label}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Tìm ${tab}...`} />
             <button className="srcbtn active" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
             {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}

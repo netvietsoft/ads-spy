@@ -200,3 +200,6 @@ button.ghost.danger { color: var(--danger); }
 .history .item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; cursor: pointer; }
 .history .item:hover { color: var(--accent); }
 .history .item .m { color: var(--muted); }
+
+.shsortbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.shlogo-fallback{display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border-radius:6px;flex:0 0 auto;line-height:1}

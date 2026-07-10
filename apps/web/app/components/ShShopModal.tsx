@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { ShDetail, shShopDetail, shAssetProxy } from '../api';
 import { ShChart } from './ShChart';
+import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 
@@ -15,7 +16,7 @@ export function ShShopModal({ shopId, onClose }: { shopId: string; onClose: () =
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="row">
           <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {s?.shop_favicon_external ? <img src={shAssetProxy(s.shop_favicon_external)} width={28} height={28} style={{ borderRadius: 6 }} alt="" /> : null}
+            <ShLogo internal={s?.shop_favicon_internal} external={s?.shop_favicon_external} title={s?.shop_title} size={28} />
             <span>{s?.shop_title || s?.url || 'Shop'}</span>
           </div>
           <button className="ghost" onClick={onClose}>Đóng ✕</button>
