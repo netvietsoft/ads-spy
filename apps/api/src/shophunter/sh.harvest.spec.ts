@@ -81,3 +81,18 @@ describe('ShHarvestService.runHarvest', () => {
     expect(r).toMatchObject({ processed: 2, ok: 1, failed: 1, status: 'ok' });
   });
 });
+
+describe('ShHarvestService.getStatus / reset', () => {
+  it('getStatus ủy quyền mysql.getHarvestState("shops")', async () => {
+    const { h, mysql } = deps({ cursorFrom: 42 });
+    const s = await h.getStatus();
+    expect(mysql.getHarvestState).toHaveBeenCalledWith('shops');
+    expect(s.cursorFrom).toBe(42);
+  });
+
+  it('reset ủy quyền mysql.resetHarvestState("shops")', async () => {
+    const { h, mysql } = deps();
+    await h.reset();
+    expect(mysql.resetHarvestState).toHaveBeenCalledWith('shops');
+  });
+});

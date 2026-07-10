@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { ShClient, ShBlockedError } from './sh.client';
 import { ShService } from './sh.service';
 import { ShMysql, HarvestState } from './sh.mysql';
@@ -24,6 +25,17 @@ export class ShHarvestService {
     private readonly svc: ShService,
     private readonly mysql: ShMysql,
   ) {}
+
+  @Cron(process.env.SH_HARVEST_CRON || '0 3 * * *')
+  async scheduled(): Promise<void> {
+    if (process.env.SH_HARVEST_ENABLED !== 'true') return;
+    try {
+      const r = await this.runHarvest({});
+      this.logger.log(`Cron harvest xong: ${JSON.stringify(r)}`);
+    } catch (e) {
+      this.logger.error(`Cron harvest lỗi: ${(e as Error).message}`);
+    }
+  }
 
   getStatus(): Promise<HarvestState> {
     return this.mysql.getHarvestState(HARVEST_ID);

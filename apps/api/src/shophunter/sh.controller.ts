@@ -4,6 +4,7 @@ import { Readable } from 'stream';
 import { ShService } from './sh.service';
 import { ShClient, SH_SORTS_SHOPS, SH_SORTS_PRODUCTS } from './sh.client';
 import { ShBlockedFilter } from './sh.blocked.filter';
+import { ShHarvestService } from './sh.harvest.service';
 
 const ALLOWED_ASSET = /(^|\.)(shopify\.com|shopifycdn\.com|myshopify\.com|shophunter\.io|cloudfront\.net)$/i;
 export function assetHostOk(url: string): boolean {
@@ -59,7 +60,11 @@ function parseLists(raw?: string): Record<string, string[]> {
 @Controller()
 @UseFilters(ShBlockedFilter)
 export class ShController {
-  constructor(private readonly svc: ShService, private readonly client: ShClient) {}
+  constructor(
+    private readonly svc: ShService,
+    private readonly client: ShClient,
+    private readonly harvest: ShHarvestService,
+  ) {}
 
   @Post('sh/token')
   setToken(@Body('refreshToken') refreshToken: string) {
@@ -112,5 +117,21 @@ export class ShController {
     if (download === '1') res.setHeader('content-disposition', 'attachment; filename="asset"');
     if (!body) return res.end();
     Readable.fromWeb(body as any).pipe(res);
+  }
+
+  @Post('sh/harvest/run')
+  harvestRun(@Body('daily') daily?: number | string) {
+    const n = daily == null || daily === '' ? undefined : Number(daily);
+    return this.harvest.runHarvest({ daily: Number.isFinite(n as number) ? (n as number) : undefined });
+  }
+
+  @Get('sh/harvest/status')
+  harvestStatus() {
+    return this.harvest.getStatus();
+  }
+
+  @Post('sh/harvest/reset')
+  harvestReset() {
+    return this.harvest.reset();
   }
 }
