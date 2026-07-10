@@ -113,6 +113,9 @@ export class ShMysql implements OnModuleInit {
       last_run_at BIGINT, note TEXT)`);
     await this.ensureIndex(pool, 'sh_harvest_slice', 'idx_sh_slice_done_seq', 'done');
 
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_harvest_daily (
+      day VARCHAR(10) PRIMARY KEY, count INT DEFAULT 0, updated_at BIGINT)`);
+
     this.pool = pool;
   }
 
@@ -354,5 +357,21 @@ export class ShMysql implements OnModuleInit {
     const r = (rows as any[])[0];
     if (!r || r.harvested_at == null) return false;
     return Date.now() - Number(r.harvested_at) < ttlMs;
+  }
+
+  async getDailyCount(day: string): Promise<number> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT count FROM sh_harvest_daily WHERE day = ?', [day]);
+    const r = (rows as any[])[0];
+    return r ? Number(r.count) || 0 : 0;
+  }
+
+  async addDailyCount(day: string, n: number): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      `INSERT INTO sh_harvest_daily (day, count, updated_at) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE count = count + VALUES(count), updated_at = VALUES(updated_at)`,
+      [day, n, Date.now()],
+    );
   }
 }
