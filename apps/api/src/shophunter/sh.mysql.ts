@@ -29,6 +29,19 @@ export function rowToHarvestState(id: string, row: any): HarvestState {
   };
 }
 
+export interface SliceState {
+  sliceKey: string; dimension: string; filterValue: string; seq: number;
+  cursorFrom: number; totalHits: number | null; done: boolean; lastRunAt: number | null;
+}
+
+function rowToSlice(r: any): SliceState {
+  return {
+    sliceKey: r.slice_key, dimension: r.dimension, filterValue: r.filter_value, seq: Number(r.seq),
+    cursorFrom: Number(r.cursor_from) || 0, totalHits: r.total_hits == null ? null : Number(r.total_hits),
+    done: !!r.done, lastRunAt: r.last_run_at == null ? null : Number(r.last_run_at),
+  };
+}
+
 @Injectable()
 export class ShMysql implements OnModuleInit {
   private pool: mysql.Pool | null = null;
@@ -93,6 +106,12 @@ export class ShMysql implements OnModuleInit {
       last_run_at BIGINT,
       last_status VARCHAR(32),
       note TEXT)`);
+
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_harvest_slice (
+      slice_key VARCHAR(48) PRIMARY KEY, dimension VARCHAR(16), filter_value VARCHAR(32),
+      seq INT, cursor_from INT DEFAULT 0, total_hits INT, done TINYINT DEFAULT 0,
+      last_run_at BIGINT, note TEXT)`);
+    await this.ensureIndex(pool, 'sh_harvest_slice', 'idx_sh_slice_done_seq', 'done');
 
     this.pool = pool;
   }
@@ -284,5 +303,56 @@ export class ShMysql implements OnModuleInit {
         detail ? now : null, now,
       ],
     );
+  }
+
+  async ensureSlices(slices: { sliceKey: string; dimension: string; filterValue: string; seq: number }[]): Promise<void> {
+    await this.ensureReady();
+    for (const s of slices) {
+      await this.pool!.query(
+        'INSERT IGNORE INTO sh_harvest_slice (slice_key, dimension, filter_value, seq) VALUES (?, ?, ?, ?)',
+        [s.sliceKey, s.dimension, s.filterValue, s.seq],
+      );
+    }
+  }
+
+  async getNextSlice(): Promise<SliceState | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT * FROM sh_harvest_slice WHERE done = 0 ORDER BY seq ASC LIMIT 1');
+    const r = (rows as any[])[0];
+    return r ? rowToSlice(r) : null;
+  }
+
+  async setSlice(sliceKey: string, patch: { cursorFrom?: number; totalHits?: number | null; done?: boolean; lastRunAt?: number }): Promise<void> {
+    await this.ensureReady();
+    const sets: string[] = []; const vals: any[] = [];
+    if (patch.cursorFrom !== undefined) { sets.push('cursor_from = ?'); vals.push(patch.cursorFrom); }
+    if (patch.totalHits !== undefined) { sets.push('total_hits = ?'); vals.push(patch.totalHits); }
+    if (patch.done !== undefined) { sets.push('done = ?'); vals.push(patch.done ? 1 : 0); }
+    if (patch.lastRunAt !== undefined) { sets.push('last_run_at = ?'); vals.push(patch.lastRunAt); }
+    if (!sets.length) return;
+    vals.push(sliceKey);
+    await this.pool!.query(`UPDATE sh_harvest_slice SET ${sets.join(', ')} WHERE slice_key = ?`, vals);
+  }
+
+  async listSlices(): Promise<SliceState[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT * FROM sh_harvest_slice ORDER BY seq ASC');
+    return (rows as any[]).map(rowToSlice);
+  }
+
+  async resetSlices(): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_harvest_slice SET cursor_from = 0, total_hits = NULL, done = 0, last_run_at = NULL');
+  }
+
+  async isShopFresh(shopId: string, ttlMs: number): Promise<boolean> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
+      'SELECT harvested_at FROM sh_shop WHERE shop_id = ? AND detail_raw IS NOT NULL',
+      [shopId],
+    );
+    const r = (rows as any[])[0];
+    if (!r || r.harvested_at == null) return false;
+    return Date.now() - Number(r.harvested_at) < ttlMs;
   }
 }
