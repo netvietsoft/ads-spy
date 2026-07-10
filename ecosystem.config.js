@@ -8,7 +8,11 @@ module.exports = {
       cwd: './apps/api',
       script: 'dist/main.js',
       // GOOGLE_PROXY: proxy để tra Google (IP server bị Google chặn). vd http://user:pass@host:port
-      env: { PORT: '8075', NODE_ENV: 'production', GOOGLE_PROXY: process.env.GOOGLE_PROXY || '' },
+      // SH_MYSQL_URL: DB riêng cho ShopHunter — SỬA lại cho đúng MySQL trên VPS (xem DEPLOY.md).
+      env: {
+        PORT: '8075', NODE_ENV: 'production', GOOGLE_PROXY: process.env.GOOGLE_PROXY || '',
+        SH_MYSQL_URL: 'mysql://root:CHANGE_ME@127.0.0.1:3306/shophunter', SH_CACHE_TTL_HOURS: '6',
+      },
       max_memory_restart: '900M',
       time: true,
     },

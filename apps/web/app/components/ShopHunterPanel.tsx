@@ -66,7 +66,7 @@ export function ShopHunterPanel() {
       const r: ShExplore = await shExplore(tab, { sort: sort || undefined, q: q || undefined, from: nextFrom });
       setItems(reset ? r.items : [...items, ...r.items]);
       setTotal(r.totalHits);
-      setFrom(nextFrom + r.items.length);
+      setFrom(typeof r.nextFromValue === 'number' ? r.nextFromValue : nextFrom + r.items.length);
     } catch (e) { setErr((e as Error).message); }
     setLoading(false);
   }
@@ -91,8 +91,8 @@ export function ShopHunterPanel() {
       {status?.valid && <div className="savedbanner">Đã kết nối ShopHunter: {status.email}</div>}
 
       <div className="sources" style={{ marginTop: 8 }}>
-        <button className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); }}>Shops</button>
-        <button className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setItems([]); setFrom(0); }}>Products</button>
+        <button type="button" className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); setTotal(0); }}>Shops</button>
+        <button type="button" className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setItems([]); setFrom(0); setTotal(0); }}>Products</button>
       </div>
 
       <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>

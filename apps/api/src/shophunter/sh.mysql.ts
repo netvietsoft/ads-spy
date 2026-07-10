@@ -1,13 +1,23 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import mysql from 'mysql2/promise';
+import { ShBlockedError } from './sh.client';
 
 type Table = 'sh_shop' | 'sh_product';
 
 @Injectable()
 export class ShMysql implements OnModuleInit {
-  private pool!: mysql.Pool;
+  private pool: mysql.Pool | null = null;
 
   async onModuleInit() {
+    try {
+      await this.connect();
+    } catch (err) {
+      console.warn('[ShMysql] MySQL không sẵn sàng, ShopHunter sẽ thử lại khi có request:', (err as Error).message);
+    }
+  }
+
+  private async connect(): Promise<void> {
+    if (this.pool) return;
     const url = process.env.SH_MYSQL_URL || 'mysql://root@127.0.0.1:3306/shophunter';
     const u = new URL(url);
     const db = decodeURIComponent(u.pathname.replace(/^\//, '')) || 'shophunter';
@@ -22,15 +32,25 @@ export class ShMysql implements OnModuleInit {
     await admin.query(`CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4`);
     await admin.end();
 
-    this.pool = mysql.createPool({ ...conn, database: db, connectionLimit: 5 });
-    await this.pool.query(`CREATE TABLE IF NOT EXISTS sh_shop (
+    const pool = mysql.createPool({ ...conn, database: db, connectionLimit: 5 });
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_shop (
       shop_id VARCHAR(32) PRIMARY KEY, raw LONGTEXT NOT NULL, fetched_at BIGINT NOT NULL)`);
-    await this.pool.query(`CREATE TABLE IF NOT EXISTS sh_product (
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product (
       product_id VARCHAR(32) PRIMARY KEY, raw LONGTEXT NOT NULL, fetched_at BIGINT NOT NULL)`);
-    await this.pool.query(`CREATE TABLE IF NOT EXISTS sh_search_cache (
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_search_cache (
       query_hash VARCHAR(64) PRIMARY KEY, search_type VARCHAR(16), sort_by VARCHAR(64),
       search_string VARCHAR(255), filters LONGTEXT, from_count INT,
       item_ids LONGTEXT NOT NULL, next_from_value VARCHAR(64), total_hits INT, fetched_at BIGINT NOT NULL)`);
+    this.pool = pool;
+  }
+
+  private async ensureReady(): Promise<void> {
+    if (this.pool) return;
+    try {
+      await this.connect();
+    } catch (err) {
+      throw new ShBlockedError('ShopHunter DB (MySQL) không kết nối được. Kiểm tra MySQL/SH_MYSQL_URL.');
+    }
   }
 
   private pk(table: Table) {
@@ -38,8 +58,9 @@ export class ShMysql implements OnModuleInit {
   }
 
   async upsertItem(table: Table, id: string, raw: unknown): Promise<void> {
+    await this.ensureReady();
     const pk = this.pk(table);
-    await this.pool.query(
+    await this.pool!.query(
       `INSERT INTO ${table} (${pk}, raw, fetched_at) VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE raw = VALUES(raw), fetched_at = VALUES(fetched_at)`,
       [id, JSON.stringify(raw), Date.now()],
@@ -47,9 +68,10 @@ export class ShMysql implements OnModuleInit {
   }
 
   async getItemsByIds(table: Table, ids: string[]): Promise<any[]> {
+    await this.ensureReady();
     if (!ids.length) return [];
     const pk = this.pk(table);
-    const [rows] = await this.pool.query(
+    const [rows] = await this.pool!.query(
       `SELECT ${pk} AS id, raw FROM ${table} WHERE ${pk} IN (?)`,
       [ids],
     );
@@ -59,7 +81,8 @@ export class ShMysql implements OnModuleInit {
   }
 
   async getSearchCache(hash: string, ttlMs: number) {
-    const [rows] = await this.pool.query(
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
       `SELECT item_ids, next_from_value, total_hits, fetched_at FROM sh_search_cache WHERE query_hash = ?`,
       [hash],
     );
@@ -77,7 +100,8 @@ export class ShMysql implements OnModuleInit {
     searchType: string; sortBy: string; searchString: string; filters: unknown;
     fromCount: number; itemIds: string[]; nextFromValue: string | number | null; totalHits: number;
   }): Promise<void> {
-    await this.pool.query(
+    await this.ensureReady();
+    await this.pool!.query(
       `INSERT INTO sh_search_cache
         (query_hash, search_type, sort_by, search_string, filters, from_count, item_ids, next_from_value, total_hits, fetched_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

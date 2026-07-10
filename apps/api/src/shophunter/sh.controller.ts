@@ -6,9 +6,11 @@ import { ShClient, SH_SORTS_SHOPS, SH_SORTS_PRODUCTS } from './sh.client';
 import { ShBlockedFilter } from './sh.blocked.filter';
 
 const ALLOWED_ASSET = /(^|\.)(shopify\.com|shopifycdn\.com|myshopify\.com|shophunter\.io|cloudfront\.net)$/i;
-function assetHostOk(url: string): boolean {
+export function assetHostOk(url: string): boolean {
   try {
-    return ALLOWED_ASSET.test(new URL(url).hostname);
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    return ALLOWED_ASSET.test(u.hostname);
   } catch {
     return false;
   }

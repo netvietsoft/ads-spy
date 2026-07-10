@@ -49,6 +49,21 @@ cookie" → dán cookie (nick phụ). Cookie lưu vào DB, sống qua restart.
 > Đổi cổng trong `ecosystem.config.js`. Cần RAM ≥ 2GB cho Chromium.
 > CORS đã bật (`origin: true`) nên web ở dpboss.pet gọi api.dpboss.pet OK.
 
+### MySQL cho ShopHunter
+Tab **ShopHunter** dùng MySQL riêng (khác `dev.db`/Prisma của Google/FB) để cache shop/product.
+```bash
+# Cài MySQL trên VPS (nếu chưa có)
+sudo apt-get install -y mysql-server
+```
+- DB `shophunter` **tự tạo** lúc app khởi động (`CREATE DATABASE IF NOT EXISTS`), miễn user trong
+  connection string có quyền tạo DB.
+- Đặt `SH_MYSQL_URL` trong `ecosystem.config.js` (hoặc `apps/api/.env`), dạng
+  `mysql://user:password@host:3306/shophunter`. Sửa placeholder `CHANGE_ME` trong
+  `ecosystem.config.js` cho đúng mật khẩu MySQL thật trên VPS.
+- Không có MySQL / kết nối sai → app **vẫn boot bình thường**, chỉ riêng tab ShopHunter trả về
+  503 ("ShopHunter DB (MySQL) không kết nối được") cho tới khi MySQL sẵn sàng — Google/Facebook
+  không bị ảnh hưởng.
+
 ---
 
 ## Hướng dẫn tổng quát (server khác)
