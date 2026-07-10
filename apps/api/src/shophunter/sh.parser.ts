@@ -33,8 +33,14 @@ export function parseShopColumns(item: any, bundle?: any): ShShopColumns {
   return {
     shopName: src.shop_title ?? src.shop_name ?? src.name ?? null,
     revenue: toNum(src.month_current_period_revenue ?? src.revenue ?? src.total_revenue),
-    itemsSold: toNum(src.sale_count ?? src.items_sold ?? src.total_sold),
-    followers: toNum(src.followers ?? src.follower_count),
+    itemsSold: toNum(
+      src.month_current_period_sale_count ??
+        src.week_current_period_sale_count ??
+        src.day_current_period_sale_count ??
+        src.sale_count ??
+        src.items_sold,
+    ),
+    followers: toNum(src.fb_followers ?? src.ig_followers ?? src.followers ?? src.follower_count),
     rating: toNum(src.rating ?? src.shop_rating),
     category: src.category ?? src.main_category ?? null,
     rankPos: toNum(src.rank ?? src.rank_pos),

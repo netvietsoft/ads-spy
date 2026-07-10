@@ -11,22 +11,29 @@ export class ShBlockedError extends Error {
 }
 
 // Sort đã xác nhận chạy (probe Task 4 Step 3, HTTP 200 + items>0).
+// Sort options khớp menu thật của ShopHunter (trích từ bundle: header Shop/Product Metrics).
 export const SH_SORTS_SHOPS: { value: string; label: string }[] = [
-  { value: 'day_revenue_percent_change', label: 'Revenue % Change (Day)' },
   { value: 'day_current_period_revenue', label: 'Revenue (Day)' },
+  { value: 'day_revenue_percent_change', label: 'Revenue % Change (Day)' },
   { value: 'week_current_period_revenue', label: 'Revenue (Week)' },
-  { value: 'month_current_period_revenue', label: 'Revenue (Month)' },
   { value: 'week_revenue_percent_change', label: 'Revenue % Change (Week)' },
   { value: 'active_ad_count', label: 'Ads' },
-  { value: 'day_sale_count_percent_change', label: 'Sales % Change (Day)' },
+  { value: 'active_ad_count_percent_change', label: 'Ads % Change' },
 ];
 export const SH_SORTS_PRODUCTS: { value: string; label: string }[] = [
-  { value: 'day_revenue_percent_change', label: 'Revenue % Change (Day)' },
   { value: 'day_current_period_revenue', label: 'Revenue (Day)' },
+  { value: 'day_revenue_percent_change', label: 'Revenue % Change (Day)' },
   { value: 'week_current_period_revenue', label: 'Revenue (Week)' },
-  { value: 'month_current_period_revenue', label: 'Revenue (Month)' },
   { value: 'week_revenue_percent_change', label: 'Revenue % Change (Week)' },
-  { value: 'day_sale_count_percent_change', label: 'Sales % Change (Day)' },
+  { value: 'product_active_ad_count', label: 'Product Ads' },
+  { value: 'product_active_ad_count_percent_change', label: 'Product Ads % Change' },
+  { value: 'product_published_at', label: 'Newest First' },
+  { value: 'shop_day_current_period_revenue', label: 'Shop Revenue (Day)' },
+  { value: 'shop_day_revenue_percent_change', label: 'Shop Revenue % Change (Day)' },
+  { value: 'shop_week_current_period_revenue', label: 'Shop Revenue (Week)' },
+  { value: 'shop_week_revenue_percent_change', label: 'Shop Revenue % Change (Week)' },
+  { value: 'shop_active_ad_count', label: 'Shop Ads' },
+  { value: 'shop_active_ad_count_percent_change', label: 'Shop Ads % Change' },
 ];
 
 @Injectable()

@@ -16,12 +16,21 @@ const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed
 
 const SORT_VI: Record<string, string> = {
   day_current_period_revenue: 'Doanh thu Ngày',
-  week_current_period_revenue: 'Doanh thu Tuần',
-  month_current_period_revenue: 'Doanh thu Tháng',
   day_revenue_percent_change: 'Tăng trưởng Ngày',
+  week_current_period_revenue: 'Doanh thu Tuần',
   week_revenue_percent_change: 'Tăng trưởng Tuần',
+  month_current_period_revenue: 'Doanh thu Tháng',
   active_ad_count: 'Ads',
-  day_sale_count_percent_change: 'Tăng đơn Ngày',
+  active_ad_count_percent_change: 'Ads % Change',
+  product_active_ad_count: 'Product Ads',
+  product_active_ad_count_percent_change: 'Product Ads %',
+  product_published_at: 'Mới nhất',
+  shop_day_current_period_revenue: 'Shop DT Ngày',
+  shop_day_revenue_percent_change: 'Shop TT Ngày',
+  shop_week_current_period_revenue: 'Shop DT Tuần',
+  shop_week_revenue_percent_change: 'Shop TT Tuần',
+  shop_active_ad_count: 'Shop Ads',
+  shop_active_ad_count_percent_change: 'Shop Ads %',
 };
 
 function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {

@@ -32,11 +32,11 @@ describe('parseShopColumns', () => {
   it('bóc cột từ item search (ưu tiên item hơn detail)', () => {
     const item = {
       shop_id: '1', shop_title: 'ACME',
-      month_current_period_revenue: '12345.5', sale_count: '900',
-      followers: '2000', rating: '4.8', category: 'Home', rank: '3',
+      month_current_period_revenue: '12345.5', month_current_period_sale_count: '900',
+      fb_followers: '2000', rating: '4.8', category: 'Home', rank: '3',
       shop_favicon_external: 'https://cdn.shopify.com/x.png',
     };
-    const cols = parseShopColumns(item, { detail: { followers: 9999 } });
+    const cols = parseShopColumns(item, { detail: { fb_followers: 9999 } });
     expect(cols.shopName).toBe('ACME');
     expect(cols.revenue).toBe(12345.5);
     expect(cols.itemsSold).toBe(900);

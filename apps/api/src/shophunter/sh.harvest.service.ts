@@ -65,6 +65,13 @@ export class ShHarvestService {
     try {
       while (processed < quota) {
         const from = cursorFrom + processed;
+        // Trần ShopHunter/Elasticsearch: from_count + page_size ≤ 10000 (vượt → HTTP 400).
+        // Một scroll theo doanh thu chỉ tới ~top 10k; muốn thêm phải cắt theo category/country (phase sau).
+        if (from > 9976) {
+          status = 'cap_10000';
+          this.logger.log(`Đạt trần 10.000 của ShopHunter tại from=${from}; dừng an toàn (cần lát cắt để lấy thêm).`);
+          break;
+        }
         let page: any;
         try {
           page = await this.searchWithBackoff(sort, from, maxRetries);
