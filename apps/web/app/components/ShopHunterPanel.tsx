@@ -6,6 +6,7 @@ import {
 import { LazyGrid } from './LazyGrid';
 import { ShShopModal } from './ShShopModal';
 import { ShProductModal } from './ShProductModal';
+import { ShFilters } from './ShFilters';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '');
@@ -54,6 +55,7 @@ export function ShopHunterPanel() {
   const [items, setItems] = useState<any[]>([]);
   const [from, setFrom] = useState(0);
   const [total, setTotal] = useState(0);
+  const [filters, setFilters] = useState<Record<string, { gte: number | null; lte: number | null }>>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [token, setToken] = useState('');
@@ -67,7 +69,7 @@ export function ShopHunterPanel() {
     setLoading(true); setErr(null);
     try {
       const nextFrom = reset ? 0 : from;
-      const r: ShExplore = await shExplore(tab, { sort: sort || undefined, q: q || undefined, from: nextFrom });
+      const r: ShExplore = await shExplore(tab, { sort: sort || undefined, q: q || undefined, from: nextFrom, filters });
       setItems(reset ? r.items : [...items, ...r.items]);
       setTotal(r.totalHits);
       setFrom(typeof r.nextFromValue === 'number' ? r.nextFromValue : nextFrom + r.items.length);
@@ -95,35 +97,45 @@ export function ShopHunterPanel() {
       {status?.valid && <div className="savedbanner">Đã kết nối ShopHunter: {status.email}</div>}
 
       <div className="sources" style={{ marginTop: 8 }}>
-        <button type="button" className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); setTotal(0); }}>Shops</button>
-        <button type="button" className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setItems([]); setFrom(0); setTotal(0); }}>Products</button>
+        <button type="button" className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); setTotal(0); setFilters({}); }}>Shops</button>
+        <button type="button" className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setItems([]); setFrom(0); setTotal(0); setFilters({}); }}>Products</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>
-        <select value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="">{sortList[0]?.label || 'Sort'}</option>
-          {sortList.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Tìm ${tab}...`} />
-        <button className="srcbtn active" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
-        {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}
-      </div>
-
-      {err && <div className="err">{err}</div>}
-
-      <LazyGrid
-        className="fbgrid"
-        items={items}
-        render={(it) => tab === 'shops'
-          ? <ShopCard key={it.shop_id} s={it} onOpen={() => setOpenShop(it.shop_id)} />
-          : <ProductCard key={it.product_id} p={it} onOpen={() => setOpenProduct({ shopId: it.shop_id, productId: it.product_id })} />}
-      />
-
-      {items.length > 0 && items.length < total && (
-        <div style={{ textAlign: 'center', margin: 16 }}>
-          <button className="srcbtn" onClick={() => load(false)} disabled={loading}>Tải thêm</button>
+      <div className="layout" style={{ marginTop: 8 }}>
+        <div className="panel">
+          <h3>Bộ lọc</h3>
+          <ShFilters type={tab} value={filters} onChange={setFilters} />
+          <button className="srcbtn active" style={{ width: '100%', marginTop: 10 }} onClick={() => load(true)} disabled={loading}>Áp dụng lọc</button>
         </div>
-      )}
+
+        <div>
+          <div style={{ display: 'flex', gap: 8, margin: '0 0 10px', flexWrap: 'wrap' }}>
+            <select value={sort} onChange={(e) => setSort(e.target.value)}>
+              <option value="">{sortList[0]?.label || 'Sort'}</option>
+              {sortList.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Tìm ${tab}...`} />
+            <button className="srcbtn active" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
+            {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}
+          </div>
+
+          {err && <div className="err">{err}</div>}
+
+          <LazyGrid
+            className="fbgrid"
+            items={items}
+            render={(it) => tab === 'shops'
+              ? <ShopCard key={it.shop_id} s={it} onOpen={() => setOpenShop(it.shop_id)} />
+              : <ProductCard key={it.product_id} p={it} onOpen={() => setOpenProduct({ shopId: it.shop_id, productId: it.product_id })} />}
+          />
+
+          {items.length > 0 && items.length < total && (
+            <div style={{ textAlign: 'center', margin: 16 }}>
+              <button className="srcbtn" onClick={() => load(false)} disabled={loading}>Tải thêm</button>
+            </div>
+          )}
+        </div>
+      </div>
 
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
       {openProduct && <ShProductModal shopId={openProduct.shopId} productId={openProduct.productId} onClose={() => setOpenProduct(null)} />}
