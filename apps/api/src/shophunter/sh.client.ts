@@ -1,0 +1,90 @@
+import { Injectable } from '@nestjs/common';
+import { ShAuth } from './sh.auth';
+
+const SEARCH_URL = 'https://app.shophunter.io/prod/v3/search';
+
+export class ShBlockedError extends Error {
+  constructor(message = 'ShopHunter đang giới hạn hoặc không truy cập được. Thử lại sau.') {
+    super(message);
+    this.name = 'ShBlockedError';
+  }
+}
+
+// Sort đã xác nhận chạy (probe Task 4 Step 3, HTTP 200 + items>0).
+export const SH_SORTS_SHOPS: { value: string; label: string }[] = [
+  { value: 'day_revenue_percent_change', label: 'Revenue % Change (Day)' },
+  { value: 'day_current_period_revenue', label: 'Revenue (Day)' },
+  { value: 'week_current_period_revenue', label: 'Revenue (Week)' },
+  { value: 'month_current_period_revenue', label: 'Revenue (Month)' },
+  { value: 'week_revenue_percent_change', label: 'Revenue % Change (Week)' },
+  { value: 'active_ad_count', label: 'Ads' },
+  { value: 'day_sale_count_percent_change', label: 'Sales % Change (Day)' },
+];
+export const SH_SORTS_PRODUCTS: { value: string; label: string }[] = [
+  { value: 'day_revenue_percent_change', label: 'Revenue % Change (Day)' },
+  { value: 'day_current_period_revenue', label: 'Revenue (Day)' },
+  { value: 'week_current_period_revenue', label: 'Revenue (Week)' },
+  { value: 'month_current_period_revenue', label: 'Revenue (Month)' },
+  { value: 'week_revenue_percent_change', label: 'Revenue % Change (Week)' },
+  { value: 'day_sale_count_percent_change', label: 'Sales % Change (Day)' },
+];
+
+@Injectable()
+export class ShClient {
+  constructor(private readonly auth: ShAuth) {}
+
+  async search(
+    searchType: 'shops' | 'products',
+    opts: { sort: string; q: string; categoryIds: string[]; from: number },
+  ): Promise<any> {
+    const body = JSON.stringify({
+      query: {
+        sort_by: opts.sort,
+        search_string: opts.q || '',
+        from_count: opts.from || 0,
+        search_filters: { must_include_category_ids: opts.categoryIds || [] },
+        search_type: searchType,
+        is_explore: true,
+      },
+    });
+    const doCall = async (token: string) =>
+      fetch(SEARCH_URL, {
+        method: 'POST',
+        headers: {
+          authorization: token,
+          'content-type': 'application/json',
+          origin: 'https://app.shophunter.io',
+          referer: `https://app.shophunter.io/explore/${searchType}`,
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+        },
+        body,
+      });
+
+    let token = await this.auth.getToken();
+    let res: Response;
+    try {
+      res = await doCall(token);
+      if (res.status === 401 || res.status === 403) {
+        token = await this.auth.getToken(); // ép refresh nếu token vừa hết hạn giữa chừng
+        res = await doCall(token);
+      }
+    } catch (e) {
+      throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`);
+    }
+    const text = await res.text();
+    if (!res.ok) throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`);
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new ShBlockedError();
+    }
+  }
+
+  async fetchAsset(url: string): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
+    const res = await fetch(url, {
+      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/147.0.0.0 Safari/537.36' },
+    });
+    if (!res.ok) throw new ShBlockedError(`Không tải được ảnh (HTTP ${res.status}).`);
+    return { body: res.body, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
+  }
+}
