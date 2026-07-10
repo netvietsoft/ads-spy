@@ -5,6 +5,7 @@ import {
 } from '../api';
 import { LazyGrid } from './LazyGrid';
 import { ShShopModal } from './ShShopModal';
+import { ShProductModal } from './ShProductModal';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '');
@@ -30,10 +31,10 @@ function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
   );
 }
 
-function ProductCard({ p }: { p: any }) {
+function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
   const img = p.product_image_external || '';
   return (
-    <div className="fbcard">
+    <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
       {img ? <div className="fbmedia"><img src={shAssetProxy(img)} alt={p.product_title} loading="lazy" /><span className="countbadge">{money(p.price)}</span></div> : null}
       <div className="fbpage">{p.product_title}</div>
       <div className="fbbody">{p.product_vendor || p.shop_id}</div>
@@ -58,6 +59,7 @@ export function ShopHunterPanel() {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<ShTokenStatus | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
+  const [openProduct, setOpenProduct] = useState<{ shopId: string; productId: string } | null>(null);
 
   useEffect(() => { shSorts().then(setSorts).catch(() => {}); shTokenStatus().then(setStatus).catch(() => {}); }, []);
 
@@ -114,7 +116,7 @@ export function ShopHunterPanel() {
         items={items}
         render={(it) => tab === 'shops'
           ? <ShopCard key={it.shop_id} s={it} onOpen={() => setOpenShop(it.shop_id)} />
-          : <ProductCard key={it.product_id} p={it} />}
+          : <ProductCard key={it.product_id} p={it} onOpen={() => setOpenProduct({ shopId: it.shop_id, productId: it.product_id })} />}
       />
 
       {items.length > 0 && items.length < total && (
@@ -124,6 +126,7 @@ export function ShopHunterPanel() {
       )}
 
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
+      {openProduct && <ShProductModal shopId={openProduct.shopId} productId={openProduct.productId} onClose={() => setOpenProduct(null)} />}
     </div>
   );
 }
