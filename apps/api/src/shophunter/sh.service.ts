@@ -87,4 +87,7 @@ export class ShService {
   tokenStatus() {
     return this.auth.status();
   }
+
+  localShops(o: { sort: string; dir: string; offset: number; limit: number }) { return this.mysql.queryLocalShops(o); }
+  localProducts(o: { sort: string; dir: string; offset: number; limit: number }) { return this.mysql.queryLocalProducts(o); }
 }

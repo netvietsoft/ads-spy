@@ -436,3 +436,21 @@ export async function shShopDetail(id: string): Promise<ShDetail> {
 export async function shProductDetail(shopId: string, productId: string): Promise<ShDetail> {
   return jsonOrThrow(await fetch(`${API}/api/sh/product/${encodeURIComponent(shopId)}/${encodeURIComponent(productId)}`));
 }
+
+export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
+export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number } = {}): Promise<ShLocalResult> {
+  const qs = new URLSearchParams();
+  if (p.sort) qs.set('sort', p.sort);
+  if (p.dir) qs.set('dir', p.dir);
+  if (p.page) qs.set('page', String(p.page));
+  if (p.pageSize) qs.set('pageSize', String(p.pageSize));
+  return jsonOrThrow(await fetch(`${API}/api/sh/local/shops?${qs.toString()}`));
+}
+export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number } = {}): Promise<ShLocalResult> {
+  const qs = new URLSearchParams();
+  if (p.sort) qs.set('sort', p.sort);
+  if (p.dir) qs.set('dir', p.dir);
+  if (p.page) qs.set('page', String(p.page));
+  if (p.pageSize) qs.set('pageSize', String(p.pageSize));
+  return jsonOrThrow(await fetch(`${API}/api/sh/local/products?${qs.toString()}`));
+}
