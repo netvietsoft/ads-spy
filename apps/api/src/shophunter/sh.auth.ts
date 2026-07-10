@@ -74,6 +74,11 @@ export class ShAuth {
     return this.mint(rt);
   }
 
+  invalidate() {
+    this.idToken = null;
+    this.expSec = 0;
+  }
+
   async setRefreshToken(token: string): Promise<{ valid: boolean; email?: string; expiresAt?: number }> {
     const clean = (token || '').trim();
     if (!clean) return { valid: false };

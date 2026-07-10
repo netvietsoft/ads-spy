@@ -65,7 +65,8 @@ export class ShClient {
     try {
       res = await doCall(token);
       if (res.status === 401 || res.status === 403) {
-        token = await this.auth.getToken(); // ép refresh nếu token vừa hết hạn giữa chừng
+        this.auth.invalidate(); // xóa cache để getToken() bắt buộc mint token mới
+        token = await this.auth.getToken();
         res = await doCall(token);
       }
     } catch (e) {
