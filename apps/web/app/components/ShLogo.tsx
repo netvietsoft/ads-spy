@@ -13,8 +13,8 @@ export function ShLogo({ internal, external, title, size = 24 }: { internal?: st
     );
   }
   return (
-    <img src={shAssetProxy(src)} alt={title || ''} width={size} height={size}
-      style={{ borderRadius: 6, objectFit: 'cover', flex: '0 0 auto' }} loading="lazy"
+    <img src={shAssetProxy(src)} alt="" title={title} width={size} height={size}
+      style={{ borderRadius: 6, objectFit: 'cover', flex: '0 0 auto', display: 'block', maxWidth: size, overflow: 'hidden' }} loading="lazy"
       onError={() => setI((n) => n + 1)} />
   );
 }
