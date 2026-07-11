@@ -100,6 +100,30 @@ export class ShController {
     return this.svc.trackHistory();
   }
 
+  @Post('sh/import')
+  async importRows(@Body('rows') rows: any[], @Body('type') type: string) {
+    const n = await this.svc.importRows(rows || [], type === 'product' ? 'product' : 'shop');
+    return { imported: n };
+  }
+
+  @Get('sh/import/list')
+  async importList(@Query('page') page: string, @Query('pageSize') pageSize: string, @Query('type') type: string) {
+    const p = localParams(undefined, undefined, page, pageSize);
+    const r = await this.svc.importedList({ offset: p.offset, limit: p.limit, type: type === 'product' ? 'product' : 'shop' });
+    return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
+  }
+
+  @Get('sh/import/stats')
+  importStats(@Query('type') type: string) {
+    return this.svc.importedStats(type === 'product' ? 'product' : 'shop');
+  }
+
+  @Post('sh/import/enrich')
+  importEnrich(@Body('daily') daily?: number | string) {
+    const n = Number(daily);
+    return this.harvest.runImportEnrich({ daily: Number.isFinite(n) ? n : undefined });
+  }
+
   @Get('sh/shops')
   shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
     return this.svc.explore('shops', {

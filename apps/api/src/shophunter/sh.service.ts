@@ -99,6 +99,19 @@ export class ShService {
 
   trackHistory() { return this.mysql.getTrackHistory(50); }
 
+  importRows(rows: any[], type = 'shop') { return this.mysql.upsertImported(Array.isArray(rows) ? rows : [], type); }
+  importedList(o: { limit: number; offset: number; type?: string }) { return this.mysql.getImported(o); }
+  importedStats(type = 'shop') { return this.mysql.importedStats(type); }
+
+  // Enrich 1 domain import kế tiếp: track → detail → đẩy vào sh_shop (checkDomain lo hết). Ném lỗi nếu bị chặn (để retry).
+  async enrichNextImported(): Promise<'done' | 'ok' | 'skip'> {
+    const next = await this.mysql.getNextUnenriched();
+    if (!next) return 'done';
+    const r = await this.checkDomain(next.domain);
+    await this.mysql.setImportedEnriched(next.domain, r.isShopify ? String(r.shopId) : null, r.isShopify ? (r.identifyType || 'ok') : (r.reason || 'not_shopify'));
+    return r.isShopify ? 'ok' : 'skip';
+  }
+
   setToken(token: string) {
     return this.auth.setRefreshToken(token);
   }

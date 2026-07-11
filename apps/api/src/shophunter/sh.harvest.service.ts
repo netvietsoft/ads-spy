@@ -105,6 +105,7 @@ export class ShHarvestService {
     const mode = process.env.SH_HARVEST_MODE || 'slices';
     if (mode === 'slices') return this.runHarvestSlices(opts);
     if (mode === 'deep') return this.runHarvestDeep(process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops', opts);
+    if (mode === 'import') return this.runImportEnrich(opts);
     return this.runHarvestFlat(opts);
   }
 
@@ -257,6 +258,26 @@ export class ShHarvestService {
       }
     } finally { this.running = false; }
     return { processed, ok, skipped, failed, sliceKey, status };
+  }
+
+  // Enrich shop import: track domain → detail → đẩy vào sh_shop, rải gentle như harvest.
+  private importRunning = false;
+  async runImportEnrich(opts: { daily?: number }): Promise<HarvestSliceSummary> {
+    if (this.importRunning) throw new Error('Import-enrich đang chạy, bỏ qua yêu cầu chồng.');
+    this.importRunning = true;
+    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 100);
+    let processed = 0, ok = 0, skipped = 0, status = 'ok';
+    try {
+      while (processed < quota) {
+        let res: 'done' | 'ok' | 'skip';
+        try { res = await this.svc.enrichNextImported(); }
+        catch (e) { this.logger.warn(`Import-enrich dừng do bị chặn: ${(e as Error).message}`); status = 'blocked'; break; }
+        if (res === 'done') { status = 'all_done'; break; }
+        processed++; if (res === 'ok') ok++; else skipped++;
+        await this.sleep(this.randDelayMs());
+      }
+    } finally { this.importRunning = false; }
+    return { processed, ok, skipped, failed: 0, sliceKey: 'import', status };
   }
 
   async runHarvestDeep(type: 'shops' | 'products', opts: { daily?: number }): Promise<HarvestSliceSummary> {

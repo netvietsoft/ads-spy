@@ -164,6 +164,15 @@ export class ShMysql implements OnModuleInit {
       domain VARCHAR(255) PRIMARY KEY, shop_id VARCHAR(32), shop_title VARCHAR(255),
       identify_type VARCHAR(24), checked_at BIGINT)`);
 
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_imported (
+      domain VARCHAR(255) PRIMARY KEY, type VARCHAR(10) NOT NULL DEFAULT 'shop', shop_title VARCHAR(512),
+      week_revenue DOUBLE, revenue_change DOUBLE, revenue_change_pct DOUBLE, revenue_period VARCHAR(24),
+      ads INT, ads_change INT, ads_change_pct DOUBLE, ads_period VARCHAR(24),
+      shop_id VARCHAR(32), enriched TINYINT NOT NULL DEFAULT 0, enrich_status VARCHAR(32),
+      imported_at BIGINT, enriched_at BIGINT)`);
+    try { await pool.query("ALTER TABLE sh_imported ADD COLUMN type VARCHAR(10) NOT NULL DEFAULT 'shop'"); } catch { /* đã có cột */ }
+    await this.ensureIndex(pool, 'sh_imported', 'idx_sh_imported_enriched', 'enriched');
+
     this.pool = pool;
   }
 
@@ -598,5 +607,61 @@ export class ShMysql implements OnModuleInit {
     await this.ensureReady();
     const [rows] = await this.pool!.query('SELECT domain, shop_id, shop_title, identify_type, checked_at FROM sh_track_history ORDER BY checked_at DESC LIMIT ?', [limit]);
     return (rows as any[]).map((r) => ({ domain: r.domain, shopId: r.shop_id, shopTitle: r.shop_title, identifyType: r.identify_type, checkedAt: r.checked_at == null ? null : Number(r.checked_at) }));
+  }
+
+  async upsertImported(rows: any[], type = 'shop'): Promise<number> {
+    await this.ensureReady();
+    const t = type === 'product' ? 'product' : 'shop';
+    const num = (v: any) => { const s = String(v ?? '').replace(/[^0-9.\-]/g, ''); const n = Number(s); return s !== '' && Number.isFinite(n) ? n : null; };
+    const int = (v: any) => { const n = num(v); return n == null ? null : Math.round(n); };
+    let count = 0;
+    for (const r of rows) {
+      const domain = String(r.domain ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      if (!domain) continue;
+      await this.pool!.query(
+        `INSERT INTO sh_imported (domain, type, shop_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE type=VALUES(type), shop_title=VALUES(shop_title), week_revenue=VALUES(week_revenue), revenue_change=VALUES(revenue_change),
+           revenue_change_pct=VALUES(revenue_change_pct), revenue_period=VALUES(revenue_period), ads=VALUES(ads),
+           ads_change=VALUES(ads_change), ads_change_pct=VALUES(ads_change_pct), ads_period=VALUES(ads_period), imported_at=VALUES(imported_at)`,
+        [domain, t, r.shopTitle ?? null, num(r.weekRevenue), num(r.revenueChange), num(r.revenueChangePct), r.revenuePeriod ?? null,
+          int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, Date.now()],
+      );
+      count++;
+    }
+    return count;
+  }
+
+  async getImported(o: { limit: number; offset: number; type?: string }): Promise<{ items: any[]; total: number }> {
+    await this.ensureReady();
+    const t = o.type === 'product' ? 'product' : 'shop';
+    const [rows] = await this.pool!.query('SELECT * FROM sh_imported WHERE type=? ORDER BY imported_at DESC LIMIT ? OFFSET ?', [t, o.limit, o.offset]);
+    const [cnt] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_imported WHERE type=?', [t]);
+    const items = (rows as any[]).map((r) => ({
+      domain: r.domain, shopTitle: r.shop_title, weekRevenue: r.week_revenue, revenueChangePct: r.revenue_change_pct,
+      ads: r.ads, adsChangePct: r.ads_change_pct, shopId: r.shop_id, enriched: !!r.enriched, enrichStatus: r.enrich_status,
+      importedAt: r.imported_at == null ? null : Number(r.imported_at),
+    }));
+    return { items, total: Number((cnt as any[])[0].n) || 0 };
+  }
+
+  async importedStats(type = 'shop'): Promise<{ total: number; enriched: number; pending: number }> {
+    await this.ensureReady();
+    const t = type === 'product' ? 'product' : 'shop';
+    const [r] = await this.pool!.query('SELECT COUNT(*) AS total, SUM(enriched=1) AS enriched FROM sh_imported WHERE type=?', [t]);
+    const total = Number((r as any[])[0].total) || 0; const enriched = Number((r as any[])[0].enriched) || 0;
+    return { total, enriched, pending: total - enriched };
+  }
+
+  // Chỉ enrich SHOP (product cần format riêng — chưa làm). Trả domain shop chưa enrich kế tiếp.
+  async getNextUnenriched(): Promise<{ domain: string } | null> {
+    await this.ensureReady();
+    const [r] = await this.pool!.query("SELECT domain FROM sh_imported WHERE enriched=0 AND type='shop' ORDER BY imported_at LIMIT 1");
+    const row = (r as any[])[0]; return row ? { domain: row.domain } : null;
+  }
+
+  async setImportedEnriched(domain: string, shopId: string | null, status: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_imported SET enriched=1, shop_id=?, enrich_status=?, enriched_at=? WHERE domain=?', [shopId, status, Date.now(), domain]);
   }
 }
