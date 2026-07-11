@@ -594,13 +594,14 @@ export class ShMysql implements OnModuleInit {
       const [rows] = await this.pool!.query(sql);
       return (rows as any[]).map((r) => r.v).filter((v) => v != null && v !== '').map(String);
     };
+    const okCountry = (arr: string[]) => arr.filter((v) => /^[A-Za-z]{2,3}$/.test(v)); // bỏ data rác (vd HTML banner) khỏi dropdown Nước
     if (type === 'shops') {
       const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) v FROM sh_shop ORDER BY v");
-      return { countries, categories: [] };
+      return { countries: okCountry(countries), categories: [] };
     }
     const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
     const categories = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) v FROM sh_product ORDER BY v");
-    return { countries, categories };
+    return { countries: okCountry(countries), categories };
   }
 
   async addTrackHistory(domain: string, shopId: string, shopTitle: string, identifyType: string): Promise<void> {

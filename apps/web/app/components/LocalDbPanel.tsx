@@ -144,7 +144,7 @@ export function LocalDbPanel() {
                   <td>{s.fb_followers ?? '—'}</td>
                   <td>{s.active_ad_count ?? 0}</td>
                   <td>{s.sku_count ?? '—'}</td>
-                  <td>{s.country}</td>
+                  <td>{/^[A-Za-z]{2,3}$/.test(s.country || '') ? s.country : ''}</td>
                   <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}><Upd ms={s._fetched_at ?? s._harvested_at} /></td>
                   <td>{s._harvested ? <span className="badge-harvest">✓ harvest</span> : <span className="badge-local">local</span>}</td>
                 </tr>
