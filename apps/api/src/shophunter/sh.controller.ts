@@ -148,6 +148,16 @@ export class ShController {
     return this.harvest.reset();
   }
 
+  @Get('sh/harvest/deep-slices')
+  harvestDeepSlices(@Query('type') type: string) {
+    return this.harvest.listDeepSlices(type === 'products' ? 'products' : 'shops');
+  }
+
+  @Post('sh/harvest/deep-reset')
+  harvestDeepReset() {
+    return this.harvest.resetDeepSlices();
+  }
+
   @Post('sh/harvest/tick')
   harvestTick() {
     return this.harvest.tick();

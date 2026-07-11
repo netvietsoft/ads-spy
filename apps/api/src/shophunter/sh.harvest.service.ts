@@ -90,6 +90,9 @@ export class ShHarvestService {
   listSlices() { return this.mysql.listSlices(); }
   resetSlices() { return this.mysql.resetSlices(); }
 
+  listDeepSlices(type: 'shops' | 'products') { return this.mysql.listDeepSlices(type); }
+  resetDeepSlices() { return this.mysql.resetDeepSlices(); }
+
   async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary> {
     const mode = process.env.SH_HARVEST_MODE || 'slices';
     if (mode === 'slices') return this.runHarvestSlices(opts);
