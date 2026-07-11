@@ -95,6 +95,11 @@ export class ShController {
     return this.svc.checkDomain(domain);
   }
 
+  @Get('sh/track/history')
+  trackHistory() {
+    return this.svc.trackHistory();
+  }
+
   @Get('sh/shops')
   shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
     return this.svc.explore('shops', {

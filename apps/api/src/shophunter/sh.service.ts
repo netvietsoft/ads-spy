@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ShClient } from './sh.client';
 import { ShMysql } from './sh.mysql';
 import { ShAuth } from './sh.auth';
-import { parseSearch } from './sh.parser';
+import { parseSearch, parseShopColumns } from './sh.parser';
 import { shQueryHash } from './sh.hash';
 
 const TTL_MS = (Number(process.env.SH_CACHE_TTL_HOURS) || 6) * 3600 * 1000;
@@ -87,9 +87,17 @@ export class ShService {
     if (!domain) return { domain: '', isShopify: false, reason: 'empty' };
     const track = await this.client.trackShop(domain);
     if (!track.shopId) return { domain, isShopify: false, reason: track.error || 'not_shopify_store' };
-    const detail = await this.shopDetail(track.shopId);
-    return { domain, isShopify: true, shopId: track.shopId, identifyType: track.identifyType, detail: detail.detail };
+    const bundle = await this.shopDetail(track.shopId);
+    const item = bundle.detail;
+    // Đẩy shop tìm thấy vào DB chung (sh_shop) → xuất hiện trong Local DB + lưu detail. Không chặn kết quả nếu lỗi.
+    if (item) {
+      try { await this.mysql.upsertShop(String(track.shopId), item, bundle, parseShopColumns(item, bundle)); } catch { /* bỏ qua */ }
+    }
+    await this.mysql.addTrackHistory(domain, String(track.shopId), item?.shop_title || domain, track.identifyType || '');
+    return { domain, isShopify: true, shopId: track.shopId, identifyType: track.identifyType, detail: item };
   }
+
+  trackHistory() { return this.mysql.getTrackHistory(50); }
 
   setToken(token: string) {
     return this.auth.setRefreshToken(token);

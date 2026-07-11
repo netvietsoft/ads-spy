@@ -160,6 +160,10 @@ export class ShMysql implements OnModuleInit {
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_deep_frontier (
       type VARCHAR(10) NOT NULL, cat_id VARCHAR(64) NOT NULL, PRIMARY KEY (type, cat_id))`);
 
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_track_history (
+      domain VARCHAR(255) PRIMARY KEY, shop_id VARCHAR(32), shop_title VARCHAR(255),
+      identify_type VARCHAR(24), checked_at BIGINT)`);
+
     this.pool = pool;
   }
 
@@ -579,5 +583,20 @@ export class ShMysql implements OnModuleInit {
     const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
     const categories = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) v FROM sh_product ORDER BY v");
     return { countries, categories };
+  }
+
+  async addTrackHistory(domain: string, shopId: string, shopTitle: string, identifyType: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      `INSERT INTO sh_track_history (domain, shop_id, shop_title, identify_type, checked_at) VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE shop_id = VALUES(shop_id), shop_title = VALUES(shop_title), identify_type = VALUES(identify_type), checked_at = VALUES(checked_at)`,
+      [domain, shopId, shopTitle, identifyType, Date.now()],
+    );
+  }
+
+  async getTrackHistory(limit = 50): Promise<any[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT domain, shop_id, shop_title, identify_type, checked_at FROM sh_track_history ORDER BY checked_at DESC LIMIT ?', [limit]);
+    return (rows as any[]).map((r) => ({ domain: r.domain, shopId: r.shop_id, shopTitle: r.shop_title, identifyType: r.identify_type, checkedAt: r.checked_at == null ? null : Number(r.checked_at) }));
   }
 }

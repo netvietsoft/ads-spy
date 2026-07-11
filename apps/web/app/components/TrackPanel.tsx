@@ -1,10 +1,12 @@
 'use client';
-import { useState } from 'react';
-import { shCheckDomain, ShCheckResult, shShopSite } from '../api';
+import { useEffect, useState } from 'react';
+import { shCheckDomain, ShCheckResult, shShopSite, shTrackHistory, ShTrackHistItem } from '../api';
 import { ShShopModal } from './ShShopModal';
 import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
+const pad = (n: number) => String(n).padStart(2, '0');
+const fmt = (ms: number | null) => { if (!ms) return ''; const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`; };
 const REASON: Record<string, string> = {
   not_shopify_store: 'Không phải cửa hàng Shopify.',
   reachability_error: 'Domain không truy cập được (sai hoặc không tồn tại).',
@@ -17,12 +19,16 @@ export function TrackPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
+  const [hist, setHist] = useState<ShTrackHistItem[]>([]);
+
+  const loadHist = () => shTrackHistory().then(setHist).catch(() => {});
+  useEffect(() => { loadHist(); }, []);
 
   const check = () => {
     const d = domain.trim();
     if (!d) return;
     setLoading(true); setErr(null); setRes(null);
-    shCheckDomain(d).then(setRes).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
+    shCheckDomain(d).then((r) => { setRes(r); if (r.isShopify) loadHist(); }).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
   };
 
   const s = res?.detail;
@@ -61,6 +67,21 @@ export function TrackPanel() {
           <div className="fbfoot">
             <a className="dl" style={{ cursor: 'pointer' }} onClick={() => setOpenShop(res.shopId!)}>Xem chi tiết ▸</a>
           </div>
+        </div>
+      )}
+      {hist.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <h4 style={{ margin: '0 0 6px' }}>Lịch sử Shopify đã tìm ({hist.length})</h4>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {hist.map((h) => (
+              <li key={h.domain} style={{ padding: '7px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <a className="dl" style={{ cursor: 'pointer', fontWeight: 600 }} onClick={() => setOpenShop(h.shopId)}>{h.shopTitle || h.domain}</a>
+                <span style={{ opacity: 0.6, fontSize: 12 }}>{h.domain}</span>
+                {h.identifyType === 'scrape' && <span className="badge-local">quét mới</span>}
+                <span style={{ marginLeft: 'auto', opacity: 0.5, fontSize: 12 }}>{fmt(h.checkedAt)}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
