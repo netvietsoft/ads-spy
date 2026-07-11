@@ -1,22 +1,38 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ShDetail, shProductDetail, shAssetProxy } from '../api';
+import { ShDetail, shProductDetail, shAssetProxy, shShopSite, shProductUrl } from '../api';
 import { ShChart } from './ShChart';
+import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 
-export function ShProductModal({ shopId, productId, onClose }: { shopId: string; productId: string; onClose: () => void }) {
+export function ShProductModal({ shopId, productId, item, onClose }: { shopId: string; productId: string; item?: any; onClose: () => void }) {
   const [d, setD] = useState<ShDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { shProductDetail(shopId, productId).then(setD).catch((e) => setErr((e as Error).message)); }, [shopId, productId]);
   const p = d?.detail;
+  const site = shShopSite(item);
+  const purl = shProductUrl(item);
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="row">
-          <div className="fbpage">{p?.product_title || 'Sản phẩm'}</div>
+          <div className="fbpage">{p?.product_title || item?.product_title || 'Sản phẩm'}</div>
           <button className="ghost" onClick={onClose}>Đóng ✕</button>
         </div>
+        {item && (item.shop_title || site) && (
+          <div className="fbplat" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <ShLogo internal={item.shop_favicon_internal} external={item.shop_favicon_external} title={item.shop_title} size={20} />
+            <span>{item.shop_title}</span>
+            {site && <a className="dl" href={site} target="_blank" rel="noreferrer">{item.shop_url || item.url}</a>}
+          </div>
+        )}
+        {(purl || site) && (
+          <div style={{ display: 'flex', gap: 8, margin: '8px 0', flexWrap: 'wrap' }}>
+            {purl && <a className="dl" href={purl} target="_blank" rel="noreferrer">↗ Xem sản phẩm trên web</a>}
+            {site && <a className="dl" href={site} target="_blank" rel="noreferrer">🏪 Xem shop</a>}
+          </div>
+        )}
         {err && <div className="err">{err}</div>}
         {!d && !err && <p className="hint"><span className="spinner" /> Đang tải…</p>}
         {p && (

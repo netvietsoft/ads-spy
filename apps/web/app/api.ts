@@ -401,6 +401,17 @@ export interface ShTokenStatus { valid: boolean; email?: string; expiresAt?: num
 export function shAssetProxy(url: string, download = false): string {
   return `${API}/api/sh/asset?url=${encodeURIComponent(url)}${download ? '&download=1' : ''}`;
 }
+// Website nguồn (shop dùng field `url`, product dùng `shop_url`). Chuẩn hoá thành URL đầy đủ.
+export function shShopSite(item: any): string | null {
+  const u = item?.shop_url || item?.url;
+  if (!u) return null;
+  return /^https?:\/\//i.test(u) ? u : 'https://' + u;
+}
+// Trang sản phẩm thật trên web (= View Product / View on Shopify): {site}/products/{handle}.
+export function shProductUrl(item: any): string | null {
+  const site = shShopSite(item);
+  return site && item?.product_handle ? site.replace(/\/+$/, '') + '/products/' + item.product_handle : null;
+}
 export async function shSorts(): Promise<{ shops: ShSort[]; products: ShSort[] }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/sorts`));
 }

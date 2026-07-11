@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { shLocalShops, shLocalProducts, ShLocalResult, shAssetProxy } from '../api';
+import { shLocalShops, shLocalProducts, ShLocalResult, shAssetProxy, shShopSite, shProductUrl } from '../api';
 import { ShShopModal } from './ShShopModal';
 import { ShProductModal } from './ShProductModal';
 import { ShLogo } from './ShLogo';
@@ -33,7 +33,7 @@ export function LocalDbPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
-  const [openProduct, setOpenProduct] = useState<{ shopId: string; productId: string } | null>(null);
+  const [openProduct, setOpenProduct] = useState<any | null>(null);
 
   useEffect(() => {
     setLoading(true); setErr(null);
@@ -57,8 +57,8 @@ export function LocalDbPanel() {
   return (
     <div>
       <div className="sources" style={{ marginTop: 8 }}>
-        <button className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setSort('revenue_month'); setDir('desc'); setPage(1); }}>Shops</button>
-        <button className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setSort('revenue_month'); setDir('desc'); setPage(1); }}>Products</button>
+        <button className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setData({ items: [], total: 0, page: 1, pageSize }); setSort('revenue_month'); setDir('desc'); setPage(1); }}>Shops</button>
+        <button className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setData({ items: [], total: 0, page: 1, pageSize }); setSort('revenue_month'); setDir('desc'); setPage(1); }}>Products</button>
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
@@ -110,23 +110,31 @@ export function LocalDbPanel() {
               <th>Shop</th>
             </tr></thead>
             <tbody>
-              {data.items.map((p) => (
-                <tr key={p.product_id} onClick={() => setOpenProduct({ shopId: p.shop_id, productId: p.product_id })} style={{ cursor: 'pointer' }}>
+              {data.items.map((p) => {
+                const purl = shProductUrl(p); const site = shShopSite(p);
+                return (
+                <tr key={p.product_id} onClick={() => setOpenProduct(p)} style={{ cursor: 'pointer' }}>
                   <td>{p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={36} height={36} style={{ borderRadius: 6, objectFit: 'cover' }} loading="lazy" /> : null}</td>
-                  <td>{p.product_title}</td>
+                  <td>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
                   <td>{money(p.price)}</td>
                   <td>{money(p.month_current_period_revenue)}</td>
                   <td>{money(p.day_current_period_revenue)}</td>
-                  <td>{p.shop_id}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={18} />
+                      <div>{p.shop_title || '—'}<div style={{ opacity: 0.6, fontSize: 11 }}>{site ? <a href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{p.shop_url}</a> : (p.shop_url || '')}</div></div>
+                    </div>
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
 
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
-      {openProduct && openProduct.shopId && openProduct.productId && <ShProductModal shopId={openProduct.shopId} productId={openProduct.productId} onClose={() => setOpenProduct(null)} />}
+      {openProduct && <ShProductModal shopId={openProduct.shop_id} productId={openProduct.product_id} item={openProduct} onClose={() => setOpenProduct(null)} />}
     </div>
   );
 }

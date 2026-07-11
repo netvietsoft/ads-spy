@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import {
-  ShExplore, ShSort, ShTokenStatus, shExplore, shSorts, shSetToken, shTokenStatus, shAssetProxy,
+  ShExplore, ShSort, ShTokenStatus, shExplore, shSorts, shSetToken, shTokenStatus, shAssetProxy, shShopSite, shProductUrl,
 } from '../api';
 import { LazyGrid } from './LazyGrid';
 import { ShShopModal } from './ShShopModal';
@@ -55,14 +55,23 @@ function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
 
 function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
   const img = p.product_image_external || '';
+  const site = shShopSite(p); const purl = shProductUrl(p);
   return (
     <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
       {img ? <div className="fbmedia"><img src={shAssetProxy(img)} alt={p.product_title} loading="lazy" /><span className="countbadge">{money(p.price)}</span></div> : null}
       <div className="fbpage">{p.product_title}</div>
-      <div className="fbbody">{p.product_vendor || p.shop_id}</div>
+      <div className="fbbody" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={16} />
+        <span>{p.shop_title || p.product_vendor || p.shop_id}</span>
+      </div>
+      {p.shop_url ? <div className="fbbody" style={{ opacity: 0.6, fontSize: 11 }}>{p.shop_url}</div> : null}
       <div className="fbplat">
         Day {money(p.day_current_period_revenue)} <span style={{ color: (p.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(p.day_revenue_percent_change)}</span>
         {' · '}Ads {p.product_active_ad_count ?? 0}
+      </div>
+      <div className="fbfoot">
+        {purl && <a className="dl" href={purl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Xem sản phẩm</a>}
+        {site && <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🏪 Shop</a>}
       </div>
     </div>
   );
@@ -84,7 +93,7 @@ export function ShopHunterPanel() {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<ShTokenStatus | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
-  const [openProduct, setOpenProduct] = useState<{ shopId: string; productId: string } | null>(null);
+  const [openProduct, setOpenProduct] = useState<any | null>(null);
 
   useEffect(() => { shSorts().then(setSorts).catch(() => {}); shTokenStatus().then(setStatus).catch(() => {}); }, []);
 
@@ -160,7 +169,7 @@ export function ShopHunterPanel() {
             items={items}
             render={(it) => tab === 'shops'
               ? <ShopCard key={it.shop_id} s={it} onOpen={() => setOpenShop(it.shop_id)} />
-              : <ProductCard key={it.product_id} p={it} onOpen={() => setOpenProduct({ shopId: it.shop_id, productId: it.product_id })} />}
+              : <ProductCard key={it.product_id} p={it} onOpen={() => setOpenProduct(it)} />}
           />
 
           {items.length > 0 && items.length < total && (
@@ -172,7 +181,7 @@ export function ShopHunterPanel() {
       </div>
 
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
-      {openProduct && <ShProductModal shopId={openProduct.shopId} productId={openProduct.productId} onClose={() => setOpenProduct(null)} />}
+      {openProduct && <ShProductModal shopId={openProduct.shop_id} productId={openProduct.product_id} item={openProduct} onClose={() => setOpenProduct(null)} />}
     </div>
   );
 }
