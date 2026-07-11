@@ -143,6 +143,11 @@ export class ShMysql implements OnModuleInit {
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_harvest_daily (
       day VARCHAR(10) PRIMARY KEY, count INT DEFAULT 0, updated_at BIGINT)`);
 
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_deep_slice (
+      slice_key VARCHAR(72) PRIMARY KEY, type VARCHAR(10) NOT NULL, cat_id VARCHAR(64) NOT NULL,
+      total_hits INT, cursor_from INT NOT NULL DEFAULT 0, done TINYINT NOT NULL DEFAULT 0,
+      capped TINYINT NOT NULL DEFAULT 0, seq INT NOT NULL DEFAULT 0, built_at BIGINT, last_run_at BIGINT)`);
+
     this.pool = pool;
   }
 
@@ -333,6 +338,78 @@ export class ShMysql implements OnModuleInit {
         detail ? now : null, now,
       ],
     );
+  }
+
+  // Upsert listing/search row NGAY khi cào breadth — KHÔNG đụng detail_raw/revenue_chart/
+  // detail_fetched_at/harvested_at để không xoá detail đã có (deep-slice harvest listing-first).
+  async upsertListingShop(shopId: string, item: unknown, cols: import('./sh.parser').ShShopColumns): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      `INSERT INTO sh_shop
+         (shop_id, raw, fetched_at, shop_name, revenue, items_sold, followers, rating, category, rank_pos, logo_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         raw = VALUES(raw), fetched_at = VALUES(fetched_at), shop_name = VALUES(shop_name),
+         revenue = VALUES(revenue), items_sold = VALUES(items_sold), followers = VALUES(followers),
+         rating = VALUES(rating), category = VALUES(category), rank_pos = VALUES(rank_pos),
+         logo_url = VALUES(logo_url)`,
+      [
+        shopId, JSON.stringify(item), Date.now(),
+        cols.shopName, cols.revenue, cols.itemsSold, cols.followers, cols.rating, cols.category,
+        cols.rankPos, cols.logoUrl,
+      ],
+    );
+  }
+
+  async ensureDeepSlices(slices: { catId: string; total: number; capped: boolean }[], type: 'shops' | 'products'): Promise<void> {
+    await this.ensureReady();
+    let seq = 0;
+    for (const s of slices) {
+      await this.pool!.query(
+        `INSERT IGNORE INTO sh_deep_slice (slice_key, type, cat_id, total_hits, capped, seq, built_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [`${type}:${s.catId}`, type, s.catId, s.total, s.capped ? 1 : 0, seq++, Date.now()],
+      );
+    }
+  }
+
+  async getNextDeepSlice(type: 'shops' | 'products'): Promise<{ sliceKey: string; catId: string; cursorFrom: number; total: number } | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
+      'SELECT slice_key, cat_id, cursor_from, total_hits FROM sh_deep_slice WHERE type = ? AND done = 0 ORDER BY seq LIMIT 1',
+      [type],
+    );
+    const row = (rows as any[])[0];
+    return row
+      ? { sliceKey: row.slice_key, catId: row.cat_id, cursorFrom: Number(row.cursor_from) || 0, total: Number(row.total_hits) || 0 }
+      : null;
+  }
+
+  async setDeepSlice(sliceKey: string, patch: { cursorFrom?: number; done?: boolean; lastRunAt?: number }): Promise<void> {
+    await this.ensureReady();
+    const sets: string[] = []; const vals: any[] = [];
+    if (patch.cursorFrom !== undefined) { sets.push('cursor_from = ?'); vals.push(patch.cursorFrom); }
+    if (patch.done !== undefined) { sets.push('done = ?'); vals.push(patch.done ? 1 : 0); }
+    sets.push('last_run_at = ?'); vals.push(patch.lastRunAt ?? Date.now());
+    vals.push(sliceKey);
+    await this.pool!.query(`UPDATE sh_deep_slice SET ${sets.join(', ')} WHERE slice_key = ?`, vals);
+  }
+
+  async countDeepSlices(type: 'shops' | 'products'): Promise<number> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_deep_slice WHERE type = ?', [type]);
+    return Number((rows as any[])[0].n) || 0;
+  }
+
+  async listDeepSlices(type: 'shops' | 'products'): Promise<any[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT * FROM sh_deep_slice WHERE type = ? ORDER BY seq', [type]);
+    return rows as any[];
+  }
+
+  async resetDeepSlices(): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('DELETE FROM sh_deep_slice');
   }
 
   async ensureSlices(slices: { sliceKey: string; dimension: string; filterValue: string; seq: number }[]): Promise<void> {
