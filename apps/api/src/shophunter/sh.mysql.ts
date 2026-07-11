@@ -144,9 +144,17 @@ export class ShMysql implements OnModuleInit {
       day VARCHAR(10) PRIMARY KEY, count INT DEFAULT 0, updated_at BIGINT)`);
 
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_deep_slice (
-      slice_key VARCHAR(72) PRIMARY KEY, type VARCHAR(10) NOT NULL, cat_id VARCHAR(64) NOT NULL,
+      slice_key VARCHAR(80) PRIMARY KEY, type VARCHAR(10) NOT NULL, cat_id VARCHAR(64) NOT NULL,
       total_hits INT, cursor_from INT NOT NULL DEFAULT 0, done TINYINT NOT NULL DEFAULT 0,
       capped TINYINT NOT NULL DEFAULT 0, seq INT NOT NULL DEFAULT 0, built_at BIGINT, last_run_at BIGINT)`);
+    // DB cũ đã tạo bảng với slice_key VARCHAR(72) (ngắn hơn 1 byte so với 'products:' + 64 ký tự cat_id) —
+    // CREATE TABLE IF NOT EXISTS không đổi cột của bảng có sẵn, nên nới cột bằng ALTER idempotent; lỗi thì bỏ qua an toàn.
+    try {
+      await pool.query('ALTER TABLE sh_deep_slice MODIFY slice_key VARCHAR(80)');
+    } catch { /* đã đủ rộng hoặc DB chưa sẵn sàng — best-effort */ }
+
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_deep_frontier (
+      type VARCHAR(10) NOT NULL, cat_id VARCHAR(64) NOT NULL, PRIMARY KEY (type, cat_id))`);
 
     this.pool = pool;
   }
@@ -376,7 +384,9 @@ export class ShMysql implements OnModuleInit {
   async getNextDeepSlice(type: 'shops' | 'products'): Promise<{ sliceKey: string; catId: string; cursorFrom: number; total: number } | null> {
     await this.ensureReady();
     const [rows] = await this.pool!.query(
-      'SELECT slice_key, cat_id, cursor_from, total_hits FROM sh_deep_slice WHERE type = ? AND done = 0 ORDER BY seq LIMIT 1',
+      // seq, built_at: sinh lát tăng dần (generateSlicesStep) chèn xen kẽ nhiều lần → seq không còn liên tục,
+      // built_at làm thứ tự phụ ổn định.
+      'SELECT slice_key, cat_id, cursor_from, total_hits FROM sh_deep_slice WHERE type = ? AND done = 0 ORDER BY seq, built_at LIMIT 1',
       [type],
     );
     const row = (rows as any[])[0];
@@ -410,6 +420,47 @@ export class ShMysql implements OnModuleInit {
   async resetDeepSlices(): Promise<void> {
     await this.ensureReady();
     await this.pool!.query('DELETE FROM sh_deep_slice');
+    await this.pool!.query('DELETE FROM sh_deep_frontier');
+  }
+
+  // Chèn 1 lát vào sh_deep_slice với seq tăng dần (generateSlicesStep sinh dần từng bước, không phải 1 lần cả cây).
+  async addDeepSlice(slice: { catId: string; total: number; capped: boolean }, type: 'shops' | 'products'): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      `INSERT IGNORE INTO sh_deep_slice (slice_key, type, cat_id, total_hits, capped, seq, built_at)
+       SELECT ?, ?, ?, ?, ?, COALESCE(MAX(seq), -1) + 1, ? FROM sh_deep_slice`,
+      [`${type}:${slice.catId}`, type, slice.catId, slice.total, slice.capped ? 1 : 0, Date.now()],
+    );
+  }
+
+  // --- sh_deep_frontier: hàng đợi BFS bền (DB) để sinh lát dần dần, resumable, không livelock ---
+  async seedFrontier(type: 'shops' | 'products', catIds: string[]): Promise<void> {
+    await this.ensureReady();
+    for (const id of catIds) {
+      await this.pool!.query('INSERT IGNORE INTO sh_deep_frontier (type, cat_id) VALUES (?, ?)', [type, id]);
+    }
+  }
+
+  // Enqueue thêm cat con vào frontier (cùng logic seedFrontier — INSERT IGNORE).
+  async addFrontier(type: 'shops' | 'products', catIds: string[]): Promise<void> {
+    return this.seedFrontier(type, catIds);
+  }
+
+  async takeFrontier(type: 'shops' | 'products', limit: number): Promise<string[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT cat_id FROM sh_deep_frontier WHERE type = ? LIMIT ?', [type, limit]);
+    return (rows as any[]).map((r) => r.cat_id);
+  }
+
+  async removeFrontier(type: 'shops' | 'products', catId: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('DELETE FROM sh_deep_frontier WHERE type = ? AND cat_id = ?', [type, catId]);
+  }
+
+  async countFrontier(type: 'shops' | 'products'): Promise<number> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_deep_frontier WHERE type = ?', [type]);
+    return Number((rows as any[])[0].n) || 0;
   }
 
   async ensureSlices(slices: { sliceKey: string; dimension: string; filterValue: string; seq: number }[]): Promise<void> {

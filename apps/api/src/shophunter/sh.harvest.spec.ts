@@ -1,6 +1,7 @@
 import { ShHarvestService, SH_HARVEST_SLICES } from './sh.harvest.service';
 import { ShBlockedError } from './sh.client';
 import type { HarvestState } from './sh.mysql';
+import { loadCatTree, catRoots } from './sh.categories';
 
 function makeItems(n: number) {
   return Array.from({ length: n }, (_, i) => ({ shop_id: String(i + 1), shop_title: 'S' + (i + 1) }));
@@ -18,6 +19,14 @@ function deps(state?: Partial<HarvestState>) {
     setHarvestState: jest.fn().mockResolvedValue(undefined),
     resetHarvestState: jest.fn().mockResolvedValue(full),
     upsertShop: jest.fn().mockResolvedValue(undefined),
+    // sh_deep_frontier (BFS bền, sinh lát dần dần) — mặc định rỗng/vô hại, override theo từng test.
+    countFrontier: jest.fn().mockResolvedValue(0),
+    countDeepSlices: jest.fn().mockResolvedValue(0),
+    seedFrontier: jest.fn().mockResolvedValue(undefined),
+    addFrontier: jest.fn().mockResolvedValue(undefined),
+    takeFrontier: jest.fn().mockResolvedValue([]),
+    removeFrontier: jest.fn().mockResolvedValue(undefined),
+    addDeepSlice: jest.fn().mockResolvedValue(undefined),
   } as any;
   const h = new ShHarvestService(client, svc, mysql);
   jest.spyOn(h as any, 'sleep').mockResolvedValue(undefined); // không chờ thật
@@ -154,6 +163,58 @@ describe('ShHarvestService.runHarvestDeep — listing-first breadth + lazy detai
     expect(svc.shopDetail).toHaveBeenCalledWith('S2');
     expect(mysql.upsertShop).toHaveBeenCalledTimes(1);
     expect(r).toMatchObject({ ok: 1, skipped: 1, sliceKey: 'shops:x' });
+  });
+});
+
+describe('ShHarvestService.generateSlicesStep — sinh sh_deep_slice dần dần từ frontier bền (chống livelock)', () => {
+  it('frontier & slice đều rỗng → seed frontier bằng catRoots(tree)', async () => {
+    const { h, mysql } = deps();
+    // deps() mặc định countFrontier=0, countDeepSlices=0 → điều kiện seed đúng; takeFrontier rỗng (vừa seed, chưa có gì để lấy lượt này).
+    const r = await (h as any).generateSlicesStep('shops', 'month_current_period_revenue', 15);
+    expect(mysql.seedFrontier).toHaveBeenCalledWith('shops', catRoots(loadCatTree()));
+    expect(r).toEqual({ processed: 0, blocked: false });
+  });
+
+  it('node total ≤ cap (960) → addDeepSlice + removeFrontier, không seed lại', async () => {
+    const { h, client, mysql } = deps();
+    mysql.countFrontier = jest.fn().mockResolvedValue(1); // frontier đã có sẵn → không seed
+    mysql.takeFrontier = jest.fn().mockResolvedValue(['aa']);
+    client.search.mockResolvedValueOnce({ items: [], total_hits: 500 });
+
+    const r = await (h as any).generateSlicesStep('shops', 'month_current_period_revenue', 15);
+
+    expect(mysql.seedFrontier).not.toHaveBeenCalled();
+    expect(mysql.removeFrontier).toHaveBeenCalledWith('shops', 'aa');
+    expect(mysql.addDeepSlice).toHaveBeenCalledWith({ catId: 'aa', total: 500, capped: false }, 'shops');
+    expect(r).toEqual({ processed: 1, blocked: false });
+  });
+
+  it('node total > cap và có con (cat thật "aa" có 8 con) → addFrontier(children) + removeFrontier, KHÔNG addDeepSlice', async () => {
+    const { h, client, mysql } = deps();
+    mysql.countFrontier = jest.fn().mockResolvedValue(1);
+    mysql.takeFrontier = jest.fn().mockResolvedValue(['aa']);
+    client.search.mockResolvedValueOnce({ items: [], total_hits: 2000 });
+
+    const r = await (h as any).generateSlicesStep('shops', 'month_current_period_revenue', 15);
+
+    expect(mysql.removeFrontier).toHaveBeenCalledWith('shops', 'aa');
+    expect(mysql.addFrontier).toHaveBeenCalledWith('shops', ['aa-1', 'aa-2', 'aa-3', 'aa-4', 'aa-5', 'aa-6', 'aa-7', 'aa-8']);
+    expect(mysql.addDeepSlice).not.toHaveBeenCalled();
+    expect(r).toEqual({ processed: 1, blocked: false });
+  });
+
+  it('totalHitsFor ném lỗi chặn-toàn-cục → dừng ngay, KHÔNG removeFrontier (chống livelock, retry lượt sau)', async () => {
+    const { h, client, mysql } = deps();
+    mysql.countFrontier = jest.fn().mockResolvedValue(1);
+    mysql.takeFrontier = jest.fn().mockResolvedValue(['aa']);
+    client.search.mockRejectedValue(new ShBlockedError('HTTP 503'));
+
+    const r = await (h as any).generateSlicesStep('shops', 'month_current_period_revenue', 15);
+
+    expect(mysql.removeFrontier).not.toHaveBeenCalled();
+    expect(mysql.addDeepSlice).not.toHaveBeenCalled();
+    expect(mysql.addFrontier).not.toHaveBeenCalled();
+    expect(r).toEqual({ processed: 0, blocked: true });
   });
 });
 

@@ -5,8 +5,8 @@ import { ShService } from './sh.service';
 import { ShMysql, HarvestState, SliceState } from './sh.mysql';
 import { parseSearch, parseShopColumns } from './sh.parser';
 import { shouldRunNow, pickSip, randInt, isGlobalBlock } from './sh.harvest.util';
-import { buildDeepSlices } from './sh.slices';
-import { loadCatTree } from './sh.categories';
+import { SLICE_CAP } from './sh.slices';
+import { loadCatTree, catRoots, catChildren } from './sh.categories';
 
 const HARVEST_ID = 'shops';
 
@@ -259,9 +259,20 @@ export class ShHarvestService {
     const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
     const maxRetries = 5;
 
+    const GEN_STEP = 15;
     let processed = 0, ok = 0, skipped = 0, failed = 0, status = 'ok', sliceKey = '';
     try {
-      await this.ensureDeepSlicesBuilt(type, sort);
+      // Sinh lát dần dần (incremental, resumable) — xen kẽ với cào, cùng tính vào quota/daily cap.
+      const frontierN = await this.mysql.countFrontier(type);
+      const genNotDone = frontierN > 0 || (await this.mysql.countDeepSlices(type)) === 0;
+      if (genNotDone) {
+        const g = await this.generateSlicesStep(type, sort, Math.min(quota, GEN_STEP));
+        processed += g.processed;
+        if (g.blocked) {
+          status = 'blocked';
+          return { processed, ok, skipped, failed, sliceKey, status };
+        }
+      }
       while (processed < quota) {
         const slice = await this.mysql.getNextDeepSlice(type);
         if (!slice) { status = 'all_done'; break; }
@@ -298,8 +309,10 @@ export class ShHarvestService {
             }
           } else {
             const productId = String(item.product_id);
-            if (productId && productId !== 'undefined') await this.mysql.upsertItem('sh_product', productId, item);
-            ok++;
+            if (productId && productId !== 'undefined') {
+              await this.mysql.upsertItem('sh_product', productId, item);
+              ok++;
+            }
           }
           await this.sleep(this.randDelayMs());
         }
@@ -314,17 +327,43 @@ export class ShHarvestService {
     return { processed, ok, skipped, failed, sliceKey, status };
   }
 
-  // Sinh sh_deep_slice 1 lần (adaptive, theo cây danh mục) nếu chưa có — gentle: nghỉ giữa các lần đọc total_hits.
-  // Nếu totalHitsFor ném lỗi chặn-toàn-cục → để lỗi lan lên (KHÔNG gọi ensureDeepSlices) → dừng an toàn, resume lần sau.
-  private async ensureDeepSlicesBuilt(type: 'shops' | 'products', sort: string): Promise<void> {
-    const count = await this.mysql.countDeepSlices(type);
-    if (count > 0) return;
-    const slices = await buildDeepSlices(loadCatTree(), async (catId) => {
-      const n = await this.totalHitsFor(type, catId, sort);
+  // Sinh sh_deep_slice DẦN DẦN (incremental, resumable, có ngân sách) từ hàng đợi BFS bền trong DB (sh_deep_frontier),
+  // thay vì duyệt hết ~10.5k node cây danh mục 1 lần trước khi cào (chậm breadth, không tính vào cap, có thể livelock
+  // nếu bị chặn giữa chừng vì chưa lưu gì). Mỗi lần gọi chỉ xử lý tối đa `budget` node; gặp chặn-toàn-cục → dừng
+  // ngay, KHÔNG xoá node khỏi frontier (retry ở lượt sau) — đây là thuộc tính chống livelock.
+  private async generateSlicesStep(type: 'shops' | 'products', sort: string, budget: number): Promise<{ processed: number; blocked: boolean }> {
+    if ((await this.mysql.countFrontier(type)) === 0 && (await this.mysql.countDeepSlices(type)) === 0) {
+      await this.mysql.seedFrontier(type, catRoots(loadCatTree()));
+    }
+    const nodes = await this.mysql.takeFrontier(type, budget);
+    const tree = loadCatTree();
+    let processed = 0;
+    for (const catId of nodes) {
+      if (processed >= budget) break;
+      let n: number;
+      try {
+        n = await this.totalHitsFor(type, catId, sort);
+      } catch (e) {
+        if (isGlobalBlock(e)) return { processed, blocked: true };
+        n = 0; // lỗi riêng 1 node (không phải chặn toàn cục) → coi như 0 hit, bỏ qua node này
+      }
+      await this.mysql.removeFrontier(type, catId);
+      if (n > 0) {
+        if (n <= SLICE_CAP) {
+          await this.mysql.addDeepSlice({ catId, total: n, capped: false }, type);
+        } else {
+          const kids = catChildren(tree, catId);
+          if (kids.length) {
+            await this.mysql.addFrontier(type, kids);
+          } else {
+            await this.mysql.addDeepSlice({ catId, total: n, capped: true }, type);
+          }
+        }
+      }
+      processed++;
       await this.sleep(this.randDelayMs());
-      return n;
-    });
-    await this.mysql.ensureDeepSlices(slices, type);
+    }
+    return { processed, blocked: false };
   }
 
   private async totalHitsFor(type: 'shops' | 'products', catId: string, sort: string): Promise<number> {
