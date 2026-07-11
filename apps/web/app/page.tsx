@@ -23,6 +23,7 @@ import { CreativeModal } from './components/CreativeModal';
 import { FacebookPanel } from './components/FacebookPanel';
 import { TiktokPanel } from './components/TiktokPanel';
 import { ShopHunterPanel } from './components/ShopHunterPanel';
+import { LocalDbPanel } from './components/LocalDbPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
 import { LazyGrid } from './components/LazyGrid';
@@ -44,7 +45,7 @@ function fmtDate(unix?: number) {
 
 export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [source, setSource] = useState<'google' | 'facebook' | 'tiktok' | 'shophunter'>('google');
+  const [source, setSource] = useState<'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb'>('google');
   const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -330,11 +331,13 @@ export default function Home() {
         >
           🛍 ShopHunter
         </button>
+        <button className={`srcbtn ${source === 'localdb' ? 'active' : ''}`} onClick={() => setSource('localdb')}>🗄 Local DB</button>
       </div>
 
       {source === 'facebook' && <FacebookPanel />}
       {source === 'tiktok' && <TiktokPanel />}
       {source === 'shophunter' && <ShopHunterPanel />}
+      {source === 'localdb' && <LocalDbPanel />}
 
       {source === 'google' && (
       <>
