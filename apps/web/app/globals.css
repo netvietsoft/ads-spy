@@ -209,9 +209,14 @@ button.ghost.danger { color: var(--danger); }
 .localtbl th{padding:8px 10px;text-align:left;white-space:nowrap;vertical-align:middle}
 .localtbl td.wrap{white-space:normal;word-break:break-word}
 .localtbl th{position:sticky;top:0;z-index:3;background:var(--panel-2);color:var(--text);font-weight:600;user-select:none}
-.localtbl tbody tr:hover{background:var(--panel-2)}
+.localtbl tbody tr:hover{background:color-mix(in srgb, var(--text) 14%, transparent)}
 .localtbl-scroll{max-height:calc(100vh - 300px);overflow:auto;border:1px solid var(--border);border-radius:8px}
 .localtbl th{box-shadow:inset 0 -1px var(--border)}
 .pagebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 4px}
+/* Tăng trưởng: sáng dùng xanh đậm cho tương phản, tối dùng xanh sáng */
+.localtbl .g-up{color:#41d18a;font-weight:600}
+.localtbl .g-down{color:#e46;font-weight:600}
+:root[data-theme='light'] .localtbl .g-up{color:#0a8f45}
+:root[data-theme='light'] .localtbl .g-down{color:#c62828}
 .badge-local{font-size:11px;background:rgba(91,157,255,.18);color:#8fbaff;border-radius:5px;padding:1px 6px}
 .badge-harvest{font-size:11px;background:rgba(65,209,138,.18);color:#41d18a;border-radius:5px;padding:1px 6px}

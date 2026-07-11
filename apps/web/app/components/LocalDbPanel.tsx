@@ -137,7 +137,7 @@ export function LocalDbPanel() {
                   <td>{money(s.day_current_period_revenue)}</td>
                   <td>{money(s.week_current_period_revenue)}</td>
                   <td>{money(s.month_current_period_revenue)}</td>
-                  <td style={{ color: (s.month_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(s.month_revenue_percent_change)}</td>
+                  <td className={(s.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.month_revenue_percent_change)}</td>
                   <td>{s.fb_followers ?? '—'}</td>
                   <td>{s.active_ad_count ?? 0}</td>
                   <td>{s.sku_count ?? '—'}</td>
