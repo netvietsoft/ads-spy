@@ -82,19 +82,27 @@ export class ShService {
   }
 
   // Nhập domain → check có phải Shopify không (ShopHunter /shops/track); nếu có thì kèm data shop.
-  async checkDomain(domainRaw: string) {
+  // skipDetailIfFresh: nếu shop đã harvest gần đây (isShopFresh) thì CHỈ link shop_id, KHÔNG fetch detail lại (đỡ trùng API).
+  async checkDomain(domainRaw: string, opts: { skipDetailIfFresh?: boolean } = {}) {
     const domain = String(domainRaw || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
     if (!domain) return { domain: '', isShopify: false, reason: 'empty' };
     const track = await this.client.trackShop(domain);
     if (!track.shopId) return { domain, isShopify: false, reason: track.error || 'not_shopify_store' };
-    const bundle = await this.shopDetail(track.shopId);
+    const shopId = String(track.shopId);
+    if (opts.skipDetailIfFresh) {
+      const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
+      if (await this.mysql.isShopFresh(shopId, freshMs)) {
+        return { domain, isShopify: true, shopId, identifyType: track.identifyType, detail: null as any, cached: true };
+      }
+    }
+    const bundle = await this.shopDetail(shopId);
     const item = bundle.detail;
     // Đẩy shop tìm thấy vào DB chung (sh_shop) → xuất hiện trong Local DB + lưu detail. Không chặn kết quả nếu lỗi.
     if (item) {
-      try { await this.mysql.upsertShop(String(track.shopId), item, bundle, parseShopColumns(item, bundle)); } catch { /* bỏ qua */ }
+      try { await this.mysql.upsertShop(shopId, item, bundle, parseShopColumns(item, bundle)); } catch { /* bỏ qua */ }
     }
-    await this.mysql.addTrackHistory(domain, String(track.shopId), item?.shop_title || domain, track.identifyType || '');
-    return { domain, isShopify: true, shopId: track.shopId, identifyType: track.identifyType, detail: item };
+    await this.mysql.addTrackHistory(domain, shopId, item?.shop_title || domain, track.identifyType || '');
+    return { domain, isShopify: true, shopId, identifyType: track.identifyType, detail: item };
   }
 
   trackHistory() { return this.mysql.getTrackHistory(50); }
@@ -103,12 +111,13 @@ export class ShService {
   importedList(o: { limit: number; offset: number; type?: string }) { return this.mysql.getImported(o); }
   importedStats(type = 'shop') { return this.mysql.importedStats(type); }
 
-  // Enrich 1 shop import kế tiếp: track→detail→sh_shop. Ném lỗi nếu bị chặn (để retry).
+  // Enrich 1 shop import kế tiếp: track→(nếu chưa harvest fresh thì)detail→sh_shop. Ném lỗi nếu bị chặn (để retry).
   async enrichNextImportedShop(): Promise<'done' | 'ok' | 'skip'> {
     const shop = await this.mysql.getNextUnenriched();
     if (!shop) return 'done';
-    const r = await this.checkDomain(shop.domain);
-    await this.mysql.setImportedEnriched(shop.domain, r.isShopify ? String(r.shopId) : null, r.isShopify ? (r.identifyType || 'ok') : (r.reason || 'not_shopify'));
+    const r = await this.checkDomain(shop.domain, { skipDetailIfFresh: true });
+    const status = r.isShopify ? ((r as any).cached ? 'already_harvested' : (r.identifyType || 'ok')) : (r.reason || 'not_shopify');
+    await this.mysql.setImportedEnriched(shop.domain, r.isShopify ? String(r.shopId) : null, status);
     return r.isShopify ? 'ok' : 'skip';
   }
 
