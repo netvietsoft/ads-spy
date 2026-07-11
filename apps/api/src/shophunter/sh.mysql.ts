@@ -141,7 +141,9 @@ export class ShMysql implements OnModuleInit {
     await this.ensureIndex(pool, 'sh_harvest_slice', 'idx_sh_slice_done_seq', 'done');
 
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_harvest_daily (
-      day VARCHAR(10) PRIMARY KEY, count INT DEFAULT 0, updated_at BIGINT)`);
+      day VARCHAR(40) PRIMARY KEY, count INT DEFAULT 0, updated_at BIGINT)`);
+    // Deep mode đếm theo key 'YYYY-MM-DD:type' (>10 ký tự) → nới cột cho DB cũ (idempotent).
+    try { await pool.query('ALTER TABLE sh_harvest_daily MODIFY day VARCHAR(40)'); } catch { /* đã đủ rộng */ }
 
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_deep_slice (
       slice_key VARCHAR(80) PRIMARY KEY, type VARCHAR(10) NOT NULL, cat_id VARCHAR(64) NOT NULL,

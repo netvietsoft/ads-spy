@@ -55,8 +55,8 @@ export class ShHarvestService {
     const activeEnd = Number(process.env.SH_HARVEST_ACTIVE_END) || 23;
     const skipPctRaw = Number(process.env.SH_HARVEST_SKIP_PCT);
     const skipPct = Number.isFinite(skipPctRaw) ? skipPctRaw : 30;
-    const today = new Date().toISOString().slice(0, 10);
-    const used = await this.mysql.getDailyCount(today);
+    const key = this.dailyKey();
+    const used = await this.mysql.getDailyCount(key);
     const decision = shouldRunNow({ hour: new Date().getHours(), rand: Math.random(), used, cap, activeStart, activeEnd, skipPct });
     if (!decision.run) return { ran: false, reason: decision.reason };
 
@@ -69,14 +69,22 @@ export class ShHarvestService {
     const sip = pickSip(cap - used, sipMin, sipMax);
     const summary: any = await this.runHarvest({ daily: sip });
     const processed = Number(summary?.processed) || 0;
-    await this.mysql.addDailyCount(today, processed);
+    await this.mysql.addDailyCount(key, processed);
     return { ran: true, reason: 'ok', processed, sliceKey: summary?.sliceKey };
+  }
+
+  // Bộ đếm ngày tách theo type ở deep mode → shops/products chạy song song không dẫm counter nhau.
+  private dailyKey(): string {
+    const today = new Date().toISOString().slice(0, 10);
+    const mode = process.env.SH_HARVEST_MODE || 'slices';
+    if (mode !== 'deep') return today;
+    return `${today}:${process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops'}`;
   }
 
   getDaily(): Promise<{ day: string; used: number; cap: number }> {
     const day = new Date().toISOString().slice(0, 10);
     const cap = Number(process.env.SH_HARVEST_DAILY) || 500;
-    return this.mysql.getDailyCount(day).then((used) => ({ day, used, cap }));
+    return this.mysql.getDailyCount(this.dailyKey()).then((used) => ({ day, used, cap }));
   }
 
   getStatus(): Promise<HarvestState> {
