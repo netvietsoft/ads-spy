@@ -130,7 +130,7 @@ git commit -m "feat(sh): queryLocalShops/Products + buildOrderBy whitelist (loca
 
 ### Task 2: REST `/local/*` + web api client + live verify
 
-**Files:** Modify `apps/api/src/shophunter/sh.controller.ts`, `apps/web/app/api.ts`
+**Files:** Modify `apps/api/src/shophunter/sh.controller.ts`, `apps/api/src/shophunter/sh.service.ts`, `apps/web/app/api.ts`
 
 **Interfaces:**
 - `GET /api/sh/local/shops?sort=&dir=&page=&pageSize=` → `{ items, total, page, pageSize }`; same for `/local/products`.

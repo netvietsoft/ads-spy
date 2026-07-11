@@ -57,6 +57,13 @@ function parseLists(raw?: string): Record<string, string[]> {
   }
 }
 
+export function localParams(sort?: string, dir?: string, page?: string, pageSize?: string) {
+  const sizes = [50, 100, 150, 200];
+  let ps = Number(pageSize) || 100; if (!sizes.includes(ps)) ps = 100;
+  let pg = Number(page) || 1; if (!Number.isInteger(pg) || pg < 1) pg = 1;
+  return { sort: sort || 'revenue_month', dir: dir === 'asc' ? 'asc' : 'desc', page: pg, pageSize: ps, offset: (pg - 1) * ps, limit: ps };
+}
+
 @Controller()
 @UseFilters(ShBlockedFilter)
 export class ShController {
@@ -151,23 +158,16 @@ export class ShController {
     return this.harvest.getDaily();
   }
 
-  private localParams(sort?: string, dir?: string, page?: string, pageSize?: string) {
-    const sizes = [50, 100, 150, 200];
-    let ps = Number(pageSize) || 100; if (!sizes.includes(ps)) ps = 100;
-    let pg = Number(page) || 1; if (pg < 1) pg = 1;
-    return { sort: sort || 'revenue_month', dir: dir === 'asc' ? 'asc' : 'desc', page: pg, pageSize: ps, offset: (pg - 1) * ps, limit: ps };
-  }
-
   @Get('sh/local/shops')
   async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string) {
-    const p = this.localParams(sort, dir, page, pageSize);
+    const p = localParams(sort, dir, page, pageSize);
     const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
 
   @Get('sh/local/products')
   async localProducts(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string) {
-    const p = this.localParams(sort, dir, page, pageSize);
+    const p = localParams(sort, dir, page, pageSize);
     const r = await this.svc.localProducts({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
