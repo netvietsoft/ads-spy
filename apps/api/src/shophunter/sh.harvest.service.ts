@@ -113,11 +113,11 @@ export class ShHarvestService {
     try {
       while (processed < quota) {
         const from = cursorFrom + processed;
-        // Trần ShopHunter/Elasticsearch: from_count + page_size ≤ 10000 (vượt → HTTP 400).
-        // Một scroll theo doanh thu chỉ tới ~top 10k; muốn thêm phải cắt theo category/country (phase sau).
-        if (from > 9976) {
-          status = 'cap_10000';
-          this.logger.log(`Đạt trần 10.000 của ShopHunter tại from=${from}; dừng an toàn (cần lát cắt để lấy thêm).`);
+        // Trần ShopHunter thật: from_count tối đa ~1000 (from=1000 OK, from=1008 → HTTP 400); page_size 24 ⇒ ~1008 shop/bộ lọc.
+        // Một scroll theo doanh thu chỉ tới ~top 1000; muốn thêm phải cắt category/country (+ đổi sort_by).
+        if (from > 1000) {
+          status = 'cap_1000';
+          this.logger.log(`Đạt trần ~1000 của ShopHunter tại from=${from}; dừng an toàn (cần lát cắt để lấy thêm).`);
           break;
         }
         let page: any;
@@ -207,7 +207,7 @@ export class ShHarvestService {
         if (!slice) { status = 'all_done'; break; }
         sliceKey = slice.sliceKey;
         const from = slice.cursorFrom;
-        if (from > 9976) { await this.mysql.setSlice(slice.sliceKey, { done: true, lastRunAt: Date.now() }); continue; }
+        if (from > 1000) { await this.mysql.setSlice(slice.sliceKey, { done: true, lastRunAt: Date.now() }); continue; } // trần ~1000/lát → đánh dấu done, sang lát kế
 
         const categoryIds = slice.dimension === 'category' ? [slice.filterValue] : [];
         const lists: Record<string, string[]> = slice.dimension === 'country' ? { country: [slice.filterValue] } : {};
