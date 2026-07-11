@@ -4,7 +4,7 @@ import { ShClient, ShBlockedError } from './sh.client';
 import { ShService } from './sh.service';
 import { ShMysql, HarvestState, SliceState } from './sh.mysql';
 import { parseSearch, parseShopColumns } from './sh.parser';
-import { shouldRunNow, pickSip, randInt } from './sh.harvest.util';
+import { shouldRunNow, pickSip, randInt, isGlobalBlock } from './sh.harvest.util';
 
 const HARVEST_ID = 'shops';
 
@@ -142,7 +142,7 @@ export class ShHarvestService {
             chunk.map((it) =>
               this.harvestOne(it).then(
                 () => ({ ok: true, blocked: false }),
-                (e) => ({ ok: false, blocked: e instanceof ShBlockedError }),
+                (e) => ({ ok: false, blocked: isGlobalBlock(e) }),
               ),
             ),
           );
@@ -226,7 +226,7 @@ export class ShHarvestService {
         for (let i = 0; i < batch.length; i += concurrency) {
           const chunk = batch.slice(i, i + concurrency);
           const results = await Promise.all(chunk.map((it) =>
-            this.harvestOneDedup(it, freshMs).then((r) => r, (e) => ({ outcome: 'fail' as const, blocked: e instanceof ShBlockedError }))));
+            this.harvestOneDedup(it, freshMs).then((r) => r, (e) => ({ outcome: 'fail' as const, blocked: isGlobalBlock(e) }))));
           for (const r of results) {
             if ((r as any).blocked) { blocked = true; continue; }
             if (r.outcome === 'skip') skipped++; else if (r.outcome === 'ok') ok++; else failed++;
@@ -285,7 +285,8 @@ export class ShHarvestService {
       try {
         return await this.svc.shopDetail(shopId);
       } catch (e) {
-        if (!(e instanceof ShBlockedError) || attempt >= maxRetries) throw e;
+        // Chỉ backoff+retry lỗi chặn-toàn-cục (503/429/auth/mạng). Lỗi 1 shop (500/404) → ném ngay để bỏ qua nhanh, không kẹt.
+        if (!isGlobalBlock(e) || attempt >= maxRetries) throw e;
         const wait = Math.min(1000 * 2 ** attempt, 120000);
         this.logger.warn(`Bị chặn khi lấy detail shop ${shopId} (${(e as Error).message}); backoff ${wait}ms (lần ${attempt + 1}/${maxRetries}).`);
         await this.sleep(wait);

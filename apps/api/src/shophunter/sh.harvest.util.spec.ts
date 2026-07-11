@@ -1,4 +1,23 @@
-import { randInt, pickSip, shouldRunNow } from './sh.harvest.util';
+import { randInt, pickSip, shouldRunNow, isGlobalBlock } from './sh.harvest.util';
+import { ShBlockedError } from './sh.client';
+
+describe('isGlobalBlock', () => {
+  it('rate-limit/auth/mạng → chặn toàn cục (true)', () => {
+    expect(isGlobalBlock(new ShBlockedError('x', 503))).toBe(true); // rate-limit
+    expect(isGlobalBlock(new ShBlockedError('x', 429))).toBe(true);
+    expect(isGlobalBlock(new ShBlockedError('x', 401))).toBe(true); // auth
+    expect(isGlobalBlock(new ShBlockedError('x', 403))).toBe(true);
+    expect(isGlobalBlock(new ShBlockedError('x'))).toBe(true);      // status undefined = mạng/parse
+    expect(isGlobalBlock(new Error('lạ'))).toBe(true);              // lỗi không phải ShBlockedError → an toàn coi như chặn
+  });
+  it('lỗi riêng 1 shop → KHÔNG chặn (false) — poison pill được bỏ qua', () => {
+    expect(isGlobalBlock(new ShBlockedError('HTTP 500', 500))).toBe(false); // đúng ca shop 97249198426
+    expect(isGlobalBlock(new ShBlockedError('HTTP 502', 502))).toBe(false);
+    expect(isGlobalBlock(new ShBlockedError('HTTP 504', 504))).toBe(false);
+    expect(isGlobalBlock(new ShBlockedError('HTTP 404', 404))).toBe(false);
+    expect(isGlobalBlock(new ShBlockedError('HTTP 400', 400))).toBe(false);
+  });
+});
 
 describe('randInt', () => {
   it('rand=0 → min, rand≈1 → max, trong khoảng', () => {

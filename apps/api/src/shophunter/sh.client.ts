@@ -4,9 +4,11 @@ import { ShAuth } from './sh.auth';
 const SEARCH_URL = 'https://app.shophunter.io/prod/v3/search';
 
 export class ShBlockedError extends Error {
-  constructor(message = 'ShopHunter đang giới hạn hoặc không truy cập được. Thử lại sau.') {
+  status?: number; // HTTP status nếu có (undefined = lỗi mạng/parse). Dùng để phân biệt rate-limit vs lỗi 1 shop.
+  constructor(message = 'ShopHunter đang giới hạn hoặc không truy cập được. Thử lại sau.', status?: number) {
     super(message);
     this.name = 'ShBlockedError';
+    this.status = status;
   }
 }
 
@@ -86,7 +88,7 @@ export class ShClient {
       throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`);
     }
     const text = await res.text();
-    if (!res.ok) throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`);
+    if (!res.ok) throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`, res.status);
     try {
       return JSON.parse(text);
     } catch {
@@ -112,7 +114,7 @@ export class ShClient {
       if (res.status === 401 || res.status === 403) { this.auth.invalidate(); token = await this.auth.getToken(); res = await doCall(token); }
     } catch (e) { throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`); }
     const text = await res.text();
-    if (!res.ok) throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`);
+    if (!res.ok) throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`, res.status);
     try { return JSON.parse(text); } catch { throw new ShBlockedError(); }
   }
 

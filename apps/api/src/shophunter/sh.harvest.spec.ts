@@ -70,13 +70,13 @@ describe('ShHarvestService.runHarvest', () => {
     await expect(h.runHarvestFlat({ daily: 1 })).rejects.toThrow(/đang chạy/);
   });
 
-  it('một shopDetail lỗi → đếm failed, không dừng job', async () => {
+  it('một shopDetail lỗi 500 (poison pill) → đếm failed, KHÔNG dừng job, cursor vẫn nhích', async () => {
     const { h, svc } = deps();
     (h as any).svc = svc;
     (h as any).client.search = jest.fn().mockResolvedValueOnce({ items: makeItems(2), total_hits: 50 });
     svc.shopDetail
       .mockResolvedValueOnce({ detail: {}, revenueChart: [], adsChart: null, similar: [] })
-      .mockRejectedValueOnce(new Error('boom'));
+      .mockRejectedValueOnce(new ShBlockedError('ShopHunter trả HTTP 500.', 500)); // lỗi riêng 1 shop → bỏ qua, không chặn cả job
     const r = await h.runHarvestFlat({ daily: 2 });
     expect(r).toMatchObject({ processed: 2, ok: 1, failed: 1, status: 'ok' });
   });
