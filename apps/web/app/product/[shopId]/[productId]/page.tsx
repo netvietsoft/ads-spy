@@ -56,7 +56,7 @@ export default function ProductDetailPage() {
           </div>
           <h4>Doanh thu 90 ngày</h4>
           <ShChart points={(d!.revenueChart || []).map((x) => ({ date_str: x.date_str, value: x.revenue }))} color="#5b9dff" />
-          {p.body ? (<><h4>Mô tả</h4><div className="fbbody" style={{ maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{p.body}</div></>) : null}
+          {p.body ? (<><h4>Mô tả</h4><div className="fbbody" style={{ maxHeight: 'none', overflow: 'visible', whiteSpace: 'pre-wrap' }}>{p.body}</div></>) : null}
           {Array.isArray(d!.similar) && d!.similar.length > 0 && (
             <>
               <h4>Sản phẩm tương tự</h4>
