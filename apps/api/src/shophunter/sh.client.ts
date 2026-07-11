@@ -12,6 +12,17 @@ export class ShBlockedError extends Error {
   }
 }
 
+// fetch có timeout (AbortController) — tránh TREO vô hạn khi ShopHunter throttle/hang connection (nếu không, run harvest kẹt → cờ running kẹt → cron skip mãi).
+async function fetchT(url: string, opts: any = {}, ms = 20000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // Sort đã xác nhận chạy (probe Task 4 Step 3, HTTP 200 + items>0).
 // Sort options khớp menu thật của ShopHunter (trích từ bundle: header Shop/Product Metrics).
 export const SH_SORTS_SHOPS: { value: string; label: string }[] = [
@@ -63,7 +74,7 @@ export class ShClient {
       },
     });
     const doCall = async (token: string) =>
-      fetch(SEARCH_URL, {
+      fetchT(SEARCH_URL, {
         method: 'POST',
         headers: {
           authorization: token,
@@ -98,7 +109,7 @@ export class ShClient {
 
   private async post(path: string, data: unknown): Promise<any> {
     const doCall = async (token: string) =>
-      fetch(`https://app.shophunter.io/prod${path}`, {
+      fetchT(`https://app.shophunter.io/prod${path}`, {
         method: 'POST',
         headers: {
           authorization: token, 'content-type': 'application/json',
@@ -127,9 +138,9 @@ export class ShClient {
   productSimilar(shopId: string, productId: string) { return this.post('/v3/product/similar', { shop_id: shopId, product_id: productId }); }
 
   async fetchAsset(url: string): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
-    const res = await fetch(url, {
+    const res = await fetchT(url, {
       headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/147.0.0.0 Safari/537.36' },
-    });
+    }, 30000);
     if (!res.ok) throw new ShBlockedError(`Không tải được ảnh (HTTP ${res.status}).`);
     return { body: res.body, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
   }

@@ -97,7 +97,7 @@ export class ShMysql implements OnModuleInit {
     await admin.query(`CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4`);
     await admin.end();
 
-    const pool = mysql.createPool({ ...conn, database: db, connectionLimit: 5 });
+    const pool = mysql.createPool({ ...conn, database: db, connectionLimit: 10 });
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_shop (
       shop_id VARCHAR(32) PRIMARY KEY, raw LONGTEXT NOT NULL, fetched_at BIGINT NOT NULL)`);
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_product (
@@ -124,6 +124,8 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'harvested_at', 'harvested_at BIGINT');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_revenue', 'revenue');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_harvested', 'harvested_at');
+    await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_fetched', 'fetched_at');
+    await this.ensureIndex(pool, 'sh_product', 'idx_sh_product_fetched', 'fetched_at');
 
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_harvest_state (
       id VARCHAR(32) PRIMARY KEY,
