@@ -374,7 +374,9 @@ Append:
 
 - [ ] **Step 4: Verify build**
 
-Run (apps/web): `npx tsc --noEmit` clean; `npm run build` succeeds.
+Run (apps/web): `npx tsc --noEmit` clean.
+
+**An toàn khi :3101 đang chạy dev — KHÔNG `npm run build` thẳng:** `next build` ghi đè `apps/web/.next`, cùng thư mục mà dev server (`next dev -p 3101`) đang đọc/serve chunk từ đó → sập server (`Cannot find module ./NNN.js`), vi phạm Global Constraint "KHÔNG đụng :3100/:3101". Verify build production bằng distDir tách biệt (`next.config.js` đã hỗ trợ `NEXT_DIST_DIR`): `NEXT_DIST_DIR=.next-verify npx next build` (ghi vào `.next-verify`, không đụng `.next` của dev), rồi `rm -rf apps/web/.next-verify` khi xong — dev server `.next` giữ nguyên.
 
 - [ ] **Step 5: Commit**
 ```bash
