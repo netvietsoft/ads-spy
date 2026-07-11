@@ -212,6 +212,9 @@ button.ghost.danger { color: var(--danger); }
 .localtbl tbody tr:hover{background:color-mix(in srgb, var(--text) 14%, transparent)}
 .localtbl-scroll{max-height:calc(100vh - 300px);overflow:auto;border:1px solid var(--border);border-radius:8px}
 .localtbl th{box-shadow:inset 0 -1px var(--border)}
+/* Link trong bảng: tối → sáng gần trắng (mặc định trình duyệt xanh sẫm chìm trên nền đen); sáng → xanh accent */
+.localtbl a{color:#cfdcff;text-decoration:underline}
+:root[data-theme='light'] .localtbl a{color:var(--accent)}
 .pagebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 4px}
 /* Tăng trưởng: sáng dùng xanh đậm cho tương phản, tối dùng xanh sáng */
 .localtbl .g-up{color:#41d18a;font-weight:600}
