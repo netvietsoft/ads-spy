@@ -5,6 +5,8 @@ import { ShService } from './sh.service';
 import { ShMysql, HarvestState, SliceState } from './sh.mysql';
 import { parseSearch, parseShopColumns } from './sh.parser';
 import { shouldRunNow, pickSip, randInt, isGlobalBlock } from './sh.harvest.util';
+import { buildDeepSlices } from './sh.slices';
+import { loadCatTree } from './sh.categories';
 
 const HARVEST_ID = 'shops';
 
@@ -91,6 +93,7 @@ export class ShHarvestService {
   async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary> {
     const mode = process.env.SH_HARVEST_MODE || 'slices';
     if (mode === 'slices') return this.runHarvestSlices(opts);
+    if (mode === 'deep') return this.runHarvestDeep(process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops', opts);
     return this.runHarvestFlat(opts);
   }
 
@@ -245,6 +248,87 @@ export class ShHarvestService {
     return { processed, ok, skipped, failed, sliceKey, status };
   }
 
+  async runHarvestDeep(type: 'shops' | 'products', opts: { daily?: number }): Promise<HarvestSliceSummary> {
+    if (this.running) throw new Error('Harvest đang chạy, bỏ qua yêu cầu chồng.');
+    this.running = true;
+    const sort = process.env.SH_HARVEST_SORT || 'month_current_period_revenue';
+    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 1000);
+    const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
+    const maxRetries = 5;
+
+    let processed = 0, ok = 0, skipped = 0, failed = 0, status = 'ok', sliceKey = '';
+    try {
+      await this.ensureDeepSlicesBuilt(type, sort);
+      while (processed < quota) {
+        const slice = await this.mysql.getNextDeepSlice(type);
+        if (!slice) { status = 'all_done'; break; }
+        sliceKey = slice.sliceKey;
+        const from = slice.cursorFrom;
+        if (from > 1000) { await this.mysql.setDeepSlice(slice.sliceKey, { done: true }); continue; } // trần ~1000/lát → đánh dấu done, sang lát kế
+
+        let page: any;
+        try {
+          page = await this.searchSliceWithBackoff(sort, from, [slice.catId], {}, maxRetries, type);
+        } catch (e) {
+          this.logger.warn(`Dừng do bị chặn tại ${slice.sliceKey} from=${from}: ${(e as Error).message}`);
+          status = 'blocked'; break;
+        }
+        const parsed = parseSearch<any>(page);
+        if (!parsed.items.length) { await this.mysql.setDeepSlice(slice.sliceKey, { done: true }); continue; }
+
+        const batch = parsed.items.slice(0, quota - processed);
+        let blocked = false;
+        for (const item of batch) {
+          if (type === 'shops') {
+            const shopId = String(item.shop_id);
+            if (!shopId || shopId === 'undefined') continue;
+            // Listing-first: ghi ngay (breadth) — KHÔNG đụng detail_raw/harvested_at đã có.
+            await this.mysql.upsertListingShop(shopId, item, parseShopColumns(item));
+            if (await this.mysql.isShopFresh(shopId, freshMs)) { skipped++; await this.sleep(this.randDelayMs()); continue; }
+            try {
+              const bundle = await this.detailWithBackoff(shopId);
+              await this.mysql.upsertShop(shopId, item, bundle, parseShopColumns(item, bundle));
+              ok++;
+            } catch (e) {
+              if (isGlobalBlock(e)) { blocked = true; break; }
+              failed++;
+            }
+          } else {
+            const productId = String(item.product_id);
+            if (productId && productId !== 'undefined') await this.mysql.upsertItem('sh_product', productId, item);
+            ok++;
+          }
+          await this.sleep(this.randDelayMs());
+        }
+        if (blocked) { status = 'blocked'; break; }
+
+        processed += batch.length;
+        const newCursor = from + batch.length;
+        const done = newCursor > 1000 || (!!parsed.totalHits && newCursor >= parsed.totalHits);
+        await this.mysql.setDeepSlice(slice.sliceKey, { cursorFrom: newCursor, done });
+      }
+    } finally { this.running = false; }
+    return { processed, ok, skipped, failed, sliceKey, status };
+  }
+
+  // Sinh sh_deep_slice 1 lần (adaptive, theo cây danh mục) nếu chưa có — gentle: nghỉ giữa các lần đọc total_hits.
+  // Nếu totalHitsFor ném lỗi chặn-toàn-cục → để lỗi lan lên (KHÔNG gọi ensureDeepSlices) → dừng an toàn, resume lần sau.
+  private async ensureDeepSlicesBuilt(type: 'shops' | 'products', sort: string): Promise<void> {
+    const count = await this.mysql.countDeepSlices(type);
+    if (count > 0) return;
+    const slices = await buildDeepSlices(loadCatTree(), async (catId) => {
+      const n = await this.totalHitsFor(type, catId, sort);
+      await this.sleep(this.randDelayMs());
+      return n;
+    });
+    await this.mysql.ensureDeepSlices(slices, type);
+  }
+
+  private async totalHitsFor(type: 'shops' | 'products', catId: string, sort: string): Promise<number> {
+    const page = await this.searchSliceWithBackoff(sort, 0, [catId], {}, 5, type);
+    return parseSearch<any>(page).totalHits ?? 0;
+  }
+
   private async harvestOneDedup(item: any, freshMs: number): Promise<{ outcome: 'ok' | 'skip' | 'fail'; blocked?: boolean }> {
     const shopId = String(item.shop_id);
     if (!shopId || shopId === 'undefined') return { outcome: 'skip' };
@@ -254,12 +338,12 @@ export class ShHarvestService {
     return { outcome: 'ok' };
   }
 
-  private async searchSliceWithBackoff(sort: string, from: number, categoryIds: string[], lists: Record<string, string[]>, maxRetries: number): Promise<any> {
+  private async searchSliceWithBackoff(sort: string, from: number, categoryIds: string[], lists: Record<string, string[]>, maxRetries: number, type: 'shops' | 'products' = 'shops'): Promise<any> {
     let attempt = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
-        return await this.client.search('shops', { sort, q: '', categoryIds, from, lists });
+        return await this.client.search(type, { sort, q: '', categoryIds, from, lists });
       } catch (e) {
         if (!(e instanceof ShBlockedError) || attempt >= maxRetries) throw e;
         const wait = Math.min(1000 * 2 ** attempt, 120000);
