@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { shLocalShops, shLocalProducts, ShLocalResult, shAssetProxy, shShopSite, shProductUrl } from '../api';
+import { shLocalShops, shLocalProducts, shLocalFilters, ShLocalResult, shAssetProxy, shShopSite, shProductUrl } from '../api';
 import { ShShopModal } from './ShShopModal';
 import { ShProductModal } from './ShProductModal';
 import { ShLogo } from './ShLogo';
@@ -8,6 +8,13 @@ import { ShLogo } from './ShLogo';
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 const PAGE_SIZES = [50, 100, 150, 200];
+const pad = (n: number) => String(n).padStart(2, '0');
+// hh:mm dd/mm/yy — thời điểm shop/sản phẩm được cập nhật mới nhất
+const fmtTime = (ms: number | null | undefined) => {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`;
+};
 
 const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_logo', label: '' },
@@ -20,6 +27,7 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: 'ads', label: 'Ads', sortable: true },
   { key: 'sku', label: 'SKU', sortable: true },
   { key: '_country', label: 'Nước' },
+  { key: 'harvested_at', label: 'Update', sortable: true },
   { key: '_badge', label: '' },
 ];
 
@@ -30,6 +38,10 @@ export function LocalDbPanel() {
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
+  const [country, setCountry] = useState('');
+  const [category, setCategory] = useState('');
+  const [opts, setOpts] = useState<{ countries: string[]; categories: string[] }>({ countries: [], categories: [] });
+  const [catNames, setCatNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
@@ -37,13 +49,29 @@ export function LocalDbPanel() {
 
   useEffect(() => {
     setLoading(true); setErr(null);
-    const fn = tab === 'shops' ? shLocalShops : shLocalProducts;
-    fn({ sort, dir, page, pageSize })
-      .then((r) => setData(r))
-      .catch((e) => setErr((e as Error).message))
-      .finally(() => setLoading(false));
-  }, [tab, sort, dir, page, pageSize]);
+    const req = tab === 'shops'
+      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined })
+      : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined });
+    req.then((r) => setData(r)).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
+  }, [tab, sort, dir, page, pageSize, country, category]);
 
+  useEffect(() => {
+    shLocalFilters(tab).then(setOpts).catch(() => setOpts({ countries: [], categories: [] }));
+  }, [tab]);
+
+  useEffect(() => {
+    fetch('/sh-categories.json').then((r) => r.json()).then((t: any) => {
+      const m: Record<string, string> = {};
+      (t.top || []).forEach((x: any) => { if (x?.id) m[x.id] = x.name; });
+      Object.entries(t.nodes || {}).forEach(([k, v]: any) => { m[k] = v?.name || k; });
+      setCatNames(m);
+    }).catch(() => {});
+  }, []);
+
+  const switchTab = (t: 'shops' | 'products') => {
+    setTab(t); setData({ items: [], total: 0, page: 1, pageSize });
+    setSort('revenue_month'); setDir('desc'); setPage(1); setCountry(''); setCategory('');
+  };
   const clickSort = (k: string) => {
     if (sort === k) setDir(dir === 'desc' ? 'asc' : 'desc');
     else { setSort(k); setDir('desc'); }
@@ -54,29 +82,48 @@ export function LocalDbPanel() {
   const from = data.total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, data.total);
 
+  const pager = (
+    <div className="pagebar">
+      <span style={{ opacity: 0.7 }}>{from}–{to} / {data.total.toLocaleString()}</span>
+      <label>Hiện&nbsp;
+        <select className="fbselect" value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
+          {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>&nbsp;/trang
+      </label>
+      <button className="srcbtn" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹ Trước</button>
+      <span>Trang {page}/{totalPages}</span>
+      <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
+    </div>
+  );
+
   return (
     <div>
       <div className="sources" style={{ marginTop: 8 }}>
-        <button className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setData({ items: [], total: 0, page: 1, pageSize }); setSort('revenue_month'); setDir('desc'); setPage(1); }}>Shops</button>
-        <button className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setData({ items: [], total: 0, page: 1, pageSize }); setSort('revenue_month'); setDir('desc'); setPage(1); }}>Products</button>
+        <button className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => switchTab('shops')}>Shops</button>
+        <button className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => switchTab('products')}>Products</button>
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
         <span className="badge-local">local</span>
-        <span style={{ opacity: 0.7 }}>{from}–{to} / {data.total.toLocaleString()}</span>
-        <label>Hiện&nbsp;
-          <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}>
-            {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>/trang
+        <label>Nước:&nbsp;
+          <select className="fbselect" value={country} onChange={(e) => { setCountry(e.target.value); setPage(1); }}>
+            <option value="">Tất cả</option>
+            {opts.countries.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
         </label>
-        <button className="srcbtn" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹ Trước</button>
-        <span>Trang {page}/{totalPages}</span>
-        <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
+        {tab === 'products' && (
+          <label>Danh mục:&nbsp;
+            <select className="fbselect" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
+              <option value="">Tất cả</option>
+              {opts.categories.map((c) => <option key={c} value={c}>{catNames[c] || c}</option>)}
+            </select>
+          </label>
+        )}
         {loading && <span>Đang tải…</span>}
       </div>
       {err && <div className="err">{err}</div>}
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="localtbl-scroll">
         {tab === 'shops' ? (
           <table className="localtbl">
             <thead><tr>{SHOP_COLS.map((c) => (
@@ -86,7 +133,7 @@ export function LocalDbPanel() {
               {data.items.map((s) => (
                 <tr key={s.shop_id} onClick={() => setOpenShop(s.shop_id)} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
-                  <td>{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url}</div></td>
+                  <td className="wrap" style={{ maxWidth: '30ch' }}>{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url}</div></td>
                   <td>{money(s.day_current_period_revenue)}</td>
                   <td>{money(s.week_current_period_revenue)}</td>
                   <td>{money(s.month_current_period_revenue)}</td>
@@ -95,6 +142,7 @@ export function LocalDbPanel() {
                   <td>{s.active_ad_count ?? 0}</td>
                   <td>{s.sku_count ?? '—'}</td>
                   <td>{s.country}</td>
+                  <td style={{ fontSize: 12, opacity: 0.8, whiteSpace: 'nowrap' }}>{fmtTime(s._harvested_at ?? s._fetched_at)}</td>
                   <td>{s._harvested ? <span className="badge-harvest">✓ harvest</span> : <span className="badge-local">local</span>}</td>
                 </tr>
               ))}
@@ -108,6 +156,7 @@ export function LocalDbPanel() {
               <th onClick={() => clickSort('revenue_month')} style={{ cursor: 'pointer' }}>DT Tháng{arrow('revenue_month')}</th>
               <th onClick={() => clickSort('revenue_day')} style={{ cursor: 'pointer' }}>DT Ngày{arrow('revenue_day')}</th>
               <th>Shop</th>
+              <th>Update</th>
             </tr></thead>
             <tbody>
               {data.items.map((p) => {
@@ -115,16 +164,17 @@ export function LocalDbPanel() {
                 return (
                 <tr key={p.product_id} onClick={() => setOpenProduct(p)} style={{ cursor: 'pointer' }}>
                   <td>{p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={52} height={52} style={{ borderRadius: 8, objectFit: 'cover', display: 'block' }} loading="lazy" /> : null}</td>
-                  <td className="wrap" style={{ maxWidth: 360 }}>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
+                  <td className="wrap" style={{ maxWidth: '30ch' }}>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
                   <td>{money(p.price)}</td>
                   <td>{money(p.month_current_period_revenue)}</td>
                   <td>{money(p.day_current_period_revenue)}</td>
                   <td className="wrap">
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: 220 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: '30ch' }}>
                       <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={20} />
                       <div style={{ minWidth: 0 }}>{p.shop_title || '—'}<div style={{ opacity: 0.6, fontSize: 11 }}>{site ? <a href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{p.shop_url}</a> : (p.shop_url || '')}</div></div>
                     </div>
                   </td>
+                  <td style={{ fontSize: 12, opacity: 0.8, whiteSpace: 'nowrap' }}>{fmtTime(p._fetched_at)}</td>
                 </tr>
                 );
               })}
@@ -132,6 +182,8 @@ export function LocalDbPanel() {
           </table>
         )}
       </div>
+
+      {pager}
 
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
       {openProduct && <ShProductModal shopId={openProduct.shop_id} productId={openProduct.product_id} item={openProduct} onClose={() => setOpenProduct(null)} />}

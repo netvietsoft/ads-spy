@@ -88,6 +88,7 @@ export class ShService {
     return this.auth.status();
   }
 
-  localShops(o: { sort: string; dir: string; offset: number; limit: number }) { return this.mysql.queryLocalShops(o); }
-  localProducts(o: { sort: string; dir: string; offset: number; limit: number }) { return this.mysql.queryLocalProducts(o); }
+  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string }) { return this.mysql.queryLocalShops(o); }
+  localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }) { return this.mysql.queryLocalProducts(o); }
+  localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
 }

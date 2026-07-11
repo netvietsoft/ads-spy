@@ -401,27 +401,50 @@ export class ShMysql implements OnModuleInit {
     );
   }
 
-  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number }): Promise<{ items: any[]; total: number }> {
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
+    const where: string[] = []; const params: any[] = [];
+    if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
-      `SELECT shop_id, raw, (detail_raw IS NOT NULL) AS harvested, harvested_at FROM sh_shop ${orderBy} LIMIT ? OFFSET ?`,
-      [o.limit, o.offset],
+      `SELECT shop_id, raw, (detail_raw IS NOT NULL) AS harvested, harvested_at, fetched_at FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      [...params, o.limit, o.offset],
     );
-    const [cnt] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_shop');
-    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at) }));
+    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_shop ${whereSql}`, params);
+    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at) }));
     return { items, total: Number((cnt as any[])[0].n) || 0 };
   }
 
-  async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number }): Promise<{ items: any[]; total: number }> {
+  async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, PRODUCT_LOCAL_SORTS, 'revenue_month');
+    const where: string[] = []; const params: any[] = [];
+    if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) = ?"); params.push(o.country); }
+    if (o.category) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) = ?"); params.push(o.category); }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
-      `SELECT product_id, raw, fetched_at FROM sh_product ${orderBy} LIMIT ? OFFSET ?`,
-      [o.limit, o.offset],
+      `SELECT product_id, raw, fetched_at FROM sh_product ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      [...params, o.limit, o.offset],
     );
-    const [cnt] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_product');
+    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_product ${whereSql}`, params);
     const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at) }));
     return { items, total: Number((cnt as any[])[0].n) || 0 };
+  }
+
+  // Giá trị lọc có sẵn trong DB (nước cho cả 2; danh mục chỉ product — shop không có field category).
+  async getLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
+    await this.ensureReady();
+    const distinct = async (sql: string): Promise<string[]> => {
+      const [rows] = await this.pool!.query(sql);
+      return (rows as any[]).map((r) => r.v).filter((v) => v != null && v !== '').map(String);
+    };
+    if (type === 'shops') {
+      const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) v FROM sh_shop ORDER BY v");
+      return { countries, categories: [] };
+    }
+    const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
+    const categories = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) v FROM sh_product ORDER BY v");
+    return { countries, categories };
   }
 }

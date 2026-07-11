@@ -449,19 +449,25 @@ export async function shProductDetail(shopId: string, productId: string): Promis
 }
 
 export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
-export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number } = {}): Promise<ShLocalResult> {
+export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
   if (p.page) qs.set('page', String(p.page));
   if (p.pageSize) qs.set('pageSize', String(p.pageSize));
+  if (p.country) qs.set('country', p.country);
   return jsonOrThrow(await fetch(`${API}/api/sh/local/shops?${qs.toString()}`));
 }
-export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number } = {}): Promise<ShLocalResult> {
+export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
   if (p.page) qs.set('page', String(p.page));
   if (p.pageSize) qs.set('pageSize', String(p.pageSize));
+  if (p.country) qs.set('country', p.country);
+  if (p.category) qs.set('category', p.category);
   return jsonOrThrow(await fetch(`${API}/api/sh/local/products?${qs.toString()}`));
+}
+export async function shLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/local/filters?type=${type}`));
 }
