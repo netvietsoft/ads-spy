@@ -114,15 +114,15 @@ export function LocalDbPanel() {
                 const purl = shProductUrl(p); const site = shShopSite(p);
                 return (
                 <tr key={p.product_id} onClick={() => setOpenProduct(p)} style={{ cursor: 'pointer' }}>
-                  <td>{p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={36} height={36} style={{ borderRadius: 6, objectFit: 'cover' }} loading="lazy" /> : null}</td>
-                  <td>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
+                  <td>{p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={52} height={52} style={{ borderRadius: 8, objectFit: 'cover', display: 'block' }} loading="lazy" /> : null}</td>
+                  <td className="wrap" style={{ maxWidth: 360 }}>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
                   <td>{money(p.price)}</td>
                   <td>{money(p.month_current_period_revenue)}</td>
                   <td>{money(p.day_current_period_revenue)}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={18} />
-                      <div>{p.shop_title || '—'}<div style={{ opacity: 0.6, fontSize: 11 }}>{site ? <a href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{p.shop_url}</a> : (p.shop_url || '')}</div></div>
+                  <td className="wrap">
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: 220 }}>
+                      <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={20} />
+                      <div style={{ minWidth: 0 }}>{p.shop_title || '—'}<div style={{ opacity: 0.6, fontSize: 11 }}>{site ? <a href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{p.shop_url}</a> : (p.shop_url || '')}</div></div>
                     </div>
                   </td>
                 </tr>

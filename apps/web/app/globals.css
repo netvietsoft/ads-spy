@@ -205,8 +205,9 @@ button.ghost.danger { color: var(--danger); }
 .shlogo-fallback{display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border-radius:6px;flex:0 0 auto;line-height:1}
 
 .localtbl{width:100%;border-collapse:collapse;font-size:13px}
-.localtbl th,.localtbl td{padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;white-space:nowrap}
-.localtbl th{position:sticky;top:0;background:#12151c;user-select:none}
-.localtbl tbody tr:hover{background:rgba(255,255,255,.04)}
+.localtbl th,.localtbl td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;vertical-align:middle}
+.localtbl td.wrap{white-space:normal;word-break:break-word}
+.localtbl th{position:sticky;top:0;background:var(--panel-2);color:var(--text);font-weight:600;user-select:none}
+.localtbl tbody tr:hover{background:var(--panel-2)}
 .badge-local{font-size:11px;background:rgba(91,157,255,.18);color:#8fbaff;border-radius:5px;padding:1px 6px}
 .badge-harvest{font-size:11px;background:rgba(65,209,138,.18);color:#41d18a;border-radius:5px;padding:1px 6px}
