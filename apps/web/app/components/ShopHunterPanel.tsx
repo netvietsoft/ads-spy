@@ -5,7 +5,6 @@ import {
 } from '../api';
 import { LazyGrid } from './LazyGrid';
 import { ShShopModal } from './ShShopModal';
-import { ShProductModal } from './ShProductModal';
 import { ShFilters } from './ShFilters';
 import { ShCategories } from './ShCategories';
 import { ShListFilters } from './ShListFilters';
@@ -93,7 +92,6 @@ export function ShopHunterPanel() {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<ShTokenStatus | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
-  const [openProduct, setOpenProduct] = useState<any | null>(null);
 
   useEffect(() => { shSorts().then(setSorts).catch(() => {}); shTokenStatus().then(setStatus).catch(() => {}); }, []);
 
@@ -169,7 +167,7 @@ export function ShopHunterPanel() {
             items={items}
             render={(it) => tab === 'shops'
               ? <ShopCard key={it.shop_id} s={it} onOpen={() => setOpenShop(it.shop_id)} />
-              : <ProductCard key={it.product_id} p={it} onOpen={() => setOpenProduct(it)} />}
+              : <ProductCard key={it.product_id} p={it} onOpen={() => window.open(`/product/${it.shop_id}/${it.product_id}`, '_blank')} />}
           />
 
           {items.length > 0 && items.length < total && (
@@ -181,7 +179,6 @@ export function ShopHunterPanel() {
       </div>
 
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
-      {openProduct && <ShProductModal shopId={openProduct.shop_id} productId={openProduct.product_id} item={openProduct} onClose={() => setOpenProduct(null)} />}
     </div>
   );
 }

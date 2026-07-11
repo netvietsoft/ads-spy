@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { shLocalShops, shLocalProducts, shLocalFilters, ShLocalResult, shAssetProxy, shShopSite, shProductUrl } from '../api';
 import { ShShopModal } from './ShShopModal';
-import { ShProductModal } from './ShProductModal';
 import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
@@ -50,7 +49,6 @@ export function LocalDbPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
-  const [openProduct, setOpenProduct] = useState<any | null>(null);
 
   useEffect(() => {
     setLoading(true); setErr(null);
@@ -168,7 +166,7 @@ export function LocalDbPanel() {
               {data.items.map((p) => {
                 const purl = shProductUrl(p); const site = shShopSite(p);
                 return (
-                <tr key={p.product_id} onClick={() => setOpenProduct(p)} style={{ cursor: 'pointer' }}>
+                <tr key={p.product_id} onClick={() => window.open(`/product/${p.shop_id}/${p.product_id}`, '_blank')} style={{ cursor: 'pointer' }}>
                   <td>{p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={52} height={52} style={{ borderRadius: 8, objectFit: 'cover', display: 'block' }} loading="lazy" /> : null}</td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
                   <td>{money(p.price)}</td>
@@ -193,7 +191,6 @@ export function LocalDbPanel() {
       {pager}
 
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
-      {openProduct && <ShProductModal shopId={openProduct.shop_id} productId={openProduct.product_id} item={openProduct} onClose={() => setOpenProduct(null)} />}
     </div>
   );
 }
