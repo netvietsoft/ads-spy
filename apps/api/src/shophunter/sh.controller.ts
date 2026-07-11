@@ -89,6 +89,12 @@ export class ShController {
     return { shops: SH_SORTS_SHOPS, products: SH_SORTS_PRODUCTS };
   }
 
+  @Get('sh/check')
+  checkDomain(@Query('domain') domain: string) {
+    if (!domain || !domain.trim()) throw new BadRequestException('Thiếu domain.');
+    return this.svc.checkDomain(domain);
+  }
+
   @Get('sh/shops')
   shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
     return this.svc.explore('shops', {

@@ -471,3 +471,7 @@ export async function shLocalProducts(p: { sort?: string; dir?: string; page?: n
 export async function shLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/local/filters?type=${type}`));
 }
+export interface ShCheckResult { domain: string; isShopify: boolean; reason?: string; shopId?: string; identifyType?: string; detail?: any }
+export async function shCheckDomain(domain: string): Promise<ShCheckResult> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/check?domain=${encodeURIComponent(domain)}`));
+}

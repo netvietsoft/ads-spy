@@ -137,6 +137,32 @@ export class ShClient {
   productChartRevenue(shopId: string, productId: string) { return this.post('/v3/product/chart/revenue', { shop_id: shopId, product_id: productId }); }
   productSimilar(shopId: string, productId: string) { return this.post('/v3/product/similar', { shop_id: shopId, product_id: productId }); }
 
+  // Track/identify domain: có phải shop Shopify không. POST /v3/shops/track {shop_url}.
+  // 200 → {shop_id, identify_type: cache_hit|scrape}; 400 not_shopify_store | reachability_error.
+  async trackShop(domain: string): Promise<{ shopId?: string; identifyType?: string; error?: string }> {
+    const doCall = async (token: string) =>
+      fetchT('https://app.shophunter.io/prod/v3/shops/track', {
+        method: 'POST',
+        headers: {
+          authorization: token, 'content-type': 'application/json',
+          origin: 'https://app.shophunter.io', referer: 'https://app.shophunter.io/shops/track',
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+        },
+        body: JSON.stringify({ shop_url: domain }),
+      });
+    let token = await this.auth.getToken();
+    let res: Response;
+    try {
+      res = await doCall(token);
+      if (res.status === 401 || res.status === 403) { this.auth.invalidate(); token = await this.auth.getToken(); res = await doCall(token); }
+    } catch (e) { throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`); }
+    const text = await res.text();
+    let j: any = {}; try { j = JSON.parse(text); } catch { /* để {} */ }
+    if (res.ok) return { shopId: j.shop_id != null ? String(j.shop_id) : undefined, identifyType: j.identify_type };
+    if (res.status === 400) return { error: j.message || 'unknown' }; // not_shopify_store / reachability_error
+    throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`, res.status);
+  }
+
   async fetchAsset(url: string): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
     const res = await fetchT(url, {
       headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/147.0.0.0 Safari/537.36' },

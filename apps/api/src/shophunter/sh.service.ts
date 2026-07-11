@@ -81,6 +81,16 @@ export class ShService {
     return { ...out, cached: false };
   }
 
+  // Nhập domain → check có phải Shopify không (ShopHunter /shops/track); nếu có thì kèm data shop.
+  async checkDomain(domainRaw: string) {
+    const domain = String(domainRaw || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+    if (!domain) return { domain: '', isShopify: false, reason: 'empty' };
+    const track = await this.client.trackShop(domain);
+    if (!track.shopId) return { domain, isShopify: false, reason: track.error || 'not_shopify_store' };
+    const detail = await this.shopDetail(track.shopId);
+    return { domain, isShopify: true, shopId: track.shopId, identifyType: track.identifyType, detail: detail.detail };
+  }
+
   setToken(token: string) {
     return this.auth.setRefreshToken(token);
   }
