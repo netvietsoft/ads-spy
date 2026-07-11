@@ -482,7 +482,7 @@ export async function shTrackHistory(): Promise<ShTrackHistItem[]> {
 export async function shImport(rows: any[], type: 'shop' | 'product' = 'shop'): Promise<{ imported: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows, type }) }));
 }
-export interface ShImportedItem { domain: string; shopTitle: string; weekRevenue: number | null; revenueChangePct: number | null; ads: number | null; adsChangePct: number | null; shopId: string | null; enriched: boolean; enrichStatus: string | null; importedAt: number | null }
+export interface ShImportedItem { domain: string; shopTitle: string; weekRevenue: number | null; revenueChangePct: number | null; ads: number | null; adsChangePct: number | null; shopId: string | null; productId?: string | null; enriched: boolean; enrichStatus: string | null; importedAt: number | null }
 export async function shImportList(page = 1, pageSize = 100, type: 'shop' | 'product' = 'shop'): Promise<{ items: ShImportedItem[]; total: number; page: number; pageSize: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import/list?page=${page}&pageSize=${pageSize}&type=${type}`));
 }

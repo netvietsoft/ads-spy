@@ -267,15 +267,18 @@ export class ShHarvestService {
     this.importRunning = true;
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 100);
     let processed = 0, ok = 0, skipped = 0, status = 'ok';
+    let shopDone = false, prodDone = false;
     try {
-      while (processed < quota) {
+      while (processed < quota && !(shopDone && prodDone)) {
+        const doShop = !shopDone && (prodDone || processed % 2 === 0); // xen kẽ shop/product để cả 2 cùng tiến
         let res: 'done' | 'ok' | 'skip';
-        try { res = await this.svc.enrichNextImported(); }
+        try { res = doShop ? await this.svc.enrichNextImportedShop() : await this.svc.enrichNextImportedProduct(); }
         catch (e) { this.logger.warn(`Import-enrich dừng do bị chặn: ${(e as Error).message}`); status = 'blocked'; break; }
-        if (res === 'done') { status = 'all_done'; break; }
+        if (res === 'done') { if (doShop) shopDone = true; else prodDone = true; continue; }
         processed++; if (res === 'ok') ok++; else skipped++;
         await this.sleep(this.randDelayMs());
       }
+      if (shopDone && prodDone) status = 'all_done';
     } finally { this.importRunning = false; }
     return { processed, ok, skipped, failed: 0, sliceKey: 'import', status };
   }

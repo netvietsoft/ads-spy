@@ -103,13 +103,37 @@ export class ShService {
   importedList(o: { limit: number; offset: number; type?: string }) { return this.mysql.getImported(o); }
   importedStats(type = 'shop') { return this.mysql.importedStats(type); }
 
-  // Enrich 1 domain import kế tiếp: track → detail → đẩy vào sh_shop (checkDomain lo hết). Ném lỗi nếu bị chặn (để retry).
-  async enrichNextImported(): Promise<'done' | 'ok' | 'skip'> {
-    const next = await this.mysql.getNextUnenriched();
-    if (!next) return 'done';
-    const r = await this.checkDomain(next.domain);
-    await this.mysql.setImportedEnriched(next.domain, r.isShopify ? String(r.shopId) : null, r.isShopify ? (r.identifyType || 'ok') : (r.reason || 'not_shopify'));
+  // Enrich 1 shop import kế tiếp: track→detail→sh_shop. Ném lỗi nếu bị chặn (để retry).
+  async enrichNextImportedShop(): Promise<'done' | 'ok' | 'skip'> {
+    const shop = await this.mysql.getNextUnenriched();
+    if (!shop) return 'done';
+    const r = await this.checkDomain(shop.domain);
+    await this.mysql.setImportedEnriched(shop.domain, r.isShopify ? String(r.shopId) : null, r.isShopify ? (r.identifyType || 'ok') : (r.reason || 'not_shopify'));
     return r.isShopify ? 'ok' : 'skip';
+  }
+
+  // Enrich 1 sản phẩm import: track domain→shop_id → duyệt sản phẩm của shop (must_include_shop_ids) → match title → product_id → lưu sh_product + detail.
+  async enrichNextImportedProduct(): Promise<'done' | 'ok' | 'skip'> {
+    const next = await this.mysql.getNextUnenrichedProduct();
+    if (!next) return 'done';
+    const track = await this.client.trackShop(next.domain);
+    if (!track.shopId) { await this.mysql.setImportedProductEnriched(next.itemKey, null, null, track.error || 'not_shopify'); return 'skip'; }
+    const shopId = String(track.shopId);
+    const norm = (s: any) => String(s ?? '').trim().toLowerCase();
+    const want = norm(next.title);
+    let match: any = null;
+    for (let from = 0; from <= 72 && !match; from += 24) {
+      const res = await this.client.search('products', { sort: 'week_current_period_revenue', q: '', categoryIds: [], from, lists: { must_include_shop_ids: [shopId] } });
+      const items = parseSearch<any>(res).items;
+      if (!items.length) break;
+      match = items.find((it: any) => norm(it.product_title) === want) || items.find((it: any) => norm(it.product_title).includes(want) || want.includes(norm(it.product_title)));
+    }
+    if (!match?.product_id) { await this.mysql.setImportedProductEnriched(next.itemKey, shopId, null, 'product_not_found'); return 'skip'; }
+    const pid = String(match.product_id);
+    await this.mysql.upsertItem('sh_product', pid, match);
+    try { await this.productDetail(shopId, pid); } catch { /* detail lỗi không chặn */ }
+    await this.mysql.setImportedProductEnriched(next.itemKey, shopId, pid, 'ok');
+    return 'ok';
   }
 
   setToken(token: string) {

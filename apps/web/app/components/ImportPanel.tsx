@@ -10,7 +10,7 @@ const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed
 // Header Excel/CSV (chữ thường) → field. Khớp đúng tên, có vài alias.
 const HEADER_MAP: Record<string, string> = {
   domain: 'domain', website: 'domain', url: 'domain',
-  'shop title': 'shopTitle', title: 'shopTitle', shop: 'shopTitle',
+  'shop title': 'shopTitle', 'product title': 'shopTitle', title: 'shopTitle', shop: 'shopTitle',
   'revenue (weekly)': 'weekRevenue', 'revenue weekly': 'weekRevenue', 'weekly revenue': 'weekRevenue', revenue: 'weekRevenue',
   'revenue change': 'revenueChange',
   'revenue change %': 'revenueChangePct',
@@ -85,7 +85,7 @@ export function ImportPanel() {
         <button className={`srcbtn ${type === 'product' ? 'active' : ''}`} onClick={() => { setType('product'); setPage(1); }}>📦 Sản phẩm</button>
       </div>
       <p className="hint">Cào listing bằng tay trên web ShopHunter → export Excel/CSV (cột: Domain, Shop Title, Revenue (Weekly), Ads…) → import vào đây. Detail (chart/products) sẽ được <b>enrich nền tự động</b> để bổ sung cho modal.</p>
-      {type === 'product' && <div className="err" style={{ background: 'color-mix(in srgb, var(--accent-2) 10%, var(--panel))', color: 'var(--text)', border: '1px solid var(--border)' }}>Import <b>sản phẩm</b> lưu được listing, nhưng <b>enrich detail chưa bật</b> — cần biết cột file sản phẩm để resolve product (shop + product id). Gửi header file sản phẩm để mình hoàn thiện.</div>}
+      {type === 'product' && <div className="hint" style={{ opacity: 0.8 }}>Sản phẩm: cột <b>Product Title</b> + <b>Domain</b> (shop). Enrich sẽ track shop → tìm sản phẩm theo title → lấy product detail (ảnh/chart/similar). Click dòng đã enrich để mở trang chi tiết.</div>}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
         <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
         <button className="srcbtn" onClick={enrichNow} disabled={!!busy || stats.pending === 0}>Enrich ngay (1 mẻ)</button>
@@ -111,7 +111,12 @@ export function ImportPanel() {
               <thead><tr><th>Shop / Domain</th><th>DT Tuần</th><th>Rev %</th><th>Ads</th><th>Trạng thái</th></tr></thead>
               <tbody>
                 {list.items.map((s) => (
-                  <tr key={s.domain} onClick={() => s.shopId && setOpenShop(s.shopId)} style={{ cursor: s.shopId ? 'pointer' : 'default' }}>
+                  <tr key={s.domain + '|' + (s.shopTitle || '')}
+                    onClick={() => {
+                      if (type === 'product') { if (s.productId && s.shopId) window.open(`/product/${s.shopId}/${s.productId}`, '_blank'); }
+                      else if (s.shopId) setOpenShop(s.shopId);
+                    }}
+                    style={{ cursor: (type === 'product' ? !!(s.productId && s.shopId) : !!s.shopId) ? 'pointer' : 'default' }}>
                     <td className="wrap" style={{ maxWidth: '32ch' }}>{s.shopTitle || s.domain}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.domain}</div></td>
                     <td>{money(s.weekRevenue)}</td>
                     <td className={(s.revenueChangePct ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.revenueChangePct)}</td>
