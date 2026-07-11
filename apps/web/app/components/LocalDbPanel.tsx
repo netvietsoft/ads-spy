@@ -19,9 +19,9 @@ const fmtTime = (ms: number | null | undefined) => {
 const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_logo', label: '' },
   { key: '_name', label: 'Shop' },
-  { key: 'revenue_day', label: 'DT Ngày', sortable: true },
-  { key: 'revenue_week', label: 'DT Tuần', sortable: true },
   { key: 'revenue_month', label: 'DT Tháng', sortable: true },
+  { key: 'revenue_week', label: 'DT Tuần', sortable: true },
+  { key: 'revenue_day', label: 'DT Ngày', sortable: true },
   { key: 'growth_month', label: 'Tăng trưởng (Tháng)', sortable: true },
   { key: 'followers', label: 'FB', sortable: true },
   { key: 'ads', label: 'Ads', sortable: true },
@@ -134,9 +134,9 @@ export function LocalDbPanel() {
                 <tr key={s.shop_id} onClick={() => setOpenShop(s.shop_id)} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url}</div></td>
-                  <td>{money(s.day_current_period_revenue)}</td>
-                  <td>{money(s.week_current_period_revenue)}</td>
                   <td>{money(s.month_current_period_revenue)}</td>
+                  <td>{money(s.week_current_period_revenue)}</td>
+                  <td>{money(s.day_current_period_revenue)}</td>
                   <td className={(s.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.month_revenue_percent_change)}</td>
                   <td>{s.fb_followers ?? '—'}</td>
                   <td>{s.active_ad_count ?? 0}</td>
@@ -154,6 +154,7 @@ export function LocalDbPanel() {
               <th></th><th>Sản phẩm</th>
               <th onClick={() => clickSort('price')} style={{ cursor: 'pointer' }}>Giá{arrow('price')}</th>
               <th onClick={() => clickSort('revenue_month')} style={{ cursor: 'pointer' }}>DT Tháng{arrow('revenue_month')}</th>
+              <th onClick={() => clickSort('revenue_week')} style={{ cursor: 'pointer' }}>DT Tuần{arrow('revenue_week')}</th>
               <th onClick={() => clickSort('revenue_day')} style={{ cursor: 'pointer' }}>DT Ngày{arrow('revenue_day')}</th>
               <th>Shop</th>
               <th>Update</th>
@@ -167,6 +168,7 @@ export function LocalDbPanel() {
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
                   <td>{money(p.price)}</td>
                   <td>{money(p.month_current_period_revenue)}</td>
+                  <td>{money(p.week_current_period_revenue)}</td>
                   <td>{money(p.day_current_period_revenue)}</td>
                   <td className="wrap">
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: '30ch' }}>

@@ -20,6 +20,7 @@ export const SHOP_LOCAL_SORTS: Record<string, string> = {
 };
 export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   revenue_day: numExpr('$.day_current_period_revenue'),
+  revenue_week: numExpr('$.week_current_period_revenue'),
   revenue_month: numExpr('$.month_current_period_revenue'),
   price: numExpr('$.price'),
   fetched_at: 'fetched_at',
