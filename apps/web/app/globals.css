@@ -219,4 +219,5 @@ button.ghost.danger { color: var(--danger); }
 :root[data-theme='light'] .localtbl .g-up{color:#0a8f45}
 :root[data-theme='light'] .localtbl .g-down{color:#c62828}
 .badge-local{font-size:11px;background:rgba(91,157,255,.18);color:#8fbaff;border-radius:5px;padding:1px 6px}
-.badge-harvest{font-size:11px;background:rgba(65,209,138,.18);color:#41d18a;border-radius:5px;padding:1px 6px}
+.badge-harvest{font-size:11px;background:rgba(65,209,138,.18);color:#41d18a;border-radius:5px;padding:1px 6px;font-weight:600}
+:root[data-theme='light'] .badge-harvest{background:rgba(10,143,69,.12);color:#0a8f45}
