@@ -31,14 +31,14 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: 'ads', label: 'Ads', sortable: true },
   { key: 'sku', label: 'SKU', sortable: true },
   { key: '_country', label: 'Nước' },
-  { key: 'harvested_at', label: 'Update', sortable: true },
+  { key: 'fetched_at', label: 'Update', sortable: true },
   { key: '_badge', label: '' },
 ];
 
 export function LocalDbPanel() {
   const [tab, setTab] = useState<'shops' | 'products'>('shops');
   const [data, setData] = useState<ShLocalResult>({ items: [], total: 0, page: 1, pageSize: 100 });
-  const [sort, setSort] = useState('revenue_month');
+  const [sort, setSort] = useState('fetched_at'); // mặc định: mới update nhất lên đầu (xem data mới về)
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
@@ -73,7 +73,7 @@ export function LocalDbPanel() {
 
   const switchTab = (t: 'shops' | 'products') => {
     setTab(t); setData({ items: [], total: 0, page: 1, pageSize });
-    setSort('revenue_month'); setDir('desc'); setPage(1); setCountry(''); setCategory('');
+    setSort('fetched_at'); setDir('desc'); setPage(1); setCountry(''); setCategory('');
   };
   const clickSort = (k: string) => {
     if (sort === k) setDir(dir === 'desc' ? 'asc' : 'desc');
@@ -145,7 +145,7 @@ export function LocalDbPanel() {
                   <td>{s.active_ad_count ?? 0}</td>
                   <td>{s.sku_count ?? '—'}</td>
                   <td>{s.country}</td>
-                  <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}><Upd ms={s._harvested_at ?? s._fetched_at} /></td>
+                  <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}><Upd ms={s._fetched_at ?? s._harvested_at} /></td>
                   <td>{s._harvested ? <span className="badge-harvest">✓ harvest</span> : <span className="badge-local">local</span>}</td>
                 </tr>
               ))}
@@ -160,7 +160,7 @@ export function LocalDbPanel() {
               <th onClick={() => clickSort('revenue_week')} style={{ cursor: 'pointer' }}>DT Tuần{arrow('revenue_week')}</th>
               <th onClick={() => clickSort('revenue_month')} style={{ cursor: 'pointer' }}>DT Tháng{arrow('revenue_month')}</th>
               <th>Shop</th>
-              <th>Update</th>
+              <th onClick={() => clickSort('fetched_at')} style={{ cursor: 'pointer' }}>Update{arrow('fetched_at')}</th>
             </tr></thead>
             <tbody>
               {data.items.map((p) => {
