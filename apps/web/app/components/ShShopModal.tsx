@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ShDetail, shShopDetail, shAssetProxy } from '../api';
+import { ShDetail, shShopDetail, shAssetProxy, shShopSite } from '../api';
 import { ShChart } from './ShChart';
 import { ShLogo } from './ShLogo';
 
@@ -45,13 +45,30 @@ export function ShShopModal({ shopId, onClose }: { shopId: string; onClose: () =
             {Array.isArray(s.top_revenue_products) && s.top_revenue_products.length > 0 && (
               <>
                 <h4>Top Revenue Products</h4>
-                <ul>{s.top_revenue_products.slice(0, 10).map((p: any, i: number) => <li key={i}>{p.product_title || p.title || '(sp)'} — {money(p.week_current_period_revenue ?? p.revenue)}</li>)}</ul>
+                <ul>{s.top_revenue_products.slice(0, 10).map((p: any, i: number) => (
+                  <li key={p.product_id || i}>
+                    {p.product_id
+                      ? <a href={`/product/${shopId}/${p.product_id}`} target="_blank" rel="noreferrer" className="dl">{p.product_title || p.title || '(sp)'}</a>
+                      : (p.product_title || p.title || '(sp)')}
+                    {' — '}{money(p.week_current_period_revenue ?? p.revenue)}
+                  </li>
+                ))}</ul>
               </>
             )}
             {Array.isArray(d!.similar) && d!.similar.length > 0 && (
               <>
                 <h4>Shop tương tự</h4>
-                <ul>{d!.similar.slice(0, 8).map((x: any) => <li key={x.shop_id}>{x.shop_title || x.url} — Day {money(x.day_current_period_revenue)}</li>)}</ul>
+                <ul>{d!.similar.slice(0, 8).map((x: any) => {
+                  const site = shShopSite(x);
+                  return (
+                    <li key={x.shop_id}>
+                      {site
+                        ? <a href={site} target="_blank" rel="noreferrer" className="dl">{x.shop_title || x.url}</a>
+                        : (x.shop_title || x.url)}
+                      {' — Day '}{money(x.day_current_period_revenue)}
+                    </li>
+                  );
+                })}</ul>
               </>
             )}
           </>
