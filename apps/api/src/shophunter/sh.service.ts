@@ -4,6 +4,7 @@ import { ShMysql } from './sh.mysql';
 import { ShAuth } from './sh.auth';
 import { parseSearch, parseShopColumns } from './sh.parser';
 import { shQueryHash } from './sh.hash';
+import { isGlobalBlock } from './sh.harvest.util';
 
 const TTL_MS = (Number(process.env.SH_CACHE_TTL_HOURS) || 6) * 3600 * 1000;
 
@@ -107,17 +108,30 @@ export class ShService {
 
   trackHistory() { return this.mysql.getTrackHistory(50); }
 
-  importRows(rows: any[], type = 'shop') { return this.mysql.upsertImported(Array.isArray(rows) ? rows : [], type); }
-  importedList(o: { limit: number; offset: number; type?: string }) { return this.mysql.getImported(o); }
+  importRows(rows: any[], type = 'shop', category: string | null = null, categoryPath: string | null = null) {
+    return this.mysql.upsertImported(Array.isArray(rows) ? rows : [], type, category, categoryPath);
+  }
+  importedList(o: { limit: number; offset: number; type?: string; category?: string }) { return this.mysql.getImported(o); }
   importedStats(type = 'shop') { return this.mysql.importedStats(type); }
+  importedCategories(type = 'shop') { return this.mysql.getImportedCategories(type); }
 
   // Enrich 1 shop import kế tiếp: track→(nếu chưa harvest fresh thì)detail→sh_shop. Ném lỗi nếu bị chặn (để retry).
   async enrichNextImportedShop(): Promise<'done' | 'ok' | 'skip'> {
     const shop = await this.mysql.getNextUnenriched();
     if (!shop) return 'done';
-    const r = await this.checkDomain(shop.domain, { skipDetailIfFresh: true });
+    let r: any;
+    try {
+      r = await this.checkDomain(shop.domain, { skipDetailIfFresh: true });
+    } catch (e) {
+      if (isGlobalBlock(e)) throw e; // block toàn cục (429/503/401…) → dừng+backoff, GIỮ shop ở trạng thái chờ
+      // Lỗi riêng domain này (vd ShopHunter trả 500 với domain lỗi) → đánh dấu 'error' để KHÔNG kẹt đầu hàng đợi, sang domain kế.
+      await this.mysql.setImportedEnriched(shop.domain, null, 'error');
+      return 'skip';
+    }
     const status = r.isShopify ? ((r as any).cached ? 'already_harvested' : (r.identifyType || 'ok')) : (r.reason || 'not_shopify');
     await this.mysql.setImportedEnriched(shop.domain, r.isShopify ? String(r.shopId) : null, status);
+    // Đẩy danh mục user (từ import) sang sh_shop → Local DB lọc shop theo danh mục.
+    if (r.isShopify && shop.category) await this.mysql.setShopUpCategory(String(r.shopId), shop.category, shop.categoryPath);
     return r.isShopify ? 'ok' : 'skip';
   }
 
@@ -125,24 +139,30 @@ export class ShService {
   async enrichNextImportedProduct(): Promise<'done' | 'ok' | 'skip'> {
     const next = await this.mysql.getNextUnenrichedProduct();
     if (!next) return 'done';
-    const track = await this.client.trackShop(next.domain);
-    if (!track.shopId) { await this.mysql.setImportedProductEnriched(next.itemKey, null, null, track.error || 'not_shopify'); return 'skip'; }
-    const shopId = String(track.shopId);
-    const norm = (s: any) => String(s ?? '').trim().toLowerCase();
-    const want = norm(next.title);
-    let match: any = null;
-    for (let from = 0; from <= 72 && !match; from += 24) {
-      const res = await this.client.search('products', { sort: 'week_current_period_revenue', q: '', categoryIds: [], from, lists: { must_include_shop_ids: [shopId] } });
-      const items = parseSearch<any>(res).items;
-      if (!items.length) break;
-      match = items.find((it: any) => norm(it.product_title) === want) || items.find((it: any) => norm(it.product_title).includes(want) || want.includes(norm(it.product_title)));
+    try {
+      const track = await this.client.trackShop(next.domain);
+      if (!track.shopId) { await this.mysql.setImportedProductEnriched(next.itemKey, null, null, track.error || 'not_shopify'); return 'skip'; }
+      const shopId = String(track.shopId);
+      const norm = (s: any) => String(s ?? '').trim().toLowerCase();
+      const want = norm(next.title);
+      let match: any = null;
+      for (let from = 0; from <= 72 && !match; from += 24) {
+        const res = await this.client.search('products', { sort: 'week_current_period_revenue', q: '', categoryIds: [], from, lists: { must_include_shop_ids: [shopId] } });
+        const items = parseSearch<any>(res).items;
+        if (!items.length) break;
+        match = items.find((it: any) => norm(it.product_title) === want) || items.find((it: any) => norm(it.product_title).includes(want) || want.includes(norm(it.product_title)));
+      }
+      if (!match?.product_id) { await this.mysql.setImportedProductEnriched(next.itemKey, shopId, null, 'product_not_found'); return 'skip'; }
+      const pid = String(match.product_id);
+      await this.mysql.upsertItem('sh_product', pid, match);
+      try { await this.productDetail(shopId, pid); } catch { /* detail lỗi không chặn */ }
+      await this.mysql.setImportedProductEnriched(next.itemKey, shopId, pid, 'ok');
+      return 'ok';
+    } catch (e) {
+      if (isGlobalBlock(e)) throw e; // block toàn cục → dừng+backoff, giữ item chờ
+      await this.mysql.setImportedProductEnriched(next.itemKey, null, null, 'error'); // lỗi riêng item → đánh dấu, sang item kế
+      return 'skip';
     }
-    if (!match?.product_id) { await this.mysql.setImportedProductEnriched(next.itemKey, shopId, null, 'product_not_found'); return 'skip'; }
-    const pid = String(match.product_id);
-    await this.mysql.upsertItem('sh_product', pid, match);
-    try { await this.productDetail(shopId, pid); } catch { /* detail lỗi không chặn */ }
-    await this.mysql.setImportedProductEnriched(next.itemKey, shopId, pid, 'ok');
-    return 'ok';
   }
 
   setToken(token: string) {
@@ -152,7 +172,19 @@ export class ShService {
     return this.auth.status();
   }
 
-  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string }) { return this.mysql.queryLocalShops(o); }
+  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }) { return this.mysql.queryLocalShops(o); }
   localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }) { return this.mysql.queryLocalProducts(o); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
+
+  // --- Kho doanh thu theo ngày (tích luỹ dài hạn) ---
+  revenueDaily(shopId: string) { return this.mysql.getRevenueDaily(shopId); }
+  shopsNeedingRevSync(limit: number, staleMs: number) { return this.mysql.getShopsNeedingRevSync(limit, staleMs); }
+  // Đồng bộ doanh thu ngày cho 1 shop: CHỈ gọi revenue chart (1 call) → dồn vào kho → đánh dấu đã sync.
+  async syncShopRevenue(shopId: string): Promise<'ok' | 'skip'> {
+    const revR = await this.client.shopChartRevenue(shopId);
+    const chart = Array.isArray((revR as any)?.items) ? (revR as any).items : [];
+    await this.mysql.appendRevenueDaily(shopId, chart);
+    await this.mysql.setRevenueSynced(shopId);
+    return chart.length ? 'ok' : 'skip';
+  }
 }

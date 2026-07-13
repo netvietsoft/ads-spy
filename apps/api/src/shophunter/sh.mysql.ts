@@ -72,6 +72,8 @@ function rowToSlice(r: any): SliceState {
 @Injectable()
 export class ShMysql implements OnModuleInit {
   private pool: mysql.Pool | null = null;
+  // Cache dropdown Nước/Danh mục (query DISTINCT quét toàn bảng) → khỏi quét mỗi lần mở tab, đỡ đứng khi harvest chạy.
+  private filtersCache = new Map<string, { v: { countries: string[]; categories: string[] }; t: number }>();
 
   async onModuleInit() {
     try {
@@ -97,7 +99,7 @@ export class ShMysql implements OnModuleInit {
     await admin.query(`CREATE DATABASE IF NOT EXISTS \`${db}\` CHARACTER SET utf8mb4`);
     await admin.end();
 
-    const pool = mysql.createPool({ ...conn, database: db, connectionLimit: 10 });
+    const pool = mysql.createPool({ ...conn, database: db, connectionLimit: 25 });
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_shop (
       shop_id VARCHAR(32) PRIMARY KEY, raw LONGTEXT NOT NULL, fetched_at BIGINT NOT NULL)`);
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_product (
@@ -181,6 +183,24 @@ export class ShMysql implements OnModuleInit {
       shop_id VARCHAR(32), product_id VARCHAR(32), enriched TINYINT NOT NULL DEFAULT 0, enrich_status VARCHAR(32),
       imported_at BIGINT, enriched_at BIGINT)`);
     await this.ensureIndex(pool, 'sh_imported_product', 'idx_sh_improd_enriched', 'enriched');
+
+    // Danh mục do user gắn khi upload (id lá + chuỗi đường dẫn để hiển thị/lọc).
+    await this.ensureColumn(pool, 'sh_imported', 'category', 'category VARCHAR(64)');
+    await this.ensureColumn(pool, 'sh_imported', 'category_path', 'category_path VARCHAR(512)');
+    await this.ensureColumn(pool, 'sh_imported_product', 'category', 'category VARCHAR(64)');
+    await this.ensureColumn(pool, 'sh_imported_product', 'category_path', 'category_path VARCHAR(512)');
+    // Danh mục user gắn, đẩy sang sh_shop khi enrich → Local DB lọc shop theo danh mục (tách khỏi cột category của harvest).
+    await this.ensureColumn(pool, 'sh_shop', 'up_category', 'up_category VARCHAR(64)');
+    await this.ensureColumn(pool, 'sh_shop', 'up_category_path', 'up_category_path VARCHAR(512)');
+    await this.ensureIndex(pool, 'sh_imported', 'idx_sh_imported_cat', 'category');
+    await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_upcat', 'up_category'); // lọc Local DB theo danh mục (index seek ~4ms thay vì full-scan 9s). Build online/INPLACE.
+
+    // Kho doanh thu theo ngày (append-only, KHÔNG ghi đè) → tích luỹ dài hạn vượt 90 ngày cho phân tích năm/mùa vụ/trend.
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_shop_revenue_daily (
+      shop_id VARCHAR(32) NOT NULL, d DATE NOT NULL, revenue DOUBLE, sale_count INT, updated_at BIGINT,
+      PRIMARY KEY (shop_id, d))`);
+    await this.ensureColumn(pool, 'sh_shop', 'revenue_synced_at', 'revenue_synced_at BIGINT'); // lần cuối job revsync kéo chuỗi doanh thu ngày về
+    // KHÔNG index revenue_synced_at trên sh_shop (bảng 130MB build chậm). Job revsync chạy nền vài phút/lần, filesort cột nhỏ là đủ.
 
     this.pool = pool;
   }
@@ -372,6 +392,58 @@ export class ShMysql implements OnModuleInit {
         detail ? now : null, now,
       ],
     );
+    // Piggyback: dồn 90 điểm doanh thu ngày vào kho tích luỹ (miễn phí, không thêm call API).
+    if (detail) await this.appendRevenueDaily(id, (detail as any).revenueChart);
+  }
+
+  // Dồn chuỗi doanh thu ngày vào kho append-only. UPSERT theo (shop_id, d): ngày cũ giữ nguyên, ngày mới thêm,
+  // giá trị ngày gần được cập nhật (ShopHunter chỉnh lại vài ngày cuối). Bỏ điểm revenue null để khỏi rác.
+  async appendRevenueDaily(shopId: string, chart: any): Promise<void> {
+    if (!Array.isArray(chart) || !chart.length) return;
+    await this.ensureReady();
+    const now = Date.now();
+    const rows = chart
+      .filter((p) => p && p.date_str && (p.revenue != null || p.sale_count != null))
+      .map((p) => [shopId, String(p.date_str).slice(0, 10), p.revenue ?? null, p.sale_count ?? null, now]);
+    if (!rows.length) return;
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500);
+      const ph = new Array(batch.length).fill('(?,?,?,?,?)').join(',');
+      await this.pool!.query(
+        `INSERT INTO sh_shop_revenue_daily (shop_id, d, revenue, sale_count, updated_at) VALUES ${ph}
+         ON DUPLICATE KEY UPDATE revenue = VALUES(revenue), sale_count = VALUES(sale_count), updated_at = VALUES(updated_at)`,
+        batch.flat(),
+      );
+    }
+  }
+
+  // Chuỗi doanh thu ngày tích luỹ (>90 ngày dần) cho 1 shop — cho modal/chart xem dài hạn.
+  async getRevenueDaily(shopId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
+      'SELECT DATE_FORMAT(d, "%Y-%m-%d") date_str, revenue, sale_count FROM sh_shop_revenue_daily WHERE shop_id = ? ORDER BY d ASC',
+      [shopId],
+    );
+    return (rows as any[]).map((r) => ({ date_str: r.date_str, revenue: r.revenue, sale_count: r.sale_count }));
+  }
+
+  // Shop cần đồng bộ doanh thu ngày (chưa từng sync, hoặc sync đã cũ hơn staleMs) — chỉ shop đã có detail.
+  async getShopsNeedingRevSync(limit: number, staleMs: number): Promise<string[]> {
+    await this.ensureReady();
+    const cutoff = Date.now() - staleMs;
+    const [rows] = await this.pool!.query(
+      // NULL (chưa từng sync) xếp đầu trong ASC → ưu tiên trước, rồi tới sync cũ nhất.
+      `SELECT shop_id FROM sh_shop
+        WHERE detail_fetched_at IS NOT NULL AND (revenue_synced_at IS NULL OR revenue_synced_at < ?)
+        ORDER BY revenue_synced_at ASC LIMIT ?`,
+      [cutoff, limit],
+    );
+    return (rows as any[]).map((r) => r.shop_id);
+  }
+
+  async setRevenueSynced(shopId: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_shop SET revenue_synced_at = ? WHERE shop_id = ?', [Date.now(), shopId]);
   }
 
   // Upsert listing/search row NGAY khi cào breadth — KHÔNG đụng detail_raw/revenue_chart/
@@ -556,18 +628,22 @@ export class ShMysql implements OnModuleInit {
     );
   }
 
-  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string }): Promise<{ items: any[]; total: number }> {
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
+    if (o.category) { where.push('up_category = ?'); params.push(o.category); }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
-      `SELECT shop_id, raw, (detail_raw IS NOT NULL) AS harvested, harvested_at, fetched_at FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
+      // nếu để detail_raw trong SELECT, filesort (sort theo doanh thu/JSON) kéo cả blob vào bộ đệm sort → 27s.
+      // detail_fetched_at luôn set cùng detail_raw (xem upsertShop) → tương đương, mà sort chỉ còn ~250ms.
+      `SELECT shop_id, raw, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, o.limit, o.offset],
     );
     const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_shop ${whereSql}`, params);
-    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at) }));
+    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at), _up_category: r.up_category ?? null, _up_category_path: r.up_category_path ?? null })); // eslint-disable-line
     return { items, total: Number((cnt as any[])[0].n) || 0 };
   }
 
@@ -590,18 +666,25 @@ export class ShMysql implements OnModuleInit {
   // Giá trị lọc có sẵn trong DB (nước cho cả 2; danh mục chỉ product — shop không có field category).
   async getLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
     await this.ensureReady();
+    const cached = this.filtersCache.get(type);
+    if (cached && Date.now() - cached.t < 120000) return cached.v; // TTL 2 phút (dropdown đổi chậm)
     const distinct = async (sql: string): Promise<string[]> => {
       const [rows] = await this.pool!.query(sql);
       return (rows as any[]).map((r) => r.v).filter((v) => v != null && v !== '').map(String);
     };
     const okCountry = (arr: string[]) => arr.filter((v) => /^[A-Za-z]{2,3}$/.test(v)); // bỏ data rác (vd HTML banner) khỏi dropdown Nước
+    let out: { countries: string[]; categories: string[] };
     if (type === 'shops') {
       const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) v FROM sh_shop ORDER BY v");
-      return { countries: okCountry(countries), categories: [] };
+      const categories = await distinct('SELECT DISTINCT up_category v FROM sh_shop WHERE up_category IS NOT NULL ORDER BY up_category_path'); // danh mục user gắn (từ import)
+      out = { countries: okCountry(countries), categories };
+    } else {
+      const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
+      const categories = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) v FROM sh_product ORDER BY v");
+      out = { countries: okCountry(countries), categories };
     }
-    const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
-    const categories = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) v FROM sh_product ORDER BY v");
-    return { countries: okCountry(countries), categories };
+    this.filtersCache.set(type, { v: out, t: Date.now() });
+    return out;
   }
 
   async addTrackHistory(domain: string, shopId: string, shopTitle: string, identifyType: string): Promise<void> {
@@ -619,64 +702,87 @@ export class ShMysql implements OnModuleInit {
     return (rows as any[]).map((r) => ({ domain: r.domain, shopId: r.shop_id, shopTitle: r.shop_title, identifyType: r.identify_type, checkedAt: r.checked_at == null ? null : Number(r.checked_at) }));
   }
 
-  async upsertImported(rows: any[], type = 'shop'): Promise<number> {
+  async upsertImported(rows: any[], type = 'shop', category: string | null = null, categoryPath: string | null = null): Promise<number> {
     await this.ensureReady();
     const t = type === 'product' ? 'product' : 'shop';
+    const cat = category ? String(category).slice(0, 64) : null;
+    const catPath = categoryPath ? String(categoryPath).slice(0, 512) : null;
     const num = (v: any) => { const s = String(v ?? '').replace(/[^0-9.\-]/g, ''); const n = Number(s); return s !== '' && Number.isFinite(n) ? n : null; };
     const int = (v: any) => { const n = num(v); return n == null ? null : Math.round(n); };
-    let count = 0;
+    const now = Date.now();
+    const norm = (v: any) => String(v ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    // Gộp thành INSERT nhiều dòng (1 query/lô ~200) thay vì 1 query/dòng → nhanh, không đói pool khi harvest chạy.
+    // Dedup theo khoá trong batch (giữ bản cuối) để không có khoá trùng trong cùng câu INSERT.
+    const map = new Map<string, any[]>();
     for (const r of rows) {
-      const domain = String(r.domain ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      const domain = norm(r.domain);
       if (!domain) continue;
       if (t === 'product') {
         const title = String(r.shopTitle ?? '').trim();
         if (!title) continue;
         const key = (domain + '|' + title).slice(0, 500);
-        await this.pool!.query(
-          `INSERT INTO sh_imported_product (item_key, domain, product_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-           ON DUPLICATE KEY UPDATE product_title=VALUES(product_title), week_revenue=VALUES(week_revenue), revenue_change=VALUES(revenue_change),
-             revenue_change_pct=VALUES(revenue_change_pct), revenue_period=VALUES(revenue_period), ads=VALUES(ads),
-             ads_change=VALUES(ads_change), ads_change_pct=VALUES(ads_change_pct), ads_period=VALUES(ads_period), imported_at=VALUES(imported_at)`,
-          [key, domain, title, num(r.weekRevenue), num(r.revenueChange), num(r.revenueChangePct), r.revenuePeriod ?? null,
-            int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, Date.now()],
-        );
+        map.set(key, [key, domain, title, num(r.weekRevenue), num(r.revenueChange), num(r.revenueChangePct), r.revenuePeriod ?? null,
+          int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, now, cat, catPath]);
       } else {
-        await this.pool!.query(
-          `INSERT INTO sh_imported (domain, type, shop_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-           ON DUPLICATE KEY UPDATE type=VALUES(type), shop_title=VALUES(shop_title), week_revenue=VALUES(week_revenue), revenue_change=VALUES(revenue_change),
-             revenue_change_pct=VALUES(revenue_change_pct), revenue_period=VALUES(revenue_period), ads=VALUES(ads),
-             ads_change=VALUES(ads_change), ads_change_pct=VALUES(ads_change_pct), ads_period=VALUES(ads_period), imported_at=VALUES(imported_at)`,
-          [domain, t, r.shopTitle ?? null, num(r.weekRevenue), num(r.revenueChange), num(r.revenueChangePct), r.revenuePeriod ?? null,
-            int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, Date.now()],
-        );
+        map.set(domain, [domain, t, r.shopTitle ?? null, num(r.weekRevenue), num(r.revenueChange), num(r.revenueChangePct), r.revenuePeriod ?? null,
+          int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, now, cat, catPath]);
       }
-      count++;
     }
-    return count;
+    const tuples = [...map.values()];
+    if (!tuples.length) return 0;
+    // category chỉ ghi đè khi upload có chọn danh mục (COALESCE giữ danh mục cũ nếu lần này bỏ trống).
+    const head = t === 'product'
+      ? `INSERT INTO sh_imported_product (item_key, domain, product_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at, category, category_path) VALUES `
+      : `INSERT INTO sh_imported (domain, type, shop_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at, category, category_path) VALUES `;
+    const tail = t === 'product'
+      ? ` ON DUPLICATE KEY UPDATE product_title=VALUES(product_title), week_revenue=VALUES(week_revenue), revenue_change=VALUES(revenue_change),
+           revenue_change_pct=VALUES(revenue_change_pct), revenue_period=VALUES(revenue_period), ads=VALUES(ads),
+           ads_change=VALUES(ads_change), ads_change_pct=VALUES(ads_change_pct), ads_period=VALUES(ads_period), imported_at=VALUES(imported_at),
+           category=COALESCE(VALUES(category), category), category_path=COALESCE(VALUES(category_path), category_path)`
+      : ` ON DUPLICATE KEY UPDATE type=VALUES(type), shop_title=VALUES(shop_title), week_revenue=VALUES(week_revenue), revenue_change=VALUES(revenue_change),
+           revenue_change_pct=VALUES(revenue_change_pct), revenue_period=VALUES(revenue_period), ads=VALUES(ads),
+           ads_change=VALUES(ads_change), ads_change_pct=VALUES(ads_change_pct), ads_period=VALUES(ads_period), imported_at=VALUES(imported_at),
+           category=COALESCE(VALUES(category), category), category_path=COALESCE(VALUES(category_path), category_path)`;
+    const ROW_PH = '(?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
+    for (let i = 0; i < tuples.length; i += 200) {
+      const batch = tuples.slice(i, i + 200);
+      const ph = new Array(batch.length).fill(ROW_PH).join(',');
+      await this.pool!.query(head + ph + tail, batch.flat());
+    }
+    return tuples.length;
   }
 
-  async getImported(o: { limit: number; offset: number; type?: string }): Promise<{ items: any[]; total: number }> {
+  async getImported(o: { limit: number; offset: number; type?: string; category?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
-    if (o.type === 'product') {
-      const [rows] = await this.pool!.query('SELECT * FROM sh_imported_product ORDER BY imported_at DESC LIMIT ? OFFSET ?', [o.limit, o.offset]);
-      const [cnt] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_imported_product');
-      const items = (rows as any[]).map((r) => ({
-        domain: r.domain, shopTitle: r.product_title, weekRevenue: r.week_revenue, revenueChangePct: r.revenue_change_pct,
-        ads: r.ads, adsChangePct: r.ads_change_pct, shopId: r.shop_id, productId: r.product_id, enriched: !!r.enriched, enrichStatus: r.enrich_status,
-        importedAt: r.imported_at == null ? null : Number(r.imported_at),
-      }));
-      return { items, total: Number((cnt as any[])[0].n) || 0 };
-    }
-    const [rows] = await this.pool!.query("SELECT * FROM sh_imported WHERE type='shop' ORDER BY imported_at DESC LIMIT ? OFFSET ?", [o.limit, o.offset]);
-    const [cnt] = await this.pool!.query("SELECT COUNT(*) AS n FROM sh_imported WHERE type='shop'");
-    const items = (rows as any[]).map((r) => ({
-      domain: r.domain, shopTitle: r.shop_title, weekRevenue: r.week_revenue, revenueChangePct: r.revenue_change_pct,
-      ads: r.ads, adsChangePct: r.ads_change_pct, shopId: r.shop_id, enriched: !!r.enriched, enrichStatus: r.enrich_status,
+    // Map đủ cột phân tích + danh mục cho FE.
+    const map = (r: any, isProd: boolean) => ({
+      domain: r.domain, shopTitle: isProd ? r.product_title : r.shop_title,
+      weekRevenue: r.week_revenue, revenueChange: r.revenue_change, revenueChangePct: r.revenue_change_pct, revenuePeriod: r.revenue_period,
+      ads: r.ads, adsChange: r.ads_change, adsChangePct: r.ads_change_pct, adsPeriod: r.ads_period,
+      category: r.category ?? null, categoryPath: r.category_path ?? null,
+      shopId: r.shop_id, productId: isProd ? r.product_id : undefined, enriched: !!r.enriched, enrichStatus: r.enrich_status,
       importedAt: r.imported_at == null ? null : Number(r.imported_at),
-    }));
-    return { items, total: Number((cnt as any[])[0].n) || 0 };
+    });
+    if (o.type === 'product') {
+      const where = o.category ? 'WHERE category = ?' : '';
+      const p = o.category ? [o.category] : [];
+      const [rows] = await this.pool!.query(`SELECT * FROM sh_imported_product ${where} ORDER BY imported_at DESC LIMIT ? OFFSET ?`, [...p, o.limit, o.offset]);
+      const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_imported_product ${where}`, p);
+      return { items: (rows as any[]).map((r) => map(r, true)), total: Number((cnt as any[])[0].n) || 0 };
+    }
+    const where = o.category ? "WHERE type='shop' AND category = ?" : "WHERE type='shop'";
+    const p = o.category ? [o.category] : [];
+    const [rows] = await this.pool!.query(`SELECT * FROM sh_imported ${where} ORDER BY imported_at DESC LIMIT ? OFFSET ?`, [...p, o.limit, o.offset]);
+    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_imported ${where}`, p);
+    return { items: (rows as any[]).map((r) => map(r, false)), total: Number((cnt as any[])[0].n) || 0 };
+  }
+
+  // Danh mục có trong dữ liệu import (cho dropdown lọc) — id + path.
+  async getImportedCategories(type = 'shop'): Promise<{ id: string; path: string }[]> {
+    await this.ensureReady();
+    const table = type === 'product' ? 'sh_imported_product' : 'sh_imported';
+    const [rows] = await this.pool!.query(`SELECT DISTINCT category id, category_path path FROM ${table} WHERE category IS NOT NULL ORDER BY category_path`);
+    return (rows as any[]).map((r) => ({ id: r.id, path: r.path || r.id }));
   }
 
   async importedStats(type = 'shop'): Promise<{ total: number; enriched: number; pending: number }> {
@@ -688,10 +794,17 @@ export class ShMysql implements OnModuleInit {
     return { total, enriched, pending: total - enriched };
   }
 
-  async getNextUnenriched(): Promise<{ domain: string } | null> {
+  async getNextUnenriched(): Promise<{ domain: string; category: string | null; categoryPath: string | null } | null> {
     await this.ensureReady();
-    const [r] = await this.pool!.query("SELECT domain FROM sh_imported WHERE enriched=0 AND type='shop' ORDER BY imported_at LIMIT 1");
-    const row = (r as any[])[0]; return row ? { domain: row.domain } : null;
+    const [r] = await this.pool!.query("SELECT domain, category, category_path FROM sh_imported WHERE enriched=0 AND type='shop' ORDER BY imported_at LIMIT 1");
+    const row = (r as any[])[0]; return row ? { domain: row.domain, category: row.category ?? null, categoryPath: row.category_path ?? null } : null;
+  }
+
+  // Gắn danh mục user (từ import) lên sh_shop để Local DB lọc shop theo danh mục.
+  async setShopUpCategory(shopId: string, category: string | null, categoryPath: string | null): Promise<void> {
+    if (!category) return;
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_shop SET up_category = ?, up_category_path = ? WHERE shop_id = ?', [category, categoryPath, shopId]);
   }
 
   async getNextUnenrichedProduct(): Promise<{ itemKey: string; domain: string; title: string } | null> {

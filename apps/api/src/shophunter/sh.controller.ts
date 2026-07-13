@@ -101,16 +101,21 @@ export class ShController {
   }
 
   @Post('sh/import')
-  async importRows(@Body('rows') rows: any[], @Body('type') type: string) {
-    const n = await this.svc.importRows(rows || [], type === 'product' ? 'product' : 'shop');
+  async importRows(@Body('rows') rows: any[], @Body('type') type: string, @Body('category') category: string, @Body('categoryPath') categoryPath: string) {
+    const n = await this.svc.importRows(rows || [], type === 'product' ? 'product' : 'shop', category || null, categoryPath || null);
     return { imported: n };
   }
 
   @Get('sh/import/list')
-  async importList(@Query('page') page: string, @Query('pageSize') pageSize: string, @Query('type') type: string) {
+  async importList(@Query('page') page: string, @Query('pageSize') pageSize: string, @Query('type') type: string, @Query('category') category: string) {
     const p = localParams(undefined, undefined, page, pageSize);
-    const r = await this.svc.importedList({ offset: p.offset, limit: p.limit, type: type === 'product' ? 'product' : 'shop' });
+    const r = await this.svc.importedList({ offset: p.offset, limit: p.limit, type: type === 'product' ? 'product' : 'shop', category: category || undefined });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
+  }
+
+  @Get('sh/import/categories')
+  importCategories(@Query('type') type: string) {
+    return this.svc.importedCategories(type === 'product' ? 'product' : 'shop');
   }
 
   @Get('sh/import/stats')
@@ -142,6 +147,12 @@ export class ShController {
   shopDetail(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Thiếu shop id.');
     return this.svc.shopDetail(id);
+  }
+
+  @Get('sh/shop/:id/revenue-daily')
+  shopRevenueDaily(@Param('id') id: string) {
+    if (!id) throw new BadRequestException('Thiếu shop id.');
+    return this.svc.revenueDaily(id); // chuỗi doanh thu ngày tích luỹ (>90 ngày dần)
   }
 
   @Get('sh/product/:shopId/:productId')
@@ -204,9 +215,9 @@ export class ShController {
   }
 
   @Get('sh/local/shops')
-  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string) {
+  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string) {
     const p = localParams(sort, dir, page, pageSize);
-    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined });
+    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
 

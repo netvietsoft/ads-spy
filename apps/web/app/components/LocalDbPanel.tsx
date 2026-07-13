@@ -23,6 +23,7 @@ function Upd({ ms }: { ms: number | null | undefined }) {
 const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_logo', label: '' },
   { key: '_name', label: 'Shop' },
+  { key: '_category', label: 'Danh mục' },
   { key: 'revenue_day', label: 'DT Ngày', sortable: true },
   { key: 'revenue_week', label: 'DT Tuần', sortable: true },
   { key: 'revenue_month', label: 'DT Tháng', sortable: true },
@@ -49,11 +50,12 @@ export function LocalDbPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
+  const [openShopCat, setOpenShopCat] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true); setErr(null);
     const req = tab === 'shops'
-      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined })
+      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined })
       : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined });
     req.then((r) => setData(r)).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
   }, [tab, sort, dir, page, pageSize, country, category]);
@@ -114,7 +116,7 @@ export function LocalDbPanel() {
             {opts.countries.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
-        {tab === 'products' && (
+        {opts.categories.length > 0 && (
           <label>Danh mục:&nbsp;
             <select className="fbselect" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
               <option value="">Tất cả</option>
@@ -134,9 +136,10 @@ export function LocalDbPanel() {
             ))}</tr></thead>
             <tbody>
               {data.items.map((s) => (
-                <tr key={s.shop_id} onClick={() => setOpenShop(s.shop_id)} style={{ cursor: 'pointer' }}>
+                <tr key={s.shop_id} onClick={() => { setOpenShop(s.shop_id); setOpenShopCat(s._up_category_path || null); }} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url}</div></td>
+                  <td className="wrap" style={{ maxWidth: '22ch', fontSize: 12, opacity: 0.85 }}>{s._up_category_path || (s._up_category ? (catNames[s._up_category] || s._up_category) : '—')}</td>
                   <td>{money(s.day_current_period_revenue)}</td>
                   <td>{money(s.week_current_period_revenue)}</td>
                   <td>{money(s.month_current_period_revenue)}</td>
@@ -190,7 +193,7 @@ export function LocalDbPanel() {
 
       {pager}
 
-      {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
+      {openShop && <ShShopModal shopId={openShop} categoryPath={openShopCat} onClose={() => setOpenShop(null)} />}
     </div>
   );
 }

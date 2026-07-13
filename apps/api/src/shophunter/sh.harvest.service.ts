@@ -31,6 +31,7 @@ export interface HarvestSliceSummary { processed: number; ok: number; skipped: n
 export class ShHarvestService {
   private readonly logger = new Logger('ShHarvest');
   private running = false;
+  private revsyncRunning = false;
 
   constructor(
     private readonly client: ShClient,
@@ -77,8 +78,9 @@ export class ShHarvestService {
   private dailyKey(): string {
     const today = new Date().toISOString().slice(0, 10);
     const mode = process.env.SH_HARVEST_MODE || 'slices';
-    if (mode !== 'deep') return today;
-    return `${today}:${process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops'}`;
+    if (mode === 'deep') return `${today}:${process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops'}`;
+    // Mỗi mode 1 bộ đếm riêng → import/revsync/slices chạy song song không dẫm counter nhau.
+    return `${today}:${mode}`;
   }
 
   getDaily(): Promise<{ day: string; used: number; cap: number }> {
@@ -106,7 +108,38 @@ export class ShHarvestService {
     if (mode === 'slices') return this.runHarvestSlices(opts);
     if (mode === 'deep') return this.runHarvestDeep(process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops', opts);
     if (mode === 'import') return this.runImportEnrich(opts);
+    if (mode === 'revsync') return this.runRevenueSync(opts);
     return this.runHarvestFlat(opts);
+  }
+
+  // Đồng bộ doanh thu ngày: quét vòng qua shop (cũ nhất trước), mỗi shop 1 call revenue chart → dồn kho tích luỹ.
+  // Xoay vòng hết shop mỗi ~1 ngày (staleMs); throttle không hết thì hôm sau bù (cửa sổ 90 ngày chồng nhau, không hụt).
+  async runRevenueSync(opts: { daily?: number }): Promise<HarvestSliceSummary> {
+    if (this.revsyncRunning) throw new Error('Revsync đang chạy, bỏ qua yêu cầu chồng.');
+    this.revsyncRunning = true;
+    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 500);
+    const staleMs = (Number(process.env.SH_REVSYNC_STALE_HOURS) || 20) * 3600000;
+    let processed = 0, ok = 0, skipped = 0, status = 'ok';
+    try {
+      while (processed < quota) {
+        const ids = await this.svc.shopsNeedingRevSync(Math.min(quota - processed, 50), staleMs);
+        if (!ids.length) { status = 'all_synced'; break; }
+        let blocked = false;
+        for (const id of ids) {
+          try {
+            const r = await this.svc.syncShopRevenue(id);
+            processed++; if (r === 'ok') ok++; else skipped++;
+          } catch (e) {
+            if (isGlobalBlock(e)) { this.logger.warn(`Revsync dừng do bị chặn: ${(e as Error).message}`); status = 'blocked'; blocked = true; break; }
+            await this.mysql.setRevenueSynced(id); processed++; skipped++; // lỗi riêng shop → đánh dấu để khỏi kẹt, sang shop kế
+          }
+          if (processed >= quota) break;
+          await this.sleep(this.randDelayMs());
+        }
+        if (blocked) break;
+      }
+    } finally { this.revsyncRunning = false; }
+    return { processed, ok, skipped, failed: 0, sliceKey: 'revsync', status };
   }
 
   async runHarvestFlat(opts: { daily?: number }): Promise<HarvestSummary> {

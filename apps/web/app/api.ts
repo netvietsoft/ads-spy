@@ -449,13 +449,14 @@ export async function shProductDetail(shopId: string, productId: string): Promis
 }
 
 export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
-export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string } = {}): Promise<ShLocalResult> {
+export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
   if (p.page) qs.set('page', String(p.page));
   if (p.pageSize) qs.set('pageSize', String(p.pageSize));
   if (p.country) qs.set('country', p.country);
+  if (p.category) qs.set('category', p.category);
   return jsonOrThrow(await fetch(`${API}/api/sh/local/shops?${qs.toString()}`));
 }
 export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string } = {}): Promise<ShLocalResult> {
@@ -471,6 +472,9 @@ export async function shLocalProducts(p: { sort?: string; dir?: string; page?: n
 export async function shLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/local/filters?type=${type}`));
 }
+export async function shShopRevenueDaily(shopId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/revenue-daily`));
+}
 export interface ShCheckResult { domain: string; isShopify: boolean; reason?: string; shopId?: string; identifyType?: string; detail?: any }
 export async function shCheckDomain(domain: string): Promise<ShCheckResult> {
   return jsonOrThrow(await fetch(`${API}/api/sh/check?domain=${encodeURIComponent(domain)}`));
@@ -479,12 +483,22 @@ export interface ShTrackHistItem { domain: string; shopId: string; shopTitle: st
 export async function shTrackHistory(): Promise<ShTrackHistItem[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/track/history`));
 }
-export async function shImport(rows: any[], type: 'shop' | 'product' = 'shop'): Promise<{ imported: number }> {
-  return jsonOrThrow(await fetch(`${API}/api/sh/import`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows, type }) }));
+export async function shImport(rows: any[], type: 'shop' | 'product' = 'shop', category: string | null = null, categoryPath: string | null = null): Promise<{ imported: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/import`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows, type, category, categoryPath }) }));
 }
-export interface ShImportedItem { domain: string; shopTitle: string; weekRevenue: number | null; revenueChangePct: number | null; ads: number | null; adsChangePct: number | null; shopId: string | null; productId?: string | null; enriched: boolean; enrichStatus: string | null; importedAt: number | null }
-export async function shImportList(page = 1, pageSize = 100, type: 'shop' | 'product' = 'shop'): Promise<{ items: ShImportedItem[]; total: number; page: number; pageSize: number }> {
-  return jsonOrThrow(await fetch(`${API}/api/sh/import/list?page=${page}&pageSize=${pageSize}&type=${type}`));
+export interface ShImportedItem {
+  domain: string; shopTitle: string;
+  weekRevenue: number | null; revenueChange: number | null; revenueChangePct: number | null; revenuePeriod: string | null;
+  ads: number | null; adsChange: number | null; adsChangePct: number | null; adsPeriod: string | null;
+  category: string | null; categoryPath: string | null;
+  shopId: string | null; productId?: string | null; enriched: boolean; enrichStatus: string | null; importedAt: number | null;
+}
+export async function shImportList(page = 1, pageSize = 100, type: 'shop' | 'product' = 'shop', category = ''): Promise<{ items: ShImportedItem[]; total: number; page: number; pageSize: number }> {
+  const cat = category ? `&category=${encodeURIComponent(category)}` : '';
+  return jsonOrThrow(await fetch(`${API}/api/sh/import/list?page=${page}&pageSize=${pageSize}&type=${type}${cat}`));
+}
+export async function shImportCategories(type: 'shop' | 'product' = 'shop'): Promise<{ id: string; path: string }[]> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/import/categories?type=${type}`));
 }
 export async function shImportStats(type: 'shop' | 'product' = 'shop'): Promise<{ total: number; enriched: number; pending: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import/stats?type=${type}`));

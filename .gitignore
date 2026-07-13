@@ -7,3 +7,5 @@ dist/
 *.log
 .env
 .superpowers/
+*.tsbuildinfo
+Screen shoot/

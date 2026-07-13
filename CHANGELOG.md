@@ -4,6 +4,31 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-13 — ShopHunter: import bền hơn, Local DB nhanh, danh mục/txt, kho doanh thu ngày — [docs/10](docs/10-shophunter.md)
+
+### Import (tab 📥) bền + nhanh
+- **Sửa lỗi "request entity too large" (413)**: body limit 25MB; `upsertImported` gộp **INSERT nhiều dòng/lô 200**
+  (thay 1 query/dòng) + pool mysql2 10→25 → 7000 dòng vào ~15s thay vì treo vài phút. Chunk upload 300→2000.
+- **Upload .txt** (dán bảng ShopHunter): parser khối 10 dòng/shop (title, domain, [DT tuần Δ % kỳ], [ads Δ % kỳ]),
+  đổi `$36K`→36000, `(+42.1%)`→42.1, tự re-sync khi gặp header/nhiễu. Vẫn nhận xlsx/csv.
+- **Phân loại danh mục**: bộ chọn **cây ShopHunter bung xổ** (8 cấp, có tìm kiếm) — gắn danh mục cho cả file; cột
+  `category`/`category_path` (sh_imported + đẩy `up_category` sang sh_shop khi enrich) → lọc/hiển thị ở Import + Local DB + modal.
+- **Cột phân tích**: hiện đủ DT Tuần · Rev Δ · Rev % · Kỳ · Ads · Ads Δ · Ads % · Kỳ; báo "✅ XONG" rõ ràng khi import xong.
+
+### Enrich chống kẹt
+- **Poison-pill fix**: 1 domain ShopHunter trả HTTP 500 từng làm **kẹt cả mẻ enrich → 0 shop suốt 18h**. Nay phân biệt
+  lỗi-riêng-domain (đánh dấu `error`, bỏ qua, chạy tiếp) vs chặn-toàn-cục (dừng + backoff).
+
+### Local DB nhanh
+- **Sort theo doanh thu 27–40s → ~250ms**: bỏ `detail_raw` (LONGTEXT 95KB) khỏi SELECT (dùng `detail_fetched_at` làm
+  cờ đã-harvest) → filesort không kéo blob. Cache dropdown Nước/Danh mục (TTL 2'). *(Bảng sh_shop ~130MB → mọi query phải dùng index.)*
+
+### Kho doanh thu ngày dài hạn (vượt 90 ngày)
+- Bảng **`sh_shop_revenue_daily`** append-only (shop_id, ngày, revenue, sale_count). **Piggyback**: mọi fetch detail dồn 90
+  điểm vào kho (miễn phí). Job **`revsync` (:3130)**: mỗi shop 1 call/ngày → kho dày dần để xem theo năm/mùa/trend.
+- Chi tiết **shop & sản phẩm** hiện **bảng số từng ngày** (Ngày · Doanh thu · Đơn) + Δ ngày/tuần/tháng; endpoint
+  `GET /api/sh/shop/:id/revenue-daily`.
+
 ## 2026-07-04 — TikTok Ads + proxy quay vòng + lọc vùng Google + lazy-load
 
 ### TikTok Creative Center Top Ads (nguồn thứ 3) — [docs/09](docs/09-tiktok.md)

@@ -6,6 +6,7 @@ import { ShChart } from '../../../components/ShChart';
 import { ShLogo } from '../../../components/ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
+const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 
 export default function ProductDetailPage() {
   const params = useParams<{ shopId: string; productId: string }>();
@@ -48,14 +49,41 @@ export default function ProductDetailPage() {
           </div>
           {p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt={p.product_title} style={{ maxWidth: '100%', borderRadius: 8, maxHeight: 320, objectFit: 'contain' }} /> : null}
           <div className="fbplat" style={{ marginTop: 8 }}>{money(p.price)} · {p.product_vendor || ''} {Array.isArray(p.product_tags) && p.product_tags.length ? '· ' + p.product_tags.join(', ') : ''}</div>
-          <div style={{ display: 'flex', gap: 16, margin: '12px 0', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 16, margin: '12px 0 4px', flexWrap: 'wrap' }}>
             <span>Day <b>{money(p.day_current_period_revenue)}</b></span>
             <span>Week <b>{money(p.week_current_period_revenue)}</b></span>
             <span>Month <b>{money(p.month_current_period_revenue)}</b></span>
             <span>Ads <b>{p.product_active_ad_count ?? 0}</b></span>
           </div>
+          <div style={{ display: 'flex', gap: 16, margin: '0 0 12px', flexWrap: 'wrap', fontSize: 13, opacity: 0.9 }}>
+            <span>Đơn ngày <b>{p.day_current_period_sale_count ?? '—'}</b></span>
+            <span>Đơn tuần <b>{p.week_current_period_sale_count ?? '—'}</b></span>
+            <span>Đơn tháng <b>{p.month_current_period_sale_count ?? '—'}</b></span>
+            <span>Δ Ngày <b className={(p.day_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.day_revenue_percent_change)}</b></span>
+            <span>Δ Tuần <b className={(p.week_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.week_revenue_percent_change)}</b></span>
+            <span>Δ Tháng <b className={(p.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.month_revenue_percent_change)}</b></span>
+          </div>
           <h4>Doanh thu 90 ngày</h4>
           <ShChart points={(d!.revenueChart || []).map((x) => ({ date_str: x.date_str, value: x.revenue }))} color="#5b9dff" />
+          {(d!.revenueChart?.length ?? 0) > 0 && (
+            <details open style={{ margin: '6px 0' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.9 }}>Số theo từng ngày ({d!.revenueChart.length} ngày) — mới nhất trước</summary>
+              <div style={{ maxHeight: 260, overflow: 'auto', marginTop: 6 }}>
+                <table className="localtbl">
+                  <thead><tr><th>Ngày</th><th>Doanh thu</th><th>Đơn</th></tr></thead>
+                  <tbody>
+                    {d!.revenueChart.slice().reverse().map((x) => (
+                      <tr key={x.date_str}>
+                        <td style={{ whiteSpace: 'nowrap' }}>{x.date_str}</td>
+                        <td>{money(x.revenue)}</td>
+                        <td>{x.sale_count ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
           {p.body ? (<><h4>Mô tả</h4><div className="fbbody" style={{ maxHeight: 'none', overflow: 'visible', whiteSpace: 'pre-wrap' }}>{p.body}</div></>) : null}
           {Array.isArray(d!.similar) && d!.similar.length > 0 && (
             <>
