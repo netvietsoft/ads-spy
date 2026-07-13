@@ -957,6 +957,62 @@ export class ShMysql implements OnModuleInit {
     return tuples.length;
   }
 
+  // Shop cần đồng bộ catalog Shopify (bulkUpsertShopifyProducts) — copy pattern getShopsNeedingRevSync.
+  // Field URL nằm trong raw JSON `url` (KHÔNG phải `shop_url` — đó là field trên sp, xem shShopSite ở FE web).
+  // Bỏ shop đang 'blocked' (không phải Shopify / products.json bị chặn) trừ khi đã quá hạn staleMs (cho thử lại).
+  async getShopsNeedingCatalog(limit: number, staleMs: number): Promise<{ shopId: string; url: string }[]> {
+    await this.ensureReady();
+    const cutoff = Date.now() - staleMs;
+    const [rows] = await this.pool!.query(
+      // NULL (chưa từng sync) xếp đầu trong ASC → ưu tiên trước, rồi tới sync cũ nhất.
+      `SELECT shop_id, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) AS url FROM sh_shop
+        WHERE JSON_EXTRACT(raw, '$.url') IS NOT NULL
+          AND (catalog_synced_at IS NULL OR catalog_synced_at < ?)
+          AND (catalog_status IS NULL OR catalog_status != 'blocked' OR catalog_synced_at < ?)
+        ORDER BY catalog_synced_at ASC LIMIT ?`,
+      [cutoff, cutoff, limit],
+    );
+    return (rows as any[]).map((r) => ({ shopId: r.shop_id, url: r.url }));
+  }
+
+  // Bulk insert sản phẩm Shopify từ catalog public (products.json) — CHỈ thêm sp mới (INSERT IGNORE),
+  // KHÔNG đè raw ShopHunter đã có sẵn (không ON DUPLICATE KEY UPDATE). Lô ≤400 dòng, trả số dòng THỰC SỰ được thêm.
+  async bulkUpsertShopifyProducts(shopId: string, shopUrl: string, products: import('./shopify.client').ShopifyProduct[]): Promise<number> {
+    await this.ensureReady();
+    const now = Date.now();
+    const cut = (s: any, n: number) => (s == null ? null : String(s).slice(0, n));
+    const tuples = products.filter((p) => p.id).map((p) => {
+      const raw = {
+        product_id: p.id,
+        product_title: p.title,
+        product_handle: p.handle,
+        price: p.price,
+        product_image_external: p.image,
+        product_variant_count: p.variantCount,
+        shop_id: shopId,
+        shop_url: shopUrl,
+        product_published_at: p.publishedAt,
+        _shopify: { created_at: p.createdAt, updated_at: p.updatedAt },
+      };
+      return [cut(p.id, 32), JSON.stringify(raw), now, cut(p.title, 512), cut(shopId, 32), 'shopify'];
+    });
+    if (!tuples.length) return 0;
+    const head = 'INSERT IGNORE INTO sh_product (product_id, raw, fetched_at, product_title, shop_id, source) VALUES ';
+    let inserted = 0;
+    for (let i = 0; i < tuples.length; i += 400) {
+      const batch = tuples.slice(i, i + 400);
+      const ph = new Array(batch.length).fill('(?,?,?,?,?,?)').join(',');
+      const [res] = await this.pool!.query(head + ph, batch.flat());
+      inserted += (res as any).affectedRows || 0;
+    }
+    return inserted;
+  }
+
+  async setShopCatalog(shopId: string, status: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_shop SET catalog_synced_at = ?, catalog_status = ? WHERE shop_id = ?', [Date.now(), status, shopId]);
+  }
+
   async countProductsByShop(shopId: string): Promise<number> {
     await this.ensureReady();
     const [rows] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_product WHERE shop_id = ?', [shopId]);
