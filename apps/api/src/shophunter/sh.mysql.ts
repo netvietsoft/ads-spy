@@ -207,6 +207,17 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'revenue_synced_at', 'revenue_synced_at BIGINT'); // lần cuối job revsync kéo chuỗi doanh thu ngày về
     // KHÔNG index revenue_synced_at trên sh_shop (bảng 130MB build chậm). Job revsync chạy nền vài phút/lần, filesort cột nhỏ là đủ.
 
+    // Kho doanh thu theo ngày cho sản phẩm (append-only) + cột catalog Shopify/rev-sync sản phẩm.
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_revenue_daily (
+      product_id VARCHAR(32) NOT NULL, d DATE NOT NULL, revenue DOUBLE NULL, sale_count BIGINT NULL,
+      updated_at BIGINT NOT NULL, PRIMARY KEY (product_id, d))`);
+    await this.ensureColumn(pool, 'sh_product', 'source', 'source VARCHAR(16)');
+    await this.ensureColumn(pool, 'sh_product', 'product_revenue_synced_at', 'product_revenue_synced_at BIGINT');
+    await this.ensureIndex(pool, 'sh_product', 'idx_sh_product_prev_sync', 'product_revenue_synced_at');
+    await this.ensureColumn(pool, 'sh_shop', 'catalog_synced_at', 'catalog_synced_at BIGINT');
+    await this.ensureColumn(pool, 'sh_shop', 'catalog_status', 'catalog_status VARCHAR(16)');
+    await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_catalog_sync', 'catalog_synced_at');
+
     this.pool = pool;
   }
 
