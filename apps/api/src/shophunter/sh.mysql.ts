@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import mysql from 'mysql2/promise';
 import { ShBlockedError } from './sh.client';
+import { PrismaService } from '../prisma.service';
 
 type Table = 'sh_shop' | 'sh_product';
 
@@ -74,6 +75,8 @@ export class ShMysql implements OnModuleInit {
   private pool: mysql.Pool | null = null;
   // Cache dropdown Nước/Danh mục (query DISTINCT quét toàn bảng) → khỏi quét mỗi lần mở tab, đỡ đứng khi harvest chạy.
   private filtersCache = new Map<string, { v: { countries: string[]; categories: string[] }; t: number }>();
+
+  constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
     try {
@@ -1036,5 +1039,17 @@ export class ShMysql implements OnModuleInit {
   async setImportedEnriched(domain: string, shopId: string | null, status: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query('UPDATE sh_imported SET enriched=1, shop_id=?, enrich_status=?, enriched_at=? WHERE domain=?', [shopId, status, Date.now(), domain]);
+  }
+
+  // Cấu hình nhỏ dùng chung (cùng bảng fbSetting với ShAuth token) — vd chống nạp trùng snapshot.
+  async getSetting(key: string): Promise<string | null> {
+    const s = await this.prisma.fbSetting.findUnique({ where: { key } }).catch(() => null);
+    return s?.value ?? null;
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    await this.prisma.fbSetting
+      .upsert({ where: { key }, create: { key, value }, update: { value } })
+      .catch(() => undefined);
   }
 }

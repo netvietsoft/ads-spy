@@ -4,7 +4,7 @@ import { ShMysql } from './sh.mysql';
 describe('ShMysql ensureReady — schema mới cho Shopify catalog + product revenue daily', () => {
   // ensureReady() build index INPLACE trên sh_shop/sh_product đã có dữ liệu (dev DB) → chậm hơn timeout mặc định 5s.
   it('tạo sh_product_revenue_daily + cột mới', async () => {
-    const m = new ShMysql();
+    const m = new ShMysql({} as any);
     await (m as any).ensureReady();
     const pool = (m as any).pool;
     const [t] = await pool.query(

@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, Res, UseFilters } from '@nestjs/common';
 import type { Response } from 'express';
 import { Readable } from 'stream';
-import { ShService } from './sh.service';
+import { ShService, SH_SNAPSHOT_DEFAULT_DIR } from './sh.service';
 import { ShClient, SH_SORTS_SHOPS, SH_SORTS_PRODUCTS } from './sh.client';
 import { ShBlockedFilter } from './sh.blocked.filter';
 import { ShHarvestService } from './sh.harvest.service';
@@ -134,6 +134,12 @@ export class ShController {
   importProductState(@Body('root') root: string, @Body('includeState') includeState?: boolean) {
     if (!root) throw new BadRequestException('Thiếu đường dẫn thư mục.');
     return this.svc.importProductState(root, { includeState: !!includeState }); // product/*.json → đẩy thẳng vào sh_product (ưu tiên _full)
+  }
+
+  @Post('sh/import/snapshot')
+  importSnapshot(@Body('baseDir') baseDir: string, @Body('force') force?: boolean) {
+    // Nạp snapshot crawler mới nhất (baseDir mặc định = thư mục snapshots của shophunter-crawler).
+    return this.svc.importLatestSnapshot(baseDir || SH_SNAPSHOT_DEFAULT_DIR, { force: !!force });
   }
 
   @Get('sh/import/stats')

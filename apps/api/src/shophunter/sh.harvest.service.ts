@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ShClient, ShBlockedError } from './sh.client';
-import { ShService } from './sh.service';
+import { ShService, SH_SNAPSHOT_DEFAULT_DIR } from './sh.service';
 import { ShMysql, HarvestState, SliceState } from './sh.mysql';
 import { parseSearch, parseShopColumns } from './sh.parser';
 import { shouldRunNow, pickSip, randInt, isGlobalBlock } from './sh.harvest.util';
@@ -26,6 +26,8 @@ export interface HarvestSummary {
 }
 
 export interface HarvestSliceSummary { processed: number; ok: number; skipped: number; failed: number; sliceKey: string; status: string }
+
+export interface SnapshotSummary { date: string | null; shops: any; products: any }
 
 @Injectable()
 export class ShHarvestService {
@@ -103,13 +105,19 @@ export class ShHarvestService {
   listDeepSlices(type: 'shops' | 'products') { return this.mysql.listDeepSlices(type); }
   resetDeepSlices() { return this.mysql.resetDeepSlices(); }
 
-  async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary> {
+  async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary | SnapshotSummary> {
     const mode = process.env.SH_HARVEST_MODE || 'slices';
     if (mode === 'slices') return this.runHarvestSlices(opts);
     if (mode === 'deep') return this.runHarvestDeep(process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops', opts);
     if (mode === 'import') return this.runImportEnrich(opts);
     if (mode === 'revsync') return this.runRevenueSync(opts);
+    if (mode === 'snapshot') return this.runSnapshotImport();
     return this.runHarvestFlat(opts);
+  }
+
+  // Instance riêng (SH_HARVEST_MODE='snapshot', giờ sau 02:00): mỗi tick nạp snapshot crawler mới nhất.
+  async runSnapshotImport(): Promise<SnapshotSummary> {
+    return this.svc.importLatestSnapshot(SH_SNAPSHOT_DEFAULT_DIR);
   }
 
   // Đồng bộ doanh thu ngày: quét vòng qua shop (cũ nhất trước), mỗi shop 1 call revenue chart → dồn kho tích luỹ.

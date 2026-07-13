@@ -14,7 +14,7 @@ describe('ShService piggyback doanh thu ngày khi import', () => {
   let tmpDir: string;
 
   beforeAll(async () => {
-    m = new ShMysql();
+    m = new ShMysql({} as any);
     await (m as any).ensureReady();
     svc = new ShService({} as any, m, {} as any);
   }, 120000); // ensureReady có thể chậm khi MySQL đang tải (harvest chạy nền)

@@ -38,6 +38,8 @@ function parseTsvShops(text: string): any[] {
 }
 
 const TTL_MS = (Number(process.env.SH_CACHE_TTL_HOURS) || 6) * 3600 * 1000;
+const LAST_SNAPSHOT_KEY = 'shophunter_last_snapshot_imported';
+export const SH_SNAPSHOT_DEFAULT_DIR = 'D:\\SetupC\\Tools\\shophunter-crawler\\snapshots';
 
 @Injectable()
 export class ShService {
@@ -269,6 +271,31 @@ export class ShService {
     // Đồng bộ shop: tạo shop CÒN THIẾU từ dữ liệu product (INSERT IGNORE → không đè shop đã có).
     const shopsCreated = await this.mysql.bulkUpsertListingShops([...shopMap.values()], { onlyMissing: true });
     return { files: chosen.length, skipped, products, upserted, shopsCreated };
+  }
+
+  // Tự động nạp snapshot crawler MỚI NHẤT (baseDir/<YYYY-MM-DD>/{shops,products}, xem run-daily.js).
+  // revenueDate = ngày snapshot − 1 (ngày hoàn tất gần nhất — xem Global Constraints). Chống nạp trùng qua
+  // setting last_snapshot_imported (cùng bảng fbSetting với ShAuth token); force=true bỏ qua guard này.
+  async importLatestSnapshot(baseDir: string, opts: { force?: boolean } = {}): Promise<{ date: string | null; shops: any; products: any }> {
+    if (!baseDir || !fs.existsSync(baseDir)) return { date: null, shops: null, products: null };
+    const dateDirs = fs
+      .readdirSync(baseDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(e.name))
+      .map((e) => e.name)
+      .sort();
+    if (!dateDirs.length) return { date: null, shops: null, products: null };
+    const date = dateDirs[dateDirs.length - 1];
+
+    if (!opts.force) {
+      const last = await this.mysql.getSetting(LAST_SNAPSHOT_KEY);
+      if (last && date <= last) return { date, shops: null, products: null };
+    }
+
+    const revenueDate = new Date(Date.parse(date + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+    const shops = await this.importState(path.join(baseDir, date, 'shops'), { revenueDate });
+    const products = await this.importProductState(path.join(baseDir, date, 'products'), { revenueDate });
+    await this.mysql.setSetting(LAST_SNAPSHOT_KEY, date);
+    return { date, shops, products };
   }
 
   // Enrich 1 shop import kế tiếp: track→(nếu chưa harvest fresh thì)detail→sh_shop. Ném lỗi nếu bị chặn (để retry).

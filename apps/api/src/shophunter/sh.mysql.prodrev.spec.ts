@@ -6,7 +6,7 @@ describe('ShMysql appendProductRevenueDaily / getProductRevenueDaily', () => {
   let m: ShMysql;
 
   beforeAll(async () => {
-    m = new ShMysql();
+    m = new ShMysql({} as any);
     await (m as any).ensureReady();
   }, 30000);
 
