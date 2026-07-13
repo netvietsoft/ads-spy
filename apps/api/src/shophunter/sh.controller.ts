@@ -7,6 +7,11 @@ import { ShBlockedFilter } from './sh.blocked.filter';
 import { ShHarvestService } from './sh.harvest.service';
 
 const ALLOWED_ASSET = /(^|\.)(shopify\.com|shopifycdn\.com|myshopify\.com|shophunter\.io|cloudfront\.net)$/i;
+const REVENUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+// revenueDate override cho import thủ công (mặc định hàm import*State là "hôm qua UTC" — xem sh.service.ts).
+export function isValidRevenueDate(s: string): boolean {
+  return REVENUE_DATE_RE.test(s);
+}
 export function assetHostOk(url: string): boolean {
   try {
     const u = new URL(url);
@@ -125,15 +130,21 @@ export class ShController {
   }
 
   @Post('sh/import/state')
-  importState(@Body('root') root: string) {
+  importState(@Body('root') root: string, @Body('revenueDate') revenueDate?: string) {
     if (!root) throw new BadRequestException('Thiếu đường dẫn thư mục.');
-    return this.svc.importState(root); // state/*.json → đẩy thẳng full listing vào sh_shop (Local DB) + danh mục từ category_id
+    if (revenueDate != null && !isValidRevenueDate(revenueDate)) throw new BadRequestException('revenueDate phải theo định dạng YYYY-MM-DD.');
+    // state/*.json → đẩy thẳng full listing vào sh_shop (Local DB) + danh mục từ category_id. revenueDate mặc định
+    // là "hôm qua UTC" (xem sh.service.ts) — truyền vào để backfill/nạp thủ công đúng ngày thay vì bị mặc định.
+    return this.svc.importState(root, revenueDate ? { revenueDate } : {});
   }
 
   @Post('sh/import/product-state')
-  importProductState(@Body('root') root: string, @Body('includeState') includeState?: boolean) {
+  importProductState(@Body('root') root: string, @Body('includeState') includeState?: boolean, @Body('revenueDate') revenueDate?: string) {
     if (!root) throw new BadRequestException('Thiếu đường dẫn thư mục.');
-    return this.svc.importProductState(root, { includeState: !!includeState }); // product/*.json → đẩy thẳng vào sh_product (ưu tiên _full)
+    if (revenueDate != null && !isValidRevenueDate(revenueDate)) throw new BadRequestException('revenueDate phải theo định dạng YYYY-MM-DD.');
+    // product/*.json → đẩy thẳng vào sh_product (ưu tiên _full). revenueDate mặc định là "hôm qua UTC" — truyền
+    // vào để backfill/nạp thủ công đúng ngày thay vì bị mặc định.
+    return this.svc.importProductState(root, { includeState: !!includeState, ...(revenueDate ? { revenueDate } : {}) });
   }
 
   @Post('sh/import/snapshot')

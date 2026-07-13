@@ -1,4 +1,17 @@
-import { assetHostOk, localParams } from './sh.controller';
+import { assetHostOk, isValidRevenueDate, localParams } from './sh.controller';
+
+describe('isValidRevenueDate', () => {
+  it('chấp nhận định dạng YYYY-MM-DD', () => {
+    expect(isValidRevenueDate('2026-07-12')).toBe(true);
+  });
+
+  it('từ chối định dạng khác/rác', () => {
+    expect(isValidRevenueDate('12-07-2026')).toBe(false);
+    expect(isValidRevenueDate('2026/07/12')).toBe(false);
+    expect(isValidRevenueDate('')).toBe(false);
+    expect(isValidRevenueDate('not-a-date')).toBe(false);
+  });
+});
 
 describe('assetHostOk', () => {
   it('cho phép domain Shopify CDN', () => {

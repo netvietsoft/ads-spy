@@ -284,7 +284,12 @@ export class ShService {
 
   // Tự động nạp snapshot crawler MỚI NHẤT (baseDir/<YYYY-MM-DD>/{shops,products}, xem run-daily.js).
   // revenueDate = ngày snapshot − 1 (ngày hoàn tất gần nhất — xem Global Constraints). Chống nạp trùng qua
-  // setting last_snapshot_imported (cùng bảng fbSetting với ShAuth token); force=true bỏ qua guard này.
+  // setting last_snapshot_imported (cùng bảng fbSetting với ShAuth token); force=true bỏ qua guard này (CHỈ nạp
+  // lại đúng ngày MỚI NHẤT — không catch-up nhiều ngày, giữ nguyên hành vi force cũ).
+  // Catch-up: nạp TẤT CẢ thư mục ngày còn mới hơn last_snapshot_imported (tăng dần), mỗi ngày dùng revenueDate
+  // riêng — phòng trường hợp bỏ lỡ hẳn 1 ngày (instance down qua nửa đêm). Nếu 1 ngày trả về files=0 ở shops
+  // hoặc products (crawl đang chạy dở/lỗi — dir tạo sẵn lúc 02:00 nhưng file chưa kịp ghi) → dừng ngay, KHÔNG
+  // đánh dấu last_snapshot_imported qua ngày đó (tick sau sẽ thử lại đúng ngày này, tránh mất điểm doanh thu).
   async importLatestSnapshot(baseDir: string, opts: { force?: boolean } = {}): Promise<{ date: string | null; shops: any; products: any }> {
     if (!baseDir || !fs.existsSync(baseDir)) return { date: null, shops: null, products: null };
     const dateDirs = fs
@@ -293,18 +298,33 @@ export class ShService {
       .map((e) => e.name)
       .sort();
     if (!dateDirs.length) return { date: null, shops: null, products: null };
-    const date = dateDirs[dateDirs.length - 1];
+    const newest = dateDirs[dateDirs.length - 1];
 
-    if (!opts.force) {
+    let pending: string[];
+    if (opts.force) {
+      pending = [newest];
+    } else {
       const last = await this.mysql.getSetting(LAST_SNAPSHOT_KEY);
-      if (last && date <= last) return { date, shops: null, products: null };
+      pending = last ? dateDirs.filter((d) => d > last) : dateDirs;
+      if (!pending.length) return { date: newest, shops: null, products: null }; // đã nạp hết, không có gì mới
     }
 
-    const revenueDate = new Date(Date.parse(date + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
-    const shops = await this.importState(path.join(baseDir, date, 'shops'), { revenueDate });
-    const products = await this.importProductState(path.join(baseDir, date, 'products'), { revenueDate });
-    await this.mysql.setSetting(LAST_SNAPSHOT_KEY, date);
-    return { date, shops, products };
+    let result: { date: string; shops: any; products: any } = { date: newest, shops: null, products: null };
+    for (const date of pending) {
+      const revenueDate = new Date(Date.parse(date + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+      const shops = await this.importState(path.join(baseDir, date, 'shops'), { revenueDate });
+      const products = await this.importProductState(path.join(baseDir, date, 'products'), { revenueDate });
+      result = { date, shops, products };
+      if (shops.files === 0 || products.files === 0) {
+        this.logger.warn(
+          `Snapshot ${date}: crawl có vẻ chưa xong/lỗi (shops.files=${shops.files}, products.files=${products.files}) ` +
+            `→ KHÔNG đánh dấu đã nạp, tick sau sẽ thử lại đúng ngày này.`,
+        );
+        break; // không advance qua ngày dở dang, không xử lý ngày mới hơn (nếu có)
+      }
+      await this.mysql.setSetting(LAST_SNAPSHOT_KEY, date);
+    }
+    return result;
   }
 
   // Enrich 1 shop import kế tiếp: track→(nếu chưa harvest fresh thì)detail→sh_shop. Ném lỗi nếu bị chặn (để retry).
