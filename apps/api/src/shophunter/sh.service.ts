@@ -184,17 +184,19 @@ export class ShService {
     return { files: files.length, rows, unique: unique.length, imported, empty };
   }
 
-  // Import theo state: đọc state/*.json (mỗi file 1 top-category, có mảng shops = full item + category_id).
-  // Đẩy THẲNG vào sh_shop dạng listing (không cần enrich) + gắn danh mục từ category_id → hiện ngay ở Local DB.
-  async importState(root: string): Promise<{ files: number; shops: number; upserted: number }> {
+  // Import theo state: đọc state/*.json (mỗi file 1 top-category, có mảng shops = full item + category_id;
+  // snapshot crawler thì file là MẢNG PHẲNG shop). Đẩy THẲNG vào sh_shop dạng listing (không cần enrich) +
+  // gắn danh mục từ category_id → hiện ngay ở Local DB. Piggyback day_current_period_revenue/sale_count → sh_shop_revenue_daily.
+  async importState(root: string, opts: { revenueDate?: string } = {}): Promise<{ files: number; shops: number; upserted: number }> {
     if (!root || !fs.existsSync(root)) throw new Error('Thư mục không tồn tại: ' + root);
     const tree = loadCatTree();
+    const revenueDate = opts.revenueDate || new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     const files = fs.readdirSync(root).filter((f) => f.toLowerCase().endsWith('.json'));
     let shopsTotal = 0, upserted = 0;
     for (const f of files) {
       let t: any;
       try { t = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8')); } catch { continue; }
-      const shops = Array.isArray(t?.shops) ? t.shops : [];
+      const shops = Array.isArray(t) ? t : (Array.isArray(t?.shops) ? t.shops : []);
       if (!shops.length) continue;
       shopsTotal += shops.length;
       const map = new Map<string, any>(); // dedup theo shop_id trong file
@@ -204,6 +206,10 @@ export class ShService {
         return { shopId, raw: JSON.stringify(item), cols: parseShopColumns(item), upCategory: cat.id, upCategoryPath: cat.path || null };
       });
       upserted += await this.mysql.bulkUpsertListingShops(rows);
+      const points = [...map.entries()]
+        .filter(([, item]) => item.day_current_period_revenue != null || item.day_current_period_sale_count != null)
+        .map(([shopId, item]) => ({ shopId, date_str: revenueDate, revenue: item.day_current_period_revenue ?? null, sale_count: item.day_current_period_sale_count ?? null }));
+      await this.mysql.bulkAppendShopRevenueDaily(points);
     }
     return { files: files.length, shops: shopsTotal, upserted };
   }
@@ -211,9 +217,11 @@ export class ShService {
   // Import sản phẩm từ thư mục product: ưu tiên product_<x>_full.json (category đã hoàn tất, mảng phẳng);
   // category chỉ có <x>_state.json (lấy .shops) — chỉ nhận khi file KHÔNG bị ghi trong ~5 phút (tránh đọc trúng
   // lúc crawler đang viết dở). Đẩy thẳng vào sh_product (raw = record 77 field, giống search API). Idempotent.
-  async importProductState(root: string, opts: { includeState?: boolean } = {}): Promise<{ files: number; skipped: string[]; products: number; upserted: number; shopsCreated: number }> {
+  // Piggyback day_current_period_revenue/sale_count → sh_product_revenue_daily (revenueDate mặc định hôm qua UTC).
+  async importProductState(root: string, opts: { includeState?: boolean; revenueDate?: string } = {}): Promise<{ files: number; skipped: string[]; products: number; upserted: number; shopsCreated: number }> {
     if (!root || !fs.existsSync(root)) throw new Error('Thư mục không tồn tại: ' + root);
     const tree = loadCatTree();
+    const revenueDate = opts.revenueDate || new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     const shopMap = new Map<string, any>(); // gom shop từ field shop_* của product (first-seen) → tạo shop còn thiếu
     const all = fs.readdirSync(root).filter((f) => f.toLowerCase().endsWith('.json'));
     const fullOf = new Map<string, string>(); // catPrefix -> product_<x>_full.json
@@ -253,6 +261,10 @@ export class ShService {
       }
       const rows = [...map.entries()].map(([productId, item]) => ({ productId, raw: JSON.stringify(item), title: item?.product_title ?? null, shopId: item?.shop_id != null ? String(item.shop_id) : null }));
       upserted += await this.mysql.bulkUpsertProducts(rows);
+      const points = [...map.entries()]
+        .filter(([, item]) => item.day_current_period_revenue != null || item.day_current_period_sale_count != null)
+        .map(([productId, item]) => ({ productId, date_str: revenueDate, revenue: item.day_current_period_revenue ?? null, sale_count: item.day_current_period_sale_count ?? null }));
+      await this.mysql.bulkAppendProductRevenueDaily(points);
     }
     // Đồng bộ shop: tạo shop CÒN THIẾU từ dữ liệu product (INSERT IGNORE → không đè shop đã có).
     const shopsCreated = await this.mysql.bulkUpsertListingShops([...shopMap.values()], { onlyMissing: true });

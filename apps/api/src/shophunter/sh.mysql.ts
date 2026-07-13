@@ -484,6 +484,34 @@ export class ShMysql implements OnModuleInit {
     return (rows as any[]).map((r) => ({ date_str: r.date_str, revenue: r.revenue, sale_count: r.sale_count }));
   }
 
+  // Bulk piggyback nhiều sp × 1 điểm/ngày trong 1 INSERT nhiều dòng (import snapshot: tránh N INSERT lẻ).
+  async bulkAppendProductRevenueDaily(points: { productId: string; date_str: string; revenue: number | null; sale_count: number | null }[]): Promise<void> {
+    await this.ensureReady();
+    const now = Date.now();
+    const rows = points.filter((p) => p.productId && p.date_str).map((p) => [String(p.productId).slice(0, 32), String(p.date_str).slice(0, 10), p.revenue ?? null, p.sale_count ?? null, now]);
+    if (!rows.length) return;
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500);
+      const ph = new Array(batch.length).fill('(?,?,?,?,?)').join(',');
+      await this.pool!.query(`INSERT INTO sh_product_revenue_daily (product_id, d, revenue, sale_count, updated_at) VALUES ${ph}
+        ON DUPLICATE KEY UPDATE revenue = VALUES(revenue), sale_count = VALUES(sale_count), updated_at = VALUES(updated_at)`, batch.flat());
+    }
+  }
+
+  // Bulk piggyback nhiều shop × 1 điểm/ngày trong 1 INSERT nhiều dòng.
+  async bulkAppendShopRevenueDaily(points: { shopId: string; date_str: string; revenue: number | null; sale_count: number | null }[]): Promise<void> {
+    await this.ensureReady();
+    const now = Date.now();
+    const rows = points.filter((p) => p.shopId && p.date_str).map((p) => [String(p.shopId).slice(0, 32), String(p.date_str).slice(0, 10), p.revenue ?? null, p.sale_count ?? null, now]);
+    if (!rows.length) return;
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500);
+      const ph = new Array(batch.length).fill('(?,?,?,?,?)').join(',');
+      await this.pool!.query(`INSERT INTO sh_shop_revenue_daily (shop_id, d, revenue, sale_count, updated_at) VALUES ${ph}
+        ON DUPLICATE KEY UPDATE revenue = VALUES(revenue), sale_count = VALUES(sale_count), updated_at = VALUES(updated_at)`, batch.flat());
+    }
+  }
+
   // Shop cần đồng bộ doanh thu ngày (chưa từng sync, hoặc sync đã cũ hơn staleMs) — chỉ shop đã có detail.
   async getShopsNeedingRevSync(limit: number, staleMs: number): Promise<string[]> {
     await this.ensureReady();
