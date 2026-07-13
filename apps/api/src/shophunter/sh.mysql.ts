@@ -1114,7 +1114,9 @@ export class ShMysql implements OnModuleInit {
 
   // Thống kê độ phủ đồng bộ (catalog Shopify + doanh thu ngày) cho dashboard admin — COUNT/MIN đơn giản,
   // KHÔNG dùng index mới, chỉ index sẵn có: idx_sh_shop_catalog_sync (catalog_synced_at) cho MIN; catalog_status
-  // KHÔNG có index riêng nhưng sh_shop hiện ~46k dòng nên full scan vẫn rẻ (đã đo trên DB thật: ~20ms).
+  // KHÔNG có index riêng nhưng sh_shop hiện ~46k dòng nên 1 full scan gộp (conditional aggregation) vẫn rẻ
+  // (đã đo trên DB thật: ~20ms). synced = 'ok' + 'empty' ("đã xử lý xong, không bị chặn" — khớp
+  // getShopsNeedingCatalog coi 'empty' là done); mysql2 trả SUM dạng string/decimal nên phải Number().
   // COUNT DISTINCT product_id/shop_id trên sh_product_revenue_daily/sh_shop_revenue_daily dùng index-only scan
   // qua PRIMARY KEY (product_id,d)/(shop_id,d) — đã đo trên DB thật (~300k sản phẩm): ~520ms/~177ms, chấp nhận
   // được cho endpoint dashboard gọi không thường xuyên (KHÔNG dùng *_synced_at làm proxy: product_revenue_synced_at
@@ -1125,18 +1127,18 @@ export class ShMysql implements OnModuleInit {
   }> {
     await this.ensureReady();
 
-    const [shopRows] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_shop');
-    const shops = Number((shopRows as any[])[0].n) || 0;
-
-    const [syncedRows] = await this.pool!.query("SELECT COUNT(*) AS n FROM sh_shop WHERE catalog_status = 'ok'");
-    const synced = Number((syncedRows as any[])[0].n) || 0;
-
-    const [blockedRows] = await this.pool!.query("SELECT COUNT(*) AS n FROM sh_shop WHERE catalog_status = 'blocked'");
-    const blocked = Number((blockedRows as any[])[0].n) || 0;
-
-    const [lagRows] = await this.pool!.query('SELECT MIN(catalog_synced_at) AS m FROM sh_shop WHERE catalog_synced_at IS NOT NULL');
-    const oldestSyncedAt = (lagRows as any[])[0].m;
-    const oldestLagH = oldestSyncedAt == null ? null : Math.round(((Date.now() - Number(oldestSyncedAt)) / 3600000) * 100) / 100;
+    const [catRows] = await this.pool!.query(
+      `SELECT COUNT(*) AS shops,
+              SUM(catalog_status IN ('ok','empty')) AS synced,
+              SUM(catalog_status = 'blocked') AS blocked,
+              MIN(catalog_synced_at) AS oldest
+         FROM sh_shop`,
+    );
+    const cat = (catRows as any[])[0];
+    const shops = Number(cat.shops) || 0;
+    const synced = Number(cat.synced) || 0;
+    const blocked = Number(cat.blocked) || 0;
+    const oldestLagH = cat.oldest == null ? null : Math.round(((Date.now() - Number(cat.oldest)) / 3600000) * 100) / 100;
 
     const [prodRows] = await this.pool!.query('SELECT COUNT(DISTINCT product_id) AS n FROM sh_product_revenue_daily');
     const productsWithSeries = Number((prodRows as any[])[0].n) || 0;

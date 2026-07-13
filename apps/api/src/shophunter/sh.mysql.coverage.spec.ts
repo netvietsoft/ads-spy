@@ -19,5 +19,8 @@ describe('ShMysql.coverageStats — độ phủ đồng bộ catalog + doanh thu
     expect(Number.isInteger(r.revenue.productsWithSeries) && r.revenue.productsWithSeries >= 0).toBe(true);
     expect(Number.isInteger(r.revenue.shopsWithSeries) && r.revenue.shopsWithSeries >= 0).toBe(true);
     expect(r.revenue.lastSnapshotDate === null || typeof r.revenue.lastSnapshotDate === 'string').toBe(true);
+
+    // synced ('ok'+'empty') và blocked là 2 tập rời nhau trong tổng shop — cùng 1 lần scan nên số liệu nhất quán.
+    expect(r.catalog.shops).toBeGreaterThanOrEqual(r.catalog.synced + r.catalog.blocked);
   }, 30000);
 });
