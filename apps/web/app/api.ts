@@ -440,7 +440,7 @@ export async function shExplore(
   if (params.lists && Object.keys(params.lists).length) qs.set('lists', JSON.stringify(params.lists));
   return jsonOrThrow(await fetch(`${API}/api/sh/${type}?${qs.toString()}`));
 }
-export interface ShDetail { detail: any; revenueChart: { date_str: string; revenue: number | null; sale_count: number | null }[]; adsChart?: any; similar?: any[]; upCategory?: string | null; upCategoryPath?: string | null; cached: boolean }
+export interface ShDetail { detail: any; revenueChart: { date_str: string; revenue: number | null; sale_count: number | null }[]; adsChart?: any; similar?: any[]; upCategory?: string | null; upCategoryPath?: string | null; productCount?: number; cached: boolean }
 export async function shShopDetail(id: string): Promise<ShDetail> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${encodeURIComponent(id)}`));
 }
@@ -449,7 +449,7 @@ export async function shProductDetail(shopId: string, productId: string): Promis
 }
 
 export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
-export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string } = {}): Promise<ShLocalResult> {
+export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
@@ -457,9 +457,10 @@ export async function shLocalShops(p: { sort?: string; dir?: string; page?: numb
   if (p.pageSize) qs.set('pageSize', String(p.pageSize));
   if (p.country) qs.set('country', p.country);
   if (p.category) qs.set('category', p.category);
+  if (p.q) qs.set('q', p.q);
   return jsonOrThrow(await fetch(`${API}/api/sh/local/shops?${qs.toString()}`));
 }
-export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string } = {}): Promise<ShLocalResult> {
+export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; shop?: string } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
@@ -467,10 +468,15 @@ export async function shLocalProducts(p: { sort?: string; dir?: string; page?: n
   if (p.pageSize) qs.set('pageSize', String(p.pageSize));
   if (p.country) qs.set('country', p.country);
   if (p.category) qs.set('category', p.category);
+  if (p.q) qs.set('q', p.q);
+  if (p.shop) qs.set('shop', p.shop);
   return jsonOrThrow(await fetch(`${API}/api/sh/local/products?${qs.toString()}`));
 }
 export async function shLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/local/filters?type=${type}`));
+}
+export async function shLocalSuggest(type: 'shops' | 'products', q: string): Promise<string[]> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/local/suggest?type=${type}&q=${encodeURIComponent(q)}`));
 }
 export interface ShReport { shops: number; day: { rev: number; sales: number }; week: { rev: number; sales: number }; month: { rev: number; sales: number } }
 export async function shReport(p: { country?: string; category?: string } = {}): Promise<ShReport> {
@@ -513,7 +519,7 @@ export async function shImportFolder(root: string): Promise<{ files: number; row
 export async function shImportState(root: string): Promise<{ files: number; shops: number; upserted: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import/state`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ root }) }));
 }
-export async function shImportProductState(root: string, includeState = false): Promise<{ files: number; skipped: string[]; products: number; upserted: number }> {
+export async function shImportProductState(root: string, includeState = false): Promise<{ files: number; skipped: string[]; products: number; upserted: number; shopsCreated: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import/product-state`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ root, includeState }) }));
 }
 export async function shImportStats(type: 'shop' | 'product' = 'shop'): Promise<{ total: number; enriched: number; pending: number }> {

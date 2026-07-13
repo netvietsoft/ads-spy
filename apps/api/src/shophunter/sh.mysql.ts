@@ -128,6 +128,11 @@ export class ShMysql implements OnModuleInit {
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_harvested', 'harvested_at');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_fetched', 'fetched_at');
     await this.ensureIndex(pool, 'sh_product', 'idx_sh_product_fetched', 'fetched_at');
+    // Cột phẳng + index cho search/gợi ý tên sản phẩm + đếm/lọc theo shop (ADD COLUMN=INSTANT, ADD INDEX=INPLACE → KHÔNG copy bảng như functional index).
+    await this.ensureColumn(pool, 'sh_product', 'product_title', 'product_title VARCHAR(512)');
+    await this.ensureIndex(pool, 'sh_product', 'idx_sh_product_title', 'product_title');
+    await this.ensureColumn(pool, 'sh_product', 'shop_id', 'shop_id VARCHAR(32)');
+    await this.ensureIndex(pool, 'sh_product', 'idx_sh_product_shop', 'shop_id');
 
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_harvest_state (
       id VARCHAR(32) PRIMARY KEY,
@@ -243,6 +248,17 @@ export class ShMysql implements OnModuleInit {
   async upsertItem(table: Table, id: string, raw: unknown): Promise<void> {
     await this.ensureReady();
     const pk = this.pk(table);
+    if (table === 'sh_product') {
+      const o = raw && typeof raw === 'object' ? (raw as any) : {};
+      const title = String(o.product_title ?? '').slice(0, 512) || null;
+      const sid = o.shop_id != null ? String(o.shop_id).slice(0, 32) : null;
+      await this.pool!.query(
+        `INSERT INTO sh_product (product_id, raw, fetched_at, product_title, shop_id) VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE raw = VALUES(raw), fetched_at = VALUES(fetched_at), product_title = VALUES(product_title), shop_id = VALUES(shop_id)`,
+        [id, JSON.stringify(raw), Date.now(), title, sid],
+      );
+      return;
+    }
     await this.pool!.query(
       `INSERT INTO ${table} (${pk}, raw, fetched_at) VALUES (?, ?, ?)
        ON DUPLICATE KEY UPDATE raw = VALUES(raw), fetched_at = VALUES(fetched_at)`,
@@ -628,12 +644,13 @@ export class ShMysql implements OnModuleInit {
     );
   }
 
-  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }): Promise<{ items: any[]; total: number }> {
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
+    if (o.q) { where.push('shop_name LIKE ?'); params.push('%' + o.q + '%'); }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
@@ -647,12 +664,14 @@ export class ShMysql implements OnModuleInit {
     return { items, total: Number((cnt as any[])[0].n) || 0 };
   }
 
-  async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }): Promise<{ items: any[]; total: number }> {
+  async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, PRODUCT_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
+    if (o.shop) { where.push('shop_id = ?'); params.push(o.shop); } // lọc sản phẩm theo shop (cột có index)
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) = ?"); params.push(o.country); }
     if (o.category) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) = ?"); params.push(o.category); }
+    if (o.q) { where.push('product_title LIKE ?'); params.push('%' + o.q + '%'); } // dùng cột phẳng có index
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       `SELECT product_id, raw, fetched_at FROM sh_product ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
@@ -661,6 +680,18 @@ export class ShMysql implements OnModuleInit {
     const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_product ${whereSql}`, params);
     const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at) }));
     return { items, total: Number((cnt as any[])[0].n) || 0 };
+  }
+
+  // Gợi ý tên (autocomplete) từ DB: products → product_title (cột có index, quét index-only nhanh); shops → shop_name.
+  async localSuggest(type: 'shops' | 'products', q: string, limit = 12): Promise<string[]> {
+    await this.ensureReady();
+    if (!q || q.trim().length < 2) return [];
+    const like = '%' + q.trim() + '%';
+    const sql = type === 'products'
+      ? 'SELECT DISTINCT product_title v FROM sh_product WHERE product_title LIKE ? ORDER BY product_title LIMIT ?'
+      : 'SELECT DISTINCT shop_name v FROM sh_shop WHERE shop_name LIKE ? ORDER BY shop_name LIMIT ?';
+    const [rows] = await this.pool!.query(sql, [like, limit]);
+    return (rows as any[]).map((r) => r.v).filter(Boolean);
   }
 
   // Giá trị lọc có sẵn trong DB (nước cho cả 2; danh mục chỉ product — shop không có field category).
@@ -812,7 +843,7 @@ export class ShMysql implements OnModuleInit {
 
   // Bulk upsert LISTING shop thẳng vào sh_shop (dùng cho import state JSON — có sẵn full item + shop_id + category_id).
   // KHÔNG đụng detail_raw/revenue_chart/detail_fetched_at/harvested_at (giữ detail đã có); set up_category. 1 transaction + lô 1000.
-  async bulkUpsertListingShops(rows: { shopId: string; raw: string; cols: import('./sh.parser').ShShopColumns; upCategory: string | null; upCategoryPath: string | null }[]): Promise<number> {
+  async bulkUpsertListingShops(rows: { shopId: string; raw: string; cols: import('./sh.parser').ShShopColumns; upCategory: string | null; upCategoryPath: string | null }[], opts: { onlyMissing?: boolean } = {}): Promise<number> {
     await this.ensureReady();
     const now = Date.now();
     const cut = (s: any, n: number) => (s == null ? null : String(s).slice(0, n)); // tránh "Data too long" (title/logo dài)
@@ -821,34 +852,43 @@ export class ShMysql implements OnModuleInit {
     ]);
     if (!tuples.length) return 0;
     const ROW_PH = '(?,?,?,?,?,?,?,?,?,?,?,?,?)';
-    const head = `INSERT INTO sh_shop (shop_id, raw, fetched_at, shop_name, revenue, items_sold, followers, rating, category, rank_pos, logo_url, up_category, up_category_path) VALUES `;
-    const tail = ` ON DUPLICATE KEY UPDATE raw=VALUES(raw), fetched_at=VALUES(fetched_at), shop_name=VALUES(shop_name), revenue=VALUES(revenue),
+    // onlyMissing: INSERT IGNORE → chỉ tạo shop CHƯA có, KHÔNG đè shop hiện có (giữ nguyên data/detail đã enrich).
+    const head = `INSERT ${opts.onlyMissing ? 'IGNORE ' : ''}INTO sh_shop (shop_id, raw, fetched_at, shop_name, revenue, items_sold, followers, rating, category, rank_pos, logo_url, up_category, up_category_path) VALUES `;
+    const tail = opts.onlyMissing ? '' : ` ON DUPLICATE KEY UPDATE raw=VALUES(raw), fetched_at=VALUES(fetched_at), shop_name=VALUES(shop_name), revenue=VALUES(revenue),
        items_sold=VALUES(items_sold), followers=VALUES(followers), rating=VALUES(rating), category=VALUES(category), rank_pos=VALUES(rank_pos), logo_url=VALUES(logo_url),
        up_category=COALESCE(VALUES(up_category), up_category), up_category_path=COALESCE(VALUES(up_category_path), up_category_path)`;
     // Lô nhỏ autocommit (KHÔNG giữ transaction dài) → nhả row-lock ngay, không kẹt khi harvest cũng ghi sh_shop.
+    let affected = 0;
     for (let i = 0; i < tuples.length; i += 400) {
       const batch = tuples.slice(i, i + 400);
       const ph = new Array(batch.length).fill(ROW_PH).join(',');
+      const [res] = await this.pool!.query(head + ph + tail, batch.flat());
+      affected += (res as any).affectedRows || 0;
+    }
+    return opts.onlyMissing ? affected : tuples.length; // onlyMissing: số shop thực sự tạo mới
+  }
+
+  // Bulk upsert sản phẩm vào sh_product (raw = record 77 field giống search API). Lô nhỏ autocommit → không giữ lock dài.
+  async bulkUpsertProducts(rows: { productId: string; raw: string; title?: string | null; shopId?: string | null }[]): Promise<number> {
+    await this.ensureReady();
+    const now = Date.now();
+    const cut = (s: any, n: number) => (s == null ? null : String(s).slice(0, n));
+    const tuples = rows.filter((r) => r.productId).map((r) => [cut(r.productId, 32), r.raw, now, cut(r.title, 512), cut(r.shopId, 32)]);
+    if (!tuples.length) return 0;
+    const head = 'INSERT INTO sh_product (product_id, raw, fetched_at, product_title, shop_id) VALUES ';
+    const tail = ' ON DUPLICATE KEY UPDATE raw=VALUES(raw), fetched_at=VALUES(fetched_at), product_title=VALUES(product_title), shop_id=VALUES(shop_id)';
+    for (let i = 0; i < tuples.length; i += 400) {
+      const batch = tuples.slice(i, i + 400);
+      const ph = new Array(batch.length).fill('(?,?,?,?,?)').join(',');
       await this.pool!.query(head + ph + tail, batch.flat());
     }
     return tuples.length;
   }
 
-  // Bulk upsert sản phẩm vào sh_product (raw = record 77 field giống search API). Lô nhỏ autocommit → không giữ lock dài.
-  async bulkUpsertProducts(rows: { productId: string; raw: string }[]): Promise<number> {
+  async countProductsByShop(shopId: string): Promise<number> {
     await this.ensureReady();
-    const now = Date.now();
-    const cut = (s: any, n: number) => (s == null ? null : String(s).slice(0, n));
-    const tuples = rows.filter((r) => r.productId).map((r) => [cut(r.productId, 32), r.raw, now]);
-    if (!tuples.length) return 0;
-    const head = 'INSERT INTO sh_product (product_id, raw, fetched_at) VALUES ';
-    const tail = ' ON DUPLICATE KEY UPDATE raw=VALUES(raw), fetched_at=VALUES(fetched_at)';
-    for (let i = 0; i < tuples.length; i += 400) {
-      const batch = tuples.slice(i, i + 400);
-      const ph = new Array(batch.length).fill('(?,?,?)').join(',');
-      await this.pool!.query(head + ph + tail, batch.flat());
-    }
-    return tuples.length;
+    const [rows] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_product WHERE shop_id = ?', [shopId]);
+    return Number((rows as any[])[0].n) || 0;
   }
 
   async getImported(o: { limit: number; offset: number; type?: string; category?: string }): Promise<{ items: any[]; total: number }> {

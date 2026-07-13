@@ -137,7 +137,7 @@ export function ImportPanel() {
   const scanProductState = () => {
     setErr(null); setDone(null); setBusy('📦 Đang quét product JSON (đẩy thẳng vào sh_product)…');
     shImportProductState(productRoot.trim(), incState)
-      .then((r) => { setBusy(''); setDone(`✅ QUÉT PRODUCT XONG: ${r.files} file → ${r.upserted.toLocaleString()} sản phẩm (từ ${r.products.toLocaleString()} record)${r.skipped.length ? `. Bỏ qua ${r.skipped.length}: ${r.skipped.slice(0, 6).join('; ')}${r.skipped.length > 6 ? '…' : ''}` : ''}`); setPage(1); refresh(); })
+      .then((r) => { setBusy(''); setDone(`✅ QUÉT PRODUCT XONG: ${r.files} file → ${r.upserted.toLocaleString()} sản phẩm (từ ${r.products.toLocaleString()} record) + tạo mới ${r.shopsCreated.toLocaleString()} shop còn thiếu${r.skipped.length ? `. Bỏ qua ${r.skipped.length}: ${r.skipped.slice(0, 6).join('; ')}${r.skipped.length > 6 ? '…' : ''}` : ''}`); setPage(1); refresh(); })
       .catch((e) => { setBusy(''); setErr('Quét product lỗi: ' + (e as Error).message); });
   };
 

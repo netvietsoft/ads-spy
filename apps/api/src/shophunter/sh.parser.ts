@@ -27,6 +27,22 @@ function toNum(v: unknown): number | null {
 
 // Default decision (confirm exact raw keys in Task 1): item (search row) ưu tiên,
 // detail bù field còn thiếu. Sort mặc định month_current_period_revenue → dùng làm revenue.
+// Dựng object shop listing từ 1 record product: field shop_* → tên listing (bỏ tiền tố shop_),
+// trừ shop_id/shop_title/shop_favicon_* giữ nguyên. Kèm ads_archive_page_id + category_id (suy up_category).
+// Dùng để tạo shop CÒN THIẾU từ dữ liệu sản phẩm (mỗi product có sẵn toàn bộ tóm tắt shop).
+export function productToShopRaw(p: any): any {
+  const keep = new Set(['shop_id', 'shop_title', 'shop_favicon_external', 'shop_favicon_internal']);
+  const out: any = {};
+  for (const k of Object.keys(p || {})) {
+    if (!k.startsWith('shop_')) continue;
+    if (keep.has(k)) out[k] = p[k];
+    else out[k.slice(5)] = p[k]; // shop_country→country, shop_month_current_period_revenue→month_current_period_revenue, …
+  }
+  if (p?.ads_archive_page_id != null) out.ads_archive_page_id = p.ads_archive_page_id;
+  if (p?.category_id != null) out.category_id = p.category_id;
+  return out;
+}
+
 export function parseShopColumns(item: any, bundle?: any): ShShopColumns {
   const d = bundle?.detail ?? {};
   const src: any = { ...d, ...(item ?? {}) };

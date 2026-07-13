@@ -233,17 +233,22 @@ export class ShController {
   }
 
   @Get('sh/local/shops')
-  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string) {
+  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string) {
     const p = localParams(sort, dir, page, pageSize);
-    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined });
+    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
 
   @Get('sh/local/products')
-  async localProducts(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string) {
+  async localProducts(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('shop') shop: string) {
     const p = localParams(sort, dir, page, pageSize);
-    const r = await this.svc.localProducts({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined });
+    const r = await this.svc.localProducts({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, shop: shop || undefined });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
+  }
+
+  @Get('sh/local/suggest')
+  localSuggest(@Query('type') type: string, @Query('q') q: string) {
+    return this.svc.localSuggest(type === 'products' ? 'products' : 'shops', q || '');
   }
 
   @Get('sh/report')

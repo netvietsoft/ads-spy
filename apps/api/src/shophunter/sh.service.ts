@@ -4,7 +4,7 @@ import { ShMysql } from './sh.mysql';
 import { ShAuth } from './sh.auth';
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseSearch, parseShopColumns } from './sh.parser';
+import { parseSearch, parseShopColumns, productToShopRaw } from './sh.parser';
 import { shQueryHash } from './sh.hash';
 import { isGlobalBlock } from './sh.harvest.util';
 import { loadCatTree, resolveCategoryByNames, categoryPathFromIds } from './sh.categories';
@@ -80,8 +80,9 @@ export class ShService {
   async shopDetail(shopId: string) {
     const key = `shop:${shopId}`;
     const cat = await this.mysql.getShopUpCategory(shopId); // danh mục user gắn (query tươi, không cache)
+    const productCount = await this.mysql.countProductsByShop(shopId); // số sản phẩm của shop trong DB (query tươi)
     const cached = await this.mysql.getDetail(key, TTL_MS);
-    if (cached) return { ...cached, ...cat, cached: true };
+    if (cached) return { ...cached, ...cat, productCount, cached: true };
     const [detailR, revR, adsR, simR] = await Promise.all([
       this.client.shopDetail(shopId), this.client.shopChartRevenue(shopId),
       this.client.shopChartAds(shopId), this.client.shopsSimilar(shopId),
@@ -93,7 +94,7 @@ export class ShService {
       similar: Array.isArray(simR?.items) ? simR.items : [],
     };
     await this.mysql.setDetail(key, out);
-    return { ...out, ...cat, cached: false };
+    return { ...out, ...cat, productCount, cached: false };
   }
 
   async productDetail(shopId: string, productId: string) {
@@ -210,8 +211,10 @@ export class ShService {
   // Import sản phẩm từ thư mục product: ưu tiên product_<x>_full.json (category đã hoàn tất, mảng phẳng);
   // category chỉ có <x>_state.json (lấy .shops) — chỉ nhận khi file KHÔNG bị ghi trong ~5 phút (tránh đọc trúng
   // lúc crawler đang viết dở). Đẩy thẳng vào sh_product (raw = record 77 field, giống search API). Idempotent.
-  async importProductState(root: string, opts: { includeState?: boolean } = {}): Promise<{ files: number; skipped: string[]; products: number; upserted: number }> {
+  async importProductState(root: string, opts: { includeState?: boolean } = {}): Promise<{ files: number; skipped: string[]; products: number; upserted: number; shopsCreated: number }> {
     if (!root || !fs.existsSync(root)) throw new Error('Thư mục không tồn tại: ' + root);
+    const tree = loadCatTree();
+    const shopMap = new Map<string, any>(); // gom shop từ field shop_* của product (first-seen) → tạo shop còn thiếu
     const all = fs.readdirSync(root).filter((f) => f.toLowerCase().endsWith('.json'));
     const fullOf = new Map<string, string>(); // catPrefix -> product_<x>_full.json
     const stateOf = new Map<string, string>(); // catPrefix -> <x>_state.json
@@ -239,11 +242,21 @@ export class ShService {
       if (!arr || !arr.length) { skipped.push(f + ' (rỗng)'); continue; }
       products += arr.length;
       const map = new Map<string, any>(); // dedup theo product_id trong file
-      for (const p of arr) if (p?.product_id != null) map.set(String(p.product_id), p);
-      const rows = [...map.entries()].map(([productId, item]) => ({ productId, raw: JSON.stringify(item) }));
+      for (const p of arr) {
+        if (p?.product_id != null) map.set(String(p.product_id), p);
+        const sid = p?.shop_id != null ? String(p.shop_id) : '';
+        if (sid && !shopMap.has(sid)) {
+          const shopRaw = productToShopRaw(p);
+          const cat = categoryPathFromIds(tree, p.category_id);
+          shopMap.set(sid, { shopId: sid, raw: JSON.stringify(shopRaw), cols: parseShopColumns(shopRaw), upCategory: cat.id, upCategoryPath: cat.path || null });
+        }
+      }
+      const rows = [...map.entries()].map(([productId, item]) => ({ productId, raw: JSON.stringify(item), title: item?.product_title ?? null, shopId: item?.shop_id != null ? String(item.shop_id) : null }));
       upserted += await this.mysql.bulkUpsertProducts(rows);
     }
-    return { files: chosen.length, skipped, products, upserted };
+    // Đồng bộ shop: tạo shop CÒN THIẾU từ dữ liệu product (INSERT IGNORE → không đè shop đã có).
+    const shopsCreated = await this.mysql.bulkUpsertListingShops([...shopMap.values()], { onlyMissing: true });
+    return { files: chosen.length, skipped, products, upserted, shopsCreated };
   }
 
   // Enrich 1 shop import kế tiếp: track→(nếu chưa harvest fresh thì)detail→sh_shop. Ném lỗi nếu bị chặn (để retry).
@@ -321,8 +334,9 @@ export class ShService {
     return this.auth.status();
   }
 
-  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }) { return this.mysql.queryLocalShops(o); }
-  localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }) { return this.mysql.queryLocalProducts(o); }
+  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string }) { return this.mysql.queryLocalShops(o); }
+  localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }) { return this.mysql.queryLocalProducts(o); }
+  localSuggest(type: 'shops' | 'products', q: string) { return this.mysql.localSuggest(type, q); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
   report(o: { country?: string; category?: string }) { return this.mysql.reportAggregate(o); }
 

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { shLocalShops, shLocalProducts, shLocalFilters, ShLocalResult, shAssetProxy, shShopSite, shProductUrl } from '../api';
+import { shLocalShops, shLocalProducts, shLocalFilters, shLocalSuggest, ShLocalResult, shAssetProxy, shShopSite, shProductUrl } from '../api';
 import { ShLogo } from './ShLogo';
 import { CategoryPicker } from './CategoryPicker';
 
@@ -24,7 +24,7 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_logo', label: '' },
   { key: '_name', label: 'Shop' },
   { key: '_category', label: 'Danh mục' },
-  { key: 'revenue_day', label: 'DT Ngày', sortable: true },
+  { key: 'revenue_day', label: 'Hôm qua', sortable: true },
   { key: 'revenue_week', label: 'DT Tuần', sortable: true },
   { key: 'revenue_month', label: 'DT Tháng', sortable: true },
   { key: 'growth_month', label: 'Tăng trưởng (Tháng)', sortable: true },
@@ -45,18 +45,36 @@ export function LocalDbPanel() {
   const [pageSize, setPageSize] = useState(100);
   const [country, setCountry] = useState('');
   const [category, setCategory] = useState('');
+  const [q, setQ] = useState('');           // từ khoá đã áp dụng (lọc bảng)
+  const [qInput, setQInput] = useState('');  // text đang gõ
+  const [sugs, setSugs] = useState<string[]>([]);
+  const [showSug, setShowSug] = useState(false);
+  const [shopFilter, setShopFilter] = useState(''); // lọc sản phẩm theo shop (mở từ chi tiết shop qua ?pshop=)
   const [opts, setOpts] = useState<{ countries: string[]; categories: string[] }>({ countries: [], categories: [] });
   const [catNames, setCatNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Mở từ chi tiết shop: ?pshop=<id> → chuyển sang tab Products + lọc theo shop.
+  useEffect(() => {
+    const ps = new URLSearchParams(window.location.search).get('pshop');
+    if (ps) { setTab('products'); setShopFilter(ps); }
+  }, []);
+
   useEffect(() => {
     setLoading(true); setErr(null);
     const req = tab === 'shops'
-      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined })
-      : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined });
+      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined })
+      : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined });
     req.then((r) => setData(r)).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
-  }, [tab, sort, dir, page, pageSize, country, category]);
+  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter]);
+
+  // Gợi ý tên (debounce 250ms, tối thiểu 2 ký tự).
+  useEffect(() => {
+    if (qInput.trim().length < 2) { setSugs([]); return; }
+    const h = setTimeout(() => { shLocalSuggest(tab, qInput.trim()).then(setSugs).catch(() => setSugs([])); }, 250);
+    return () => clearTimeout(h);
+  }, [qInput, tab]);
 
   useEffect(() => {
     shLocalFilters(tab).then(setOpts).catch(() => setOpts({ countries: [], categories: [] }));
@@ -74,7 +92,9 @@ export function LocalDbPanel() {
   const switchTab = (t: 'shops' | 'products') => {
     setTab(t); setData({ items: [], total: 0, page: 1, pageSize });
     setSort('fetched_at'); setDir('desc'); setPage(1); setCountry(''); setCategory('');
+    setQ(''); setQInput(''); setSugs([]); setShowSug(false); setShopFilter('');
   };
+  const applyQ = (val: string) => { const v = val.trim(); setQ(v); setQInput(v); setSugs([]); setShowSug(false); setPage(1); };
   const clickSort = (k: string) => {
     if (sort === k) setDir(dir === 'desc' ? 'asc' : 'desc');
     else { setSort(k); setDir('desc'); }
@@ -108,6 +128,12 @@ export function LocalDbPanel() {
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
         <span className="badge-local">local</span>
+        {tab === 'products' && shopFilter && (
+          <span className="badge-harvest" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            Shop: {shopFilter}
+            <span onClick={() => { setShopFilter(''); setPage(1); }} style={{ cursor: 'pointer', fontWeight: 700 }} title="Bỏ lọc shop">✕</span>
+          </span>
+        )}
         <label>Nước:&nbsp;
           <select className="fbselect" value={country} onChange={(e) => { setCountry(e.target.value); setPage(1); }}>
             <option value="">Tất cả</option>
@@ -127,6 +153,27 @@ export function LocalDbPanel() {
             </select>
           </label>
         ) : null}
+        <div style={{ position: 'relative' }}>
+          <label>Tên {tab === 'products' ? 'sản phẩm' : 'shop'}:&nbsp;
+            <input
+              className="fbselect" style={{ minWidth: 240 }} value={qInput}
+              placeholder={tab === 'products' ? 'Gõ tên sản phẩm…' : 'Gõ tên shop…'}
+              onChange={(e) => { setQInput(e.target.value); setShowSug(true); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyQ(qInput); if (e.key === 'Escape') setShowSug(false); }}
+              onFocus={() => { if (sugs.length) setShowSug(true); }}
+              onBlur={() => setTimeout(() => setShowSug(false), 150)}
+            />
+          </label>
+          {(q || qInput) && <button className="srcbtn" style={{ marginLeft: 4 }} onClick={() => applyQ('')}>✕</button>}
+          {showSug && sugs.length > 0 && (
+            <div style={{ position: 'absolute', zIndex: 60, top: '100%', left: 44, minWidth: 260, maxWidth: 440, maxHeight: 320, overflow: 'auto', background: 'var(--panel)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.35)', marginTop: 4 }}>
+              {sugs.map((s) => (
+                <div key={s} onMouseDown={(e) => { e.preventDefault(); applyQ(s); }} title={s}
+                  style={{ padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13 }}>{s}</div>
+              ))}
+            </div>
+          )}
+        </div>
         {loading && <span>Đang tải…</span>}
       </div>
       {err && <div className="err">{err}</div>}
@@ -162,7 +209,7 @@ export function LocalDbPanel() {
             <thead><tr>
               <th></th><th>Sản phẩm</th>
               <th onClick={() => clickSort('price')} style={{ cursor: 'pointer' }}>Giá{arrow('price')}</th>
-              <th onClick={() => clickSort('revenue_day')} style={{ cursor: 'pointer' }}>DT Ngày{arrow('revenue_day')}</th>
+              <th onClick={() => clickSort('revenue_day')} style={{ cursor: 'pointer' }}>Hôm qua{arrow('revenue_day')}</th>
               <th onClick={() => clickSort('revenue_week')} style={{ cursor: 'pointer' }}>DT Tuần{arrow('revenue_week')}</th>
               <th onClick={() => clickSort('revenue_month')} style={{ cursor: 'pointer' }}>DT Tháng{arrow('revenue_month')}</th>
               <th>Shop</th>
