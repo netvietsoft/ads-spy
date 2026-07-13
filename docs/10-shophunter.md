@@ -18,20 +18,24 @@ UI duyệt/phân tích. Auth Cognito refresh-token, IdToken thô ở header. **C
 | :3100 | `deep` type=shops | Cào shop theo lát cắt category (adaptive drill tới ≤960 hits/lát), full detail. |
 | :3110 | `deep` type=products | Cào sản phẩm theo lát cắt. |
 | :3120 | `import` | Enrich shop/sản phẩm user upload: track domain→shop_id→detail→`sh_shop`. |
-| :3130 | `revsync` | **Đồng bộ doanh thu ngày**: mỗi shop 1 call revenue chart/ngày → dồn `sh_shop_revenue_daily`. |
+| :3130 | `revsync` | **Đồng bộ doanh thu ngày (shop)**: mỗi shop 1 call revenue chart/ngày → dồn `sh_shop_revenue_daily`. |
+| — | `snapshot` | Tự nạp snapshot crawler mới nhất mỗi tick (doanh thu ngày sp+shop) — xem mục "Kho doanh thu ngày". |
+| — | `catalog` | Đồng bộ catalog Shopify `products.json` (xoay vòng shop, miễn phí) — xem mục "Catalog Shopify". |
 | :3101 | (web) | Next.js dev; API trỏ `:3100`. |
 
-`dailyKey` tách theo mode (`YYYY-MM-DD:shops|products|import|revsync`) → các instance không dẫm bộ đếm quota nhau.
+`dailyKey` tách theo mode (`YYYY-MM-DD:shops|products|import|revsync|snapshot|catalog`) → các instance không dẫm bộ đếm quota nhau.
 Mỗi cron tick chạy 1 "sip" (SIP_MIN..MAX item), cộng dồn tới `SH_HARVEST_DAILY`/ngày; có `skipPct`, giờ hoạt động, jitter.
 
 ## Bảng MySQL chính
 - `sh_shop` (shop_id PK, `raw` LONGTEXT ~2.5KB, + cột bóc: revenue/followers/…, `detail_raw`+`revenue_chart` LONGTEXT
-  ~95KB/dòng khi đã enrich, `detail_fetched_at`, `harvested_at`, `up_category(_path)`, `revenue_synced_at`). **Bảng ~130MB.**
-- `sh_product`, `sh_search_cache`/`sh_detail_cache` (TTL 6h), `sh_deep_slice`/`sh_deep_frontier` (lát cắt + hàng đợi sinh lát, resumable).
+  ~95KB/dòng khi đã enrich, `detail_fetched_at`, `harvested_at`, `up_category(_path)`, `revenue_synced_at`,
+  `catalog_synced_at`/`catalog_status` — đồng bộ catalog Shopify, xem mục "Catalog Shopify"). **Bảng ~130MB.**
+- `sh_product` (+ cột `source`: NULL = từ ShopHunter, `'shopify'` = thêm qua catalog `products.json`), `sh_search_cache`/`sh_detail_cache` (TTL 6h), `sh_deep_slice`/`sh_deep_frontier` (lát cắt + hàng đợi sinh lát, resumable).
 - `sh_imported` (domain PK) / `sh_imported_product` (item_key=domain\|title): dữ liệu user upload + cột phân tích
   (week_revenue, revenue_change(_pct), revenue_period, ads(_change/_pct/_period)) + `category`/`category_path` + trạng thái enrich.
 - `sh_track_history`, `sh_harvest_state`/`_slice`/`_daily`.
-- **`sh_shop_revenue_daily` (shop_id, d DATE, revenue, sale_count; PK (shop_id,d))** — kho doanh thu ngày **append-only**.
+- **`sh_shop_revenue_daily`** (shop_id, d DATE, revenue, sale_count; PK (shop_id,d)) / **`sh_product_revenue_daily`**
+  (product_id, d DATE, revenue, sale_count; PK (product_id,d)) — kho doanh thu ngày **append-only** cho shop/sản phẩm.
 
 ## Import bằng tay (tab 📥) → enrich nền
 - Cào tay trên web ShopHunter → **xlsx/csv HOẶC .txt** (dán bảng). Parser .txt: khối 10 dòng/shop
@@ -42,11 +46,39 @@ Mỗi cron tick chạy 1 "sip" (SIP_MIN..MAX item), cộng dồn tới `SH_HARVE
   đẩy vào `sh_shop` + gắn `up_category`. Lỗi riêng domain (vd 500) → đánh dấu `error`, sang domain kế (không kẹt).
 
 ## Kho doanh thu ngày dài hạn (vượt 90 ngày)
-ShopHunter chỉ cho 90 ngày & bị **ghi đè** mỗi lần fetch. Để phân tích năm/mùa vụ/trend:
-- **Piggyback**: mọi lần `upsertShop` (harvest/enrich) dồn 90 điểm chart vào `sh_shop_revenue_daily` (UPSERT theo shop+ngày) — miễn phí.
+ShopHunter chỉ cho 90 ngày & bị **ghi đè** mỗi lần fetch. Để phân tích năm/mùa vụ/trend, doanh thu ngày dồn vào 2 kho
+**append-only**: `sh_shop_revenue_daily` (shop) + `sh_product_revenue_daily` (sản phẩm), từ 3 nguồn:
+- **Piggyback qua harvest/enrich (shop)**: mọi lần `upsertShop` dồn 90 điểm chart vào `sh_shop_revenue_daily` (UPSERT
+  theo shop+ngày) — miễn phí. Chỉ áp dụng cho shop (ShopHunter không có API chart doanh thu riêng cho sản phẩm).
 - **Job revsync (:3130)**: xoay vòng shop (cũ nhất trước theo `revenue_synced_at`), mỗi shop **1 call** revenue chart → dồn kho.
   Vì luôn có 90 ngày & các cửa sổ chồng nhau → chỉ cần refetch mỗi shop **≤90 ngày/lần** là chuỗi **không hụt**; chạy ~mỗi 20h.
-- Endpoint `GET /api/sh/shop/:id/revenue-daily` trả chuỗi tích luỹ; modal/chi tiết vẽ + liệt kê số từng ngày (>90 ngày dần).
+- **Auto-import snapshot crawler** (nguồn CHÍNH cho cả shop lẫn sản phẩm, KHÔNG tốn thêm call ShopHunter): crawler ngoài
+  `D:\SetupC\Tools\shophunter-crawler\run-daily.js` chạy 02:00 → `snapshots/<YYYY-MM-DD>/{shops,products}/*_full.json`
+  (mảng phẳng, mỗi record có `day_current_period_revenue`/`day_current_period_sale_count`). App tự nạp **snapshot mới
+  nhất**: `importState`(shops) + `importProductState`(products) upsert `sh_shop`/`sh_product` + dồn revenue vào 2 kho
+  trên với **ngày = ngày snapshot − 1** (`day_current_period_*` là ngày **hoàn tất gần nhất**, tức hôm qua so với lúc
+  crawl — đã kiểm chứng bằng số liệu snapshot thật). Chống nạp trùng qua setting `last_snapshot_imported` (bỏ qua nếu
+  ngày snapshot ≤ ngày đã nạp); `force: true` ép nạp lại. Endpoint `POST /api/sh/import/snapshot {baseDir?, force?}`
+  (`baseDir` mặc định thư mục `snapshots` ở trên). Cron: instance riêng `SH_HARVEST_MODE='snapshot'`.
+
+Endpoint đọc: `GET /api/sh/shop/:id/revenue-daily` + `GET /api/sh/product/:shopId/:productId/revenue-daily` trả chuỗi
+tích luỹ (>90 ngày dần); chi tiết shop/sản phẩm vẽ chart + liệt kê số từng ngày. `GET /api/sh/sync/coverage` →
+`{catalog:{shops,synced,blocked,oldestLagH}, revenue:{productsWithSeries,shopsWithSeries,lastSnapshotDate}}` — độ phủ
+đồng bộ catalog Shopify + doanh thu ngày (dashboard admin).
+
+## Catalog Shopify (`products.json`, miễn phí)
+Mỗi shop Shopify có endpoint public `https://<domain>/products.json` — trả **toàn bộ** sản phẩm, KHÔNG qua ShopHunter
+(vượt trần ~1000 sp/shop của scroll ShopHunter, miễn phí).
+- `shopify.client.ts` → `fetchShopifyCatalog(url)`: phân trang `limit=250&page=N`, tối đa **40 trang** (dừng khi 1 trang
+  trả <250 sp). `status`: `ok` (có sp), `empty` (trang 1 rỗng), `blocked` (401/403/404, response không phải JSON —
+  vd shop có password protect — hoặc fetch lỗi/timeout).
+- Pipeline `SH_HARVEST_MODE='catalog'` (`catalogSyncStep`): xoay vòng shop theo `catalog_synced_at` (NULL trước, rồi
+  cũ nhất; bỏ qua shop đang `blocked` trừ khi đã quá hạn `SH_CATALOG_STALE_HOURS` — mặc định **24h** — cho thử lại).
+  Mỗi shop: `ok` → `bulkUpsertShopifyProducts` (**INSERT IGNORE** sp mới, cột `source='shopify'`, KHÔNG đè `raw` sp
+  ShopHunter đã có) + đánh dấu `catalog_status='ok'`; `blocked` → đánh dấu `catalog_status='blocked'` (đếm riêng,
+  **KHÔNG dừng cả batch** — Shopify không có khái niệm chặn-toàn-cục như ShopHunter/`isGlobalBlock`); `empty` → đánh
+  dấu `catalog_status='empty'`. Lỗi riêng 1 shop (vd DB transient) → log rồi sang shop kế, giữ nguyên `catalog_synced_at`
+  (retry vòng sau). Throttle giữa các shop giống các step harvest khác.
 
 ## Ghi chú hiệu năng (quan trọng)
 - **Local DB sort/filter phải dùng index, tránh full-scan** trên bảng 130MB (dưới tải harvest, full-scan treo hàng phút).

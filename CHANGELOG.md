@@ -4,6 +4,31 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-13 (tối) — ShopHunter: doanh thu ngày từ snapshot crawler + catalog Shopify — [docs/10](docs/10-shophunter.md)
+
+### Doanh thu ngày: nguồn chính chuyển sang snapshot crawler (không tốn thêm call ShopHunter)
+- **Auto-import snapshot mới nhất**: `POST /api/sh/import/snapshot {baseDir?, force?}` + cron riêng
+  (`SH_HARVEST_MODE='snapshot'`) đọc `snapshots/<YYYY-MM-DD>/{shops,products}/*_full.json` của crawler ngoài
+  (`run-daily.js`, chạy 02:00), upsert `sh_shop`/`sh_product` + **piggyback** `day_current_period_revenue`/
+  `_sale_count` vào kho ngày với **ngày = snapshot − 1** (đã kiểm chứng `day_current` là ngày hoàn tất gần nhất).
+  Chống nạp trùng qua setting `last_snapshot_imported`; `force` để ép nạp lại.
+- Bảng mới **`sh_product_revenue_daily`** (product_id, d, revenue, sale_count; PK (product_id,d)) — append-only,
+  tương tự `sh_shop_revenue_daily` nhưng cho sản phẩm; `appendProductRevenueDaily`/`getProductRevenueDaily`.
+
+### Catalog Shopify (`products.json`, miễn phí)
+- Client `shopify.client.ts`: kéo **toàn bộ** sản phẩm 1 shop qua `products.json` (phân trang 250/trang, tối đa 40
+  trang) — vượt trần ~1000 sp/shop của ShopHunter, không tốn quota ShopHunter. Chặn theo từng shop (401/403/404/trang
+  password) → `blocked`, không đụng shop khác.
+- Pipeline `SH_HARVEST_MODE='catalog'` (`catalogSyncStep`): xoay vòng shop theo `catalog_synced_at` (mặc định stale
+  sau `SH_CATALOG_STALE_HOURS=24h`), `INSERT IGNORE` sản phẩm mới (`source='shopify'`, KHÔNG đè `raw` ShopHunter);
+  lỗi 1 shop không kẹt cả batch (retry vòng sau).
+
+### API + FE
+- Endpoint mới: `GET /api/sh/product/:shopId/:productId/revenue-daily`; `GET /api/sh/sync/coverage` →
+  `{catalog:{shops,synced,blocked,oldestLagH}, revenue:{productsWithSeries,shopsWithSeries,lastSnapshotDate}}`
+  (dashboard độ phủ đồng bộ).
+- Trang chi tiết **sản phẩm** vẽ **chart doanh thu ngày** (chuỗi tích luỹ) + bảng số theo ngày, giống chi tiết shop.
+
 ## 2026-07-13 — ShopHunter: import bền hơn, Local DB nhanh, danh mục/txt, kho doanh thu ngày — [docs/10](docs/10-shophunter.md)
 
 ### Import (tab 📥) bền + nhanh
