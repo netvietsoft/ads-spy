@@ -24,6 +24,7 @@
 | [06-web-ui.md](06-web-ui.md) | Next.js app: ô nhập domain, lọc theo nhà quảng cáo, grid creative, modal chi tiết + tải asset, lịch sử; design tokens trong `globals.css`; proxy `/api`. |
 | [07-chong-chan-va-gioi-han.md](07-chong-chan-va-gioi-han.md) | Chống chặn: 503 thân thiện, chịu lỗi phân trang (partial), delay lịch sự, throttle IP; giới hạn MVP & lộ trình mở rộng. |
 | [08-facebook.md](08-facebook.md) | **Nguồn Facebook Ad Library**: vì sao dùng Playwright (FB 403 request thuần), luồng scrape headless, parser đệ quy, endpoint `/api/fb/search`, UI thẻ ad, giới hạn. |
+| [09-tiktok.md](09-tiktok.md) | **Nguồn TikTok Creative Center Top Ads**: Playwright chặn bắt `top_ads/v2/list`, "View More" + gộp 21 ngành để lấy tới 1000, endpoint `/api/tiktok/topads(+start/job)`, giới hạn. |
 | [../CHANGELOG.md](../CHANGELOG.md) | Nhật ký thay đổi (theo ngày). |
 | [../README.md](../README.md) | Hướng dẫn cài đặt & chạy nhanh. |
 | [superpowers/specs/2026-07-02-google-ads-spy-design.md](superpowers/specs/2026-07-02-google-ads-spy-design.md) | Spec thiết kế gốc (brainstorming). |

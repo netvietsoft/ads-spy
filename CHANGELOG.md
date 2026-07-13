@@ -4,6 +4,43 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-04 — TikTok Ads + proxy quay vòng + lọc vùng Google + lazy-load
+
+### TikTok Creative Center Top Ads (nguồn thứ 3) — [docs/09](docs/09-tiktok.md)
+- Tab **🎵 TikTok Ads**: chọn quốc gia + khoảng (7/30/180) + số lượng. Playwright chặn bắt `top_ads/v2/list`
+  (TikTok ký `user-sign` nên không gọi API trần). Thẻ: video/cover, brand, **CTR, ❤️ like**, nút xem/tải video.
+- **Bấm "View More"** (là `<div>`) để tải nhiều trang; **gộp 21 ngành** để lấy **tới 1000 ads** (job hiện dần).
+- Mỗi ad có link **"↗ Xem trên TikTok"** (trang Creative Center). Ảnh/video proxy qua `/api/asset` (host `tiktokcdn`).
+
+### Google — proxy & tra cứu & vùng
+- **Danh sách proxy + quay vòng** (round-robin, tự đổi khi bị /sorry): ô nhập nhiều proxy (`http/socks4/socks5`),
+  **Test tất cả** (✅/❌ từng cái), **Xoá**. Lưu DB, hỗ trợ auth. (IP server hay bị Google `/sorry` → cần proxy.)
+- **Tra theo ID/tên nhà quảng cáo** (`AR…`, link advertiser, hoặc tên → gợi ý danh sách).
+- **Badge số vùng** mỗi ad + **tên nước** trong chi tiết (map geo) + nút **Mở domain / Xem trên Google**.
+- **Lọc theo vùng (B)**: dropdown quốc gia → job mở chi tiết từng ad lấy vùng thật → chỉ giữ ad chạy ở nước đó
+  (hiện dần, ≤120 ad, cần Google truy cập được). *Lưu ý: API SearchCreatives KHÔNG lọc vùng trực tiếp (đã xác minh).*
+- **Danh sách quốc gia đầy đủ** (~180 nước) cho FB + toàn app.
+
+### Chung
+- **Lazy-load grid** (`LazyGrid`): render dần theo lô khi cuộn (IntersectionObserver) + ảnh `loading=lazy` → nhẹ khi 100–1000 ad.
+- **Phân trang** mọi danh sách: 10/50/100/200/500/1000 (mặc định bài viết 50, quảng cáo 100).
+
+## 2026-07-03 (khuya) — FB nâng cấp + đăng nhập cookie + deploy
+
+### Facebook
+- **Đăng nhập bằng dán cookie** ngay trên web (nhận cả `document.cookie` lẫn file `cookies.txt` Netscape) →
+  **lưu DB** (`FbSetting`) tự nạp lại khi khởi động (sống qua restart); nút **Kiểm tra cookie** (mở `facebook.com/me`).
+- **Lưu DB + lịch sử** cho tìm ads (`/api/fb/search/:id`) và quét bài viết (`/api/fb/page-posts`), xem lại không cần chạy lại Chromium.
+- **Modal chi tiết FB**: carousel ảnh + video + tải; **link Page** tự dựng khi feed thiếu URL (từ `story_fbid` + page slug).
+- **Quét bài viết Page**: thumbnail + phát hiện **video/reels** + **ngày đăng** + **lọc khoảng ngày** (mặc định 1 năm)
+  + **mở từng bài lấy comment/share thật** + **đánh dấu bài đang chạy ads** + **quét hiện dần**.
+- Fix `profile.php?id=` → resolve **page id thật** (profile id ≠ page id Ad Library).
+
+### Triển khai
+- **PM2**: `ecosystem.config.js` + `deploy.sh` (git reset --hard + build + reload) + `deploy/nginx-dpboss.conf`.
+- Cấu hình dpboss.pet: Web `:3062`→dpboss.pet, API `:8075`→api.dpboss.pet (nginx timeout 180s). Xem [DEPLOY.md](DEPLOY.md).
+- **Theme sáng/tối** (lưu localStorage). Web gọi thẳng API (`NEXT_PUBLIC_API_ORIGIN`) tránh timeout proxy khi FB scraping.
+
 ## 2026-07-03 (tối 2) — Đối thủ theo dõi + đăng nhập FB + quét bài viết Page
 
 - **Đối thủ theo dõi (favorites)** cho Google + FB: model `Favorite` (+migration), CRUD `/api/favorites` (chống trùng);
