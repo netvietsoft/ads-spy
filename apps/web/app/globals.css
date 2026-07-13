@@ -44,6 +44,10 @@ body {
 .sources { display: flex; gap: 10px; margin: 20px 0 6px; }
 .srcbtn { background: var(--panel); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer; }
 .srcbtn.active { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
+/* Nút điều khiển biểu đồ (Tuần/Tháng/Quý/Năm, Cột/Line) nhỏ gọn, đồng bộ với text quanh biểu đồ */
+.chartctl .srcbtn { font-size: 12px; padding: 4px 10px; border-radius: 8px; }
+/* Tiêu đề trang chi tiết shop/sản phẩm: gọn lại cho đồng bộ, không quá to */
+.detail-title { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
 
 .fbselect { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 14px; cursor: pointer; }
 .daterow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; font-size: 13px; color: var(--muted); }
@@ -218,11 +222,11 @@ button.ghost.danger { color: var(--danger); }
 .localtbl a{color:#cfdcff;text-decoration:underline}
 :root[data-theme='light'] .localtbl a{color:var(--accent)}
 .pagebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 4px}
-/* Tăng trưởng: sáng dùng xanh đậm cho tương phản, tối dùng xanh sáng */
-.localtbl .g-up{color:#41d18a;font-weight:600}
-.localtbl .g-down{color:#e46;font-weight:600}
-:root[data-theme='light'] .localtbl .g-up{color:#0a8f45}
-:root[data-theme='light'] .localtbl .g-down{color:#c62828}
+/* Tăng trưởng: sáng dùng xanh đậm cho tương phản, tối dùng xanh sáng. Áp dụng TOÀN app (tăng=xanh, giảm=đỏ), không chỉ trong bảng. */
+.g-up{color:#41d18a;font-weight:600}
+.g-down{color:#e46;font-weight:600}
+:root[data-theme='light'] .g-up{color:#0a8f45}
+:root[data-theme='light'] .g-down{color:#c62828}
 .badge-local{font-size:11px;background:rgba(91,157,255,.18);color:#8fbaff;border-radius:5px;padding:1px 6px}
 .badge-harvest{font-size:11px;background:rgba(65,209,138,.18);color:#41d18a;border-radius:5px;padding:1px 6px;font-weight:600}
 :root[data-theme='light'] .badge-harvest{background:rgba(10,143,69,.12);color:#0a8f45}

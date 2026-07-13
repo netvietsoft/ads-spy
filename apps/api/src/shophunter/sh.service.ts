@@ -2,9 +2,40 @@ import { Injectable } from '@nestjs/common';
 import { ShClient } from './sh.client';
 import { ShMysql } from './sh.mysql';
 import { ShAuth } from './sh.auth';
+import * as fs from 'fs';
+import * as path from 'path';
 import { parseSearch, parseShopColumns } from './sh.parser';
 import { shQueryHash } from './sh.hash';
 import { isGlobalBlock } from './sh.harvest.util';
+import { loadCatTree, resolveCategoryByNames, categoryPathFromIds } from './sh.categories';
+
+// Map header TSV (file scraper mới) → field import. Bền với ký tự Δ / (Weekly)/(Monthly).
+function tsvHeaderToField(h: string): string | null {
+  const n = h.toLowerCase().trim();
+  if (n === 'shop title') return 'shopTitle';
+  if (n === 'domain') return 'domain';
+  if (n === 'shop id') return 'shopId';
+  if (n === 'ads (active)' || n === 'ads') return 'ads';
+  if (n === 'revenue (weekly)') return 'weekRevenue';
+  if (n.startsWith('rev') && n.includes('(weekly)') && n.includes('%')) return 'revenueChangePct';
+  if (n.startsWith('rev') && n.includes('(weekly)') && !n.startsWith('revenue')) return 'revenueChange';
+  return null;
+}
+// Parse TSV shop (header + tab, 1 dòng/shop). Bỏ BOM. Chỉ giữ dòng có domain.
+function parseTsvShops(text: string): any[] {
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim().length);
+  if (lines.length < 2) return [];
+  const fields = lines[0].split('\t').map(tsvHeaderToField);
+  if (!fields.includes('domain')) return []; // không phải TSV có header chuẩn
+  const rows: any[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split('\t');
+    const r: any = {};
+    for (let c = 0; c < fields.length; c++) { const fld = fields[c]; if (fld) r[fld] = (cells[c] ?? '').trim(); }
+    if (r.domain) rows.push(r);
+  }
+  return rows;
+}
 
 const TTL_MS = (Number(process.env.SH_CACHE_TTL_HOURS) || 6) * 3600 * 1000;
 
@@ -48,8 +79,9 @@ export class ShService {
 
   async shopDetail(shopId: string) {
     const key = `shop:${shopId}`;
+    const cat = await this.mysql.getShopUpCategory(shopId); // danh mục user gắn (query tươi, không cache)
     const cached = await this.mysql.getDetail(key, TTL_MS);
-    if (cached) return { ...cached, cached: true };
+    if (cached) return { ...cached, ...cat, cached: true };
     const [detailR, revR, adsR, simR] = await Promise.all([
       this.client.shopDetail(shopId), this.client.shopChartRevenue(shopId),
       this.client.shopChartAds(shopId), this.client.shopsSimilar(shopId),
@@ -61,7 +93,7 @@ export class ShService {
       similar: Array.isArray(simR?.items) ? simR.items : [],
     };
     await this.mysql.setDetail(key, out);
-    return { ...out, cached: false };
+    return { ...out, ...cat, cached: false };
   }
 
   async productDetail(shopId: string, productId: string) {
@@ -115,10 +147,127 @@ export class ShService {
   importedStats(type = 'shop') { return this.mysql.importedStats(type); }
   importedCategories(type = 'shop') { return this.mysql.getImportedCategories(type); }
 
+  // Quét thẳng thư mục trên máy (vd .../by-category): mỗi file .txt = TSV shop, danh mục lấy từ đường dẫn folder,
+  // Shop ID sẵn trong file → lưu luôn (enrich khỏi track). File ở cùng máy backend nên đọc trực tiếp.
+  async importFolder(root: string): Promise<{ files: number; rows: number; unique: number; imported: number; empty: number }> {
+    if (!root || !fs.existsSync(root)) throw new Error('Thư mục không tồn tại: ' + root);
+    const tree = loadCatTree();
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.isFile() && e.name.toLowerCase().endsWith('.txt')) files.push(p);
+      }
+    };
+    walk(root);
+    // Nông trước, sâu sau → shop trùng ở nhiều cấp lấy danh mục SÂU NHẤT (Map ghi đè, cấp sâu xử lý sau cùng thắng).
+    files.sort((a, b) => a.split(path.sep).length - b.split(path.sep).length);
+    const norm = (v: any) => String(v ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    const map = new Map<string, any>(); // dedup TOÀN CỤC theo domain → 1 lần bulk insert thay vì 275 upsert
+    let rows = 0, empty = 0;
+    for (const f of files) {
+      let parsed: any[];
+      try { parsed = parseTsvShops(fs.readFileSync(f, 'utf8')); } catch { empty++; continue; }
+      if (!parsed.length) { empty++; continue; }
+      const segs = path.relative(root, path.dirname(f)).split(path.sep).filter(Boolean);
+      const cat = resolveCategoryByNames(tree, segs);
+      rows += parsed.length;
+      for (const r of parsed) {
+        const domain = norm(r.domain);
+        if (domain) map.set(domain, { ...r, domain, category: cat.id || segs[segs.length - 1] || null, categoryPath: cat.path });
+      }
+    }
+    const unique = [...map.values()];
+    const imported = await this.mysql.bulkUpsertImportedShops(unique);
+    return { files: files.length, rows, unique: unique.length, imported, empty };
+  }
+
+  // Import theo state: đọc state/*.json (mỗi file 1 top-category, có mảng shops = full item + category_id).
+  // Đẩy THẲNG vào sh_shop dạng listing (không cần enrich) + gắn danh mục từ category_id → hiện ngay ở Local DB.
+  async importState(root: string): Promise<{ files: number; shops: number; upserted: number }> {
+    if (!root || !fs.existsSync(root)) throw new Error('Thư mục không tồn tại: ' + root);
+    const tree = loadCatTree();
+    const files = fs.readdirSync(root).filter((f) => f.toLowerCase().endsWith('.json'));
+    let shopsTotal = 0, upserted = 0;
+    for (const f of files) {
+      let t: any;
+      try { t = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8')); } catch { continue; }
+      const shops = Array.isArray(t?.shops) ? t.shops : [];
+      if (!shops.length) continue;
+      shopsTotal += shops.length;
+      const map = new Map<string, any>(); // dedup theo shop_id trong file
+      for (const s of shops) if (s?.shop_id != null) map.set(String(s.shop_id), s);
+      const rows = [...map.entries()].map(([shopId, item]) => {
+        const cat = categoryPathFromIds(tree, item.category_id);
+        return { shopId, raw: JSON.stringify(item), cols: parseShopColumns(item), upCategory: cat.id, upCategoryPath: cat.path || null };
+      });
+      upserted += await this.mysql.bulkUpsertListingShops(rows);
+    }
+    return { files: files.length, shops: shopsTotal, upserted };
+  }
+
+  // Import sản phẩm từ thư mục product: ưu tiên product_<x>_full.json (category đã hoàn tất, mảng phẳng);
+  // category chỉ có <x>_state.json (lấy .shops) — chỉ nhận khi file KHÔNG bị ghi trong ~5 phút (tránh đọc trúng
+  // lúc crawler đang viết dở). Đẩy thẳng vào sh_product (raw = record 77 field, giống search API). Idempotent.
+  async importProductState(root: string, opts: { includeState?: boolean } = {}): Promise<{ files: number; skipped: string[]; products: number; upserted: number }> {
+    if (!root || !fs.existsSync(root)) throw new Error('Thư mục không tồn tại: ' + root);
+    const all = fs.readdirSync(root).filter((f) => f.toLowerCase().endsWith('.json'));
+    const fullOf = new Map<string, string>(); // catPrefix -> product_<x>_full.json
+    const stateOf = new Map<string, string>(); // catPrefix -> <x>_state.json
+    for (const f of all) {
+      let m = f.match(/^product_(.+)_full\.json$/i); if (m) { fullOf.set(m[1].toLowerCase(), f); continue; }
+      m = f.match(/^(.+)_state\.json$/i); if (m) stateOf.set(m[1].toLowerCase(), f);
+    }
+    const now = Date.now();
+    const chosen: string[] = [];
+    const skipped: string[] = [];
+    for (const x of new Set([...fullOf.keys(), ...stateOf.keys()])) {
+      const full = fullOf.get(x);
+      if (full) { chosen.push(full); continue; }
+      if (!opts.includeState) { skipped.push(stateOf.get(x)! + ' (chưa có _full → bỏ)'); continue; }
+      const sf = stateOf.get(x)!;
+      const ageMin = (now - fs.statSync(path.join(root, sf)).mtimeMs) / 60000;
+      if (ageMin < 5) { skipped.push(sf + ' (đang ghi ' + ageMin.toFixed(1) + '′ → bỏ)'); continue; }
+      chosen.push(sf);
+    }
+    let products = 0, upserted = 0;
+    for (const f of chosen) {
+      let data: any;
+      try { data = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8')); } catch { skipped.push(f + ' (parse lỗi)'); continue; }
+      const arr = Array.isArray(data) ? data : (Array.isArray(data?.shops) ? data.shops : null);
+      if (!arr || !arr.length) { skipped.push(f + ' (rỗng)'); continue; }
+      products += arr.length;
+      const map = new Map<string, any>(); // dedup theo product_id trong file
+      for (const p of arr) if (p?.product_id != null) map.set(String(p.product_id), p);
+      const rows = [...map.entries()].map(([productId, item]) => ({ productId, raw: JSON.stringify(item) }));
+      upserted += await this.mysql.bulkUpsertProducts(rows);
+    }
+    return { files: chosen.length, skipped, products, upserted };
+  }
+
   // Enrich 1 shop import kế tiếp: track→(nếu chưa harvest fresh thì)detail→sh_shop. Ném lỗi nếu bị chặn (để retry).
   async enrichNextImportedShop(): Promise<'done' | 'ok' | 'skip'> {
     const shop = await this.mysql.getNextUnenriched();
     if (!shop) return 'done';
+    // Đã biết shop_id (từ file TSV) → BỎ track domain, lấy detail thẳng theo shop_id (nhanh, không poison-pill).
+    if (shop.shopId) {
+      try {
+        const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
+        if (!(await this.mysql.isShopFresh(shop.shopId, freshMs))) {
+          const bundle = await this.shopDetail(shop.shopId);
+          const item = bundle.detail;
+          if (item) await this.mysql.upsertShop(shop.shopId, item, bundle, parseShopColumns(item, bundle));
+        }
+        await this.mysql.setImportedEnriched(shop.domain, shop.shopId, 'ok');
+        if (shop.category) await this.mysql.setShopUpCategory(shop.shopId, shop.category, shop.categoryPath);
+        return 'ok';
+      } catch (e) {
+        if (isGlobalBlock(e)) throw e;
+        await this.mysql.setImportedEnriched(shop.domain, shop.shopId, 'error');
+        return 'skip';
+      }
+    }
     let r: any;
     try {
       r = await this.checkDomain(shop.domain, { skipDetailIfFresh: true });
@@ -175,6 +324,7 @@ export class ShService {
   localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }) { return this.mysql.queryLocalShops(o); }
   localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string }) { return this.mysql.queryLocalProducts(o); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
+  report(o: { country?: string; category?: string }) { return this.mysql.reportAggregate(o); }
 
   // --- Kho doanh thu theo ngày (tích luỹ dài hạn) ---
   revenueDaily(shopId: string) { return this.mysql.getRevenueDaily(shopId); }

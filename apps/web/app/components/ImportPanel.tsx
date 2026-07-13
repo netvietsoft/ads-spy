@@ -1,8 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { shImport, shImportList, shImportStats, shImportEnrich, shImportCategories, ShImportedItem } from '../api';
-import { ShShopModal } from './ShShopModal';
+import { shImport, shImportList, shImportStats, shImportEnrich, shImportCategories, shImportFolder, shImportState, shImportProductState, ShImportedItem } from '../api';
 import { CategoryPicker } from './CategoryPicker';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
@@ -72,12 +71,14 @@ export function ImportPanel() {
   const [stats, setStats] = useState({ total: 0, enriched: 0, pending: 0 });
   const [list, setList] = useState<{ items: ShImportedItem[]; total: number; page: number; pageSize: number }>({ items: [], total: 0, page: 1, pageSize: 100 });
   const [page, setPage] = useState(1);
-  const [openShop, setOpenShop] = useState<string | null>(null);
-  const [openShopCat, setOpenShopCat] = useState<string | null>(null);
   const [type, setType] = useState<'shop' | 'product'>('shop');
   const [cat, setCat] = useState<{ id: string | null; path: string | null }>({ id: null, path: null });
   const [filterCat, setFilterCat] = useState('');
   const [cats, setCats] = useState<{ id: string; path: string }[]>([]);
+  const [folderRoot, setFolderRoot] = useState('D:\\SetupC\\Tools\\Autofacebook\\downloads\\shophunter\\by-category');
+  const [stateRoot, setStateRoot] = useState('D:\\SetupC\\Tools\\Autofacebook\\downloads\\shophunter\\state');
+  const [productRoot, setProductRoot] = useState('D:\\SetupC\\Tools\\Autofacebook\\downloads\\shophunter\\product');
+  const [incState, setIncState] = useState(false);
 
   const refresh = () => {
     shImportStats(type).then(setStats).catch(() => {});
@@ -119,6 +120,27 @@ export function ImportPanel() {
     }
   };
 
+  const scanFolder = () => {
+    setErr(null); setDone(null); setBusy('📁 Đang quét thư mục (backend đọc file trên máy)…');
+    shImportFolder(folderRoot.trim())
+      .then((r) => { setBusy(''); setDone(`✅ QUÉT XONG: ${r.files} file, ${r.rows.toLocaleString()} dòng → ${r.unique.toLocaleString()} shop (gộp trùng domain, ${r.empty} file rỗng). Danh mục lấy từ đường dẫn; enrich nền lấy detail theo Shop ID.`); setPage(1); refresh(); })
+      .catch((e) => { setBusy(''); setErr('Quét thư mục lỗi: ' + (e as Error).message); });
+  };
+
+  const scanState = () => {
+    setErr(null); setDone(null); setBusy('📦 Đang quét state JSON (đẩy thẳng vào Local DB)…');
+    shImportState(stateRoot.trim())
+      .then((r) => { setBusy(''); setDone(`✅ QUÉT STATE XONG: ${r.files} file → ${r.upserted.toLocaleString()} shop vào Local DB (từ ${r.shops.toLocaleString()} entry, đã có full doanh thu + danh mục, KHÔNG cần enrich).`); setPage(1); refresh(); })
+      .catch((e) => { setBusy(''); setErr('Quét state lỗi: ' + (e as Error).message); });
+  };
+
+  const scanProductState = () => {
+    setErr(null); setDone(null); setBusy('📦 Đang quét product JSON (đẩy thẳng vào sh_product)…');
+    shImportProductState(productRoot.trim(), incState)
+      .then((r) => { setBusy(''); setDone(`✅ QUÉT PRODUCT XONG: ${r.files} file → ${r.upserted.toLocaleString()} sản phẩm (từ ${r.products.toLocaleString()} record)${r.skipped.length ? `. Bỏ qua ${r.skipped.length}: ${r.skipped.slice(0, 6).join('; ')}${r.skipped.length > 6 ? '…' : ''}` : ''}`); setPage(1); refresh(); })
+      .catch((e) => { setBusy(''); setErr('Quét product lỗi: ' + (e as Error).message); });
+  };
+
   const enrichNow = () => {
     setBusy('Đang enrich (nền)…');
     shImportEnrich(50).then((r) => { setBusy(`Enrich: ${r.ok} shop, ${r.skipped} bỏ qua (${r.status}).`); refresh(); })
@@ -134,6 +156,37 @@ export function ImportPanel() {
         <button className={`srcbtn ${type === 'product' ? 'active' : ''}`} onClick={() => { setType('product'); setPage(1); setFilterCat(''); }}>📦 Sản phẩm</button>
       </div>
       <p className="hint">Cào tay trên ShopHunter → xuất Excel/CSV hoặc <b>dán bảng ra file .txt</b> → import. Chọn <b>danh mục</b> trước khi up để gắn cho cả file. Detail sẽ được enrich nền tự động.</p>
+
+      {type === 'shop' && (
+        <div style={{ border: '1px solid rgba(37,99,235,0.4)', background: 'rgba(37,99,235,0.06)', borderRadius: 8, padding: '10px 12px', margin: '8px 0' }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>📁 Quét thư mục (nhanh nhất — cho file TSV có sẵn Shop ID)</div>
+          <div className="hint" style={{ marginTop: 0 }}>Backend đọc thẳng thư mục trên máy: mỗi file <code>.txt</code> (TSV, có header + Shop ID) → <b>danh mục tự lấy từ đường dẫn folder</b>, enrich bỏ bước track (dùng Shop ID sẵn có).</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+            <input className="fbselect" style={{ flex: 1, minWidth: 320 }} value={folderRoot} onChange={(e) => setFolderRoot(e.target.value)} placeholder="D:\…\by-category" />
+            <button className="srcbtn active" onClick={scanFolder} disabled={!!busy || !folderRoot.trim()}>Quét thư mục</button>
+          </div>
+          <div className="hint" style={{ marginTop: 8 }}>Hoặc <b>quét state JSON</b> (khuyến nghị — có sẵn full doanh thu + danh mục, đẩy <b>thẳng vào Local DB</b>, KHÔNG cần enrich):</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+            <input className="fbselect" style={{ flex: 1, minWidth: 320 }} value={stateRoot} onChange={(e) => setStateRoot(e.target.value)} placeholder="D:\…\state" />
+            <button className="srcbtn active" onClick={scanState} disabled={!!busy || !stateRoot.trim()}>Quét state</button>
+          </div>
+        </div>
+      )}
+
+      {type === 'product' && (
+        <div style={{ border: '1px solid rgba(37,99,235,0.4)', background: 'rgba(37,99,235,0.06)', borderRadius: 8, padding: '10px 12px', margin: '8px 0' }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>📦 Quét thư mục product (đẩy thẳng vào sh_product)</div>
+          <div className="hint" style={{ marginTop: 0 }}>Backend đọc thẳng thư mục trên máy: ưu tiên <code>product_&lt;x&gt;_full.json</code> (category đã hoàn tất). Chạy lại an toàn (upsert theo product_id, không trùng).</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+            <input className="fbselect" style={{ flex: 1, minWidth: 320 }} value={productRoot} onChange={(e) => setProductRoot(e.target.value)} placeholder="D:\…\product" />
+            <button className="srcbtn active" onClick={scanProductState} disabled={!!busy || !productRoot.trim()}>Quét product</button>
+          </div>
+          <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={incState} onChange={(e) => setIncState(e.target.checked)} />
+            Lấy cả category đang cào dở (<code>_state.json</code>, chỉ file không bị ghi trong 5 phút) — dữ liệu có thể thiếu tạm, chạy lại sau để bù.
+          </label>
+        </div>
+      )}
 
       {/* Chọn danh mục cho lần upload */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '8px 0', flexWrap: 'wrap' }}>
@@ -189,7 +242,7 @@ export function ImportPanel() {
                   <tr key={s.domain + '|' + (s.shopTitle || '')}
                     onClick={() => {
                       if (type === 'product') { if (s.productId && s.shopId) window.open(`/product/${s.shopId}/${s.productId}`, '_blank'); }
-                      else if (s.shopId) { setOpenShop(s.shopId); setOpenShopCat(s.categoryPath || null); }
+                      else if (s.shopId) window.open(`/shop/${s.shopId}`, '_blank');
                     }}
                     style={{ cursor: (type === 'product' ? !!(s.productId && s.shopId) : !!s.shopId) ? 'pointer' : 'default' }}>
                     <td className="wrap" style={{ maxWidth: '30ch' }}>{s.shopTitle || s.domain}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.domain}</div></td>
@@ -212,7 +265,6 @@ export function ImportPanel() {
           </div>
         </>
       )}
-      {openShop && <ShShopModal shopId={openShop} categoryPath={openShopCat} onClose={() => setOpenShop(null)} />}
     </div>
   );
 }

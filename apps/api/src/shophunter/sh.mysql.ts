@@ -633,7 +633,7 @@ export class ShMysql implements OnModuleInit {
     const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
-    if (o.category) { where.push('up_category = ?'); params.push(o.category); }
+    if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
@@ -676,7 +676,7 @@ export class ShMysql implements OnModuleInit {
     let out: { countries: string[]; categories: string[] };
     if (type === 'shops') {
       const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) v FROM sh_shop ORDER BY v");
-      const categories = await distinct('SELECT DISTINCT up_category v FROM sh_shop WHERE up_category IS NOT NULL ORDER BY up_category_path'); // danh mục user gắn (từ import)
+      const categories = await distinct('SELECT DISTINCT up_category v FROM sh_shop WHERE up_category IS NOT NULL ORDER BY up_category'); // danh mục user gắn (ORDER BY cột trong SELECT — DISTINCT không cho order theo cột ngoài)
       out = { countries: okCountry(countries), categories };
     } else {
       const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
@@ -685,6 +685,34 @@ export class ShMysql implements OnModuleInit {
     }
     this.filtersCache.set(type, { v: out, t: Date.now() });
     return out;
+  }
+
+  // Báo cáo tổng hợp trên sh_shop: tổng doanh thu + số sản phẩm bán theo ngày/tuần/tháng, lọc theo nước + danh mục.
+  // Danh mục lọc "tới cấp con": khớp up_category = id ĐÓ hoặc bất kỳ hậu duệ (id LIKE 'id-%') → gộp cả nhánh con.
+  async reportAggregate(o: { country?: string; category?: string }): Promise<any> {
+    await this.ensureReady();
+    const where: string[] = []; const params: any[] = [];
+    if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
+    if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const dec = (p: string) => `CAST(JSON_EXTRACT(raw, '${p}') AS DECIMAL(30,2))`;
+    const sig = (p: string) => `CAST(JSON_EXTRACT(raw, '${p}') AS SIGNED)`;
+    const [r] = await this.pool!.query(
+      `SELECT COUNT(*) shops,
+         SUM(${dec('$.day_current_period_revenue')}) dayRev,     SUM(${sig('$.day_current_period_sale_count')}) daySales,
+         SUM(${dec('$.week_current_period_revenue')}) weekRev,   SUM(${sig('$.week_current_period_sale_count')}) weekSales,
+         SUM(${dec('$.month_current_period_revenue')}) monthRev, SUM(${sig('$.month_current_period_sale_count')}) monthSales
+       FROM sh_shop ${whereSql}`,
+      params,
+    );
+    const row = (r as any[])[0] || {};
+    const n = (v: any) => Number(v) || 0;
+    return {
+      shops: n(row.shops),
+      day: { rev: n(row.dayRev), sales: n(row.daySales) },
+      week: { rev: n(row.weekRev), sales: n(row.weekSales) },
+      month: { rev: n(row.monthRev), sales: n(row.monthSales) },
+    };
   }
 
   async addTrackHistory(domain: string, shopId: string, shopTitle: string, identifyType: string): Promise<void> {
@@ -722,31 +750,102 @@ export class ShMysql implements OnModuleInit {
         if (!title) continue;
         const key = (domain + '|' + title).slice(0, 500);
         map.set(key, [key, domain, title, num(r.weekRevenue), num(r.revenueChange), num(r.revenueChangePct), r.revenuePeriod ?? null,
-          int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, now, cat, catPath]);
+          int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, now, cat, catPath, r.shopId ? String(r.shopId).slice(0, 32) : null]);
       } else {
         map.set(domain, [domain, t, r.shopTitle ?? null, num(r.weekRevenue), num(r.revenueChange), num(r.revenueChangePct), r.revenuePeriod ?? null,
-          int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, now, cat, catPath]);
+          int(r.ads), int(r.adsChange), num(r.adsChangePct), r.adsPeriod ?? null, now, cat, catPath, r.shopId ? String(r.shopId).slice(0, 32) : null]);
       }
     }
     const tuples = [...map.values()];
     if (!tuples.length) return 0;
     // category chỉ ghi đè khi upload có chọn danh mục (COALESCE giữ danh mục cũ nếu lần này bỏ trống).
     const head = t === 'product'
-      ? `INSERT INTO sh_imported_product (item_key, domain, product_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at, category, category_path) VALUES `
-      : `INSERT INTO sh_imported (domain, type, shop_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at, category, category_path) VALUES `;
+      ? `INSERT INTO sh_imported_product (item_key, domain, product_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at, category, category_path, shop_id) VALUES `
+      : `INSERT INTO sh_imported (domain, type, shop_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at, category, category_path, shop_id) VALUES `;
     const tail = t === 'product'
       ? ` ON DUPLICATE KEY UPDATE product_title=VALUES(product_title), week_revenue=VALUES(week_revenue), revenue_change=VALUES(revenue_change),
            revenue_change_pct=VALUES(revenue_change_pct), revenue_period=VALUES(revenue_period), ads=VALUES(ads),
            ads_change=VALUES(ads_change), ads_change_pct=VALUES(ads_change_pct), ads_period=VALUES(ads_period), imported_at=VALUES(imported_at),
-           category=COALESCE(VALUES(category), category), category_path=COALESCE(VALUES(category_path), category_path)`
+           category=COALESCE(VALUES(category), category), category_path=COALESCE(VALUES(category_path), category_path), shop_id=COALESCE(VALUES(shop_id), shop_id)`
       : ` ON DUPLICATE KEY UPDATE type=VALUES(type), shop_title=VALUES(shop_title), week_revenue=VALUES(week_revenue), revenue_change=VALUES(revenue_change),
            revenue_change_pct=VALUES(revenue_change_pct), revenue_period=VALUES(revenue_period), ads=VALUES(ads),
            ads_change=VALUES(ads_change), ads_change_pct=VALUES(ads_change_pct), ads_period=VALUES(ads_period), imported_at=VALUES(imported_at),
-           category=COALESCE(VALUES(category), category), category_path=COALESCE(VALUES(category_path), category_path)`;
-    const ROW_PH = '(?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
+           category=COALESCE(VALUES(category), category), category_path=COALESCE(VALUES(category_path), category_path), shop_id=COALESCE(VALUES(shop_id), shop_id)`;
+    const ROW_PH = '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
     for (let i = 0; i < tuples.length; i += 200) {
       const batch = tuples.slice(i, i + 200);
       const ph = new Array(batch.length).fill(ROW_PH).join(',');
+      await this.pool!.query(head + ph + tail, batch.flat());
+    }
+    return tuples.length;
+  }
+
+  // Bulk upsert shop import (dùng cho quét thư mục): mỗi row tự mang category/categoryPath + shop_id.
+  // 1 TRANSACTION + lô 1000/query → nhanh hơn nhiều so với 275 upsert autocommit (mỗi cái 1 fsync).
+  async bulkUpsertImportedShops(rows: any[]): Promise<number> {
+    await this.ensureReady();
+    const num = (v: any) => { const s = String(v ?? '').replace(/[^0-9.\-]/g, ''); const n = Number(s); return s !== '' && Number.isFinite(n) ? n : null; };
+    const int = (v: any) => { const n = num(v); return n == null ? null : Math.round(n); };
+    const now = Date.now();
+    const tuples = rows.filter((r) => r.domain).map((r) => [
+      r.domain, 'shop', r.shopTitle ?? null, num(r.weekRevenue), num(r.revenueChange), num(r.revenueChangePct), null,
+      int(r.ads), null, null, null, now, r.category ?? null, r.categoryPath ?? null, r.shopId ? String(r.shopId).slice(0, 32) : null,
+    ]);
+    if (!tuples.length) return 0;
+    const ROW_PH = '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
+    const head = `INSERT INTO sh_imported (domain, type, shop_title, week_revenue, revenue_change, revenue_change_pct, revenue_period, ads, ads_change, ads_change_pct, ads_period, imported_at, category, category_path, shop_id) VALUES `;
+    const tail = ` ON DUPLICATE KEY UPDATE type=VALUES(type), shop_title=VALUES(shop_title), week_revenue=VALUES(week_revenue), revenue_change=VALUES(revenue_change),
+       revenue_change_pct=VALUES(revenue_change_pct), ads=VALUES(ads), imported_at=VALUES(imported_at),
+       category=COALESCE(VALUES(category), category), category_path=COALESCE(VALUES(category_path), category_path), shop_id=COALESCE(VALUES(shop_id), shop_id)`;
+    const conn = await this.pool!.getConnection();
+    try {
+      await conn.beginTransaction();
+      for (let i = 0; i < tuples.length; i += 1000) {
+        const batch = tuples.slice(i, i + 1000);
+        const ph = new Array(batch.length).fill(ROW_PH).join(',');
+        await conn.query(head + ph + tail, batch.flat());
+      }
+      await conn.commit();
+    } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+    return tuples.length;
+  }
+
+  // Bulk upsert LISTING shop thẳng vào sh_shop (dùng cho import state JSON — có sẵn full item + shop_id + category_id).
+  // KHÔNG đụng detail_raw/revenue_chart/detail_fetched_at/harvested_at (giữ detail đã có); set up_category. 1 transaction + lô 1000.
+  async bulkUpsertListingShops(rows: { shopId: string; raw: string; cols: import('./sh.parser').ShShopColumns; upCategory: string | null; upCategoryPath: string | null }[]): Promise<number> {
+    await this.ensureReady();
+    const now = Date.now();
+    const cut = (s: any, n: number) => (s == null ? null : String(s).slice(0, n)); // tránh "Data too long" (title/logo dài)
+    const tuples = rows.filter((r) => r.shopId).map((r) => [
+      cut(r.shopId, 32), r.raw, now, cut(r.cols.shopName, 255), r.cols.revenue, r.cols.itemsSold, r.cols.followers, r.cols.rating, cut(r.cols.category, 128), r.cols.rankPos, cut(r.cols.logoUrl, 1024), cut(r.upCategory, 64), cut(r.upCategoryPath, 512),
+    ]);
+    if (!tuples.length) return 0;
+    const ROW_PH = '(?,?,?,?,?,?,?,?,?,?,?,?,?)';
+    const head = `INSERT INTO sh_shop (shop_id, raw, fetched_at, shop_name, revenue, items_sold, followers, rating, category, rank_pos, logo_url, up_category, up_category_path) VALUES `;
+    const tail = ` ON DUPLICATE KEY UPDATE raw=VALUES(raw), fetched_at=VALUES(fetched_at), shop_name=VALUES(shop_name), revenue=VALUES(revenue),
+       items_sold=VALUES(items_sold), followers=VALUES(followers), rating=VALUES(rating), category=VALUES(category), rank_pos=VALUES(rank_pos), logo_url=VALUES(logo_url),
+       up_category=COALESCE(VALUES(up_category), up_category), up_category_path=COALESCE(VALUES(up_category_path), up_category_path)`;
+    // Lô nhỏ autocommit (KHÔNG giữ transaction dài) → nhả row-lock ngay, không kẹt khi harvest cũng ghi sh_shop.
+    for (let i = 0; i < tuples.length; i += 400) {
+      const batch = tuples.slice(i, i + 400);
+      const ph = new Array(batch.length).fill(ROW_PH).join(',');
+      await this.pool!.query(head + ph + tail, batch.flat());
+    }
+    return tuples.length;
+  }
+
+  // Bulk upsert sản phẩm vào sh_product (raw = record 77 field giống search API). Lô nhỏ autocommit → không giữ lock dài.
+  async bulkUpsertProducts(rows: { productId: string; raw: string }[]): Promise<number> {
+    await this.ensureReady();
+    const now = Date.now();
+    const cut = (s: any, n: number) => (s == null ? null : String(s).slice(0, n));
+    const tuples = rows.filter((r) => r.productId).map((r) => [cut(r.productId, 32), r.raw, now]);
+    if (!tuples.length) return 0;
+    const head = 'INSERT INTO sh_product (product_id, raw, fetched_at) VALUES ';
+    const tail = ' ON DUPLICATE KEY UPDATE raw=VALUES(raw), fetched_at=VALUES(fetched_at)';
+    for (let i = 0; i < tuples.length; i += 400) {
+      const batch = tuples.slice(i, i + 400);
+      const ph = new Array(batch.length).fill('(?,?,?)').join(',');
       await this.pool!.query(head + ph + tail, batch.flat());
     }
     return tuples.length;
@@ -794,10 +893,17 @@ export class ShMysql implements OnModuleInit {
     return { total, enriched, pending: total - enriched };
   }
 
-  async getNextUnenriched(): Promise<{ domain: string; category: string | null; categoryPath: string | null } | null> {
+  async getNextUnenriched(): Promise<{ domain: string; shopId: string | null; category: string | null; categoryPath: string | null } | null> {
     await this.ensureReady();
-    const [r] = await this.pool!.query("SELECT domain, category, category_path FROM sh_imported WHERE enriched=0 AND type='shop' ORDER BY imported_at LIMIT 1");
-    const row = (r as any[])[0]; return row ? { domain: row.domain, category: row.category ?? null, categoryPath: row.category_path ?? null } : null;
+    const [r] = await this.pool!.query("SELECT domain, shop_id, category, category_path FROM sh_imported WHERE enriched=0 AND type='shop' ORDER BY imported_at LIMIT 1");
+    const row = (r as any[])[0]; return row ? { domain: row.domain, shopId: row.shop_id ?? null, category: row.category ?? null, categoryPath: row.category_path ?? null } : null;
+  }
+
+  async getShopUpCategory(shopId: string): Promise<{ upCategory: string | null; upCategoryPath: string | null }> {
+    await this.ensureReady();
+    const [r] = await this.pool!.query('SELECT up_category, up_category_path FROM sh_shop WHERE shop_id = ?', [shopId]);
+    const row = (r as any[])[0];
+    return { upCategory: row?.up_category ?? null, upCategoryPath: row?.up_category_path ?? null };
   }
 
   // Gắn danh mục user (từ import) lên sh_shop để Local DB lọc shop theo danh mục.

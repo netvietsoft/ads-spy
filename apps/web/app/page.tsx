@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Advertiser,
   CreativeBrief,
@@ -26,6 +26,7 @@ import { ShopHunterPanel } from './components/ShopHunterPanel';
 import { LocalDbPanel } from './components/LocalDbPanel';
 import { TrackPanel } from './components/TrackPanel';
 import { ImportPanel } from './components/ImportPanel';
+import { ReportPanel } from './components/ReportPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
 import { LazyGrid } from './components/LazyGrid';
@@ -47,7 +48,20 @@ function fmtDate(unix?: number) {
 
 export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [source, setSource] = useState<'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import'>('google');
+  const [source, setSource] = useState<'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report'>('google');
+  // Deep-link tab qua ?tab= : đọc lúc mở, đồng bộ URL khi đổi tab (bookmark/chia sẻ được từng menu).
+  const TABS = ['google', 'facebook', 'tiktok', 'shophunter', 'localdb', 'track', 'import', 'report'] as const;
+  const firstTab = useRef(true);
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab') as any;
+    if (t && (TABS as readonly string[]).includes(t)) setSource(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (firstTab.current) { firstTab.current = false; return; }
+    const u = new URL(window.location.href);
+    if (source === 'google') u.searchParams.delete('tab'); else u.searchParams.set('tab', source);
+    window.history.replaceState(null, '', u.toString());
+  }, [source]);
   const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -336,6 +350,7 @@ export default function Home() {
         <button className={`srcbtn ${source === 'localdb' ? 'active' : ''}`} onClick={() => setSource('localdb')}>🗄 Local DB</button>
         <button className={`srcbtn ${source === 'track' ? 'active' : ''}`} onClick={() => setSource('track')}>🔎 Track</button>
         <button className={`srcbtn ${source === 'import' ? 'active' : ''}`} onClick={() => setSource('import')}>📥 Import</button>
+        <button className={`srcbtn ${source === 'report' ? 'active' : ''}`} onClick={() => setSource('report')}>📊 Báo cáo</button>
       </div>
 
       {source === 'facebook' && <FacebookPanel />}
@@ -344,6 +359,7 @@ export default function Home() {
       {source === 'localdb' && <LocalDbPanel />}
       {source === 'track' && <TrackPanel />}
       {source === 'import' && <ImportPanel />}
+      {source === 'report' && <ReportPanel />}
 
       {source === 'google' && (
       <>

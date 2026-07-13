@@ -30,8 +30,9 @@ function toNum(v: unknown): number | null {
 export function parseShopColumns(item: any, bundle?: any): ShShopColumns {
   const d = bundle?.detail ?? {};
   const src: any = { ...d, ...(item ?? {}) };
+  const cut = (s: any, n: number) => (s == null ? null : String(s).slice(0, n)); // khớp giới hạn cột (shop_name 255, category 128, logo 1024) → tránh "Data too long"
   return {
-    shopName: src.shop_title ?? src.shop_name ?? src.name ?? null,
+    shopName: cut(src.shop_title ?? src.shop_name ?? src.name, 255),
     revenue: toNum(src.month_current_period_revenue ?? src.revenue ?? src.total_revenue),
     itemsSold: toNum(
       src.month_current_period_sale_count ??
@@ -42,8 +43,8 @@ export function parseShopColumns(item: any, bundle?: any): ShShopColumns {
     ),
     followers: toNum(src.fb_followers ?? src.ig_followers ?? src.followers ?? src.follower_count),
     rating: toNum(src.rating ?? src.shop_rating),
-    category: src.category ?? src.main_category ?? null,
+    category: cut(src.category ?? src.main_category, 128),
     rankPos: toNum(src.rank ?? src.rank_pos),
-    logoUrl: src.shop_favicon_external ?? src.logo_url ?? src.shop_favicon_internal ?? null,
+    logoUrl: cut(src.shop_favicon_external ?? src.logo_url ?? src.shop_favicon_internal, 1024),
   };
 }

@@ -118,6 +118,24 @@ export class ShController {
     return this.svc.importedCategories(type === 'product' ? 'product' : 'shop');
   }
 
+  @Post('sh/import/folder')
+  importFolder(@Body('root') root: string) {
+    if (!root) throw new BadRequestException('Thiếu đường dẫn thư mục.');
+    return this.svc.importFolder(root); // backend đọc thẳng thư mục trên máy → TSV + danh mục từ path + shop_id
+  }
+
+  @Post('sh/import/state')
+  importState(@Body('root') root: string) {
+    if (!root) throw new BadRequestException('Thiếu đường dẫn thư mục.');
+    return this.svc.importState(root); // state/*.json → đẩy thẳng full listing vào sh_shop (Local DB) + danh mục từ category_id
+  }
+
+  @Post('sh/import/product-state')
+  importProductState(@Body('root') root: string, @Body('includeState') includeState?: boolean) {
+    if (!root) throw new BadRequestException('Thiếu đường dẫn thư mục.');
+    return this.svc.importProductState(root, { includeState: !!includeState }); // product/*.json → đẩy thẳng vào sh_product (ưu tiên _full)
+  }
+
   @Get('sh/import/stats')
   importStats(@Query('type') type: string) {
     return this.svc.importedStats(type === 'product' ? 'product' : 'shop');
@@ -226,6 +244,11 @@ export class ShController {
     const p = localParams(sort, dir, page, pageSize);
     const r = await this.svc.localProducts({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
+  }
+
+  @Get('sh/report')
+  report(@Query('country') country: string, @Query('category') category: string) {
+    return this.svc.report({ country: country || undefined, category: category || undefined });
   }
 
   @Get('sh/local/filters')

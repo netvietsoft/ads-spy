@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { shLocalShops, shLocalProducts, shLocalFilters, ShLocalResult, shAssetProxy, shShopSite, shProductUrl } from '../api';
-import { ShShopModal } from './ShShopModal';
 import { ShLogo } from './ShLogo';
+import { CategoryPicker } from './CategoryPicker';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
@@ -49,8 +49,6 @@ export function LocalDbPanel() {
   const [catNames, setCatNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [openShop, setOpenShop] = useState<string | null>(null);
-  const [openShopCat, setOpenShopCat] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true); setErr(null);
@@ -116,14 +114,19 @@ export function LocalDbPanel() {
             {opts.countries.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
-        {opts.categories.length > 0 && (
+        {tab === 'shops' ? (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13 }}>Danh mục:</span>
+            <CategoryPicker key={tab} onChange={(id) => { setCategory(id || ''); setPage(1); }} />
+          </div>
+        ) : opts.categories.length > 0 ? (
           <label>Danh mục:&nbsp;
             <select className="fbselect" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
               <option value="">Tất cả</option>
               {opts.categories.map((c) => <option key={c} value={c}>{catNames[c] || c}</option>)}
             </select>
           </label>
-        )}
+        ) : null}
         {loading && <span>Đang tải…</span>}
       </div>
       {err && <div className="err">{err}</div>}
@@ -136,7 +139,7 @@ export function LocalDbPanel() {
             ))}</tr></thead>
             <tbody>
               {data.items.map((s) => (
-                <tr key={s.shop_id} onClick={() => { setOpenShop(s.shop_id); setOpenShopCat(s._up_category_path || null); }} style={{ cursor: 'pointer' }}>
+                <tr key={s.shop_id} onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url}</div></td>
                   <td className="wrap" style={{ maxWidth: '22ch', fontSize: 12, opacity: 0.85 }}>{s._up_category_path || (s._up_category ? (catNames[s._up_category] || s._up_category) : '—')}</td>
@@ -193,7 +196,6 @@ export function LocalDbPanel() {
 
       {pager}
 
-      {openShop && <ShShopModal shopId={openShop} categoryPath={openShopCat} onClose={() => setOpenShop(null)} />}
     </div>
   );
 }

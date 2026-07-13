@@ -440,7 +440,7 @@ export async function shExplore(
   if (params.lists && Object.keys(params.lists).length) qs.set('lists', JSON.stringify(params.lists));
   return jsonOrThrow(await fetch(`${API}/api/sh/${type}?${qs.toString()}`));
 }
-export interface ShDetail { detail: any; revenueChart: { date_str: string; revenue: number | null; sale_count: number | null }[]; adsChart?: any; similar?: any[]; cached: boolean }
+export interface ShDetail { detail: any; revenueChart: { date_str: string; revenue: number | null; sale_count: number | null }[]; adsChart?: any; similar?: any[]; upCategory?: string | null; upCategoryPath?: string | null; cached: boolean }
 export async function shShopDetail(id: string): Promise<ShDetail> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${encodeURIComponent(id)}`));
 }
@@ -472,6 +472,13 @@ export async function shLocalProducts(p: { sort?: string; dir?: string; page?: n
 export async function shLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/local/filters?type=${type}`));
 }
+export interface ShReport { shops: number; day: { rev: number; sales: number }; week: { rev: number; sales: number }; month: { rev: number; sales: number } }
+export async function shReport(p: { country?: string; category?: string } = {}): Promise<ShReport> {
+  const qs = new URLSearchParams();
+  if (p.country) qs.set('country', p.country);
+  if (p.category) qs.set('category', p.category);
+  return jsonOrThrow(await fetch(`${API}/api/sh/report?${qs.toString()}`));
+}
 export async function shShopRevenueDaily(shopId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/revenue-daily`));
 }
@@ -499,6 +506,15 @@ export async function shImportList(page = 1, pageSize = 100, type: 'shop' | 'pro
 }
 export async function shImportCategories(type: 'shop' | 'product' = 'shop'): Promise<{ id: string; path: string }[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import/categories?type=${type}`));
+}
+export async function shImportFolder(root: string): Promise<{ files: number; rows: number; unique: number; imported: number; empty: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/import/folder`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ root }) }));
+}
+export async function shImportState(root: string): Promise<{ files: number; shops: number; upserted: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/import/state`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ root }) }));
+}
+export async function shImportProductState(root: string, includeState = false): Promise<{ files: number; skipped: string[]; products: number; upserted: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/import/product-state`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ root, includeState }) }));
 }
 export async function shImportStats(type: 'shop' | 'product' = 'shop'): Promise<{ total: number; enriched: number; pending: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import/stats?type=${type}`));
