@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ShClient } from './sh.client';
 import { ShMysql } from './sh.mysql';
 import { ShAuth } from './sh.auth';
@@ -6,8 +6,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseSearch, parseShopColumns, productToShopRaw } from './sh.parser';
 import { shQueryHash } from './sh.hash';
-import { isGlobalBlock } from './sh.harvest.util';
+import { isGlobalBlock, randInt } from './sh.harvest.util';
 import { loadCatTree, resolveCategoryByNames, categoryPathFromIds } from './sh.categories';
+import { fetchShopifyCatalog } from './shopify.client';
 
 // Map header TSV (file scraper mới) → field import. Bền với ký tự Δ / (Weekly)/(Monthly).
 function tsvHeaderToField(h: string): string | null {
@@ -43,6 +44,8 @@ export const SH_SNAPSHOT_DEFAULT_DIR = 'D:\\SetupC\\Tools\\shophunter-crawler\\s
 
 @Injectable()
 export class ShService {
+  private readonly logger = new Logger('ShService');
+
   constructor(
     private readonly client: ShClient,
     private readonly mysql: ShMysql,
@@ -395,5 +398,47 @@ export class ShService {
     await this.mysql.appendRevenueDaily(shopId, chart);
     await this.mysql.setRevenueSynced(shopId);
     return chart.length ? 'ok' : 'skip';
+  }
+
+  // --- Catalog Shopify (products.json, miễn phí) ---
+  // Đồng bộ catalog: xoay vòng shop theo catalog_synced_at cũ nhất (getShopsNeedingCatalog), mỗi shop 1 lần
+  // fetchShopifyCatalog(url). 'ok' → bulkUpsertShopifyProducts (chỉ thêm sp mới, không đè) + setShopCatalog('ok');
+  // 'blocked' (products.json 401/403/404/password) → setShopCatalog('blocked'), BỎ QUA shop đó và đếm — KHÔNG
+  // dừng cả pipeline (Shopify không dùng isGlobalBlock, chặn chỉ theo từng shop); 'empty' → setShopCatalog('empty')
+  // (không phải blocked). Throttle sleep(randDelayMs()) giữa các shop, giống các step harvest khác.
+  async catalogSyncStep(opts: { daily?: number }): Promise<{ shops: number; newProducts: number; blocked: number }> {
+    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 500);
+    const staleMs = (Number(process.env.SH_CATALOG_STALE_HOURS) || 24) * 3600000;
+    const list = await this.mysql.getShopsNeedingCatalog(quota, staleMs);
+    let shops = 0, newProducts = 0, blocked = 0;
+    for (const { shopId, url } of list) {
+      const r = await fetchShopifyCatalog(url);
+      if (r.status === 'ok') {
+        const n = await this.mysql.bulkUpsertShopifyProducts(shopId, url, r.products);
+        await this.mysql.setShopCatalog(shopId, 'ok');
+        newProducts += n;
+        this.logger.log(`shop ${shopId}: +${n} sp mới`);
+      } else if (r.status === 'blocked') {
+        await this.mysql.setShopCatalog(shopId, 'blocked');
+        blocked++;
+        this.logger.log(`shop ${shopId}: blocked`);
+      } else {
+        await this.mysql.setShopCatalog(shopId, 'empty');
+        this.logger.log(`shop ${shopId}: +0 sp mới (empty)`);
+      }
+      shops++;
+      await this.sleep(this.randDelayMs());
+    }
+    return { shops, newProducts, blocked };
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  private randDelayMs(): number {
+    const min = Number(process.env.SH_HARVEST_DELAY_MIN_MS) || Number(process.env.SH_HARVEST_DELAY_MS) || 1500;
+    const max = Number(process.env.SH_HARVEST_DELAY_MAX_MS) || Number(process.env.SH_HARVEST_DELAY_MS) || 3000;
+    return randInt(Math.min(min, max), Math.max(min, max));
   }
 }

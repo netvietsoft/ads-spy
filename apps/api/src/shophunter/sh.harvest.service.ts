@@ -29,6 +29,8 @@ export interface HarvestSliceSummary { processed: number; ok: number; skipped: n
 
 export interface SnapshotSummary { date: string | null; shops: any; products: any }
 
+export interface CatalogSyncSummary { shops: number; newProducts: number; blocked: number }
+
 @Injectable()
 export class ShHarvestService {
   private readonly logger = new Logger('ShHarvest');
@@ -105,13 +107,14 @@ export class ShHarvestService {
   listDeepSlices(type: 'shops' | 'products') { return this.mysql.listDeepSlices(type); }
   resetDeepSlices() { return this.mysql.resetDeepSlices(); }
 
-  async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary | SnapshotSummary> {
+  async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary | SnapshotSummary | CatalogSyncSummary> {
     const mode = process.env.SH_HARVEST_MODE || 'slices';
     if (mode === 'slices') return this.runHarvestSlices(opts);
     if (mode === 'deep') return this.runHarvestDeep(process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops', opts);
     if (mode === 'import') return this.runImportEnrich(opts);
     if (mode === 'revsync') return this.runRevenueSync(opts);
     if (mode === 'snapshot') return this.runSnapshotImport();
+    if (mode === 'catalog') return this.svc.catalogSyncStep(opts);
     return this.runHarvestFlat(opts);
   }
 
