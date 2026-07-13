@@ -454,6 +454,36 @@ export class ShMysql implements OnModuleInit {
     return (rows as any[]).map((r) => ({ date_str: r.date_str, revenue: r.revenue, sale_count: r.sale_count }));
   }
 
+  // Dồn chuỗi doanh thu ngày sản phẩm vào kho append-only (copy y appendRevenueDaily của shop, đổi bảng/khoá → product_id).
+  async appendProductRevenueDaily(productId: string, chart: any): Promise<void> {
+    if (!Array.isArray(chart) || !chart.length) return;
+    await this.ensureReady();
+    const now = Date.now();
+    const rows = chart
+      .filter((p) => p && p.date_str && (p.revenue != null || p.sale_count != null))
+      .map((p) => [productId, String(p.date_str).slice(0, 10), p.revenue ?? null, p.sale_count ?? null, now]);
+    if (!rows.length) return;
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500);
+      const ph = new Array(batch.length).fill('(?,?,?,?,?)').join(',');
+      await this.pool!.query(
+        `INSERT INTO sh_product_revenue_daily (product_id, d, revenue, sale_count, updated_at) VALUES ${ph}
+         ON DUPLICATE KEY UPDATE revenue = VALUES(revenue), sale_count = VALUES(sale_count), updated_at = VALUES(updated_at)`,
+        batch.flat(),
+      );
+    }
+  }
+
+  // Chuỗi doanh thu ngày tích luỹ cho 1 sản phẩm — cho modal/chart xem dài hạn.
+  async getProductRevenueDaily(productId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
+      'SELECT DATE_FORMAT(d, "%Y-%m-%d") date_str, revenue, sale_count FROM sh_product_revenue_daily WHERE product_id = ? ORDER BY d ASC',
+      [productId],
+    );
+    return (rows as any[]).map((r) => ({ date_str: r.date_str, revenue: r.revenue, sale_count: r.sale_count }));
+  }
+
   // Shop cần đồng bộ doanh thu ngày (chưa từng sync, hoặc sync đã cũ hơn staleMs) — chỉ shop đã có detail.
   async getShopsNeedingRevSync(limit: number, staleMs: number): Promise<string[]> {
     await this.ensureReady();
