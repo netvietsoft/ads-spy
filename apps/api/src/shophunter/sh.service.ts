@@ -133,9 +133,15 @@ export class ShService {
     }
     const bundle = await this.shopDetail(shopId);
     const item = bundle.detail;
-    // Đẩy shop tìm thấy vào DB chung (sh_shop) → xuất hiện trong Local DB + lưu detail. Không chặn kết quả nếu lỗi.
+    // Đẩy shop tìm thấy vào DB chung (sh_shop) → xuất hiện trong Local DB. Không chặn kết quả nếu lỗi.
     if (item) {
+      // Có detail → upsert đầy đủ (raw + detail + chart).
       try { await this.mysql.upsertShop(shopId, item, bundle, parseShopColumns(item, bundle)); } catch { /* bỏ qua */ }
+    } else {
+      // ShopHunter không trả detail nhưng vẫn là Shopify hợp lệ → tạo shop TỐI THIỂU nếu CHƯA có
+      // (INSERT IGNORE: không đè shop đã có data tốt). Đảm bảo mọi shop track được đều vào DB.
+      const raw = { shop_id: shopId, url: domain, shop_title: domain };
+      try { await this.mysql.bulkUpsertListingShops([{ shopId, raw: JSON.stringify(raw), cols: parseShopColumns(raw), upCategory: null, upCategoryPath: null }], { onlyMissing: true }); } catch { /* bỏ qua */ }
     }
     await this.mysql.addTrackHistory(domain, shopId, item?.shop_title || domain, track.identifyType || '');
     return { domain, isShopify: true, shopId, identifyType: track.identifyType, detail: item };
