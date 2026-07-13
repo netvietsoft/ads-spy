@@ -2,7 +2,7 @@
 
 **Ngày:** 2026-07-13
 **Repo:** google-ads-spy (NestJS API :3100 + Next.js :3101, MySQL `shophunter`)
-**Trạng thái:** Design đã duyệt (chờ review → lên plan thực thi)
+**Trạng thái:** Design đã duyệt. **REV 2 (2026-07-13):** doanh thu ngày lấy từ **snapshot của crawler** (`shophunter-crawler/run-daily.js` → `snapshots/<date>/`, auto-import + piggyback) thay cho **Pipeline 2b rotate `productChartRevenue`** (bỏ — tránh triệu call/ngày) và **Pipeline 3 newest-sweep** (bỏ — shop/sp mới tự có trong snapshot). Giữ Pipeline 1 (Shopify catalog). Bỏ cột "Hôm nay" cấp sản phẩm. Chi tiết cập nhật ở plan rev 2.
 
 ## Mục tiêu (Goal)
 Xây kho dữ liệu **đầy đủ + realtime-hàng-ngày** cho Shopify shop/sản phẩm, bằng cách **tách 2 nguồn**:
