@@ -6,7 +6,7 @@ const money = (n: number) => '$' + Math.round(n).toLocaleString();
 const short = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'k' : String(Math.round(n)));
 const GRANS: [Gran, string][] = [['week', 'Tuần'], ['month', 'Tháng'], ['quarter', 'Quý'], ['year', 'Năm']];
 type Gran = 'week' | 'month' | 'quarter' | 'year';
-const REV = '#5b9dff', ORD = '#e0a53a';
+const REV = '#5b9dff', ORD = '#e0a53a', GREEN = '#41d18a';
 
 function periodKeyLabel(d: Date, gran: Gran): { key: string; label: string } {
   const y = d.getFullYear();
@@ -106,11 +106,19 @@ export function ShBarChart({ points }: { points: Pt[] }) {
                 {showVals && r.ord > 0 && <text x={cx(i) + barW / 2 + 1} y={yOrd(r.ord) - 2} fontSize={8} fill={ORD} textAnchor="middle">{short(r.ord)}</text>}
               </g>
             ))}
-            {kind === 'area' && <polygon points={revArea} fill={REV} opacity={0.22} />}
-            {(kind === 'line' || kind === 'area') && (
+            {kind === 'area' && (
+              // Khối lượng: dây xanh lá + nền xanh nhạt (doanh thu), số liệu tại từng đầu mút.
+              <>
+                <polygon points={revArea} fill={GREEN} opacity={0.18} />
+                <polyline points={revLine} fill="none" stroke={GREEN} strokeWidth={2} />
+                {rows.map((r, i) => (<circle key={i} cx={cx(i)} cy={yRev(r.rev)} r={2.5} fill={GREEN}><title>{r.label} · {money(r.rev)}</title></circle>))}
+                {showVals && rows.map((r, i) => (r.rev > 0 ? <text key={'v' + i} x={cx(i)} y={yRev(r.rev) - 4} fontSize={8} fill={GREEN} textAnchor="middle">{short(r.rev)}</text> : null))}
+              </>
+            )}
+            {kind === 'line' && (
               <>
                 <polyline points={revLine} fill="none" stroke={REV} strokeWidth={2} />
-                <polyline points={ordLine} fill="none" stroke={ORD} strokeWidth={kind === 'area' ? 1.5 : 2} />
+                <polyline points={ordLine} fill="none" stroke={ORD} strokeWidth={2} />
                 {rows.map((r, i) => (<g key={i}><circle cx={cx(i)} cy={yRev(r.rev)} r={2.5} fill={REV}><title>{r.label} · {money(r.rev)}</title></circle><circle cx={cx(i)} cy={yOrd(r.ord)} r={2.5} fill={ORD}><title>{r.label} · {r.ord} đơn</title></circle></g>))}
               </>
             )}
