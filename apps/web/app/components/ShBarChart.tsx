@@ -26,7 +26,7 @@ export function ShBarChart({ points }: { points: Pt[] }) {
   const [gran, setGran] = useState<Gran>('week');
   const [from, setFrom] = useState(defFrom);
   const [to, setTo] = useState(maxDate);
-  const [kind, setKind] = useState<'bar' | 'line'>('bar');
+  const [kind, setKind] = useState<'bar' | 'line' | 'area'>('bar');
   const wrapRef = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(800);
   useEffect(() => {
@@ -66,38 +66,51 @@ export function ShBarChart({ points }: { points: Pt[] }) {
   const step = Math.max(1, Math.ceil(N / Math.max(1, Math.floor(W / 46))));
   const revLine = rows.map((r, i) => `${cx(i)},${yRev(r.rev)}`).join(' ');
   const ordLine = rows.map((r, i) => `${cx(i)},${yOrd(r.ord)}`).join(' ');
+  const revArea = rows.length ? `${cx(0)},${baseY} ${revLine} ${cx(rows.length - 1)},${baseY}` : '';
+
+  const TYPES: [typeof kind, string, any][] = [
+    ['bar', 'Cột', <svg key="b" width={15} height={15} viewBox="0 0 15 15"><rect x={1} y={7} width={3} height={7} /><rect x={6} y={3} width={3} height={11} /><rect x={11} y={9} width={3} height={5} /></svg>],
+    ['line', 'Line', <svg key="l" width={15} height={15} viewBox="0 0 15 15"><polyline points="1,11 5,5 9,8 14,2" fill="none" stroke="currentColor" strokeWidth={1.6} /></svg>],
+    ['area', 'Khối lượng', <svg key="a" width={15} height={15} viewBox="0 0 15 15"><path d="M1,11 5,5 9,8 14,3 L14,14 L1,14 Z" fill="currentColor" opacity={0.45} /><polyline points="1,11 5,5 9,8 14,3" fill="none" stroke="currentColor" strokeWidth={1.3} /></svg>],
+  ];
 
   return (
     <div>
-      <div className="chartctl" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '6px 0', justifyContent: 'flex-end' }}>
+      {/* Controls căn lề TRÁI: khoảng ngày + gom kỳ (Cột/Line/Khối lượng chuyển vào góc chart) */}
+      <div className="chartctl" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '6px 0', justifyContent: 'flex-start' }}>
         <label style={{ fontSize: 12 }}>Từ&nbsp;<input type="date" className="fbselect" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Đến&nbsp;<input type="date" className="fbselect" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></label>
         <div className="sources" style={{ margin: 0 }}>
           {GRANS.map(([g, lbl]) => <button key={g} className={`srcbtn ${gran === g ? 'active' : ''}`} onClick={() => setGran(g)}>{lbl}</button>)}
-        </div>
-        <div className="sources" style={{ margin: 0 }}>
-          <button className={`srcbtn ${kind === 'bar' ? 'active' : ''}`} onClick={() => setKind('bar')}>Cột</button>
-          <button className={`srcbtn ${kind === 'line' ? 'active' : ''}`} onClick={() => setKind('line')}>Line</button>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 4, flexWrap: 'wrap' }}>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, background: REV, borderRadius: 2, marginRight: 4 }} />Doanh thu · tổng <b>{money(totRev)}</b></span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, background: ORD, borderRadius: 2, marginRight: 4 }} />Số đơn · tổng <b>{totOrd.toLocaleString()}</b></span>
       </div>
-      <div ref={wrapRef} style={{ width: '100%', borderBottom: '1px solid var(--border)' }}>
+      <div ref={wrapRef} style={{ width: '100%', borderBottom: '1px solid var(--border)', position: 'relative' }}>
+        {/* 3 icon chọn loại biểu đồ — trong khung chart, góc phải trên */}
+        <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 3, zIndex: 2 }}>
+          {TYPES.map(([k, title, icon]) => (
+            <button key={k} onClick={() => setKind(k)} title={title} aria-label={title}
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 24, padding: 0, cursor: 'pointer', borderRadius: 6, border: '1px solid var(--border)', background: kind === k ? 'var(--accent)' : 'var(--panel)', color: kind === k ? '#fff' : 'var(--text)' }}>{icon}</button>
+          ))}
+        </div>
         {rows.length === 0 ? <div className="hint" style={{ padding: '8px 0' }}>Không có dữ liệu trong khoảng đã chọn.</div> : (
           <svg width={W} height={H} style={{ display: 'block' }}>
-            {kind === 'bar' ? rows.map((r, i) => (
+            {kind === 'bar' && rows.map((r, i) => (
               <g key={i}>
                 <rect x={cx(i) - barW - 0.5} y={yRev(r.rev)} width={barW} height={Math.max(1, baseY - yRev(r.rev))} fill={REV} rx={2}><title>{r.label} · Doanh thu {money(r.rev)}</title></rect>
                 <rect x={cx(i) + 0.5} y={yOrd(r.ord)} width={barW} height={Math.max(1, baseY - yOrd(r.ord))} fill={ORD} rx={2}><title>{r.label} · {r.ord.toLocaleString()} đơn</title></rect>
                 {showVals && r.rev > 0 && <text x={cx(i) - barW / 2} y={yRev(r.rev) - 2} fontSize={8} fill={REV} textAnchor="middle">{short(r.rev)}</text>}
                 {showVals && r.ord > 0 && <text x={cx(i) + barW / 2 + 1} y={yOrd(r.ord) - 2} fontSize={8} fill={ORD} textAnchor="middle">{short(r.ord)}</text>}
               </g>
-            )) : (
+            ))}
+            {kind === 'area' && <polygon points={revArea} fill={REV} opacity={0.22} />}
+            {(kind === 'line' || kind === 'area') && (
               <>
                 <polyline points={revLine} fill="none" stroke={REV} strokeWidth={2} />
-                <polyline points={ordLine} fill="none" stroke={ORD} strokeWidth={2} />
+                <polyline points={ordLine} fill="none" stroke={ORD} strokeWidth={kind === 'area' ? 1.5 : 2} />
                 {rows.map((r, i) => (<g key={i}><circle cx={cx(i)} cy={yRev(r.rev)} r={2.5} fill={REV}><title>{r.label} · {money(r.rev)}</title></circle><circle cx={cx(i)} cy={yOrd(r.ord)} r={2.5} fill={ORD}><title>{r.label} · {r.ord} đơn</title></circle></g>))}
               </>
             )}
