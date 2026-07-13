@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ShDetail, shProductDetail, shAssetProxy, shShopSite, shProductUrl } from '../../../api';
+import { ShDetail, shProductDetail, shProductRevenueDaily, shAssetProxy, shShopSite, shProductUrl } from '../../../api';
 import { ShBarChart } from '../../../components/ShBarChart';
 import { ShLogo } from '../../../components/ShLogo';
 
@@ -13,6 +13,7 @@ export default function ProductDetailPage() {
   const shopId = String(params?.shopId || '');
   const productId = String(params?.productId || '');
   const [d, setD] = useState<ShDetail | null>(null);
+  const [daily, setDaily] = useState<{ date_str: string; revenue: number | null; sale_count: number | null }[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,10 +24,15 @@ export default function ProductDetailPage() {
     if (!shopId || !productId) return;
     shProductDetail(shopId, productId).then(setD).catch((e) => setErr((e as Error).message));
   }, [shopId, productId]);
+  useEffect(() => {
+    if (!shopId || !productId) return;
+    shProductRevenueDaily(shopId, productId).then(setDaily).catch(() => setDaily([]));
+  }, [shopId, productId]);
 
   const p = d?.detail;
   const site = shShopSite(p);
   const purl = shProductUrl(p);
+  const series = daily.length ? daily : (d?.revenueChart || []);
 
   return (
     <div style={{ maxWidth: 880, margin: '0 auto', padding: '22px 18px' }}>
@@ -71,23 +77,17 @@ export default function ProductDetailPage() {
             <span>Δ Tuần <b className={(p.week_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.week_revenue_percent_change)}</b></span>
             <span>Δ Tháng <b className={(p.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.month_revenue_percent_change)}</b></span>
           </div>
-          <h4>Biểu đồ doanh thu (90 ngày)</h4>
-          <ShBarChart points={d!.revenueChart || []} />
-          {(d!.revenueChart?.length ?? 0) > 0 && (
-            <details open style={{ margin: '6px 0' }}>
-              <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.9 }}>Số theo từng ngày ({d!.revenueChart.length} ngày) — mới nhất trước</summary>
-              <div style={{ maxHeight: 260, overflow: 'auto', marginTop: 6 }}>
+          <h4>Biểu đồ doanh thu {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
+          <ShBarChart points={series} />
+          {series.length > 0 && (
+            <details style={{ margin: '8px 0' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.9 }}>Số theo từng ngày ({series.length} ngày)</summary>
+              <div style={{ maxHeight: 240, overflow: 'auto', marginTop: 6 }}>
                 <table className="localtbl">
                   <thead><tr><th>Ngày</th><th>Doanh thu</th><th>Đơn</th></tr></thead>
-                  <tbody>
-                    {d!.revenueChart.slice().reverse().map((x) => (
-                      <tr key={x.date_str}>
-                        <td style={{ whiteSpace: 'nowrap' }}>{x.date_str}</td>
-                        <td>{money(x.revenue)}</td>
-                        <td>{x.sale_count ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
+                  <tbody>{series.slice().reverse().map((x) => (
+                    <tr key={x.date_str}><td style={{ whiteSpace: 'nowrap' }}>{x.date_str}</td><td>{money(x.revenue)}</td><td>{x.sale_count ?? '—'}</td></tr>
+                  ))}</tbody>
                 </table>
               </div>
             </details>

@@ -488,6 +488,9 @@ export async function shReport(p: { country?: string; category?: string } = {}):
 export async function shShopRevenueDaily(shopId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/revenue-daily`));
 }
+export async function shProductRevenueDaily(shopId: string, productId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/product/${shopId}/${productId}/revenue-daily`));
+}
 export interface ShCheckResult { domain: string; isShopify: boolean; reason?: string; shopId?: string; identifyType?: string; detail?: any }
 export async function shCheckDomain(domain: string): Promise<ShCheckResult> {
   return jsonOrThrow(await fetch(`${API}/api/sh/check?domain=${encodeURIComponent(domain)}`));
