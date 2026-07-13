@@ -412,19 +412,25 @@ export class ShService {
     const list = await this.mysql.getShopsNeedingCatalog(quota, staleMs);
     let shops = 0, newProducts = 0, blocked = 0;
     for (const { shopId, url } of list) {
-      const r = await fetchShopifyCatalog(url);
-      if (r.status === 'ok') {
-        const n = await this.mysql.bulkUpsertShopifyProducts(shopId, url, r.products);
-        await this.mysql.setShopCatalog(shopId, 'ok');
-        newProducts += n;
-        this.logger.log(`shop ${shopId}: +${n} sp mới`);
-      } else if (r.status === 'blocked') {
-        await this.mysql.setShopCatalog(shopId, 'blocked');
-        blocked++;
-        this.logger.log(`shop ${shopId}: blocked`);
-      } else {
-        await this.mysql.setShopCatalog(shopId, 'empty');
-        this.logger.log(`shop ${shopId}: +0 sp mới (empty)`);
+      try {
+        const r = await fetchShopifyCatalog(url);
+        if (r.status === 'ok') {
+          const n = await this.mysql.bulkUpsertShopifyProducts(shopId, url, r.products);
+          await this.mysql.setShopCatalog(shopId, 'ok');
+          newProducts += n;
+          this.logger.log(`shop ${shopId}: +${n} sp mới`);
+        } else if (r.status === 'blocked') {
+          await this.mysql.setShopCatalog(shopId, 'blocked');
+          blocked++;
+          this.logger.log(`shop ${shopId}: blocked`);
+        } else {
+          await this.mysql.setShopCatalog(shopId, 'empty');
+          this.logger.log(`shop ${shopId}: +0 sp mới (empty)`);
+        }
+      } catch (e) {
+        // Lỗi riêng 1 shop (vd DB transient khi upsert) → log + sang shop kế, KHÔNG dừng cả batch
+        // (Shopify không có khái niệm chặn-toàn-cục; shop lỗi giữ nguyên catalog_synced_at → retry vòng sau).
+        this.logger.warn(`shop ${shopId}: lỗi catalog sync (${(e as Error).message}) — bỏ qua, sang shop kế.`);
       }
       shops++;
       await this.sleep(this.randDelayMs());

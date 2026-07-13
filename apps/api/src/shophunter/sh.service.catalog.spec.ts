@@ -72,6 +72,28 @@ describe('ShService.catalogSyncStep', () => {
     expect(fetchShopifyCatalogMock).not.toHaveBeenCalled();
   });
 
+  it('lỗi DB riêng 1 shop (bulkUpsertShopifyProducts reject) → log + sang shop kế, KHÔNG dừng batch', async () => {
+    const { svc, mysql } = makeSvc();
+    mysql.getShopsNeedingCatalog.mockResolvedValue([
+      { shopId: 's1', url: 'a.test' },
+      { shopId: 's2', url: 'b.test' },
+    ]);
+    const prod = { id: 'p1', handle: 'p1', title: 'P1', price: 1, image: null, variantCount: 1, publishedAt: null, createdAt: null, updatedAt: null };
+    fetchShopifyCatalogMock
+      .mockResolvedValueOnce({ status: 'ok', products: [prod] })
+      .mockResolvedValueOnce({ status: 'ok', products: [prod] });
+    mysql.bulkUpsertShopifyProducts
+      .mockRejectedValueOnce(new Error('DB transient')) // s1 lỗi DB → bỏ qua shop này
+      .mockResolvedValueOnce(3); // s2 vẫn chạy bình thường
+
+    const r = await svc.catalogSyncStep({ daily: 10 });
+
+    expect(r).toEqual({ shops: 2, newProducts: 3, blocked: 0 }); // s1 vẫn đếm vào shops, không vào newProducts
+    expect(fetchShopifyCatalogMock).toHaveBeenCalledTimes(2); // s2 KHÔNG bị bỏ vì lỗi của s1
+    expect(mysql.setShopCatalog).toHaveBeenCalledTimes(1); // s1 lỗi → KHÔNG set 'ok' (giữ trạng thái cũ để retry vòng sau)
+    expect(mysql.setShopCatalog).toHaveBeenCalledWith('s2', 'ok');
+  });
+
   it('opts.daily truyền xuống getShopsNeedingCatalog làm limit', async () => {
     const { svc, mysql } = makeSvc();
     mysql.getShopsNeedingCatalog.mockResolvedValue([]);
