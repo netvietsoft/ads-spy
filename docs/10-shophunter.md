@@ -49,7 +49,8 @@ Mỗi cron tick chạy 1 "sip" (SIP_MIN..MAX item), cộng dồn tới `SH_HARVE
 ShopHunter chỉ cho 90 ngày & bị **ghi đè** mỗi lần fetch. Để phân tích năm/mùa vụ/trend, doanh thu ngày dồn vào 2 kho
 **append-only**: `sh_shop_revenue_daily` (shop) + `sh_product_revenue_daily` (sản phẩm), từ 3 nguồn:
 - **Piggyback qua harvest/enrich (shop)**: mọi lần `upsertShop` dồn 90 điểm chart vào `sh_shop_revenue_daily` (UPSERT
-  theo shop+ngày) — miễn phí. Chỉ áp dụng cho shop (ShopHunter không có API chart doanh thu riêng cho sản phẩm).
+  theo shop+ngày) — miễn phí. Với sản phẩm CỐ Ý không gọi `productChartRevenue` hàng loạt (~300k sp → hàng triệu
+  call/ngày); chuỗi ngày sp lấy từ snapshot bên dưới — chart sp chỉ gọi lẻ khi user mở chi tiết sản phẩm.
 - **Job revsync (:3130)**: xoay vòng shop (cũ nhất trước theo `revenue_synced_at`), mỗi shop **1 call** revenue chart → dồn kho.
   Vì luôn có 90 ngày & các cửa sổ chồng nhau → chỉ cần refetch mỗi shop **≤90 ngày/lần** là chuỗi **không hụt**; chạy ~mỗi 20h.
 - **Auto-import snapshot crawler** (nguồn CHÍNH cho cả shop lẫn sản phẩm, KHÔNG tốn thêm call ShopHunter): crawler ngoài
