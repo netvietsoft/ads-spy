@@ -121,6 +121,7 @@ Mỗi run log + có endpoint stat:
 - Piggyback móc vào `upsertItem('sh_product')` + `bulkUpsertProducts` (nơi ghi search product).
 - `sh_product` phình to → đã có sẵn index cho search/đếm; thêm index rotation.
 - Chi tiết sản phẩm (FE): vẽ chuỗi `sh_product_revenue_daily` tích luỹ (giống chi tiết shop). Endpoint `GET /sh/product/:shopId/:productId/revenue-daily`.
+- **Cột "Hôm nay" ở Local DB (FE)**: list shop/sản phẩm thêm cột **"Hôm nay"** = điểm doanh thu **ngày hôm nay** từ `revenue_daily` (LEFT JOIN theo `(id, d=CURDATE())`), phân biệt với **"Hôm qua"** = `day_current_period_revenue` (ShopHunter = ngày hoàn tất gần nhất). *Lưu ý:* "Hôm nay" chỉ có số cho entity được revenue-sync trong ngày → chỉ **có ý nghĩa khi Pipeline 2 chạy đủ dày**; entity chưa sync hôm nay hiển thị `—`.
 
 ## Non-goals
 - Không realtime trong ngày (ShopHunter là ước lượng ngày).
