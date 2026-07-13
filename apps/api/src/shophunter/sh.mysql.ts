@@ -5,6 +5,9 @@ import { PrismaService } from '../prisma.service';
 
 type Table = 'sh_shop' | 'sh_product';
 
+// Khoá setting theo dõi ngày snapshot mới nhất đã nạp (trùng LAST_SNAPSHOT_KEY trong sh.service.ts — Task 4).
+const LAST_SNAPSHOT_SETTING_KEY = 'shophunter_last_snapshot_imported';
+
 const numExpr = (path: string) => `CAST(JSON_EXTRACT(raw, '${path}') AS DECIMAL(30,6))`;
 export const SHOP_LOCAL_SORTS: Record<string, string> = {
   revenue_day: numExpr('$.day_current_period_revenue'),
@@ -1107,5 +1110,45 @@ export class ShMysql implements OnModuleInit {
     await this.prisma.fbSetting
       .upsert({ where: { key }, create: { key, value }, update: { value } })
       .catch(() => undefined);
+  }
+
+  // Thống kê độ phủ đồng bộ (catalog Shopify + doanh thu ngày) cho dashboard admin — COUNT/MIN đơn giản,
+  // KHÔNG dùng index mới, chỉ index sẵn có: idx_sh_shop_catalog_sync (catalog_synced_at) cho MIN; catalog_status
+  // KHÔNG có index riêng nhưng sh_shop hiện ~46k dòng nên full scan vẫn rẻ (đã đo trên DB thật: ~20ms).
+  // COUNT DISTINCT product_id/shop_id trên sh_product_revenue_daily/sh_shop_revenue_daily dùng index-only scan
+  // qua PRIMARY KEY (product_id,d)/(shop_id,d) — đã đo trên DB thật (~300k sản phẩm): ~520ms/~177ms, chấp nhận
+  // được cho endpoint dashboard gọi không thường xuyên (KHÔNG dùng *_synced_at làm proxy: product_revenue_synced_at
+  // hiện chưa nơi nào ghi nên luôn 0, sẽ báo sai productsWithSeries).
+  async coverageStats(): Promise<{
+    catalog: { shops: number; synced: number; blocked: number; oldestLagH: number | null };
+    revenue: { productsWithSeries: number; shopsWithSeries: number; lastSnapshotDate: string | null };
+  }> {
+    await this.ensureReady();
+
+    const [shopRows] = await this.pool!.query('SELECT COUNT(*) AS n FROM sh_shop');
+    const shops = Number((shopRows as any[])[0].n) || 0;
+
+    const [syncedRows] = await this.pool!.query("SELECT COUNT(*) AS n FROM sh_shop WHERE catalog_status = 'ok'");
+    const synced = Number((syncedRows as any[])[0].n) || 0;
+
+    const [blockedRows] = await this.pool!.query("SELECT COUNT(*) AS n FROM sh_shop WHERE catalog_status = 'blocked'");
+    const blocked = Number((blockedRows as any[])[0].n) || 0;
+
+    const [lagRows] = await this.pool!.query('SELECT MIN(catalog_synced_at) AS m FROM sh_shop WHERE catalog_synced_at IS NOT NULL');
+    const oldestSyncedAt = (lagRows as any[])[0].m;
+    const oldestLagH = oldestSyncedAt == null ? null : Math.round(((Date.now() - Number(oldestSyncedAt)) / 3600000) * 100) / 100;
+
+    const [prodRows] = await this.pool!.query('SELECT COUNT(DISTINCT product_id) AS n FROM sh_product_revenue_daily');
+    const productsWithSeries = Number((prodRows as any[])[0].n) || 0;
+
+    const [shopRevRows] = await this.pool!.query('SELECT COUNT(DISTINCT shop_id) AS n FROM sh_shop_revenue_daily');
+    const shopsWithSeries = Number((shopRevRows as any[])[0].n) || 0;
+
+    const lastSnapshotDate = await this.getSetting(LAST_SNAPSHOT_SETTING_KEY);
+
+    return {
+      catalog: { shops, synced, blocked, oldestLagH },
+      revenue: { productsWithSeries, shopsWithSeries, lastSnapshotDate },
+    };
   }
 }

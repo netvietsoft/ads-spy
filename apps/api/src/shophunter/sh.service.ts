@@ -390,7 +390,10 @@ export class ShService {
 
   // --- Kho doanh thu theo ngày (tích luỹ dài hạn) ---
   revenueDaily(shopId: string) { return this.mysql.getRevenueDaily(shopId); }
+  productRevenueDaily(productId: string) { return this.mysql.getProductRevenueDaily(productId); }
   shopsNeedingRevSync(limit: number, staleMs: number) { return this.mysql.getShopsNeedingRevSync(limit, staleMs); }
+  // Thống kê độ phủ đồng bộ catalog + doanh thu ngày (dashboard admin) — chuyển tiếp thẳng mysql.coverageStats().
+  coverageStats() { return this.mysql.coverageStats(); }
   // Đồng bộ doanh thu ngày cho 1 shop: CHỈ gọi revenue chart (1 call) → dồn vào kho → đánh dấu đã sync.
   async syncShopRevenue(shopId: string): Promise<'ok' | 'skip'> {
     const revR = await this.client.shopChartRevenue(shopId);

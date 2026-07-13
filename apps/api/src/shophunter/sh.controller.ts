@@ -185,6 +185,12 @@ export class ShController {
     return this.svc.productDetail(shopId, productId);
   }
 
+  @Get('sh/product/:shopId/:productId/revenue-daily')
+  productRevenueDaily(@Param('shopId') shopId: string, @Param('productId') productId: string) {
+    if (!shopId || !productId) throw new BadRequestException('Thiếu id.');
+    return this.svc.productRevenueDaily(productId); // chuỗi doanh thu ngày tích luỹ sản phẩm (Task 2)
+  }
+
   @Get('sh/asset')
   async asset(@Query('url') url: string, @Query('download') download: string, @Res() res: Response) {
     if (!url || !assetHostOk(url)) throw new BadRequestException('URL ảnh không hợp lệ hoặc không được phép.');
@@ -236,6 +242,11 @@ export class ShController {
   @Get('sh/harvest/daily')
   harvestDaily() {
     return this.harvest.getDaily();
+  }
+
+  @Get('sh/sync/coverage')
+  syncCoverage() {
+    return this.svc.coverageStats(); // độ phủ đồng bộ catalog + doanh thu ngày (dashboard admin)
   }
 
   @Get('sh/local/shops')
