@@ -1,6 +1,22 @@
 # Restart Stack — google-ads-spy (ShopHunter clone)
 
-> Log dựng lại toàn bộ sau khi **restart máy**. Cập nhật: 2026-07-13.
+> Log dựng lại toàn bộ sau khi **restart máy**. Cập nhật: 2026-07-14 (chiều).
+
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-14 (đọc cái này trước)
+- **Git HEAD:** `81a4a7d` (nhánh `feat/shophunter-harvest`, CHƯA push/merge). Nhiều feature mới đã commit (affiliate, export Excel, report tops, chart Ngày, fav filter, zoom, fallback DB local khi ShopHunter 402...).
+- **MySQL:** local 127.0.0.1:3306 root no-pass, DÙNG CHUNG CRM. Sau reboot phải start tay: `Start-Process 'D:\SetupC\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysqld.exe' -ArgumentList '--defaults-file="D:\SetupC\laragon\bin\mysql\mysql-8.4.3-winx64\my.ini"' -WindowStyle Hidden` (KHÔNG phải Windows service).
+- **Instances đang chạy:** :3100 (API+deep shops, dist mới), :3101 (web), :3110 (deep products — DIST CŨ 7/11, nên restart), :3120 (import), :3130 (revsync). **:3150 catalog Shopify ĐANG TẮT** (tạm dừng ưu tiên affiliate). **:3160 affiliate worker KHÔNG dùng** (thay bằng scanner standalone dưới).
+- **Affiliate scanner (standalone, KHÔNG do start-stack quản):** đang chạy `node scripts/affiliate-bulk-scan.js` — quét web công khai từng shop tìm chương trình affiliate, qua **proxy xoay** (Shopify bóp IP đơn). Tiến độ: ~836 yes + 299 app; đang quét ~42k shop NULL còn lại. Reboot → chạy lại: `cd D:\SetupC\Projects\google-ads-spy && E:\Programming\node.exe scripts/affiliate-bulk-scan.js` (tự reset blocked+retry → NULL rồi quét tiếp; conc 3, có backoff 429). Proxy list nằm trong file script.
+- **Catalog Shopify:** đã cào ~23k+ sản phẩm (`sh_product.source='shopify'`). Bật lại cào tiếp: instance `SH_HARVEST_MODE=catalog` cổng riêng (vd :3150) — rotation nhớ chỗ qua `catalog_synced_at`, không lặp.
+- **Còn tồn / làm sau:** (1) top sản phẩm ở Report chậm (~90s/query vì JSON scan 400k) → nút bấm tải theo yêu cầu; muốn nhanh phải tách doanh thu ra cột index + backfill (làm khi affiliate scan xong). (2) Bật lại catalog. (3) Crawler ShopHunter đợi gia hạn token (402).
+
+## Bẫy đã học (2026-07-14)
+- **KHÔNG** `UPDATE ... WHERE cột_không_index LIKE '%...%'` hay `ALTER ADD INDEX` trên `sh_product` (40GB, raw LONGTEXT ~95KB/dòng) lúc DB đang tải — full-scan thành query runaway giữ vạn lock, treo cả DB. Update luôn nhắm theo `shop_id`/`product_id` (PK).
+- **Dừng scanner phải KILL hẳn node process**, không chỉ TaskStop — TaskStop dừng theo dõi nhưng node con chạy tiếp → orphan hammer proxy/Shopify → mass false-blocked.
+- **Shopify bóp rate theo IP** rất gắt: quét nhanh 1 IP → 429 hàng loạt. Phải qua proxy xoay hoặc chạy chậm (conc thấp + backoff). 429/timeout = tạm thời (`ratelimited`, thử lại), KHÔNG mark blocked.
+- Query `/sh/local/filters` & sort JSON trên bảng lớn rất đắt → đã cache 6h + dedup in-flight.
+
+---
 
 ## Trạng thái lúc ghi log
 - **Git HEAD:** `c8d2cff` (nhánh `feat/shophunter-harvest`, CHƯA push/merge).
