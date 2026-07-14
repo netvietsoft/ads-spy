@@ -288,4 +288,17 @@ export class ShController {
   localFilters(@Query('type') type: string) {
     return this.svc.localFilters(type === 'products' ? 'products' : 'shops');
   }
+
+  // Shop yêu thích (tim đỏ theo dõi riêng).
+  @Get('sh/fav/shops')
+  async favShops() {
+    return { ids: await this.svc.favShops() };
+  }
+
+  @Post('sh/fav/shop/:id')
+  async setFavShop(@Param('id') id: string, @Body('fav') fav: any) {
+    if (!id) throw new BadRequestException('thiếu shop id');
+    await this.svc.setFavShop(id, !!fav);
+    return { ok: true, fav: !!fav };
+  }
 }

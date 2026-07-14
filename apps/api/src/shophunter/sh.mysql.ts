@@ -225,6 +225,20 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'catalog_status', 'catalog_status VARCHAR(16)');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_catalog_sync', 'catalog_synced_at');
 
+    // Bảng tìm kiếm tên sản phẩm: FULLTEXT trên bảng phụ NHỎ (không rebuild sh_product lớn).
+    // LIKE '%q%' + sort JSON trên 400k dòng mất nhiều phút → MATCH...AGAINST vài chục ms.
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_search (
+      product_id VARCHAR(32) PRIMARY KEY, title VARCHAR(512), FULLTEXT KEY ft_title (title))`);
+    // Backfill 1 lần khi trống — chạy NỀN (400k dòng ~ phút, không chặn boot); INSERT IGNORE idempotent,
+    // writer (upsertItem/bulkUpsertProducts/bulkUpsertShopifyProducts) giữ đồng bộ về sau.
+    const [psCnt] = await pool.query('SELECT COUNT(*) n FROM sh_product_search');
+    if (!Number((psCnt as any[])[0].n)) {
+      pool.query("INSERT IGNORE INTO sh_product_search (product_id, title) SELECT product_id, product_title FROM sh_product WHERE product_title IS NOT NULL AND product_title != ''").catch(() => { /* thử lại ở boot sau */ });
+    }
+
+    // Shop yêu thích (tim đỏ) — user đánh dấu theo dõi riêng.
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_fav_shop (shop_id VARCHAR(32) PRIMARY KEY, created_at BIGINT)`);
+
     this.pool = pool;
   }
 
@@ -263,6 +277,17 @@ export class ShMysql implements OnModuleInit {
     }
   }
 
+  // Đồng bộ bảng tìm kiếm sản phẩm (FULLTEXT trên bảng phụ nhỏ — KHÔNG đụng/rebuild sh_product lớn).
+  private async syncProductSearch(pairs: (readonly [string | null | undefined, string | null | undefined])[]): Promise<void> {
+    const rows = pairs.filter(([id, t]) => id && t) as [string, string][];
+    if (!rows.length) return;
+    for (let i = 0; i < rows.length; i += 500) {
+      const b = rows.slice(i, i + 500);
+      const ph = new Array(b.length).fill('(?,?)').join(',');
+      await this.pool!.query(`INSERT INTO sh_product_search (product_id, title) VALUES ${ph} ON DUPLICATE KEY UPDATE title = VALUES(title)`, b.flat());
+    }
+  }
+
   async upsertItem(table: Table, id: string, raw: unknown): Promise<void> {
     await this.ensureReady();
     const pk = this.pk(table);
@@ -275,6 +300,7 @@ export class ShMysql implements OnModuleInit {
          ON DUPLICATE KEY UPDATE raw = VALUES(raw), fetched_at = VALUES(fetched_at), product_title = VALUES(product_title), shop_id = VALUES(shop_id)`,
         [id, JSON.stringify(raw), Date.now(), title, sid],
       );
+      await this.syncProductSearch([[String(id).slice(0, 32), title]]);
       return;
     }
     await this.pool!.query(
@@ -745,7 +771,7 @@ export class ShMysql implements OnModuleInit {
     const where: string[] = []; const params: any[] = [];
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
-    if (o.q) { where.push('shop_name LIKE ?'); params.push('%' + o.q + '%'); }
+    if (o.q) { where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)"); params.push('%' + o.q + '%', '%' + o.q + '%'); } // khớp cả tên lẫn domain
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
@@ -766,7 +792,17 @@ export class ShMysql implements OnModuleInit {
     if (o.shop) { where.push('shop_id = ?'); params.push(o.shop); } // lọc sản phẩm theo shop (cột có index)
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) = ?"); params.push(o.country); }
     if (o.category) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) = ?"); params.push(o.category); }
-    if (o.q) { where.push('product_title LIKE ?'); params.push('%' + o.q + '%'); } // dùng cột phẳng có index
+    if (o.q) {
+      // FULLTEXT qua bảng phụ sh_product_search (LIKE '%q%' + sort JSON trên 400k dòng mất nhiều phút).
+      // Token ≥3 ký tự (innodb_ft_min_token_size) prefix-match; query toàn token ngắn → fallback LIKE cũ.
+      const tokens = o.q.trim().split(/\s+/).map((t) => t.replace(/[+\-<>()~*"@]/g, '')).filter((t) => t.length >= 3);
+      if (tokens.length) {
+        where.push('product_id IN (SELECT product_id FROM sh_product_search WHERE MATCH(title) AGAINST (? IN BOOLEAN MODE))');
+        params.push(tokens.map((t) => `+${t}*`).join(' '));
+      } else {
+        where.push('product_title LIKE ?'); params.push('%' + o.q + '%');
+      }
+    }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       `SELECT product_id, raw, fetched_at FROM sh_product ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
@@ -988,6 +1024,7 @@ export class ShMysql implements OnModuleInit {
       const ph = new Array(batch.length).fill('(?,?,?,?,?)').join(',');
       await this.pool!.query(head + ph + tail, batch.flat());
     }
+    await this.syncProductSearch(tuples.map((t) => [t[0] as string, t[3] as string] as const));
     return tuples.length;
   }
 
@@ -1039,12 +1076,26 @@ export class ShMysql implements OnModuleInit {
       const [res] = await this.pool!.query(head + ph, batch.flat());
       inserted += (res as any).affectedRows || 0;
     }
+    await this.syncProductSearch(tuples.map((t) => [t[0] as string, t[3] as string] as const));
     return inserted;
   }
 
   async setShopCatalog(shopId: string, status: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query('UPDATE sh_shop SET catalog_synced_at = ?, catalog_status = ? WHERE shop_id = ?', [Date.now(), status, shopId]);
+  }
+
+  // Shop yêu thích (tim đỏ theo dõi riêng).
+  async listFavShops(): Promise<string[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT shop_id FROM sh_fav_shop ORDER BY created_at DESC');
+    return (rows as any[]).map((r) => String(r.shop_id));
+  }
+
+  async setFavShop(shopId: string, fav: boolean): Promise<void> {
+    await this.ensureReady();
+    if (fav) await this.pool!.query('INSERT IGNORE INTO sh_fav_shop (shop_id, created_at) VALUES (?, ?)', [String(shopId).slice(0, 32), Date.now()]);
+    else await this.pool!.query('DELETE FROM sh_fav_shop WHERE shop_id = ?', [shopId]);
   }
 
   async countProductsByShop(shopId: string): Promise<number> {

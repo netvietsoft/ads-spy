@@ -435,6 +435,8 @@ export class ShService {
   localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }) { return this.mysql.queryLocalProducts(o); }
   localSuggest(type: 'shops' | 'products', q: string) { return this.mysql.localSuggest(type, q); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
+  favShops() { return this.mysql.listFavShops(); }
+  setFavShop(shopId: string, fav: boolean) { return this.mysql.setFavShop(shopId, fav); }
   report(o: { country?: string; category?: string }) { return this.mysql.reportAggregate(o); }
 
   // --- Kho doanh thu theo ngày (tích luỹ dài hạn) ---
