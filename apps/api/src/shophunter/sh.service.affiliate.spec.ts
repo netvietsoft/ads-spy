@@ -19,22 +19,24 @@ function makeSvc() {
 describe('ShService.affiliateSyncStep', () => {
   afterEach(() => checkMock.mockReset());
 
-  it("3 shop (yes/no/blocked) → {shops:3, yes:1, blocked:1}; lưu đúng status + link", async () => {
+  it("4 shop (yes/app/no/blocked) → {shops:4, yes:1, app:1, blocked:1}; lưu đúng status + link", async () => {
     const { svc, mysql } = makeSvc();
     mysql.getShopsNeedingAffiliate.mockResolvedValue([
-      { shopId: 's1', url: 'a.test' }, { shopId: 's2', url: 'b.test' }, { shopId: 's3', url: 'c.test' },
+      { shopId: 's1', url: 'a.test' }, { shopId: 's2', url: 'b.test' }, { shopId: 's3', url: 'c.test' }, { shopId: 's4', url: 'd.test' },
     ]);
     checkMock
       .mockResolvedValueOnce({ status: 'yes', link: 'https://a.test/pages/affiliate', via: 'probe' })
+      .mockResolvedValueOnce({ status: 'app', link: null, via: 'UpPromote' })
       .mockResolvedValueOnce({ status: 'no', link: null, via: null })
       .mockResolvedValueOnce({ status: 'blocked', link: null, via: null });
 
     const r = await svc.affiliateSyncStep({ daily: 10 });
 
-    expect(r).toEqual({ shops: 3, yes: 1, blocked: 1 });
+    expect(r).toEqual({ shops: 4, yes: 1, app: 1, blocked: 1 });
     expect(mysql.setShopAffiliate).toHaveBeenCalledWith('s1', 'yes', 'https://a.test/pages/affiliate');
-    expect(mysql.setShopAffiliate).toHaveBeenCalledWith('s2', 'no', null);
-    expect(mysql.setShopAffiliate).toHaveBeenCalledWith('s3', 'blocked', null);
+    expect(mysql.setShopAffiliate).toHaveBeenCalledWith('s2', 'app', null);
+    expect(mysql.setShopAffiliate).toHaveBeenCalledWith('s3', 'no', null);
+    expect(mysql.setShopAffiliate).toHaveBeenCalledWith('s4', 'blocked', null);
   });
 
   it('1 shop lỗi DB → warn + tiếp shop kế, không vỡ batch', async () => {

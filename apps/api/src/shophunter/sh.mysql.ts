@@ -21,7 +21,7 @@ export const SHOP_LOCAL_SORTS: Record<string, string> = {
   sku: numExpr('$.sku_count'),
   harvested_at: 'harvested_at',
   fetched_at: 'fetched_at',
-  aff: "(affiliate_status = 'yes')", // sort cột Aff: desc = shop có affiliate lên đầu
+  aff: "((affiliate_status='yes')*2 + (affiliate_status='app'))", // sort Aff: yes(link) > app(cài) > no
 };
 export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   revenue_day: numExpr('$.day_current_period_revenue'),
@@ -779,7 +779,7 @@ export class ShMysql implements OnModuleInit {
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
     if (o.q) { where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)"); params.push('%' + o.q + '%', '%' + o.q + '%'); } // khớp cả tên lẫn domain
-    if (o.aff) { where.push("affiliate_status = 'yes'"); } // chỉ shop có affiliate
+    if (o.aff) { where.push("affiliate_status IN ('yes','app')"); } // shop có affiliate (link công khai hoặc app đã cài)
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):

@@ -200,7 +200,12 @@ export function LocalDbPanel() {
                 <tr key={s.shop_id} onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{favIds.has(String(s.shop_id)) && <span style={{ color: '#e0384f', marginRight: 4 }} title="Shop yêu thích">♥</span>}{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url ? <a href={`https://${String(s.url).replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer" title="Mở shop" onClick={(e) => e.stopPropagation()}>{s.url}</a> : ''}</div></td>
-                  <td>{s._affiliate === 'yes' && s._affiliate_link ? <a href={s._affiliate_link} target="_blank" rel="noreferrer" title={`Trang affiliate: ${s._affiliate_link}`} onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-2)', fontWeight: 700 }}>✓</a> : (s._affiliate === 'no' ? <span style={{ opacity: 0.35 }}>—</span> : '')}</td>
+                  <td>{s._affiliate === 'yes' && s._affiliate_link
+                    ? <a href={s._affiliate_link} target="_blank" rel="noreferrer" title={`Trang affiliate: ${s._affiliate_link}`} onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-2)', fontWeight: 700 }}>✓</a>
+                    : s._affiliate === 'app' ? <span title="Có cài app affiliate nhưng không tìm thấy link công khai" style={{ color: '#e0a800', fontSize: 11, fontWeight: 700 }}>app</span>
+                    : s._affiliate === 'no' ? <span style={{ opacity: 0.35 }}>—</span>
+                    : s._affiliate === 'blocked' ? <span style={{ opacity: 0.35 }} title="Shop chặn/không truy cập được">⃠</span>
+                    : ''}</td>
                   <td className="wrap" style={{ maxWidth: '22ch', fontSize: 12, opacity: 0.85 }}>{s._up_category_path || (s._up_category ? (catNames[s._up_category] || s._up_category) : '—')}</td>
                   <td>{money(s.day_current_period_revenue)}</td>
                   <td>{money(s.week_current_period_revenue)}</td>

@@ -494,16 +494,17 @@ export class ShService {
   }
 
   // Quét tín hiệu affiliate (yes/no/blocked + link) — copy khung catalogSyncStep: rotation, cách ly lỗi per-shop.
-  async affiliateSyncStep(opts: { daily?: number }): Promise<{ shops: number; yes: number; blocked: number }> {
+  async affiliateSyncStep(opts: { daily?: number }): Promise<{ shops: number; yes: number; app: number; blocked: number }> {
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 500);
     const staleMs = (Number(process.env.SH_AFFILIATE_STALE_HOURS) || 720) * 3600000; // 30 ngày — affiliate ít đổi
     const list = await this.mysql.getShopsNeedingAffiliate(quota, staleMs);
-    let shops = 0, yes = 0, blocked = 0;
+    let shops = 0, yes = 0, app = 0, blocked = 0;
     for (const { shopId, url } of list) {
       try {
         const r = await checkShopAffiliate(url);
         await this.mysql.setShopAffiliate(shopId, r.status, r.link);
         if (r.status === 'yes') { yes++; this.logger.log(`shop ${shopId}: affiliate ${r.via} → ${r.link}`); }
+        else if (r.status === 'app') { app++; this.logger.log(`shop ${shopId}: affiliate app ${r.via} (không có link công khai)`); }
         else if (r.status === 'blocked') { blocked++; this.logger.log(`shop ${shopId}: affiliate blocked`); }
         else this.logger.log(`shop ${shopId}: affiliate không có`);
       } catch (e) {
@@ -512,7 +513,7 @@ export class ShService {
       shops++;
       await this.sleep(this.randDelayMs());
     }
-    return { shops, yes, blocked };
+    return { shops, yes, app, blocked };
   }
 
   private sleep(ms: number): Promise<void> {
