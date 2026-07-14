@@ -432,7 +432,7 @@ export class ShService {
     return this.auth.status();
   }
 
-  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean }) { return this.mysql.queryLocalShops(o); }
+  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean }) { return this.mysql.queryLocalShops(o); }
   localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }) { return this.mysql.queryLocalProducts(o); }
   localSuggest(type: 'shops' | 'products', q: string) { return this.mysql.localSuggest(type, q); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
@@ -502,6 +502,7 @@ export class ShService {
     for (const { shopId, url } of list) {
       try {
         const r = await checkShopAffiliate(url);
+        if (r.status === 'ratelimited') { this.logger.warn(`shop ${shopId}: 429 Shopify bóp IP — KHÔNG lưu, thử lại sau`); shops++; await this.sleep(this.randDelayMs() * 4); continue; }
         await this.mysql.setShopAffiliate(shopId, r.status, r.link);
         if (r.status === 'yes') { yes++; this.logger.log(`shop ${shopId}: affiliate ${r.via} → ${r.link}`); }
         else if (r.status === 'app') { app++; this.logger.log(`shop ${shopId}: affiliate app ${r.via} (không có link công khai)`); }

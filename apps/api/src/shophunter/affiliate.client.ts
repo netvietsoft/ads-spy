@@ -5,8 +5,9 @@ import { shopifyHttp } from './shopify.client';
 
 export interface AffiliateHit { link: string; via: string }
 // 'yes' = có link cổng công khai bấm vào được; 'app' = phát hiện app affiliate đã cài nhưng KHÔNG lần ra link công khai
-// (merchant không đặt link trên trang chủ); 'no' = không dấu hiệu; 'blocked' = shop chặn/không truy cập được.
-export interface AffiliateResult { status: 'yes' | 'app' | 'no' | 'blocked'; link: string | null; via: string | null }
+// (merchant không đặt link trên trang chủ); 'no' = không dấu hiệu; 'blocked' = shop chặn/chết (401/403/404/password);
+// 'ratelimited' = Shopify bóp IP (429) → KHÔNG kết luận được, phải THỬ LẠI sau (đừng lưu 'blocked' oan).
+export interface AffiliateResult { status: 'yes' | 'app' | 'no' | 'blocked' | 'ratelimited'; link: string | null; via: string | null }
 
 // App affiliate đã cài (marker trong HTML/script trang chủ) — tín hiệu CÓ chương trình, dù không tìm ra link.
 const APP_INSTALLED: { sign: RegExp; via: string }[] = [
@@ -91,7 +92,8 @@ export async function checkShopAffiliate(
   } catch {
     return { status: 'blocked', link: null, via: null };
   }
-  if ([401, 403, 404, 429].includes(home.status)) return { status: 'blocked', link: null, via: null };
+  if (home.status === 429) return { status: 'ratelimited', link: null, via: null }; // Shopify bóp IP → thử lại sau, đừng kết luận
+  if ([401, 403, 404].includes(home.status)) return { status: 'blocked', link: null, via: null };
 
   const hits = findAffiliateHits(home.body, domain);
   // 1) Link cổng host ngoài (via != 'link') → cổng công khai chắc chắn, tin ngay.

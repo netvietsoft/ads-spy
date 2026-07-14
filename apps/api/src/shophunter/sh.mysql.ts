@@ -772,7 +772,7 @@ export class ShMysql implements OnModuleInit {
     );
   }
 
-  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean }): Promise<{ items: any[]; total: number }> {
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
@@ -780,6 +780,7 @@ export class ShMysql implements OnModuleInit {
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
     if (o.q) { where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)"); params.push('%' + o.q + '%', '%' + o.q + '%'); } // khớp cả tên lẫn domain
     if (o.aff) { where.push("affiliate_status IN ('yes','app')"); } // shop có affiliate (link công khai hoặc app đã cài)
+    if (o.fav) { where.push('shop_id IN (SELECT shop_id FROM sh_fav_shop)'); } // chỉ shop đã thả tim
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):

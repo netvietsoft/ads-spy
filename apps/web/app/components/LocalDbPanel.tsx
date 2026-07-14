@@ -57,6 +57,7 @@ export function LocalDbPanel() {
   const [err, setErr] = useState<string | null>(null);
   const [favIds, setFavIds] = useState<Set<string>>(new Set()); // shop yêu thích → tim đỏ trong list
   const [affOnly, setAffOnly] = useState(false); // chỉ hiện shop có affiliate
+  const [favOnly, setFavOnly] = useState(false); // chỉ hiện shop đã thả tim
 
   useEffect(() => { shFavShops().then((r) => setFavIds(new Set(r.ids))).catch(() => {}); }, []);
 
@@ -69,10 +70,10 @@ export function LocalDbPanel() {
   useEffect(() => {
     setLoading(true); setErr(null);
     const req = tab === 'shops'
-      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined })
+      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined })
       : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined });
     req.then((r) => setData(r)).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
-  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly]);
+  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly]);
 
   // Gợi ý tên (debounce 250ms, tối thiểu 2 ký tự).
   useEffect(() => {
@@ -183,6 +184,12 @@ export function LocalDbPanel() {
           <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
             <input type="checkbox" checked={affOnly} onChange={(e) => { setAffOnly(e.target.checked); setPage(1); }} />
             Có affiliate
+          </label>
+        )}
+        {tab === 'shops' && (
+          <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <input type="checkbox" checked={favOnly} onChange={(e) => { setFavOnly(e.target.checked); setPage(1); }} />
+            <span style={{ color: '#e0384f' }}>♥</span> Yêu thích
           </label>
         )}
         {loading && <span>Đang tải…</span>}

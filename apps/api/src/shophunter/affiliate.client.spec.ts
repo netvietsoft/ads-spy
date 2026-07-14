@@ -84,4 +84,8 @@ describe('checkShopAffiliate (flow, mock http)', () => {
     getMock.mockRejectedValueOnce(new Error('timeout'));
     expect((await checkShopAffiliate('b.test', FAST)).status).toBe('blocked');
   });
+  it('trang chủ 429 (Shopify bóp IP) → ratelimited (KHÔNG phải blocked)', async () => {
+    getMock.mockResolvedValueOnce({ status: 429, body: '<html>rate limited</html>' });
+    expect((await checkShopAffiliate('c.test', FAST)).status).toBe('ratelimited');
+  });
 });
