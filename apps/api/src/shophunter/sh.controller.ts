@@ -278,8 +278,8 @@ export class ShController {
   @Get('sh/local/export')
   async exportLocal(@Res() res: Response, @Query('type') type: string, @Query('sort') sort: string, @Query('dir') dir: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('shop') shop: string) {
     const isProd = type === 'products';
-    const p = localParams(sort, dir, '1', '50000'); // lấy tối đa 50k dòng đã lọc
-    const opt = { sort: p.sort, dir: p.dir, offset: 0, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined };
+    // KHÔNG dùng localParams (nó kẹp pageSize về {50..200}) → export TOÀN BỘ đã lọc, cap 50k dòng.
+    const opt = { sort: sort || 'revenue_month', dir: (dir === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc', offset: 0, limit: 50000, country: country || undefined, category: category || undefined, q: q || undefined };
     const rows = isProd
       ? (await this.svc.localProducts({ ...opt, shop: shop || undefined })).items
       : (await this.svc.localShops({ ...opt, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true' })).items;
