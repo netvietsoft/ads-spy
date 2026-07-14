@@ -64,7 +64,7 @@ export function ShBarChart({ points }: { points: Pt[] }) {
   const yRev = (v: number) => padT + chartH - (v / revMax) * chartH;
   const yOrd = (v: number) => padT + chartH - (v / ordMax) * chartH;
   const baseY = padT + chartH;
-  const showVals = rows.length <= 20;
+  const showVals = rows.length <= 45; // hiện số ở đầu mút cho cả chế độ Ngày (~30 điểm), Tuần, Tháng…
   const step = Math.max(1, Math.ceil(N / Math.max(1, Math.floor(W / 46))));
   const revLine = rows.map((r, i) => `${cx(i)},${yRev(r.rev)}`).join(' ');
   const ordLine = rows.map((r, i) => `${cx(i)},${yOrd(r.ord)}`).join(' ');
@@ -126,6 +126,8 @@ export function ShBarChart({ points }: { points: Pt[] }) {
                 <polyline points={revLine} fill="none" stroke={REV} strokeWidth={2} />
                 <polyline points={ordLine} fill="none" stroke={ORD} strokeWidth={2} />
                 {rows.map((r, i) => (<g key={i}><circle cx={cx(i)} cy={yRev(r.rev)} r={2.5} fill={REV}><title>{r.label} · {money(r.rev)}</title></circle><circle cx={cx(i)} cy={yOrd(r.ord)} r={2.5} fill={ORD}><title>{r.label} · {r.ord} đơn</title></circle></g>))}
+                {showVals && rows.map((r, i) => (r.rev > 0 ? <text key={'lr' + i} x={cx(i)} y={yRev(r.rev) - 4} fontSize={8} fill={REV} textAnchor="middle">{short(r.rev)}</text> : null))}
+                {showVals && rows.map((r, i) => (r.ord > 0 ? <text key={'lo' + i} x={cx(i)} y={yOrd(r.ord) + 9} fontSize={8} fill={ORD} textAnchor="middle">{short(r.ord)}</text> : null))}
               </>
             )}
             {rows.map((r, i) => (i % step === 0 ? <text key={'t' + i} x={cx(i)} y={H - 10} fontSize={9} fill="currentColor" opacity={0.7} textAnchor="middle">{r.label}</text> : null))}
