@@ -225,6 +225,12 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'catalog_status', 'catalog_status VARCHAR(16)');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_catalog_sync', 'catalog_synced_at');
 
+    // Affiliate check: tín hiệu (yes/no/blocked) + link trang affiliate của shop.
+    await this.ensureColumn(pool, 'sh_shop', 'affiliate_checked_at', 'affiliate_checked_at BIGINT');
+    await this.ensureColumn(pool, 'sh_shop', 'affiliate_status', 'affiliate_status VARCHAR(16)');
+    await this.ensureColumn(pool, 'sh_shop', 'affiliate_link', 'affiliate_link VARCHAR(512)');
+    await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_aff_check', 'affiliate_checked_at');
+
     // Bảng tìm kiếm tên sản phẩm: FULLTEXT trên bảng phụ NHỎ (không rebuild sh_product lớn).
     // LIKE '%q%' + sort JSON trên 400k dòng mất nhiều phút → MATCH...AGAINST vài chục ms.
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_search (
@@ -765,23 +771,24 @@ export class ShMysql implements OnModuleInit {
     );
   }
 
-  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string }): Promise<{ items: any[]; total: number }> {
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
     if (o.q) { where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)"); params.push('%' + o.q + '%', '%' + o.q + '%'); } // khớp cả tên lẫn domain
+    if (o.aff) { where.push("affiliate_status = 'yes'"); } // chỉ shop có affiliate
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
       // nếu để detail_raw trong SELECT, filesort (sort theo doanh thu/JSON) kéo cả blob vào bộ đệm sort → 27s.
       // detail_fetched_at luôn set cùng detail_raw (xem upsertShop) → tương đương, mà sort chỉ còn ~250ms.
-      `SELECT shop_id, raw, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      `SELECT shop_id, raw, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path, affiliate_status, affiliate_link FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, o.limit, o.offset],
     );
     const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_shop ${whereSql}`, params);
-    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at), _up_category: r.up_category ?? null, _up_category_path: r.up_category_path ?? null })); // eslint-disable-line
+    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at), _up_category: r.up_category ?? null, _up_category_path: r.up_category_path ?? null, _affiliate: r.affiliate_status ?? null, _affiliate_link: r.affiliate_link ?? null })); // eslint-disable-line
     return { items, total: Number((cnt as any[])[0].n) || 0 };
   }
 
@@ -1090,6 +1097,26 @@ export class ShMysql implements OnModuleInit {
   async setShopCatalog(shopId: string, status: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query('UPDATE sh_shop SET catalog_synced_at = ?, catalog_status = ? WHERE shop_id = ?', [Date.now(), status, shopId]);
+  }
+
+  // Shop cần check affiliate — rotation NULL trước rồi cũ nhất; bỏ 'blocked' chưa quá hạn (copy pattern catalog).
+  async getShopsNeedingAffiliate(limit: number, staleMs: number): Promise<{ shopId: string; url: string }[]> {
+    await this.ensureReady();
+    const cutoff = Date.now() - staleMs;
+    const [rows] = await this.pool!.query(
+      `SELECT shop_id, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) AS url FROM sh_shop
+        WHERE JSON_EXTRACT(raw, '$.url') IS NOT NULL
+          AND (affiliate_checked_at IS NULL OR affiliate_checked_at < ?)
+          AND (affiliate_status IS NULL OR affiliate_status != 'blocked' OR affiliate_checked_at < ?)
+        ORDER BY affiliate_checked_at ASC LIMIT ?`,
+      [cutoff, cutoff, limit],
+    );
+    return (rows as any[]).map((r) => ({ shopId: r.shop_id, url: r.url }));
+  }
+
+  async setShopAffiliate(shopId: string, status: string, link: string | null): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_shop SET affiliate_checked_at = ?, affiliate_status = ?, affiliate_link = ? WHERE shop_id = ?', [Date.now(), status, link == null ? null : String(link).slice(0, 512), shopId]);
   }
 
   // Shop yêu thích (tim đỏ theo dõi riêng).

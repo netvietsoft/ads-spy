@@ -23,6 +23,7 @@ function Upd({ ms }: { ms: number | null | undefined }) {
 const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_logo', label: '' },
   { key: '_name', label: 'Shop' },
+  { key: '_aff', label: 'Aff' },
   { key: '_category', label: 'Danh mục' },
   { key: 'revenue_day', label: 'Hôm qua', sortable: true },
   { key: 'revenue_week', label: 'DT Tuần', sortable: true },
@@ -55,6 +56,7 @@ export function LocalDbPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [favIds, setFavIds] = useState<Set<string>>(new Set()); // shop yêu thích → tim đỏ trong list
+  const [affOnly, setAffOnly] = useState(false); // chỉ hiện shop có affiliate
 
   useEffect(() => { shFavShops().then((r) => setFavIds(new Set(r.ids))).catch(() => {}); }, []);
 
@@ -67,10 +69,10 @@ export function LocalDbPanel() {
   useEffect(() => {
     setLoading(true); setErr(null);
     const req = tab === 'shops'
-      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined })
+      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined })
       : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined });
     req.then((r) => setData(r)).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
-  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter]);
+  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly]);
 
   // Gợi ý tên (debounce 250ms, tối thiểu 2 ký tự).
   useEffect(() => {
@@ -177,6 +179,12 @@ export function LocalDbPanel() {
             </div>
           )}
         </div>
+        {tab === 'shops' && (
+          <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <input type="checkbox" checked={affOnly} onChange={(e) => { setAffOnly(e.target.checked); setPage(1); }} />
+            Có affiliate
+          </label>
+        )}
         {loading && <span>Đang tải…</span>}
       </div>
       {err && <div className="err">{err}</div>}
@@ -192,6 +200,7 @@ export function LocalDbPanel() {
                 <tr key={s.shop_id} onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{favIds.has(String(s.shop_id)) && <span style={{ color: '#e0384f', marginRight: 4 }} title="Shop yêu thích">♥</span>}{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url ? <a href={`https://${String(s.url).replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer" title="Mở shop" onClick={(e) => e.stopPropagation()}>{s.url}</a> : ''}</div></td>
+                  <td>{s._affiliate === 'yes' && s._affiliate_link ? <a href={s._affiliate_link} target="_blank" rel="noreferrer" title={`Trang affiliate: ${s._affiliate_link}`} onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-2)', fontWeight: 700 }}>✓</a> : (s._affiliate === 'no' ? <span style={{ opacity: 0.35 }}>—</span> : '')}</td>
                   <td className="wrap" style={{ maxWidth: '22ch', fontSize: 12, opacity: 0.85 }}>{s._up_category_path || (s._up_category ? (catNames[s._up_category] || s._up_category) : '—')}</td>
                   <td>{money(s.day_current_period_revenue)}</td>
                   <td>{money(s.week_current_period_revenue)}</td>

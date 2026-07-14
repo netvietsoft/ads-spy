@@ -107,7 +107,7 @@ export class ShHarvestService {
   listDeepSlices(type: 'shops' | 'products') { return this.mysql.listDeepSlices(type); }
   resetDeepSlices() { return this.mysql.resetDeepSlices(); }
 
-  async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary | SnapshotSummary | CatalogSyncSummary> {
+  async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary | SnapshotSummary | CatalogSyncSummary | { shops: number; yes: number; blocked: number }> {
     const mode = process.env.SH_HARVEST_MODE || 'slices';
     if (mode === 'slices') return this.runHarvestSlices(opts);
     if (mode === 'deep') return this.runHarvestDeep(process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops', opts);
@@ -115,6 +115,7 @@ export class ShHarvestService {
     if (mode === 'revsync') return this.runRevenueSync(opts);
     if (mode === 'snapshot') return this.runSnapshotImport();
     if (mode === 'catalog') return this.svc.catalogSyncStep(opts);
+    if (mode === 'affiliate') return this.svc.affiliateSyncStep(opts);
     return this.runHarvestFlat(opts);
   }
 

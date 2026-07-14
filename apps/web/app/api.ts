@@ -459,7 +459,7 @@ export async function shSetFavShop(shopId: string, fav: boolean): Promise<{ ok: 
 }
 
 export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
-export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string } = {}): Promise<ShLocalResult> {
+export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; aff?: boolean } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
@@ -468,6 +468,7 @@ export async function shLocalShops(p: { sort?: string; dir?: string; page?: numb
   if (p.country) qs.set('country', p.country);
   if (p.category) qs.set('category', p.category);
   if (p.q) qs.set('q', p.q);
+  if (p.aff) qs.set('aff', '1');
   return jsonOrThrow(await fetch(`${API}/api/sh/local/shops?${qs.toString()}`));
 }
 export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; shop?: string } = {}): Promise<ShLocalResult> {

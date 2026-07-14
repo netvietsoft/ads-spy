@@ -9,6 +9,7 @@ import { shQueryHash } from './sh.hash';
 import { isGlobalBlock, randInt } from './sh.harvest.util';
 import { loadCatTree, resolveCategoryByNames, categoryPathFromIds } from './sh.categories';
 import { fetchShopifyCatalog } from './shopify.client';
+import { checkShopAffiliate } from './affiliate.client';
 
 // Map header TSV (file scraper mới) → field import. Bền với ký tự Δ / (Weekly)/(Monthly).
 function tsvHeaderToField(h: string): string | null {
@@ -431,7 +432,7 @@ export class ShService {
     return this.auth.status();
   }
 
-  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string }) { return this.mysql.queryLocalShops(o); }
+  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean }) { return this.mysql.queryLocalShops(o); }
   localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }) { return this.mysql.queryLocalProducts(o); }
   localSuggest(type: 'shops' | 'products', q: string) { return this.mysql.localSuggest(type, q); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
@@ -490,6 +491,28 @@ export class ShService {
       await this.sleep(this.randDelayMs());
     }
     return { shops, newProducts, blocked };
+  }
+
+  // Quét tín hiệu affiliate (yes/no/blocked + link) — copy khung catalogSyncStep: rotation, cách ly lỗi per-shop.
+  async affiliateSyncStep(opts: { daily?: number }): Promise<{ shops: number; yes: number; blocked: number }> {
+    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 500);
+    const staleMs = (Number(process.env.SH_AFFILIATE_STALE_HOURS) || 720) * 3600000; // 30 ngày — affiliate ít đổi
+    const list = await this.mysql.getShopsNeedingAffiliate(quota, staleMs);
+    let shops = 0, yes = 0, blocked = 0;
+    for (const { shopId, url } of list) {
+      try {
+        const r = await checkShopAffiliate(url);
+        await this.mysql.setShopAffiliate(shopId, r.status, r.link);
+        if (r.status === 'yes') { yes++; this.logger.log(`shop ${shopId}: affiliate ${r.via} → ${r.link}`); }
+        else if (r.status === 'blocked') { blocked++; this.logger.log(`shop ${shopId}: affiliate blocked`); }
+        else this.logger.log(`shop ${shopId}: affiliate không có`);
+      } catch (e) {
+        this.logger.warn(`shop ${shopId}: lỗi affiliate check (${(e as Error).message}) — bỏ qua, sang shop kế.`);
+      }
+      shops++;
+      await this.sleep(this.randDelayMs());
+    }
+    return { shops, yes, blocked };
   }
 
   private sleep(ms: number): Promise<void> {
