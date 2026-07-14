@@ -497,6 +497,13 @@ export async function shReport(p: { country?: string; category?: string } = {}):
   if (p.category) qs.set('category', p.category);
   return jsonOrThrow(await fetch(`${API}/api/sh/report?${qs.toString()}`));
 }
+export interface ShReportTops { shops: { byRevenue: any[]; byGrowth: any[]; bySteady: any[] }; products: { byRevenue: any[]; bySteady: any[] } }
+export async function shReportTops(p: { country?: string; category?: string } = {}): Promise<ShReportTops> {
+  const qs = new URLSearchParams();
+  if (p.country) qs.set('country', p.country);
+  if (p.category) qs.set('category', p.category);
+  return jsonOrThrow(await fetch(`${API}/api/sh/report/tops?${qs.toString()}`));
+}
 export async function shShopRevenueDaily(shopId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/revenue-daily`));
 }

@@ -22,6 +22,8 @@ export const SHOP_LOCAL_SORTS: Record<string, string> = {
   harvested_at: 'harvested_at',
   fetched_at: 'fetched_at',
   aff: "((affiliate_status='yes')*2 + (affiliate_status='app'))", // sort Aff: yes(link) > app(cài) > no
+  // "Tăng trưởng đều" = sàn tăng trưởng thấp nhất trong 3 kỳ (ngày/tuần/tháng) — cao = tăng ổn định mọi mốc, không phải spike 1 kỳ.
+  growth_steady: `LEAST(${numExpr('$.day_revenue_percent_change')}, ${numExpr('$.week_revenue_percent_change')}, ${numExpr('$.month_revenue_percent_change')})`,
 };
 export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   revenue_day: numExpr('$.day_current_period_revenue'),
@@ -29,6 +31,8 @@ export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   revenue_month: numExpr('$.month_current_period_revenue'),
   price: numExpr('$.price'),
   fetched_at: 'fetched_at',
+  // "Doanh số đều" = doanh thu/ngày thấp nhất quy đổi từ 3 kỳ — cao = bán đều mỗi ngày, không phải bán dồn 1 đợt.
+  revenue_steady: `LEAST(${numExpr('$.day_current_period_revenue')}, ${numExpr('$.week_current_period_revenue')}/7, ${numExpr('$.month_current_period_revenue')}/30)`,
 };
 export function buildOrderBy(sort: string, dir: string, map: Record<string, string>, def: string): string {
   const expr = Object.prototype.hasOwnProperty.call(map, sort) ? map[sort] : map[def];
@@ -901,6 +905,22 @@ export class ShMysql implements OnModuleInit {
       day: { rev: n(row.dayRev), sales: n(row.daySales) },
       week: { rev: n(row.weekRev), sales: n(row.weekSales) },
       month: { rev: n(row.monthRev), sales: n(row.monthSales) },
+    };
+  }
+
+  // Top shop/sản phẩm cho báo cáo ngành: doanh số, tăng trưởng, tăng trưởng đều (shop); doanh số, doanh số đều (sp).
+  // Tái dùng queryLocalShops/Products (đã có sort + lọc nước/danh mục). Chạy TUẦN TỰ để không dồn tải DB (query JSON-sort nặng).
+  async reportTops(o: { country?: string; category?: string }): Promise<any> {
+    const lim = 10;
+    const base = { dir: 'desc' as const, offset: 0, limit: lim, country: o.country, category: o.category };
+    const shopRev = await this.queryLocalShops({ ...base, sort: 'revenue_month' });
+    const shopGrowth = await this.queryLocalShops({ ...base, sort: 'growth_month' });
+    const shopSteady = await this.queryLocalShops({ ...base, sort: 'growth_steady' });
+    const prodRev = await this.queryLocalProducts({ ...base, sort: 'revenue_month' });
+    const prodSteady = await this.queryLocalProducts({ ...base, sort: 'revenue_steady' });
+    return {
+      shops: { byRevenue: shopRev.items, byGrowth: shopGrowth.items, bySteady: shopSteady.items },
+      products: { byRevenue: prodRev.items, bySteady: prodSteady.items },
     };
   }
 

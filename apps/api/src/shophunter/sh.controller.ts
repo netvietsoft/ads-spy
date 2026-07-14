@@ -284,6 +284,11 @@ export class ShController {
     return this.svc.report({ country: country || undefined, category: category || undefined });
   }
 
+  @Get('sh/report/tops')
+  reportTops(@Query('country') country: string, @Query('category') category: string) {
+    return this.svc.reportTops({ country: country || undefined, category: category || undefined });
+  }
+
   @Get('sh/local/filters')
   localFilters(@Query('type') type: string) {
     return this.svc.localFilters(type === 'products' ? 'products' : 'shops');

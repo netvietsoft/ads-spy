@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { shReport, shLocalFilters, ShReport } from '../api';
+import { shReport, shReportTops, shLocalFilters, ShReport, ShReportTops } from '../api';
 import { CategoryPicker } from './CategoryPicker';
 
 const money = (n: number) => '$' + Math.round(n).toLocaleString();
 const num = (n: number) => Number(n || 0).toLocaleString();
+const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 
 function Card({ label, rev, sales }: { label: string; rev: number; sales: number }) {
   return (
@@ -17,12 +18,56 @@ function Card({ label, rev, sales }: { label: string; rev: number; sales: number
   );
 }
 
+// Bảng top shop: tên (link chi tiết) + doanh thu tháng + tăng trưởng tháng.
+function ShopTop({ title, rows, metric }: { title: string; rows: any[]; metric: 'rev' | 'growth' | 'steady' }) {
+  return (
+    <div style={{ flex: '1 1 320px', minWidth: 300 }}>
+      <h4 style={{ margin: '4px 0 6px' }}>{title}</h4>
+      <table className="localtbl"><thead><tr><th style={{ width: 28 }}>#</th><th>Shop</th><th>DT Tháng</th><th>TT Tháng</th></tr></thead>
+        <tbody>
+          {rows.length === 0 ? <tr><td colSpan={4} className="hint">—</td></tr> : rows.map((s, i) => (
+            <tr key={s.shop_id} onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer' }}>
+              <td style={{ opacity: 0.6 }}>{i + 1}</td>
+              <td className="wrap" style={{ maxWidth: '24ch' }}>{s.shop_title || s.url}<div style={{ opacity: 0.55, fontSize: 11 }}>{s.url}</div></td>
+              <td>{money(s.month_current_period_revenue)}</td>
+              <td className={(s.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.month_revenue_percent_change)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Bảng top sản phẩm: tên (link) + shop + doanh thu tháng + doanh thu ngày.
+function ProductTop({ title, rows }: { title: string; rows: any[] }) {
+  return (
+    <div style={{ flex: '1 1 320px', minWidth: 300 }}>
+      <h4 style={{ margin: '4px 0 6px' }}>{title}</h4>
+      <table className="localtbl"><thead><tr><th style={{ width: 28 }}>#</th><th>Sản phẩm</th><th>DT Tháng</th><th>DT Ngày</th></tr></thead>
+        <tbody>
+          {rows.length === 0 ? <tr><td colSpan={4} className="hint">—</td></tr> : rows.map((p, i) => (
+            <tr key={p.product_id} onClick={() => p.shop_id && window.open(`/product/${p.shop_id}/${p.product_id}`, '_blank')} style={{ cursor: p.shop_id ? 'pointer' : 'default' }}>
+              <td style={{ opacity: 0.6 }}>{i + 1}</td>
+              <td className="wrap" style={{ maxWidth: '24ch' }}>{p.product_title}<div style={{ opacity: 0.55, fontSize: 11 }}>{p.shop_url || ''}</div></td>
+              <td>{money(p.month_current_period_revenue)}</td>
+              <td>{money(p.day_current_period_revenue)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function ReportPanel() {
   const [country, setCountry] = useState('');
   const [countries, setCountries] = useState<string[]>([]);
   const [cat, setCat] = useState<{ id: string | null; path: string | null }>({ id: null, path: null });
   const [data, setData] = useState<ShReport | null>(null);
+  const [tops, setTops] = useState<ShReportTops | null>(null);
   const [loading, setLoading] = useState(false);
+  const [topsLoading, setTopsLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => { shLocalFilters('shops').then((f) => setCountries(f.countries)).catch(() => {}); }, []);
@@ -30,6 +75,10 @@ export function ReportPanel() {
     setLoading(true); setErr(null);
     shReport({ country: country || undefined, category: cat.id || undefined })
       .then(setData).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
+    // Bảng top nặng hơn (quét doanh thu) → tải riêng, không chặn thẻ tổng.
+    setTopsLoading(true); setTops(null);
+    shReportTops({ country: country || undefined, category: cat.id || undefined })
+      .then(setTops).catch(() => setTops(null)).finally(() => setTopsLoading(false));
   }, [country, cat.id]);
 
   return (
@@ -43,7 +92,6 @@ export function ReportPanel() {
           </select>
         </label>
         <div>
-          <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 4 }}>Danh mục (tới cấp con nhất):</div>
           <CategoryPicker onChange={(id, path) => setCat({ id, path })} />
         </div>
       </div>
@@ -58,6 +106,23 @@ export function ReportPanel() {
           <Card label="Doanh thu Tuần" rev={data.week.rev} sales={data.week.sales} />
           <Card label="Doanh thu Tháng" rev={data.month.rev} sales={data.month.sales} />
         </div>
+      )}
+
+      <h3 style={{ margin: '22px 0 4px' }}>Top shop trong ngành{cat.path ? ` · ${cat.path}` : ''}</h3>
+      {topsLoading && <div className="hint"><span className="spinner" /> Đang xếp hạng…</div>}
+      {tops && (
+        <>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 18 }}>
+            <ShopTop title="🏆 Doanh số cao nhất" rows={tops.shops.byRevenue} metric="rev" />
+            <ShopTop title="📈 Tăng trưởng mạnh nhất" rows={tops.shops.byGrowth} metric="growth" />
+            <ShopTop title="🎯 Tăng trưởng đều (mọi kỳ)" rows={tops.shops.bySteady} metric="steady" />
+          </div>
+          <h3 style={{ margin: '10px 0 4px' }}>Top sản phẩm trong ngành</h3>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            <ProductTop title="🏆 Doanh số cao nhất" rows={tops.products.byRevenue} />
+            <ProductTop title="🎯 Doanh số đều (bán mỗi ngày)" rows={tops.products.bySteady} />
+          </div>
+        </>
       )}
     </div>
   );
