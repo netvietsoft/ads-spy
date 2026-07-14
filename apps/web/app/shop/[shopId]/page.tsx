@@ -64,7 +64,7 @@ export default function ShopDetailPage() {
             <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={30} />
             <h2 className="detail-title">{s.shop_title || s.url || 'Shop'}</h2>
           </div>
-          <a className="dl" href={`https://${String(s.url || '').replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer">{s.url} ↗</a>
+          {s.url ? <a className="dl" href={`https://${String(s.url).replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer">{s.url} ↗</a> : null}
           {d!.upCategoryPath && <div style={{ margin: '6px 0', fontSize: 13 }}>🏷️ Danh mục: <b>{d!.upCategoryPath.replace(/ > /g, ' → ')}</b></div>}
 
           <div style={{ display: 'flex', gap: 16, margin: '12px 0 4px', flexWrap: 'wrap' }}>

@@ -188,7 +188,7 @@ export function LocalDbPanel() {
               {data.items.map((s) => (
                 <tr key={s.shop_id} onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
-                  <td className="wrap" style={{ maxWidth: '30ch' }}>{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url}</div></td>
+                  <td className="wrap" style={{ maxWidth: '30ch' }}>{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url ? <a href={`https://${String(s.url).replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer" title="Mở shop" onClick={(e) => e.stopPropagation()}>{s.url}</a> : ''}</div></td>
                   <td className="wrap" style={{ maxWidth: '22ch', fontSize: 12, opacity: 0.85 }}>{s._up_category_path || (s._up_category ? (catNames[s._up_category] || s._up_category) : '—')}</td>
                   <td>{money(s.day_current_period_revenue)}</td>
                   <td>{money(s.week_current_period_revenue)}</td>
