@@ -23,8 +23,9 @@ function periodKeyLabel(d: Date, gran: Gran): { key: string; label: string } {
 export function ShBarChart({ points }: { points: Pt[] }) {
   const dates = points.map((p) => p.date_str).filter(Boolean).sort();
   const maxDate = dates.length ? dates[dates.length - 1] : new Date().toISOString().slice(0, 10);
-  const defFrom = (() => { const d = new Date(maxDate + 'T00:00:00'); d.setMonth(d.getMonth() - 3); return d.toISOString().slice(0, 10); })();
-  const [gran, setGran] = useState<Gran>('week');
+  // Mặc định: xem theo NGÀY, khoảng 1 tháng gần nhất (dạng Cột — kind='bar' bên dưới).
+  const defFrom = (() => { const d = new Date(maxDate + 'T00:00:00'); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 10); })();
+  const [gran, setGran] = useState<Gran>('day');
   const [from, setFrom] = useState(defFrom);
   const [to, setTo] = useState(maxDate);
   const [kind, setKind] = useState<'bar' | 'line' | 'area'>('bar');
