@@ -21,6 +21,7 @@ export const SHOP_LOCAL_SORTS: Record<string, string> = {
   sku: numExpr('$.sku_count'),
   harvested_at: 'harvested_at',
   fetched_at: 'fetched_at',
+  aff: "(affiliate_status = 'yes')", // sort cột Aff: desc = shop có affiliate lên đầu
 };
 export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   revenue_day: numExpr('$.day_current_period_revenue'),

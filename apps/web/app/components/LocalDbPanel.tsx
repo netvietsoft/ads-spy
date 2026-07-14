@@ -23,7 +23,7 @@ function Upd({ ms }: { ms: number | null | undefined }) {
 const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_logo', label: '' },
   { key: '_name', label: 'Shop' },
-  { key: '_aff', label: 'Aff' },
+  { key: 'aff', label: 'Aff', sortable: true },
   { key: '_category', label: 'Danh mục' },
   { key: 'revenue_day', label: 'Hôm qua', sortable: true },
   { key: 'revenue_week', label: 'DT Tuần', sortable: true },
