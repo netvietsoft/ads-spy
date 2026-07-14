@@ -78,6 +78,7 @@ export class ShMysql implements OnModuleInit {
   private pool: mysql.Pool | null = null;
   // Cache dropdown Nước/Danh mục (query DISTINCT quét toàn bảng) → khỏi quét mỗi lần mở tab, đỡ đứng khi harvest chạy.
   private filtersCache = new Map<string, { v: { countries: string[]; categories: string[] }; t: number }>();
+  private filtersLoading = new Map<string, Promise<{ countries: string[]; categories: string[] }>>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -490,6 +491,25 @@ export class ShMysql implements OnModuleInit {
     return (rows as any[]).map((r) => ({ date_str: r.date_str, revenue: r.revenue, sale_count: r.sale_count }));
   }
 
+  // Bundle local cho shop detail khi ShopHunter lỗi (hết token/block): raw + detail_raw + revenue_chart đã lưu.
+  async getShopLocalDetail(shopId: string): Promise<{ raw: any; detailRaw: any; revenueChart: any[] } | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT raw, detail_raw, revenue_chart FROM sh_shop WHERE shop_id = ?', [shopId]);
+    const row = (rows as any[])[0];
+    if (!row) return null;
+    const parse = (s: any) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
+    return { raw: parse(row.raw), detailRaw: parse(row.detail_raw), revenueChart: parse(row.revenue_chart) || [] };
+  }
+
+  // Raw local cho product detail khi ShopHunter lỗi.
+  async getProductLocalRaw(productId: string): Promise<any | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT raw FROM sh_product WHERE product_id = ?', [productId]);
+    const row = (rows as any[])[0];
+    if (!row) return null;
+    try { return row.raw ? JSON.parse(row.raw) : null; } catch { return null; }
+  }
+
   // Bulk piggyback nhiều sp × 1 điểm/ngày trong 1 INSERT nhiều dòng (import snapshot: tránh N INSERT lẻ).
   async bulkAppendProductRevenueDaily(points: { productId: string; date_str: string; revenue: number | null; sale_count: number | null }[]): Promise<void> {
     await this.ensureReady();
@@ -771,26 +791,37 @@ export class ShMysql implements OnModuleInit {
 
   // Giá trị lọc có sẵn trong DB (nước cho cả 2; danh mục chỉ product — shop không có field category).
   async getLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
-    await this.ensureReady();
+    // Scan DISTINCT trên JSON của bảng lớn (~400k sp) rất đắt → TTL dài + dedup in-flight + stale-while-revalidate
+    // (trả bản cũ ngay, refresh chạy nền). Trước đây TTL 2 phút < thời gian scan khi DB bận → scan chồng scan.
+    const FILTERS_TTL_MS = 6 * 3600000;
     const cached = this.filtersCache.get(type);
-    if (cached && Date.now() - cached.t < 120000) return cached.v; // TTL 2 phút (dropdown đổi chậm)
-    const distinct = async (sql: string): Promise<string[]> => {
-      const [rows] = await this.pool!.query(sql);
-      return (rows as any[]).map((r) => r.v).filter((v) => v != null && v !== '').map(String);
-    };
-    const okCountry = (arr: string[]) => arr.filter((v) => /^[A-Za-z]{2,3}$/.test(v)); // bỏ data rác (vd HTML banner) khỏi dropdown Nước
-    let out: { countries: string[]; categories: string[] };
-    if (type === 'shops') {
-      const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) v FROM sh_shop ORDER BY v");
-      const categories = await distinct('SELECT DISTINCT up_category v FROM sh_shop WHERE up_category IS NOT NULL ORDER BY up_category'); // danh mục user gắn (ORDER BY cột trong SELECT — DISTINCT không cho order theo cột ngoài)
-      out = { countries: okCountry(countries), categories };
-    } else {
-      const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
-      const categories = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) v FROM sh_product ORDER BY v");
-      out = { countries: okCountry(countries), categories };
+    if (cached && Date.now() - cached.t < FILTERS_TTL_MS) return cached.v;
+    let load = this.filtersLoading.get(type);
+    if (!load) {
+      load = (async () => {
+        await this.ensureReady();
+        const distinct = async (sql: string): Promise<string[]> => {
+          const [rows] = await this.pool!.query(sql);
+          return (rows as any[]).map((r) => r.v).filter((v) => v != null && v !== '').map(String);
+        };
+        const okCountry = (arr: string[]) => arr.filter((v) => /^[A-Za-z]{2,3}$/.test(v)); // bỏ data rác (vd HTML banner) khỏi dropdown Nước
+        let out: { countries: string[]; categories: string[] };
+        if (type === 'shops') {
+          const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) v FROM sh_shop ORDER BY v");
+          const categories = await distinct('SELECT DISTINCT up_category v FROM sh_shop WHERE up_category IS NOT NULL ORDER BY up_category'); // danh mục user gắn (ORDER BY cột trong SELECT — DISTINCT không cho order theo cột ngoài)
+          out = { countries: okCountry(countries), categories };
+        } else {
+          const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
+          const categories = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) v FROM sh_product ORDER BY v");
+          out = { countries: okCountry(countries), categories };
+        }
+        this.filtersCache.set(type, { v: out, t: Date.now() });
+        return out;
+      })().finally(() => this.filtersLoading.delete(type));
+      this.filtersLoading.set(type, load);
     }
-    this.filtersCache.set(type, { v: out, t: Date.now() });
-    return out;
+    if (cached) { load.catch(() => { /* giữ bản cũ khi refresh lỗi */ }); return cached.v; }
+    return load;
   }
 
   // Báo cáo tổng hợp trên sh_shop: tổng doanh thu + số sản phẩm bán theo ngày/tuần/tháng, lọc theo nước + danh mục.

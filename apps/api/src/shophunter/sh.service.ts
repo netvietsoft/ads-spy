@@ -88,36 +88,65 @@ export class ShService {
     const productCount = await this.mysql.countProductsByShop(shopId); // số sản phẩm của shop trong DB (query tươi)
     const cached = await this.mysql.getDetail(key, TTL_MS);
     if (cached) return { ...cached, ...cat, productCount, cached: true };
-    const [detailR, revR, adsR, simR] = await Promise.all([
-      this.client.shopDetail(shopId), this.client.shopChartRevenue(shopId),
-      this.client.shopChartAds(shopId), this.client.shopsSimilar(shopId),
-    ]);
-    const out = {
-      detail: detailR?.item?.item ?? null,
-      revenueChart: Array.isArray(revR?.items) ? revR.items : [],
-      adsChart: adsR?.history ?? null,
-      similar: Array.isArray(simR?.items) ? simR.items : [],
-    };
-    await this.mysql.setDetail(key, out);
-    return { ...out, ...cat, productCount, cached: false };
+    try {
+      const [detailR, revR, adsR, simR] = await Promise.all([
+        this.client.shopDetail(shopId), this.client.shopChartRevenue(shopId),
+        this.client.shopChartAds(shopId), this.client.shopsSimilar(shopId),
+      ]);
+      const out = {
+        detail: detailR?.item?.item ?? null,
+        revenueChart: Array.isArray(revR?.items) ? revR.items : [],
+        adsChart: adsR?.history ?? null,
+        similar: Array.isArray(simR?.items) ? simR.items : [],
+      };
+      await this.mysql.setDetail(key, out);
+      return { ...out, ...cat, productCount, cached: false };
+    } catch (e) {
+      // ShopHunter lỗi (hết token 402/block) → dựng bundle từ DB local; KHÔNG setDetail (tránh cache bản thiếu).
+      const local = await this.mysql.getShopLocalDetail(shopId);
+      if (!local || (!local.detailRaw && !local.raw)) throw e;
+      // Merge: detail_raw (giàu nhất) đè lên raw; vá url/title trống từ raw (tránh link "https://" → about:blank).
+      const detail: any = { ...(local.raw || {}), ...(local.detailRaw || {}) };
+      if (!detail.url && local.raw?.url) detail.url = local.raw.url;
+      if (!detail.shop_title && local.raw?.shop_title) detail.shop_title = local.raw.shop_title;
+      // Top sản phẩm: detail thiếu → dựng từ sản phẩm local của shop (sort doanh thu tháng).
+      if (!Array.isArray(detail.top_revenue_products) || !detail.top_revenue_products.length) {
+        try {
+          const top = await this.mysql.queryLocalProducts({ sort: 'revenue_month', dir: 'desc', offset: 0, limit: 10, shop: shopId });
+          if (top.items.length) detail.top_revenue_products = top.items;
+        } catch { /* bỏ qua */ }
+      }
+      const revenueChart = local.revenueChart?.length
+        ? local.revenueChart
+        : await this.mysql.getRevenueDaily(shopId).catch(() => []);
+      return { detail, revenueChart, adsChart: null, similar: [], ...cat, productCount, cached: true, local: true };
+    }
   }
 
   async productDetail(shopId: string, productId: string) {
     const key = `product:${shopId}:${productId}`;
     const cached = await this.mysql.getDetail(key, TTL_MS);
     if (cached) return { ...cached, cached: true };
-    const [detailR, revR, simR] = await Promise.all([
-      this.client.productDetail(shopId, productId),
-      this.client.productChartRevenue(shopId, productId),
-      this.client.productSimilar(shopId, productId),
-    ]);
-    const out = {
-      detail: detailR?.item?.item ?? null,
-      revenueChart: Array.isArray(revR?.items) ? revR.items : [],
-      similar: Array.isArray(simR?.items) ? simR.items : [],
-    };
-    await this.mysql.setDetail(key, out);
-    return { ...out, cached: false };
+    try {
+      const [detailR, revR, simR] = await Promise.all([
+        this.client.productDetail(shopId, productId),
+        this.client.productChartRevenue(shopId, productId),
+        this.client.productSimilar(shopId, productId),
+      ]);
+      const out = {
+        detail: detailR?.item?.item ?? null,
+        revenueChart: Array.isArray(revR?.items) ? revR.items : [],
+        similar: Array.isArray(simR?.items) ? simR.items : [],
+      };
+      await this.mysql.setDetail(key, out);
+      return { ...out, cached: false };
+    } catch (e) {
+      // ShopHunter lỗi (hết token 402/block) → dựng từ sh_product.raw + chuỗi daily local; KHÔNG setDetail.
+      const raw = await this.mysql.getProductLocalRaw(productId);
+      if (!raw) throw e;
+      const revenueChart = await this.mysql.getProductRevenueDaily(productId).catch(() => []);
+      return { detail: raw, revenueChart, similar: [], cached: true, local: true };
+    }
   }
 
   // Nhập domain → check có phải Shopify không (ShopHunter /shops/track); nếu có thì kèm data shop.
