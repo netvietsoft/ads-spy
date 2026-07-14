@@ -13,16 +13,16 @@
 }
 
 :root[data-theme='light'] {
-  --bg: #f4f6fa;
+  --bg: #ffffff; /* nền trắng phẳng — bỏ glow đục */
   --panel: #ffffff;
-  --panel-2: #eef1f6;
+  --panel-2: #f4f6f9;
   --border: #dde1e8;
   --text: #1a1d23;
   --muted: #667085;
   --accent: #2f6bff;
   --accent-2: #0ba97f;
   --danger: #e0384f;
-  --bg-glow: #dde8ff;
+  --bg-glow: #ffffff;
 }
 
 * { box-sizing: border-box; }

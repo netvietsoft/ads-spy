@@ -448,6 +448,16 @@ export async function shProductDetail(shopId: string, productId: string): Promis
   return jsonOrThrow(await fetch(`${API}/api/sh/product/${encodeURIComponent(shopId)}/${encodeURIComponent(productId)}`));
 }
 
+// Shop yêu thích (tim đỏ theo dõi riêng).
+export async function shFavShops(): Promise<{ ids: string[] }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/fav/shops`));
+}
+export async function shSetFavShop(shopId: string, fav: boolean): Promise<{ ok: boolean; fav: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/fav/shop/${encodeURIComponent(shopId)}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fav }),
+  }));
+}
+
 export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
 export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();

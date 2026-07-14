@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ShDetail, shShopDetail, shShopRevenueDaily, shProductDetail, shAssetProxy, shShopSite } from '../../api';
+import { ShDetail, shShopDetail, shShopRevenueDaily, shProductDetail, shAssetProxy, shShopSite, shFavShops, shSetFavShop } from '../../api';
 import { ShChart } from '../../components/ShChart';
 import { ShBarChart } from '../../components/ShBarChart';
 import { ShLogo } from '../../components/ShLogo';
@@ -40,6 +40,7 @@ export default function ShopDetailPage() {
   const [d, setD] = useState<ShDetail | null>(null);
   const [daily, setDaily] = useState<{ date_str: string; revenue: number | null; sale_count: number | null }[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [fav, setFav] = useState(false);
 
   useEffect(() => {
     const saved = (typeof localStorage !== 'undefined' && (localStorage.getItem('theme') as 'dark' | 'light')) || 'dark';
@@ -47,6 +48,8 @@ export default function ShopDetailPage() {
   }, []);
   useEffect(() => { if (shopId) shShopDetail(shopId).then(setD).catch((e) => setErr((e as Error).message)); }, [shopId]);
   useEffect(() => { if (shopId) shShopRevenueDaily(shopId).then(setDaily).catch(() => setDaily([])); }, [shopId]);
+  useEffect(() => { if (shopId) shFavShops().then((r) => setFav(r.ids.includes(shopId))).catch(() => {}); }, [shopId]);
+  const toggleFav = () => { const next = !fav; setFav(next); shSetFavShop(shopId, next).catch(() => setFav(!next)); };
 
   const s = d?.detail;
   const series = daily.length ? daily : (d?.revenueChart || []);
@@ -55,7 +58,7 @@ export default function ShopDetailPage() {
 
   return (
     <div style={{ maxWidth: 920, margin: '0 auto', padding: '22px 18px' }}>
-      <a href="/" className="dl" style={{ fontSize: 13 }}>← Ads Spy</a>
+      <a href="/?tab=localdb" className="dl" style={{ fontSize: 13 }}>← Quay lại danh sách</a>
       {err && <div className="err" style={{ marginTop: 12 }}>{err}</div>}
       {!d && !err && <p className="hint" style={{ marginTop: 16 }}><span className="spinner" /> Đang tải…</p>}
       {s && (
@@ -63,6 +66,10 @@ export default function ShopDetailPage() {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '12px 0 4px' }}>
             <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={30} />
             <h2 className="detail-title">{s.shop_title || s.url || 'Shop'}</h2>
+            <button onClick={toggleFav} title={fav ? 'Bỏ theo dõi' : 'Lưu shop yêu thích'}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 24, lineHeight: 1, color: fav ? '#e0384f' : 'var(--muted)' }}>
+              {fav ? '♥' : '♡'}
+            </button>
           </div>
           {s.url ? <a className="dl" href={`https://${String(s.url).replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer">{s.url} ↗</a> : null}
           {d!.upCategoryPath && <div style={{ margin: '6px 0', fontSize: 13 }}>🏷️ Danh mục: <b>{d!.upCategoryPath.replace(/ > /g, ' → ')}</b></div>}
