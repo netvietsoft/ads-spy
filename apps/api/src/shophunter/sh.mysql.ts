@@ -908,20 +908,21 @@ export class ShMysql implements OnModuleInit {
     };
   }
 
-  // Top shop/sản phẩm cho báo cáo ngành: doanh số, tăng trưởng, tăng trưởng đều (shop); doanh số, doanh số đều (sp).
-  // Tái dùng queryLocalShops/Products (đã có sort + lọc nước/danh mục). Chạy TUẦN TỰ để không dồn tải DB (query JSON-sort nặng).
-  async reportTops(o: { country?: string; category?: string }): Promise<any> {
-    const lim = 10;
-    const base = { dir: 'desc' as const, offset: 0, limit: lim, country: o.country, category: o.category };
-    const shopRev = await this.queryLocalShops({ ...base, sort: 'revenue_month' });
-    const shopGrowth = await this.queryLocalShops({ ...base, sort: 'growth_month' });
-    const shopSteady = await this.queryLocalShops({ ...base, sort: 'growth_steady' });
-    const prodRev = await this.queryLocalProducts({ ...base, sort: 'revenue_month' });
-    const prodSteady = await this.queryLocalProducts({ ...base, sort: 'revenue_steady' });
-    return {
-      shops: { byRevenue: shopRev.items, byGrowth: shopGrowth.items, bySteady: shopSteady.items },
-      products: { byRevenue: prodRev.items, bySteady: prodSteady.items },
-    };
+  // Top SHOP cho báo cáo ngành (nhanh — sh_shop 46k). Tái dùng queryLocalShops (sort + lọc nước/danh mục).
+  async reportTopShops(o: { country?: string; category?: string }): Promise<any> {
+    const base = { dir: 'desc' as const, offset: 0, limit: 10, country: o.country, category: o.category };
+    const byRevenue = (await this.queryLocalShops({ ...base, sort: 'revenue_month' })).items;
+    const byGrowth = (await this.queryLocalShops({ ...base, sort: 'growth_month' })).items;
+    const bySteady = (await this.queryLocalShops({ ...base, sort: 'growth_steady' })).items;
+    return { byRevenue, byGrowth, bySteady };
+  }
+
+  // Top SẢN PHẨM (CHẬM — quét JSON doanh thu trên sh_product ~400k, không index được). Tải theo yêu cầu (nút bấm ở FE).
+  async reportTopProducts(o: { country?: string; category?: string }): Promise<any> {
+    const base = { dir: 'desc' as const, offset: 0, limit: 10, country: o.country, category: o.category };
+    const byRevenue = (await this.queryLocalProducts({ ...base, sort: 'revenue_month' })).items;
+    const bySteady = (await this.queryLocalProducts({ ...base, sort: 'revenue_steady' })).items;
+    return { byRevenue, bySteady };
   }
 
   async addTrackHistory(domain: string, shopId: string, shopTitle: string, identifyType: string): Promise<void> {

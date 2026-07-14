@@ -497,12 +497,19 @@ export async function shReport(p: { country?: string; category?: string } = {}):
   if (p.category) qs.set('category', p.category);
   return jsonOrThrow(await fetch(`${API}/api/sh/report?${qs.toString()}`));
 }
-export interface ShReportTops { shops: { byRevenue: any[]; byGrowth: any[]; bySteady: any[] }; products: { byRevenue: any[]; bySteady: any[] } }
-export async function shReportTops(p: { country?: string; category?: string } = {}): Promise<ShReportTops> {
+export interface ShTopShops { byRevenue: any[]; byGrowth: any[]; bySteady: any[] }
+export interface ShTopProducts { byRevenue: any[]; bySteady: any[] }
+export async function shReportTopShops(p: { country?: string; category?: string } = {}): Promise<ShTopShops> {
   const qs = new URLSearchParams();
   if (p.country) qs.set('country', p.country);
   if (p.category) qs.set('category', p.category);
-  return jsonOrThrow(await fetch(`${API}/api/sh/report/tops?${qs.toString()}`));
+  return jsonOrThrow(await fetch(`${API}/api/sh/report/top-shops?${qs.toString()}`));
+}
+export async function shReportTopProducts(p: { country?: string; category?: string } = {}): Promise<ShTopProducts> {
+  const qs = new URLSearchParams();
+  if (p.country) qs.set('country', p.country);
+  if (p.category) qs.set('category', p.category);
+  return jsonOrThrow(await fetch(`${API}/api/sh/report/top-products?${qs.toString()}`));
 }
 export async function shShopRevenueDaily(shopId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/revenue-daily`));

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { shReport, shReportTops, shLocalFilters, ShReport, ShReportTops } from '../api';
+import { shReport, shReportTopShops, shReportTopProducts, shLocalFilters, ShReport, ShTopShops, ShTopProducts } from '../api';
 import { CategoryPicker } from './CategoryPicker';
 
 const money = (n: number) => '$' + Math.round(n).toLocaleString();
@@ -65,9 +65,11 @@ export function ReportPanel() {
   const [countries, setCountries] = useState<string[]>([]);
   const [cat, setCat] = useState<{ id: string | null; path: string | null }>({ id: null, path: null });
   const [data, setData] = useState<ShReport | null>(null);
-  const [tops, setTops] = useState<ShReportTops | null>(null);
+  const [topShops, setTopShops] = useState<ShTopShops | null>(null);
+  const [topProducts, setTopProducts] = useState<ShTopProducts | null>(null);
   const [loading, setLoading] = useState(false);
-  const [topsLoading, setTopsLoading] = useState(false);
+  const [shopsLoading, setShopsLoading] = useState(false);
+  const [prodLoading, setProdLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => { shLocalFilters('shops').then((f) => setCountries(f.countries)).catch(() => {}); }, []);
@@ -75,11 +77,17 @@ export function ReportPanel() {
     setLoading(true); setErr(null);
     shReport({ country: country || undefined, category: cat.id || undefined })
       .then(setData).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
-    // Bảng top nặng hơn (quét doanh thu) → tải riêng, không chặn thẻ tổng.
-    setTopsLoading(true); setTops(null);
-    shReportTops({ country: country || undefined, category: cat.id || undefined })
-      .then(setTops).catch(() => setTops(null)).finally(() => setTopsLoading(false));
+    // Top shop: tự tải (sh_shop 46k, ~vài chục giây). Top sản phẩm: tải theo yêu cầu (quét 400k rất chậm) → reset khi đổi lọc.
+    setShopsLoading(true); setTopShops(null); setTopProducts(null);
+    shReportTopShops({ country: country || undefined, category: cat.id || undefined })
+      .then(setTopShops).catch(() => setTopShops(null)).finally(() => setShopsLoading(false));
   }, [country, cat.id]);
+
+  const loadProducts = () => {
+    setProdLoading(true); setTopProducts(null);
+    shReportTopProducts({ country: country || undefined, category: cat.id || undefined })
+      .then(setTopProducts).catch(() => setTopProducts(null)).finally(() => setProdLoading(false));
+  };
 
   return (
     <div style={{ marginTop: 12 }}>
@@ -109,20 +117,25 @@ export function ReportPanel() {
       )}
 
       <h3 style={{ margin: '22px 0 4px' }}>Top shop trong ngành{cat.path ? ` · ${cat.path}` : ''}</h3>
-      {topsLoading && <div className="hint"><span className="spinner" /> Đang xếp hạng…</div>}
-      {tops && (
-        <>
-          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 18 }}>
-            <ShopTop title="🏆 Doanh số cao nhất" rows={tops.shops.byRevenue} metric="rev" />
-            <ShopTop title="📈 Tăng trưởng mạnh nhất" rows={tops.shops.byGrowth} metric="growth" />
-            <ShopTop title="🎯 Tăng trưởng đều (mọi kỳ)" rows={tops.shops.bySteady} metric="steady" />
-          </div>
-          <h3 style={{ margin: '10px 0 4px' }}>Top sản phẩm trong ngành</h3>
-          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-            <ProductTop title="🏆 Doanh số cao nhất" rows={tops.products.byRevenue} />
-            <ProductTop title="🎯 Doanh số đều (bán mỗi ngày)" rows={tops.products.bySteady} />
-          </div>
-        </>
+      {shopsLoading && <div className="hint"><span className="spinner" /> Đang xếp hạng shop…</div>}
+      {topShops && (
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 18 }}>
+          <ShopTop title="🏆 Doanh số cao nhất" rows={topShops.byRevenue} metric="rev" />
+          <ShopTop title="📈 Tăng trưởng mạnh nhất" rows={topShops.byGrowth} metric="growth" />
+          <ShopTop title="🎯 Tăng trưởng đều (mọi kỳ)" rows={topShops.bySteady} metric="steady" />
+        </div>
+      )}
+
+      <h3 style={{ margin: '10px 0 4px' }}>Top sản phẩm trong ngành</h3>
+      {!topProducts && !prodLoading && (
+        <button className="srcbtn" onClick={loadProducts}>Xem top sản phẩm (quét ~2–3 phút)</button>
+      )}
+      {prodLoading && <div className="hint"><span className="spinner" /> Đang quét doanh thu sản phẩm… (bảng lớn, có thể vài phút)</div>}
+      {topProducts && (
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+          <ProductTop title="🏆 Doanh số cao nhất" rows={topProducts.byRevenue} />
+          <ProductTop title="🎯 Doanh số đều (bán mỗi ngày)" rows={topProducts.bySteady} />
+        </div>
       )}
     </div>
   );

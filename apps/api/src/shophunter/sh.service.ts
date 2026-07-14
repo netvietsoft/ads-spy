@@ -439,7 +439,8 @@ export class ShService {
   favShops() { return this.mysql.listFavShops(); }
   setFavShop(shopId: string, fav: boolean) { return this.mysql.setFavShop(shopId, fav); }
   report(o: { country?: string; category?: string }) { return this.mysql.reportAggregate(o); }
-  reportTops(o: { country?: string; category?: string }) { return this.mysql.reportTops(o); }
+  reportTopShops(o: { country?: string; category?: string }) { return this.mysql.reportTopShops(o); }
+  reportTopProducts(o: { country?: string; category?: string }) { return this.mysql.reportTopProducts(o); }
 
   // --- Kho doanh thu theo ngày (tích luỹ dài hạn) ---
   revenueDaily(shopId: string) { return this.mysql.getRevenueDaily(shopId); }

@@ -284,9 +284,14 @@ export class ShController {
     return this.svc.report({ country: country || undefined, category: category || undefined });
   }
 
-  @Get('sh/report/tops')
-  reportTops(@Query('country') country: string, @Query('category') category: string) {
-    return this.svc.reportTops({ country: country || undefined, category: category || undefined });
+  @Get('sh/report/top-shops')
+  reportTopShops(@Query('country') country: string, @Query('category') category: string) {
+    return this.svc.reportTopShops({ country: country || undefined, category: category || undefined });
+  }
+
+  @Get('sh/report/top-products')
+  reportTopProducts(@Query('country') country: string, @Query('category') category: string) {
+    return this.svc.reportTopProducts({ country: country || undefined, category: category || undefined });
   }
 
   @Get('sh/local/filters')
