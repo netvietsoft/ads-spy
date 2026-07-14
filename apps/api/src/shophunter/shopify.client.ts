@@ -1,3 +1,5 @@
+import * as https from 'https';
+
 export interface ShopifyProduct {
   id: string;
   handle: string;
@@ -32,16 +34,28 @@ export function parseShopifyProducts(raw: any): ShopifyProduct[] {
   });
 }
 
-// fetch có timeout (AbortController) — tránh TREO vô hạn khi shop throttle/hang connection.
-async function fetchT(url: string, opts: any = {}, ms = 20000): Promise<Response> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(url, { ...opts, signal: ctrl.signal });
-  } finally {
-    clearTimeout(t);
-  }
+// GET qua module https (KHÔNG dùng global fetch/undici — bị Shopify fingerprint-chặn trả 429 local_rate_limited
+// cho mọi shop; https cổ điển thì 200). Tự follow redirect (shop hay 301 www/custom domain), có timeout chống treo.
+function httpsGet(url: string, headers: Record<string, string>, ms = 20000, redirectsLeft = 5): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers, timeout: ms }, (res) => {
+      const loc = res.headers.location;
+      if (loc && [301, 302, 307, 308].includes(res.statusCode || 0) && redirectsLeft > 0) {
+        res.resume();
+        resolve(httpsGet(new URL(loc, url).toString(), headers, ms, redirectsLeft - 1));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode || 0, body: Buffer.concat(chunks).toString('utf8') }));
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+  });
 }
+
+// Seam để test mock (spec đổi shopifyHttp.get thay vì mock mạng thật).
+export const shopifyHttp = { get: httpsGet };
 
 function normalizeDomain(shopUrl: string): string {
   return shopUrl.replace(/^https?:\/\//i, '').split('/')[0];
@@ -68,12 +82,12 @@ export async function fetchShopifyCatalog(
   for (let page = 1; page <= maxPages; page++) {
     if (page > 1 && pageDelayMs) await sleep(pageDelayMs);
     const url = `https://${domain}/products.json?limit=250&page=${page}`;
-    let res: Response;
+    let res: { status: number; body: string };
     try {
-      res = await fetchT(url, { headers });
+      res = await shopifyHttp.get(url, headers);
       if (res.status === 429) {
         await sleep(retryDelayMs);
-        res = await fetchT(url, { headers });
+        res = await shopifyHttp.get(url, headers);
       }
     } catch {
       return bail();
@@ -82,7 +96,7 @@ export async function fetchShopifyCatalog(
     if (res.status === 401 || res.status === 403 || res.status === 404) {
       return bail();
     }
-    const text = await res.text();
+    const text = res.body;
     const trimmed = text.trimStart();
     if (trimmed.startsWith('<')) {
       return bail();

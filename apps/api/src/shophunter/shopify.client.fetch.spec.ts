@@ -1,23 +1,23 @@
 // shopify.client.fetch.spec.ts — fetchShopifyCatalog: 429 retry + không vứt trang đã lấy khi lỗi giữa chừng.
-// Mock global.fetch, KHÔNG gọi mạng thật. pageDelayMs/retryDelayMs = 0/1 cho test nhanh.
-import { fetchShopifyCatalog } from './shopify.client';
+// Mock shopifyHttp.get (client dùng module https — KHÔNG dùng global fetch vì bị Shopify fingerprint-chặn 429).
+import { fetchShopifyCatalog, shopifyHttp } from './shopify.client';
 
-const realFetch = global.fetch;
+const realGet = shopifyHttp.get;
 const fetchMock = jest.fn();
 
 function jsonRes(products: any[], status = 200) {
-  return { status, text: async () => JSON.stringify({ products }) };
+  return { status, body: JSON.stringify({ products }) };
 }
 function textRes(body: string, status = 200) {
-  return { status, text: async () => body };
+  return { status, body };
 }
 function manyProducts(n: number) {
   return Array.from({ length: n }, (_, i) => ({ id: i + 1, handle: `h${i}`, title: `P${i}`, variants: [], images: [] }));
 }
 const FAST = { pageDelayMs: 0, retryDelayMs: 1 };
 
-beforeAll(() => { (global as any).fetch = fetchMock; });
-afterAll(() => { (global as any).fetch = realFetch; });
+beforeAll(() => { shopifyHttp.get = fetchMock as any; });
+afterAll(() => { shopifyHttp.get = realGet; });
 afterEach(() => fetchMock.mockReset());
 
 describe('fetchShopifyCatalog — 429 + partial', () => {
