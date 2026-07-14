@@ -794,11 +794,18 @@ export class ShMysql implements OnModuleInit {
     if (o.category) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) = ?"); params.push(o.category); }
     if (o.q) {
       // FULLTEXT qua bảng phụ sh_product_search (LIKE '%q%' + sort JSON trên 400k dòng mất nhiều phút).
-      // Token ≥3 ký tự (innodb_ft_min_token_size) prefix-match; query toàn token ngắn → fallback LIKE cũ.
+      // 2 BƯỚC trong code: lấy id từ FT trước (ms) rồi IN(danh sách id) trên PK — planner xử lý IN(subquery)
+      // rất tệ (semijoin scan cả sh_product ~1 phút). Token ≥3 ký tự prefix-match; toàn token ngắn → fallback LIKE.
       const tokens = o.q.trim().split(/\s+/).map((t) => t.replace(/[+\-<>()~*"@]/g, '')).filter((t) => t.length >= 3);
       if (tokens.length) {
-        where.push('product_id IN (SELECT product_id FROM sh_product_search WHERE MATCH(title) AGAINST (? IN BOOLEAN MODE))');
-        params.push(tokens.map((t) => `+${t}*`).join(' '));
+        const [idRows] = await this.pool!.query(
+          'SELECT product_id FROM sh_product_search WHERE MATCH(title) AGAINST (? IN BOOLEAN MODE) LIMIT 20000',
+          [tokens.map((t) => `+${t}*`).join(' ')],
+        );
+        const ids = (idRows as any[]).map((r) => r.product_id);
+        if (!ids.length) return { items: [], total: 0 };
+        where.push(`product_id IN (${new Array(ids.length).fill('?').join(',')})`);
+        params.push(...ids);
       } else {
         where.push('product_title LIKE ?'); params.push('%' + o.q + '%');
       }
