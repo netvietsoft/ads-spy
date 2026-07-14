@@ -274,6 +274,31 @@ export class ShController {
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
 
+  // Xuất CSV (Excel mở được — có BOM UTF-8) TOÀN BỘ data đã lọc theo tiêu chí hiện tại (không phân trang). Cap 50k dòng.
+  @Get('sh/local/export')
+  async exportLocal(@Res() res: Response, @Query('type') type: string, @Query('sort') sort: string, @Query('dir') dir: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('shop') shop: string) {
+    const isProd = type === 'products';
+    const p = localParams(sort, dir, '1', '50000'); // lấy tối đa 50k dòng đã lọc
+    const opt = { sort: p.sort, dir: p.dir, offset: 0, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined };
+    const rows = isProd
+      ? (await this.svc.localProducts({ ...opt, shop: shop || undefined })).items
+      : (await this.svc.localShops({ ...opt, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true' })).items;
+    const esc = (v: any) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const fmtDate = (ms: any) => (ms ? new Date(Number(ms)).toISOString().slice(0, 10) : '');
+    let cols: string[]; let line: (r: any) => any[];
+    if (isProd) {
+      cols = ['Sản phẩm', 'Shop', 'Shop URL', 'Giá', 'DT Ngày', 'DT Tuần', 'DT Tháng', 'Nước', 'Danh mục', 'Product ID', 'Shop ID', 'Update'];
+      line = (r) => [r.product_title, r.shop_title, r.shop_url, r.price, r.day_current_period_revenue, r.week_current_period_revenue, r.month_current_period_revenue, r.shop_country, r.category, r.product_id, r.shop_id, fmtDate(r._fetched_at)];
+    } else {
+      cols = ['Shop', 'URL', 'Danh mục', 'DT Ngày', 'DT Tuần', 'DT Tháng', 'TT Tháng %', 'FB', 'Ads', 'SKU', 'Nước', 'Affiliate', 'Link affiliate', 'Shop ID', 'Update'];
+      line = (r) => [r.shop_title, r.url, r._up_category_path, r.day_current_period_revenue, r.week_current_period_revenue, r.month_current_period_revenue, r.month_revenue_percent_change, r.fb_followers, r.active_ad_count, r.sku_count, r.country, r._affiliate, r._affiliate_link, r.shop_id, fmtDate(r._fetched_at)];
+    }
+    const csv = [cols.join(','), ...rows.map((r: any) => line(r).map(esc).join(','))].join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="localdb-${isProd ? 'products' : 'shops'}.csv"`);
+    res.send('﻿' + csv); // BOM để Excel nhận UTF-8 (tiếng Việt không lỗi font)
+  }
+
   @Get('sh/local/suggest')
   localSuggest(@Query('type') type: string, @Query('q') q: string) {
     return this.svc.localSuggest(type === 'products' ? 'products' : 'shops', q || '');

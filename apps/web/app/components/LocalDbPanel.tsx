@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { shLocalShops, shLocalProducts, shLocalFilters, shLocalSuggest, ShLocalResult, shAssetProxy, shShopSite, shProductUrl, shFavShops } from '../api';
+import { shLocalShops, shLocalProducts, shLocalFilters, shLocalSuggest, ShLocalResult, shAssetProxy, shShopSite, shProductUrl, shFavShops, shLocalExportUrl } from '../api';
 import { ShLogo } from './ShLogo';
 import { CategoryPicker } from './CategoryPicker';
 
@@ -127,6 +127,12 @@ export function LocalDbPanel() {
       <button className="srcbtn" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹ Trước</button>
       <span>Trang {page}/{totalPages}</span>
       <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
+      <button className="srcbtn" title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel (CSV)`}
+        onClick={() => window.open(tab === 'shops'
+          ? shLocalExportUrl('shops', { sort, dir, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined })
+          : shLocalExportUrl('products', { sort, dir, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined }), '_blank')}>
+        ⬇ Xuất Excel
+      </button>
     </div>
   );
 

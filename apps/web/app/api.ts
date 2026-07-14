@@ -458,6 +458,20 @@ export async function shSetFavShop(shopId: string, fav: boolean): Promise<{ ok: 
   }));
 }
 
+// URL tải CSV toàn bộ data đã lọc (mở trực tiếp để trình duyệt download).
+export function shLocalExportUrl(type: 'shops' | 'products', p: { sort?: string; dir?: string; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; shop?: string } = {}): string {
+  const qs = new URLSearchParams();
+  qs.set('type', type);
+  if (p.sort) qs.set('sort', p.sort);
+  if (p.dir) qs.set('dir', p.dir);
+  if (p.country) qs.set('country', p.country);
+  if (p.category) qs.set('category', p.category);
+  if (p.q) qs.set('q', p.q);
+  if (p.aff) qs.set('aff', '1');
+  if (p.fav) qs.set('fav', '1');
+  if (p.shop) qs.set('shop', p.shop);
+  return `${API}/api/sh/local/export?${qs.toString()}`;
+}
 export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
 export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
