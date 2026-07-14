@@ -4,12 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 type Pt = { date_str: string; revenue: number | null; sale_count?: number | null };
 const money = (n: number) => '$' + Math.round(n).toLocaleString();
 const short = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'k' : String(Math.round(n)));
-const GRANS: [Gran, string][] = [['week', 'Tuần'], ['month', 'Tháng'], ['quarter', 'Quý'], ['year', 'Năm']];
-type Gran = 'week' | 'month' | 'quarter' | 'year';
+const GRANS: [Gran, string][] = [['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng'], ['quarter', 'Quý'], ['year', 'Năm']];
+type Gran = 'day' | 'week' | 'month' | 'quarter' | 'year';
 const REV = '#5b9dff', ORD = '#e0a53a', GREEN = '#41d18a';
 
 function periodKeyLabel(d: Date, gran: Gran): { key: string; label: string } {
   const y = d.getFullYear();
+  if (gran === 'day') { const m = String(d.getMonth() + 1).padStart(2, '0'); const dd = String(d.getDate()).padStart(2, '0'); return { key: d.toISOString().slice(0, 10), label: `${dd}/${m}` }; }
   if (gran === 'year') return { key: String(y), label: String(y) };
   if (gran === 'quarter') { const q = Math.floor(d.getMonth() / 3) + 1; return { key: `${y}-Q${q}`, label: `Q${q} '${String(y).slice(2)}` }; }
   if (gran === 'month') { const m = String(d.getMonth() + 1).padStart(2, '0'); return { key: `${y}-${m}`, label: `${m}/${String(y).slice(2)}` }; }
@@ -81,7 +82,11 @@ export function ShBarChart({ points }: { points: Pt[] }) {
         <label style={{ fontSize: 12 }}>Từ&nbsp;<input type="date" className="fbselect" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
         <label style={{ fontSize: 12 }}>Đến&nbsp;<input type="date" className="fbselect" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></label>
         <div className="sources" style={{ margin: 0 }}>
-          {GRANS.map(([g, lbl]) => <button key={g} className={`srcbtn ${gran === g ? 'active' : ''}`} onClick={() => setGran(g)}>{lbl}</button>)}
+          {GRANS.map(([g, lbl]) => <button key={g} className={`srcbtn ${gran === g ? 'active' : ''}`} onClick={() => {
+            setGran(g);
+            // Bấm "Ngày" → tự thu khoảng về 1 tháng gần nhất (xem doanh thu từng ngày cho gọn).
+            if (g === 'day') { const d = new Date(to + 'T00:00:00'); d.setMonth(d.getMonth() - 1); setFrom(d.toISOString().slice(0, 10)); }
+          }}>{lbl}</button>)}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 4, flexWrap: 'wrap' }}>

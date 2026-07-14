@@ -39,7 +39,7 @@ const PORTAL_HOSTS: { host: RegExp; via: string }[] = [
 const LINK_KEYWORDS = /affiliate|ambassador|referral|refer-a-friend|refer_a_friend|partner-program|partnership|collab(?!s\.shopify)|cong-tac-vien|cộng tác viên/i;
 
 // Path chuẩn Shopify probe khi trang chủ không có tín hiệu.
-const PROBE_PATHS = ['/pages/affiliate', '/pages/affiliate-program', '/pages/affiliates', '/pages/ambassador', '/pages/referral'];
+const PROBE_PATHS = ['/pages/affiliate', '/pages/affiliate-program', '/pages/ambassador']; // 3 path phổ biến nhất (giảm tải/tránh throttle)
 
 const HEADERS = {
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
@@ -89,8 +89,11 @@ export async function checkShopAffiliate(
   let home: { status: number; body: string };
   try {
     home = await shopifyHttp.get(`https://${domain}/`, HEADERS);
-  } catch {
-    return { status: 'blocked', link: null, via: null };
+  } catch (e: any) {
+    // Chỉ coi là 'blocked' (chết thật) khi host không tồn tại/không có server; còn timeout/reset (throttle) → 'ratelimited' (thử lại).
+    const code = e?.code || '';
+    if (code === 'ENOTFOUND' || code === 'ECONNREFUSED' || code === 'ERR_TLS_CERT_ALTNAME_INVALID') return { status: 'blocked', link: null, via: null };
+    return { status: 'ratelimited', link: null, via: null };
   }
   if (home.status === 429) return { status: 'ratelimited', link: null, via: null }; // Shopify bóp IP → thử lại sau, đừng kết luận
   if ([401, 403, 404].includes(home.status)) return { status: 'blocked', link: null, via: null };

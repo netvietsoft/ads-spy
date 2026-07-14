@@ -77,12 +77,20 @@ describe('checkShopAffiliate (flow, mock http)', () => {
     const r = await checkShopAffiliate('x.test', FAST);
     expect(r).toEqual({ status: 'no', link: null, via: null });
   });
-  it('trang chủ 403/timeout → blocked', async () => {
+  it('trang chủ 403 → blocked; host chết (ENOTFOUND/ECONNREFUSED) → blocked', async () => {
     getMock.mockResolvedValueOnce({ status: 403, body: 'denied' });
     expect((await checkShopAffiliate('a.test', FAST)).status).toBe('blocked');
     getMock.mockReset();
-    getMock.mockRejectedValueOnce(new Error('timeout'));
+    const dns = Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' });
+    getMock.mockRejectedValueOnce(dns);
     expect((await checkShopAffiliate('b.test', FAST)).status).toBe('blocked');
+  });
+  it('lỗi mạng tạm thời (timeout/reset, không code chết) → ratelimited (thử lại, KHÔNG blocked oan)', async () => {
+    getMock.mockRejectedValueOnce(new Error('socket hang up'));
+    expect((await checkShopAffiliate('c.test', FAST)).status).toBe('ratelimited');
+    getMock.mockReset();
+    getMock.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }));
+    expect((await checkShopAffiliate('d.test', FAST)).status).toBe('ratelimited');
   });
   it('trang chủ 429 (Shopify bóp IP) → ratelimited (KHÔNG phải blocked)', async () => {
     getMock.mockResolvedValueOnce({ status: 429, body: '<html>rate limited</html>' });

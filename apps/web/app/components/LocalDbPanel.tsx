@@ -6,6 +6,11 @@ import { CategoryPicker } from './CategoryPicker';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
+// Rút gọn đường dẫn danh mục sâu: chỉ hiện "gốc › lá" (giữ full ở tooltip).
+const shortCat = (path: string) => {
+  const parts = path.split(/\s*>\s*/).filter(Boolean);
+  return parts.length <= 2 ? parts.join(' › ') : `${parts[0]} › ${parts[parts.length - 1]}`;
+};
 const PAGE_SIZES = [50, 100, 150, 200];
 const pad = (n: number) => String(n).padStart(2, '0');
 // Update time 2 dòng: hh:mm trên, dd/mm/yy dưới
@@ -213,7 +218,7 @@ export function LocalDbPanel() {
                     : s._affiliate === 'no' ? <span style={{ opacity: 0.35 }}>—</span>
                     : s._affiliate === 'blocked' ? <span style={{ opacity: 0.35 }} title="Shop chặn/không truy cập được">⃠</span>
                     : ''}</td>
-                  <td className="wrap" style={{ maxWidth: '22ch', fontSize: 12, opacity: 0.85 }}>{s._up_category_path || (s._up_category ? (catNames[s._up_category] || s._up_category) : '—')}</td>
+                  <td className="wrap" style={{ maxWidth: '22ch', fontSize: 12, opacity: 0.85 }} title={s._up_category_path || ''}>{s._up_category_path ? shortCat(s._up_category_path) : (s._up_category ? (catNames[s._up_category] || s._up_category) : '—')}</td>
                   <td>{money(s.day_current_period_revenue)}</td>
                   <td>{money(s.week_current_period_revenue)}</td>
                   <td>{money(s.month_current_period_revenue)}</td>
