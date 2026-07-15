@@ -2,7 +2,15 @@
 
 > Log dựng lại toàn bộ sau khi **restart máy**. Cập nhật: 2026-07-14 (chiều).
 
-## ⚡ TRẠNG THÁI PHIÊN 2026-07-14 (đọc cái này trước)
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-15 (mới nhất — đọc trước)
+- **Git HEAD:** `ba999e9` trên `main`, **ĐÃ PUSH origin/main** (repo public `netvietsoft/ads-spy`). ⚠️ Proxy credentials KHÔNG còn trong repo — đọc từ `scripts/proxies.txt` (gitignored) hoặc env `AFF_PROXIES`; nếu file này mất phải tạo lại (host:port:user:pass mỗi dòng) mới chạy được scanner.
+- **Sự cố phiên trước:** MySQL bị **tắt bình thường** lúc ~10:47 (không crash) → catalog scanner đang chạy văng với `FATAL Server shutdown in progress`. Đã start lại MySQL (InnoDB recovery sạch ~50s, KHÔNG hỏng dữ liệu). Standalone scanner (node nền) chết theo phiên Claude Code — phải chạy lại tay.
+- **Affiliate scan:** ✅ XONG (không cần chạy lại). Kết quả: **~9.900 shop `yes` (có link đăng ký) + ~4.260 `app` = ~14.160 shop có affiliate** trên 46.663. Xem: Local DB tab Shops → tích "Có affiliate"/sort cột Aff/Xuất Excel.
+- **Catalog Shopify:** đang dở — đợt trước kéo được **+322.928 sản phẩm** (2.000 shop) trước khi MySQL tắt (tổng `sh_product.source='shopify'` ~358k). Còn ~44k shop chưa cào. **Chạy tiếp:** `cd D:\SetupC\Projects\google-ads-spy && E:\Programming\node.exe scripts/catalog-bulk-scan.js` (proxy xoay, ~500 shop/10 phút, ~90-160 sp/shop → sẽ lên hàng triệu sp; tự bỏ qua shop đã cào qua `catalog_synced_at`).
+- **Instances:** :3100/:3110/:3120/:3130 (API) thường vẫn sống qua phiên (Start-Process detached), tự reconnect DB sau khi MySQL lên. **Web :3101 hay chết theo phiên → bật lại:** `cd apps\web && npm run dev` (hoặc chạy start-stack.ps1). Kiểm tra: `netstat -ano | findstr :3101`.
+- **2 bulk scanner standalone** (KHÔNG do start-stack quản, phải chạy tay sau reboot): `scripts/affiliate-bulk-scan.js` (xong) và `scripts/catalog-bulk-scan.js` (đang dở). Cả 2 đọc proxy từ `scripts/proxies.txt`, conc 3, backoff 429, tự reset blocked+retry→NULL đầu mỗi lần chạy.
+
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-14
 - **Git HEAD:** `81a4a7d` (nhánh `feat/shophunter-harvest`, CHƯA push/merge). Nhiều feature mới đã commit (affiliate, export Excel, report tops, chart Ngày, fav filter, zoom, fallback DB local khi ShopHunter 402...).
 - **MySQL:** local 127.0.0.1:3306 root no-pass, DÙNG CHUNG CRM. Sau reboot phải start tay: `Start-Process 'D:\SetupC\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysqld.exe' -ArgumentList '--defaults-file="D:\SetupC\laragon\bin\mysql\mysql-8.4.3-winx64\my.ini"' -WindowStyle Hidden` (KHÔNG phải Windows service).
 - **Instances đang chạy:** :3100 (API+deep shops, dist mới), :3101 (web), :3110 (deep products — DIST CŨ 7/11, nên restart), :3120 (import), :3130 (revsync). **:3150 catalog Shopify ĐANG TẮT** (tạm dừng ưu tiên affiliate). **:3160 affiliate worker KHÔNG dùng** (thay bằng scanner standalone dưới).
