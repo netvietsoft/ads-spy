@@ -9,3 +9,7 @@ dist/
 .superpowers/
 *.tsbuildinfo
 Screen shoot/
+
+# proxy credentials — KHONG commit
+scripts/proxies.txt
+logs/

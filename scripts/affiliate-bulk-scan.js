@@ -2,24 +2,19 @@
 // CONNECT tunneling thủ công (http CONNECT → tls) để GIỮ TLS fingerprint của node (undici/fetch bị Shopify chặn 429).
 // Swap shopifyHttp.get → bản qua-proxy nên checkShopAffiliate dùng luôn, không sửa client.
 // Chạy: E:\Programming\node.exe D:\SetupC\Projects\google-ads-spy\scripts\affiliate-bulk-scan.js
-const http = require('http'); const tls = require('tls');
+const http = require('http'); const tls = require('tls'); const fs = require('fs');
 const P = 'D:/SetupC/Projects/google-ads-spy/apps/api';
 const { shopifyHttp } = require(P + '/dist/shophunter/shopify.client.js');
 const { checkShopAffiliate } = require(P + '/dist/shophunter/affiliate.client.js');
 const mysql = require('D:/SetupC/Projects/google-ads-spy/node_modules/mysql2/promise');
 
-// Đã bỏ 103.82.27.244 (proxy CHẾT — ECONNREFUSED, gây mark blocked oan).
-const PROXIES = `
-103.179.189.46:27449:REDACTED:REDACTED
-103.179.189.46:26476:REDACTED:REDACTED
-103.179.189.243:27751:REDACTED:REDACTED
-103.179.189.243:24296:REDACTED:REDACTED
-103.179.189.46:24792:REDACTED:REDACTED
-103.179.189.46:39960:REDACTED:REDACTED
-103.179.189.243:15890:REDACTED:REDACTED
-103.179.189.46:17732:REDACTED:REDACTED
-15.235.177.3:47580:REDACTED:REDACTED
-`.trim().split(/\r?\n/).map((l) => { const [host, port, user, pass] = l.split(':'); return { host, port: +port, user, pass }; });
+// Proxy list KHÔNG hardcode (tránh lộ credential khi push repo public). Đọc từ file gitignored scripts/proxies.txt
+// hoặc env AFF_PROXIES — mỗi dòng "host:port:user:pass". Bỏ dòng trống / bắt đầu bằng #.
+const PROXY_FILE = 'D:/SetupC/Projects/google-ads-spy/scripts/proxies.txt';
+const rawProxies = (process.env.AFF_PROXIES || (fs.existsSync(PROXY_FILE) ? fs.readFileSync(PROXY_FILE, 'utf8') : '')).trim();
+if (!rawProxies) { console.error('THIẾU proxy: tạo scripts/proxies.txt (host:port:user:pass mỗi dòng) hoặc đặt env AFF_PROXIES.'); process.exit(1); }
+const PROXIES = rawProxies.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+  .map((l) => { const [host, port, user, pass] = l.split(':'); return { host, port: +port, user, pass }; });
 
 // Chỉ ~3 IP proxy thật → concurrency cao làm CHÍNH proxy bị Shopify throttle. Giữ thấp để mỗi IP dưới ngưỡng.
 const CONC = 3;
