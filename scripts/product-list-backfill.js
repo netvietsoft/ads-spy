@@ -1,6 +1,7 @@
 // Backfill sh_product -> sh_product_list. Chay: E:\Programming\node.exe scripts/product-list-backfill.js
-// An toan: lo 2000 theo PK, INSERT IGNORE (chi nap dong CHUA co trong list) -> khong de len dong dual-write ghi
-// moi hon khi chay dong thoi rollout. Idempotent. Sleep nhe + retry deadlock (MySQL mong manh, C: tung day).
+// An toan: doc lo 2000 theo PK, ghi INSERT IGNORE tung chunk <=400 dong (gioi han write-batch cua du an, tranh giu lock lau)
+// (chi nap dong CHUA co trong list) -> khong de len dong dual-write ghi moi hon khi chay dong thoi rollout.
+// Idempotent. Sleep nhe + retry deadlock (MySQL mong manh, C: tung day).
 // Resumable: quet product_id > lastId ORDER BY product_id. sh_product la nguon su that.
 // LUU Y: muon REBUILD toan bo list tu dau (vd doi logic mapper) -> TRUNCATE sh_product_list roi chay lai.
 const P = 'D:/SetupC/Projects/google-ads-spy/apps/api';
@@ -22,10 +23,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const lr = raw ? rawToListRow(raw, r.source || null, r.fetched_at == null ? null : Number(r.fetched_at)) : null;
       if (lr) tuples.push(listRowTuple(lr));
     }
-    if (tuples.length) {
-      const ph = new Array(tuples.length).fill('(' + new Array(LIST_COLS.length).fill('?').join(',') + ')').join(',');
+    for (let i = 0; i < tuples.length; i += 400) {
+      const chunk = tuples.slice(i, i + 400);
+      const ph = new Array(chunk.length).fill('(' + new Array(LIST_COLS.length).fill('?').join(',') + ')').join(',');
       for (let t = 0; ; t++) {
-        try { const [res] = await pool.query(head + ph, tuples.flat()); written += res.affectedRows || 0; break; }
+        try { const [res] = await pool.query(head + ph, chunk.flat()); written += res.affectedRows || 0; break; }
         catch (e) { if ((e.code === 'ER_LOCK_DEADLOCK' || e.code === 'ER_LOCK_WAIT_TIMEOUT') && t < 5) { await sleep(300 + t * 400); continue; } throw e; }
       }
     }

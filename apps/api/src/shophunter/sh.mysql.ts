@@ -815,34 +815,29 @@ export class ShMysql implements OnModuleInit {
       else { where.push('name LIKE ?'); params.push('%' + o.q + '%'); }
     }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const [listRows] = await this.pool!.query(
-      `SELECT product_id, shop_id, name, thumbnail, price, revenue_day, revenue_week, revenue_month, shop_country, category_last, source, updated_at FROM sh_product_list ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
-      [...params, o.limit, o.offset]);
+    // Trang (≤limit dòng) join PK sang sh_product CHỈ để lấy field FE không có trong bảng lean
+    // (shop_url/shop_title/favicon/product_handle) — LIMIT áp trên lean TRƯỚC join nên chỉ đụng ~limit dòng sh_product,
+    // không quét raw 3M. Revenue/price/tên lấy từ lean (tươi, khỏi bị đè bởi raw có thể cũ hơn).
+    const [rows] = await this.pool!.query(
+      `SELECT lean.product_id, lean.shop_id, lean.name AS product_title, lean.thumbnail AS product_image_external,
+              lean.price, lean.revenue_day AS day_current_period_revenue, lean.revenue_week AS week_current_period_revenue,
+              lean.revenue_month AS month_current_period_revenue, lean.shop_country, lean.source,
+              lean.updated_at AS _fetched_at, 1 AS _local,
+              JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.shop_url')) AS shop_url,
+              JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.shop_title')) AS shop_title,
+              JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.shop_favicon_internal')) AS shop_favicon_internal,
+              JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.shop_favicon_external')) AS shop_favicon_external,
+              JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.product_handle')) AS product_handle
+       FROM (SELECT product_id, shop_id, name, thumbnail, price, revenue_day, revenue_week, revenue_month,
+                    shop_country, source, updated_at
+             FROM sh_product_list ${whereSql} ${orderBy} LIMIT ? OFFSET ?) lean
+       LEFT JOIN sh_product p ON p.product_id = lean.product_id
+       ${orderBy}`,
+      [...params, o.limit, o.offset],
+    );
     const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_product_list ${whereSql}`, params);
     const total = Number((cnt as any[])[0].n) || 0;
-    const list = listRows as any[];
-    if (!list.length) return { items: [], total };
-    // Hydrate CHỈ trang đang hiển thị (≤limit dòng) từ sh_product (raw) theo PK — giữ đủ field FE (shop_title/shop_url/
-    // shop_favicon/product_handle...). Không hydrate lúc sort/lọc/đếm nên không đụng raw 3M. Lô 1000 id/lần cho IN().
-    const ids = list.map((r) => r.product_id);
-    const rawById = new Map<string, { raw: string; fetched_at: any }>();
-    for (let i = 0; i < ids.length; i += 1000) {
-      const chunk = ids.slice(i, i + 1000);
-      const [rr] = await this.pool!.query(
-        `SELECT product_id, raw, fetched_at FROM sh_product WHERE product_id IN (${new Array(chunk.length).fill('?').join(',')})`,
-        chunk);
-      for (const x of rr as any[]) rawById.set(x.product_id, { raw: x.raw, fetched_at: x.fetched_at });
-    }
-    const items = list.map((lr) => {
-      const d = rawById.get(lr.product_id);
-      if (d && d.raw) { try { return { ...JSON.parse(d.raw), _local: true, _fetched_at: d.fetched_at == null ? null : Number(d.fetched_at) }; } catch { /* raw hỏng → fallback cột list */ } }
-      // Chỉ có trong list (detail chưa fetch / raw hỏng) → dựng từ cột list, alias đúng tên field FE đang đọc.
-      return {
-        product_id: lr.product_id, shop_id: lr.shop_id, product_title: lr.name, product_image_external: lr.thumbnail, price: lr.price,
-        day_current_period_revenue: lr.revenue_day, week_current_period_revenue: lr.revenue_week, month_current_period_revenue: lr.revenue_month,
-        shop_country: lr.shop_country, source: lr.source, _local: true, _fetched_at: lr.updated_at == null ? null : Number(lr.updated_at),
-      };
-    });
+    const items = (rows as any[]).map((r) => ({ ...r, _fetched_at: r._fetched_at == null ? null : Number(r._fetched_at) }));
     return { items, total };
   }
 

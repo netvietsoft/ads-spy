@@ -5,7 +5,6 @@ export interface ListRow {
 }
 export const LIST_COLS = ['product_id', 'shop_id', 'name', 'thumbnail', 'price', 'revenue_day', 'revenue_week', 'revenue_month', 'shop_country', 'category_last', 'source', 'updated_at'];
 const num = (v: any): number | null => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v));
-const str = (v: any): string | null => (v == null ? null : String(v));
 const cut = (v: any, n: number): string | null => (v == null ? null : String(v).slice(0, n));
 export function rawToListRow(raw: any, source: string | null, fetchedAt: number | null): ListRow | null {
   const o = raw && typeof raw === 'object' ? raw : {};

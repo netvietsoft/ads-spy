@@ -24,6 +24,19 @@ describe('queryLocalProducts tren sh_product_list', () => {
     expect(p1).toBeTruthy();
     expect(p1.shop_title).toBe('Shop A'); expect(p1.shop_url).toBe('shopa.myshopify.com'); expect(p1.product_handle).toBe('zzq-unicorn-hoodie');
     const p2=r.items.find((x:any)=>x.product_id===P+'2'); // fallback: khong co sh_product van tra ve tu cot list
-    expect(p2).toBeTruthy(); expect(p2.product_title).toBe('Zzq Unicorn Mug'); expect(p2.shop_title).toBeUndefined();
+    expect(p2).toBeTruthy(); expect(p2.product_title).toBe('Zzq Unicorn Mug'); expect(p2.shop_title).toBeNull(); // LEFT JOIN khong khop -> NULL (khong con spread raw), khac undefined truoc day nhung FE doc falsy-safe
+  });
+  it('PK-join: item co shop_url/shop_title/product_handle tu sh_product.raw', async () => {
+    const id = P + 'join1'; const pool = (m as any).pool;
+    await pool.query('INSERT INTO sh_product (product_id, raw, fetched_at, product_title, shop_id) VALUES (?,?,?,?,?)',
+      [id, JSON.stringify({ product_id: id, shop_id: 'sJoin', shop_url: 'joinshop.myshopify.com', shop_title: 'Join Shop', product_handle: 'join-product' }), 222, 'Join Product', 'sJoin']);
+    await pool.query('INSERT INTO sh_product_list (product_id, shop_id, name, price, revenue_month, shop_country, source, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+      [id, 'sJoin', 'Join Product', 15, 700, 'US', null, 222]);
+    const r = await m.queryLocalProducts({ sort: 'revenue_month', dir: 'desc', offset: 0, limit: 50, shop: 'sJoin' });
+    const item = r.items.find((x: any) => x.product_id === id);
+    expect(item).toBeTruthy();
+    expect(item.shop_url).toBe('joinshop.myshopify.com');
+    expect(item.shop_title).toBe('Join Shop');
+    expect(item.product_handle).toBe('join-product');
   });
 });
