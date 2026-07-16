@@ -4,6 +4,28 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-16 — Tách bảng sản phẩm list/detail (fix "3M sản phẩm tìm không nổi") — merged `main` @ b846742
+
+**Vấn đề:** `sh_product` ~3.33M dòng, doanh thu nằm trong `raw` JSON (~95KB/dòng) → sort/lọc/tìm phải full-scan + JSON-parse cả bảng → tìm sản phẩm treo vài phút.
+
+**Giải pháp (MySQL-only, không thêm hạ tầng):**
+- Bảng lean mới **`sh_product_list`** (12 cột thật + 8 index + FULLTEXT `ft_name`), tách khỏi `sh_product` (giữ làm bảng detail/raw).
+- **Mapper chung** `rawToListRow` (`sh.product-list.ts`) dùng cho mọi đường ghi + backfill (field map thống nhất).
+- **Dual-write** mọi đường ghi: NestJS `upsertItem`/`bulkUpsertProducts` (ShopHunter, ON DUP KEY UPDATE) + `bulkUpsertShopifyProducts` & scanner `catalog-bulk-scan.js` (Shopify, **INSERT IGNORE** — KHÔNG đè doanh thu/source thật của ShopHunter khi sp có ở cả 2 nguồn).
+- **`queryLocalProducts` viết lại**: sort/lọc/tìm/đếm chạy trên `sh_product_list` (ORDER BY cột thật + `product_id` cùng chiều → bám index composite, index scan thay filesort). Tìm tên = `MATCH(name) AGAINST` BOOLEAN MODE (token ≥3), fallback `LIKE`. Trang hiển thị **hydrate 1 query** (derived-table LIMIT + `LEFT JOIN sh_product` lấy `shop_url`/`shop_title`/`favicon`/`product_handle` qua `JSON_EXTRACT` — giữ cột Shop + link ↗, chỉ đụng ~limit dòng raw). `revenue_steady` (report top-sp) = cột thật.
+- **Bỏ bảng phụ `sh_product_search`** (FULLTEXT giờ nằm trên `sh_product_list.name`); gỡ `syncProductSearch`.
+- Script **`scripts/product-list-backfill.js`** (INSERT IGNORE, đọc lô 2000 / ghi chunk ≤400, retry deadlock, resumable) nạp 1 lần `sh_product` → `sh_product_list`.
+
+**Chất lượng:** 6 task TDD (subagent-driven), review từng task + review toàn nhánh (0 blocker, 4/4 coherence check). Full suite **28 suites / 138 test PASS**, tsc sạch. Đã push `origin/main`.
+
+**Rollout (HOÀN TẤT 2026-07-16):** build API → start app (api:3100, web:3101) → backfill 3,326,153 dòng (100%).
+- ⚠️ **Bài học backfill:** ban đầu để cả 8 index + FULLTEXT `ft_name` khi backfill → bảo trì FULLTEXT incremental kéo tốc độ tụt 55k→2.5k dòng/phút (ETA ~5h) VÀ làm `ft_name` phân mảnh (tìm tên 13s). **Sửa:** DROP `ft_name` → backfill nốt phần còn lại → **ADD FULLTEXT 1 lần** (build gọn 2.7 phút cho 3.33M). Đúng như design đã cảnh báo "build index SAU backfill".
+- **Verify (DB rảnh, đủ 3.33M):** sort doanh thu **1.35s** (total chính xác 3.33M) · lọc nước US **0.34s** · tìm tên cụ thể ("unicorn hoodie") **0.13s** · lọc/sort dùng index scan (EXPLAIN: `Backward index scan; Using index` + JOIN `eq_ref PRIMARY`). Hydrate trả đủ `shop_title/shop_url/shop_favicon/product_handle` → cột Shop + link ↗ hoạt động.
+- **Còn hạn chế:** tìm 1 từ RẤT phổ biến ("dress" → 83.723 match) mất ~7s do FULLTEXT phải rank + đếm toàn bộ match rồi sort theo doanh thu (tìm cụ thể thì tức thì). So với trước (list/tìm treo vài phút) đã cải thiện lớn.
+- (tùy chọn về sau: `DROP TABLE sh_product_search` khi chắc; tối ưu tìm-từ-phổ-biến bằng bỏ total chính xác cho query FULLTEXT nếu cần.)
+
+---
+
 ## 2026-07-13 (tối) — ShopHunter: doanh thu ngày từ snapshot crawler + catalog Shopify — [docs/10](docs/10-shophunter.md)
 
 ### Doanh thu ngày: nguồn chính chuyển sang snapshot crawler (không tốn thêm call ShopHunter)
