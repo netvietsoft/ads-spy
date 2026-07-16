@@ -798,7 +798,12 @@ export class ShMysql implements OnModuleInit {
   // Đọc bảng list nhẹ sh_product_list (không JSON, có FULLTEXT ft_name + index revenue/price/country/category) — nhanh cho sort/lọc/tìm.
   async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
-    const orderBy = buildOrderBy(o.sort, o.dir, PRODUCT_LOCAL_SORTS, 'revenue_month');
+    // Sort/lọc/tìm/đếm chạy trên sh_product_list (bảng nhẹ, cột thật + index) — KHÔNG scan raw 3M dòng.
+    // ORDER BY cột-thật + product_id (cùng chiều) để bám index composite (idx_pl_rev_*/price/updated) → index scan,
+    // không filesort. revenue_steady là biểu thức (không index) — chỉ dùng cho report top-sp (limit nhỏ).
+    const dir = String(o.dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const sortExpr = Object.prototype.hasOwnProperty.call(PRODUCT_LOCAL_SORTS, o.sort) ? PRODUCT_LOCAL_SORTS[o.sort] : PRODUCT_LOCAL_SORTS.revenue_month;
+    const orderBy = `ORDER BY ${sortExpr} ${dir}, product_id ${dir}`;
     const where: string[] = []; const params: any[] = [];
     if (o.shop) { where.push('shop_id = ?'); params.push(o.shop); }
     if (o.country) { where.push('shop_country = ?'); params.push(o.country); }
@@ -810,11 +815,35 @@ export class ShMysql implements OnModuleInit {
       else { where.push('name LIKE ?'); params.push('%' + o.q + '%'); }
     }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const [rows] = await this.pool!.query(
-      `SELECT product_id, shop_id, name AS product_title, thumbnail AS product_image_external, price, revenue_day AS day_current_period_revenue, revenue_week AS week_current_period_revenue, revenue_month AS month_current_period_revenue, shop_country, source, updated_at AS _fetched_at, 1 AS _local FROM sh_product_list ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+    const [listRows] = await this.pool!.query(
+      `SELECT product_id, shop_id, name, thumbnail, price, revenue_day, revenue_week, revenue_month, shop_country, category_last, source, updated_at FROM sh_product_list ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, o.limit, o.offset]);
     const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_product_list ${whereSql}`, params);
-    return { items: rows as any[], total: Number((cnt as any[])[0].n) || 0 };
+    const total = Number((cnt as any[])[0].n) || 0;
+    const list = listRows as any[];
+    if (!list.length) return { items: [], total };
+    // Hydrate CHỈ trang đang hiển thị (≤limit dòng) từ sh_product (raw) theo PK — giữ đủ field FE (shop_title/shop_url/
+    // shop_favicon/product_handle...). Không hydrate lúc sort/lọc/đếm nên không đụng raw 3M. Lô 1000 id/lần cho IN().
+    const ids = list.map((r) => r.product_id);
+    const rawById = new Map<string, { raw: string; fetched_at: any }>();
+    for (let i = 0; i < ids.length; i += 1000) {
+      const chunk = ids.slice(i, i + 1000);
+      const [rr] = await this.pool!.query(
+        `SELECT product_id, raw, fetched_at FROM sh_product WHERE product_id IN (${new Array(chunk.length).fill('?').join(',')})`,
+        chunk);
+      for (const x of rr as any[]) rawById.set(x.product_id, { raw: x.raw, fetched_at: x.fetched_at });
+    }
+    const items = list.map((lr) => {
+      const d = rawById.get(lr.product_id);
+      if (d && d.raw) { try { return { ...JSON.parse(d.raw), _local: true, _fetched_at: d.fetched_at == null ? null : Number(d.fetched_at) }; } catch { /* raw hỏng → fallback cột list */ } }
+      // Chỉ có trong list (detail chưa fetch / raw hỏng) → dựng từ cột list, alias đúng tên field FE đang đọc.
+      return {
+        product_id: lr.product_id, shop_id: lr.shop_id, product_title: lr.name, product_image_external: lr.thumbnail, price: lr.price,
+        day_current_period_revenue: lr.revenue_day, week_current_period_revenue: lr.revenue_week, month_current_period_revenue: lr.revenue_month,
+        shop_country: lr.shop_country, source: lr.source, _local: true, _fetched_at: lr.updated_at == null ? null : Number(lr.updated_at),
+      };
+    });
+    return { items, total };
   }
 
   // Gợi ý tên (autocomplete) từ DB: products → product_title (cột có index, quét index-only nhanh); shops → shop_name.
