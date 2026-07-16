@@ -250,6 +250,21 @@ export class ShMysql implements OnModuleInit {
     // Shop yêu thích (tim đỏ) — user đánh dấu theo dõi riêng.
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_fav_shop (shop_id VARCHAR(32) PRIMARY KEY, created_at BIGINT)`);
 
+    // Bảng danh sách sản phẩm (lean) — tách khỏi sh_product lớn (raw LONGTEXT) để list/sort/filter nhanh.
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_list (
+      product_id VARCHAR(32) NOT NULL PRIMARY KEY, shop_id VARCHAR(32), name VARCHAR(512), thumbnail VARCHAR(1024),
+      price DOUBLE, revenue_day DOUBLE, revenue_week DOUBLE, revenue_month DOUBLE,
+      shop_country VARCHAR(8), category_last VARCHAR(64), source VARCHAR(16), updated_at BIGINT,
+      FULLTEXT KEY ft_name (name)) CHARACTER SET utf8mb4`);
+    await this.ensureIndexMulti(pool, 'sh_product_list', 'idx_pl_rev_month', 'revenue_month, product_id');
+    await this.ensureIndexMulti(pool, 'sh_product_list', 'idx_pl_rev_week', 'revenue_week, product_id');
+    await this.ensureIndexMulti(pool, 'sh_product_list', 'idx_pl_rev_day', 'revenue_day, product_id');
+    await this.ensureIndexMulti(pool, 'sh_product_list', 'idx_pl_shop_rev', 'shop_id, revenue_month, product_id');
+    await this.ensureIndexMulti(pool, 'sh_product_list', 'idx_pl_price', 'price, product_id');
+    await this.ensureIndexMulti(pool, 'sh_product_list', 'idx_pl_updated', 'updated_at, product_id');
+    await this.ensureIndex(pool, 'sh_product_list', 'idx_pl_country', 'shop_country');
+    await this.ensureIndex(pool, 'sh_product_list', 'idx_pl_category', 'category_last');
+
     this.pool = pool;
   }
 
@@ -286,6 +301,12 @@ export class ShMysql implements OnModuleInit {
     if ((rows as any[]).length === 0) {
       await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (\`${column}\`)`);
     }
+  }
+
+  private async ensureIndexMulti(pool: mysql.Pool, table: string, indexName: string, colsSql: string): Promise<void> {
+    const [rows] = await pool.query(
+      `SELECT 1 FROM information_schema.statistics WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`, [table, indexName]);
+    if ((rows as any[]).length === 0) await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${colsSql})`);
   }
 
   // Đồng bộ bảng tìm kiếm sản phẩm (FULLTEXT trên bảng phụ nhỏ — KHÔNG đụng/rebuild sh_product lớn).
