@@ -12,6 +12,7 @@ describe('ShMysql catalog Shopify (bulkUpsertShopifyProducts / getShopsNeedingCa
   const cleanup = async () => {
     await pool.query('DELETE FROM sh_shop WHERE shop_id IN (?)', [shopIds]);
     await pool.query('DELETE FROM sh_product WHERE product_id IN (?)', [productIds]);
+    await pool.query('DELETE FROM sh_product_list WHERE product_id IN (?)', [productIds]);
   };
 
   beforeAll(async () => {
@@ -26,9 +27,12 @@ describe('ShMysql catalog Shopify (bulkUpsertShopifyProducts / getShopsNeedingCa
     await pool.end(); // đóng pool để jest thoát sạch
   }, 30000);
 
-  it('bulkUpsertShopifyProducts chỉ thêm sp mới, không đè', async () => {
+  it('bulkUpsertShopifyProducts chỉ thêm sp mới, không đè (cả sh_product lẫn sh_product_list)', async () => {
     await pool.query("INSERT INTO sh_product (product_id, raw, fetched_at, source) VALUES ('shp_exist','{\"product_title\":\"OLD\"}',0,'shophunter') ON DUPLICATE KEY UPDATE raw=VALUES(raw)");
     await pool.query("DELETE FROM sh_product WHERE product_id='shp_new'");
+    // sh_product_list đã có shp_exist từ ShopHunter với doanh thu THẬT + source shophunter — sync Shopify KHÔNG được đè null lên.
+    await pool.query("DELETE FROM sh_product_list WHERE product_id IN ('shp_exist','shp_new')");
+    await pool.query("INSERT INTO sh_product_list (product_id, name, revenue_month, source) VALUES ('shp_exist','OLD',12345,'shophunter')");
     const created = await m.bulkUpsertShopifyProducts('s9', 'x.com', [
       { id: 'shp_exist', handle: 'e', title: 'NEW', price: 1, image: null, variantCount: 1, publishedAt: null, createdAt: null, updatedAt: null },
       { id: 'shp_new', handle: 'n', title: 'N', price: 2, image: null, variantCount: 1, publishedAt: null, createdAt: null, updatedAt: null },
@@ -36,6 +40,15 @@ describe('ShMysql catalog Shopify (bulkUpsertShopifyProducts / getShopsNeedingCa
     expect(created).toBe(1); // chỉ shp_new
     const [[ex]] = await pool.query("SELECT JSON_UNQUOTE(JSON_EXTRACT(raw,'$.product_title')) t FROM sh_product WHERE product_id='shp_exist'");
     expect(ex.t).toBe('OLD'); // KHÔNG bị đè
+
+    // sh_product_list: dòng ShopHunter cũ giữ nguyên doanh thu + source (không bị Shopify đè null); sp mới vào list.
+    const [[exList]] = await pool.query("SELECT name, revenue_month, source FROM sh_product_list WHERE product_id='shp_exist'");
+    expect(exList.revenue_month).toBe(12345);
+    expect(exList.source).toBe('shophunter');
+    expect(exList.name).toBe('OLD');
+    const [[nwList]] = await pool.query("SELECT name, source FROM sh_product_list WHERE product_id='shp_new'");
+    expect(nwList.source).toBe('shopify');
+    expect(nwList.name).toBe('N');
 
     // sp mới: raw đúng field tab Products (Shopify) + cột phẳng product_title/shop_id + source
     const [[nw]] = await pool.query('SELECT raw, product_title, shop_id, source FROM sh_product WHERE product_id = ?', ['shp_new']);

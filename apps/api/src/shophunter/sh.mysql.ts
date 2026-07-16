@@ -1088,16 +1088,19 @@ export class ShMysql implements OnModuleInit {
   }
 
   // Upsert bảng list nhẹ sh_product_list (dual-write cạnh sh_product) — bulk INSERT ... ON DUPLICATE KEY UPDATE, lô ≤400.
-  async upsertProductList(rows: ListRow[]): Promise<void> {
+  // ignore=true → INSERT IGNORE (chỉ thêm sp mới, KHÔNG đè dòng đã có) — mirror đúng INSERT IGNORE của bulkUpsertShopifyProducts
+  // để không ghi đè revenue/source thật của ShopHunter bằng null của Shopify khi 1 sp có ở cả 2 nguồn.
+  async upsertProductList(rows: ListRow[], ignore = false): Promise<void> {
     await this.ensureReady();
     const tuples = rows.filter((r) => r && r.product_id).map((r) => listRowTuple(r));
     if (!tuples.length) return;
     const set = LIST_COLS.filter((c) => c !== 'product_id').map((c) => `${c}=VALUES(${c})`).join(', ');
-    const head = `INSERT INTO sh_product_list (${LIST_COLS.join(',')}) VALUES `;
+    const head = `INSERT ${ignore ? 'IGNORE ' : ''}INTO sh_product_list (${LIST_COLS.join(',')}) VALUES `;
+    const tail = ignore ? '' : ' ON DUPLICATE KEY UPDATE ' + set;
     for (let i = 0; i < tuples.length; i += 400) {
       const b = tuples.slice(i, i + 400);
       const ph = new Array(b.length).fill('(' + new Array(LIST_COLS.length).fill('?').join(',') + ')').join(',');
-      await this.pool!.query(head + ph + ' ON DUPLICATE KEY UPDATE ' + set, b.flat());
+      await this.pool!.query(head + ph + tail, b.flat());
     }
   }
 
@@ -1149,7 +1152,8 @@ export class ShMysql implements OnModuleInit {
       const [res] = await this.pool!.query(head + ph, batch.flat());
       inserted += (res as any).affectedRows || 0;
     }
-    await this.upsertProductList(tuples.map((t) => rawToListRow(JSON.parse(t[1] as string), 'shopify', now)).filter(Boolean) as ListRow[]);
+    // ignore=true: mirror INSERT IGNORE ở trên — không đè list row đã có (giữ revenue/source thật của ShopHunter).
+    await this.upsertProductList(tuples.map((t) => rawToListRow(JSON.parse(t[1] as string), 'shopify', now)).filter(Boolean) as ListRow[], true);
     return inserted;
   }
 
