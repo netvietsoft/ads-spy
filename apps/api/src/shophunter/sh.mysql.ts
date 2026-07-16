@@ -27,13 +27,10 @@ export const SHOP_LOCAL_SORTS: Record<string, string> = {
   growth_steady: `LEAST(${numExpr('$.day_revenue_percent_change')}, ${numExpr('$.week_revenue_percent_change')}, ${numExpr('$.month_revenue_percent_change')})`,
 };
 export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
-  revenue_day: numExpr('$.day_current_period_revenue'),
-  revenue_week: numExpr('$.week_current_period_revenue'),
-  revenue_month: numExpr('$.month_current_period_revenue'),
-  price: numExpr('$.price'),
-  fetched_at: 'fetched_at',
+  revenue_day: 'revenue_day', revenue_week: 'revenue_week', revenue_month: 'revenue_month',
+  price: 'price', fetched_at: 'updated_at',
   // "Doanh số đều" = doanh thu/ngày thấp nhất quy đổi từ 3 kỳ — cao = bán đều mỗi ngày, không phải bán dồn 1 đợt.
-  revenue_steady: `LEAST(${numExpr('$.day_current_period_revenue')}, ${numExpr('$.week_current_period_revenue')}/7, ${numExpr('$.month_current_period_revenue')}/30)`,
+  revenue_steady: 'LEAST(COALESCE(revenue_day,0), COALESCE(revenue_week,0)/7, COALESCE(revenue_month,0)/30)',
 };
 export function buildOrderBy(sort: string, dir: string, map: Record<string, string>, def: string): string {
   const expr = Object.prototype.hasOwnProperty.call(map, sort) ? map[sort] : map[def];
@@ -237,17 +234,6 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'affiliate_link', 'affiliate_link VARCHAR(512)');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_aff_check', 'affiliate_checked_at');
 
-    // Bảng tìm kiếm tên sản phẩm: FULLTEXT trên bảng phụ NHỎ (không rebuild sh_product lớn).
-    // LIKE '%q%' + sort JSON trên 400k dòng mất nhiều phút → MATCH...AGAINST vài chục ms.
-    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_search (
-      product_id VARCHAR(32) PRIMARY KEY, title VARCHAR(512), FULLTEXT KEY ft_title (title))`);
-    // Backfill 1 lần khi trống — chạy NỀN (400k dòng ~ phút, không chặn boot); INSERT IGNORE idempotent,
-    // writer (upsertItem/bulkUpsertProducts/bulkUpsertShopifyProducts) giữ đồng bộ về sau.
-    const [psCnt] = await pool.query('SELECT COUNT(*) n FROM sh_product_search');
-    if (!Number((psCnt as any[])[0].n)) {
-      pool.query("INSERT IGNORE INTO sh_product_search (product_id, title) SELECT product_id, product_title FROM sh_product WHERE product_title IS NOT NULL AND product_title != ''").catch(() => { /* thử lại ở boot sau */ });
-    }
-
     // Shop yêu thích (tim đỏ) — user đánh dấu theo dõi riêng.
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_fav_shop (shop_id VARCHAR(32) PRIMARY KEY, created_at BIGINT)`);
 
@@ -308,17 +294,6 @@ export class ShMysql implements OnModuleInit {
     const [rows] = await pool.query(
       `SELECT 1 FROM information_schema.statistics WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`, [table, indexName]);
     if ((rows as any[]).length === 0) await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${colsSql})`);
-  }
-
-  // Đồng bộ bảng tìm kiếm sản phẩm (FULLTEXT trên bảng phụ nhỏ — KHÔNG đụng/rebuild sh_product lớn).
-  private async syncProductSearch(pairs: (readonly [string | null | undefined, string | null | undefined])[]): Promise<void> {
-    const rows = pairs.filter(([id, t]) => id && t) as [string, string][];
-    if (!rows.length) return;
-    for (let i = 0; i < rows.length; i += 500) {
-      const b = rows.slice(i, i + 500);
-      const ph = new Array(b.length).fill('(?,?)').join(',');
-      await this.pool!.query(`INSERT INTO sh_product_search (product_id, title) VALUES ${ph} ON DUPLICATE KEY UPDATE title = VALUES(title)`, b.flat());
-    }
   }
 
   async upsertItem(table: Table, id: string, raw: unknown): Promise<void> {
@@ -820,39 +795,26 @@ export class ShMysql implements OnModuleInit {
     return { items, total: Number((cnt as any[])[0].n) || 0 };
   }
 
+  // Đọc bảng list nhẹ sh_product_list (không JSON, có FULLTEXT ft_name + index revenue/price/country/category) — nhanh cho sort/lọc/tìm.
   async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, PRODUCT_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
-    if (o.shop) { where.push('shop_id = ?'); params.push(o.shop); } // lọc sản phẩm theo shop (cột có index)
-    if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) = ?"); params.push(o.country); }
-    if (o.category) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) = ?"); params.push(o.category); }
+    if (o.shop) { where.push('shop_id = ?'); params.push(o.shop); }
+    if (o.country) { where.push('shop_country = ?'); params.push(o.country); }
+    if (o.category) { where.push('category_last = ?'); params.push(o.category); }
     if (o.q) {
-      // FULLTEXT qua bảng phụ sh_product_search (LIKE '%q%' + sort JSON trên 400k dòng mất nhiều phút).
-      // 2 BƯỚC trong code: lấy id từ FT trước (ms) rồi IN(danh sách id) trên PK — planner xử lý IN(subquery)
-      // rất tệ (semijoin scan cả sh_product ~1 phút). Token ≥3 ký tự prefix-match; toàn token ngắn → fallback LIKE.
+      // Token ≥3 ký tự → FULLTEXT prefix-match trên ft_name; toàn token ngắn → fallback LIKE.
       const tokens = o.q.trim().split(/\s+/).map((t) => t.replace(/[+\-<>()~*"@]/g, '')).filter((t) => t.length >= 3);
-      if (tokens.length) {
-        const [idRows] = await this.pool!.query(
-          'SELECT product_id FROM sh_product_search WHERE MATCH(title) AGAINST (? IN BOOLEAN MODE) LIMIT 20000',
-          [tokens.map((t) => `+${t}*`).join(' ')],
-        );
-        const ids = (idRows as any[]).map((r) => r.product_id);
-        if (!ids.length) return { items: [], total: 0 };
-        where.push(`product_id IN (${new Array(ids.length).fill('?').join(',')})`);
-        params.push(...ids);
-      } else {
-        where.push('product_title LIKE ?'); params.push('%' + o.q + '%');
-      }
+      if (tokens.length) { where.push('MATCH(name) AGAINST (? IN BOOLEAN MODE)'); params.push(tokens.map((t) => `+${t}*`).join(' ')); }
+      else { where.push('name LIKE ?'); params.push('%' + o.q + '%'); }
     }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
-      `SELECT product_id, raw, fetched_at FROM sh_product ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
-      [...params, o.limit, o.offset],
-    );
-    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_product ${whereSql}`, params);
-    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at) }));
-    return { items, total: Number((cnt as any[])[0].n) || 0 };
+      `SELECT product_id, shop_id, name AS product_title, thumbnail AS product_image_external, price, revenue_day AS day_current_period_revenue, revenue_week AS week_current_period_revenue, revenue_month AS month_current_period_revenue, shop_country, source, updated_at AS _fetched_at, 1 AS _local FROM sh_product_list ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      [...params, o.limit, o.offset]);
+    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_product_list ${whereSql}`, params);
+    return { items: rows as any[], total: Number((cnt as any[])[0].n) || 0 };
   }
 
   // Gợi ý tên (autocomplete) từ DB: products → product_title (cột có index, quét index-only nhanh); shops → shop_name.

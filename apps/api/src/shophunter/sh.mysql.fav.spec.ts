@@ -1,4 +1,4 @@
-// sh.mysql.fav.spec.ts — fav shop roundtrip + tìm sản phẩm qua bảng FULLTEXT sh_product_search (DB thật, rows test riêng).
+// sh.mysql.fav.spec.ts — fav shop roundtrip + tìm sản phẩm qua bảng FULLTEXT sh_product_list (DB thật, rows test riêng).
 import { ShMysql } from './sh.mysql';
 
 describe('fav shop + product search FULLTEXT (DB thật)', () => {
@@ -12,7 +12,7 @@ describe('fav shop + product search FULLTEXT (DB thật)', () => {
     if (pool) {
       await pool.query('DELETE FROM sh_fav_shop WHERE shop_id = ?', [FAV_ID]);
       await pool.query('DELETE FROM sh_product WHERE product_id = ?', [PROD_ID]);
-      await pool.query('DELETE FROM sh_product_search WHERE product_id = ?', [PROD_ID]);
+      await pool.query('DELETE FROM sh_product_list WHERE product_id = ?', [PROD_ID]);
       await pool.end();
     }
   });
@@ -25,7 +25,7 @@ describe('fav shop + product search FULLTEXT (DB thật)', () => {
     expect(await m.listFavShops()).not.toContain(FAV_ID);
   });
 
-  it('bulkUpsertProducts đồng bộ sh_product_search → queryLocalProducts tìm thấy theo từ trong tên', async () => {
+  it('bulkUpsertProducts đồng bộ sh_product_list → queryLocalProducts tìm thấy theo từ trong tên', async () => {
     await m.bulkUpsertProducts([{ productId: PROD_ID, raw: JSON.stringify({ product_id: PROD_ID, product_title: TITLE, month_current_period_revenue: 1 }), title: TITLE, shopId: 'test_fts_shop' }]);
     const r = await m.queryLocalProducts({ sort: 'fetched_at', dir: 'desc', offset: 0, limit: 10, q: 'zzzqx unicorn' });
     expect(r.items.some((it: any) => it.product_id === PROD_ID)).toBe(true);
