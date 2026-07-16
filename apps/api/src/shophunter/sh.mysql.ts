@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import mysql from 'mysql2/promise';
 import { ShBlockedError } from './sh.client';
 import { PrismaService } from '../prisma.service';
+import { rawToListRow, listRowTuple, LIST_COLS, ListRow } from './sh.product-list';
 
 type Table = 'sh_shop' | 'sh_product';
 
@@ -332,7 +333,7 @@ export class ShMysql implements OnModuleInit {
          ON DUPLICATE KEY UPDATE raw = VALUES(raw), fetched_at = VALUES(fetched_at), product_title = VALUES(product_title), shop_id = VALUES(shop_id)`,
         [id, JSON.stringify(raw), Date.now(), title, sid],
       );
-      await this.syncProductSearch([[String(id).slice(0, 32), title]]);
+      await this.upsertProductList([rawToListRow(o, null, Date.now())].filter(Boolean) as ListRow[]);
       return;
     }
     await this.pool!.query(
@@ -1082,8 +1083,22 @@ export class ShMysql implements OnModuleInit {
       const ph = new Array(batch.length).fill('(?,?,?,?,?)').join(',');
       await this.pool!.query(head + ph + tail, batch.flat());
     }
-    await this.syncProductSearch(tuples.map((t) => [t[0] as string, t[3] as string] as const));
+    await this.upsertProductList(rows.map((r) => rawToListRow(JSON.parse(r.raw), null, now)).filter(Boolean) as ListRow[]);
     return tuples.length;
+  }
+
+  // Upsert bảng list nhẹ sh_product_list (dual-write cạnh sh_product) — bulk INSERT ... ON DUPLICATE KEY UPDATE, lô ≤400.
+  async upsertProductList(rows: ListRow[]): Promise<void> {
+    await this.ensureReady();
+    const tuples = rows.filter((r) => r && r.product_id).map((r) => listRowTuple(r));
+    if (!tuples.length) return;
+    const set = LIST_COLS.filter((c) => c !== 'product_id').map((c) => `${c}=VALUES(${c})`).join(', ');
+    const head = `INSERT INTO sh_product_list (${LIST_COLS.join(',')}) VALUES `;
+    for (let i = 0; i < tuples.length; i += 400) {
+      const b = tuples.slice(i, i + 400);
+      const ph = new Array(b.length).fill('(' + new Array(LIST_COLS.length).fill('?').join(',') + ')').join(',');
+      await this.pool!.query(head + ph + ' ON DUPLICATE KEY UPDATE ' + set, b.flat());
+    }
   }
 
   // Shop cần đồng bộ catalog Shopify (bulkUpsertShopifyProducts) — copy pattern getShopsNeedingRevSync.
@@ -1134,7 +1149,7 @@ export class ShMysql implements OnModuleInit {
       const [res] = await this.pool!.query(head + ph, batch.flat());
       inserted += (res as any).affectedRows || 0;
     }
-    await this.syncProductSearch(tuples.map((t) => [t[0] as string, t[3] as string] as const));
+    await this.upsertProductList(tuples.map((t) => rawToListRow(JSON.parse(t[1] as string), 'shopify', now)).filter(Boolean) as ListRow[]);
     return inserted;
   }
 
