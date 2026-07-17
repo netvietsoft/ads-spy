@@ -4,6 +4,21 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-17 — Fill doanh thu TỪNG sản phẩm từ ShopHunter (fix "shop có doanh thu nhưng list sản phẩm trống")
+
+**Vấn đề:** sản phẩm crawl từ catalog Shopify (`products.json`) không kèm doanh thu → cột DT trong danh sách trống, dù trang shop detail hiện doanh thu (đọc từ blob `sh_shop.raw` ShopHunter). Doanh thu từng-sản-phẩm chưa bao giờ ghi vào record sản phẩm riêng lẻ.
+
+**Làm (sẵn sàng chạy khi có quota ShopHunter):**
+- `enrichShopProductsRevenue(shopId)`: `search` ShopHunter theo `must_include_shop_ids` (item KÈM doanh thu) → `upsertItem('sh_product')` → dual-write `sh_product_list.revenue_*` vào **đúng product_id** (fill cả sp catalog `source='shopify'` đang null; source về ShopHunter).
+- `enrichProductRevenueRun(limit)`: batch các shop đã cào catalog chưa enrich (`prod_rev_synced_at`), resume-safe; **block toàn cục → DỪNG, không mark shop** (chạy lại đúng chỗ khi có quota).
+- Endpoints: `POST /api/sh/shop/:id/enrich-products`, `POST /api/sh/enrich/product-revenue/run?limit=N`.
+- **FIX** `isGlobalBlock`: thêm **402** (hết quota/subscription = account-level) → trước đây bị coi là lỗi-riêng-shop nên batch mark nhầm shop "đã xong" giữa lúc 402.
+- Test: `upsertItem` fill revenue đúng product_id (ghi đè null); `isGlobalBlock(402)=true`. 30 test liên quan PASS, tsc sạch.
+
+**Trạng thái:** account ShopHunter đang trả **402** (token auth `valid` nhưng hết quota) → chưa fill được. Cơ chế READY: khi có quota, chạy `run` là fill toàn bộ theo product_id.
+
+---
+
 ## 2026-07-16 — Tách bảng sản phẩm list/detail (fix "3M sản phẩm tìm không nổi") — merged `main` @ b846742
 
 **Vấn đề:** `sh_product` ~3.33M dòng, doanh thu nằm trong `raw` JSON (~95KB/dòng) → sort/lọc/tìm phải full-scan + JSON-parse cả bảng → tìm sản phẩm treo vài phút.
