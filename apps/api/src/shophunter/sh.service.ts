@@ -425,6 +425,46 @@ export class ShService {
     }
   }
 
+  // FILL doanh thu TỪNG sản phẩm của 1 shop từ ShopHunter: search theo must_include_shop_ids (item KÈM doanh thu) →
+  // upsertItem('sh_product') → dual-write sh_product_list.revenue_* vào ĐÚNG product_id (kể cả sp catalog shopify đang null).
+  // Cần token ShopHunter hợp lệ; block toàn cục (402/429/401) → ném để caller dừng+backoff (an toàn chạy lại khi có token).
+  async enrichShopProductsRevenue(shopId: string, cap = 240): Promise<{ fetched: number; upserted: number }> {
+    let fetched = 0; let upserted = 0;
+    for (let from = 0; from < cap; from += 24) {
+      const res = await this.client.search('products', { sort: 'week_current_period_revenue', q: '', categoryIds: [], from, lists: { must_include_shop_ids: [shopId] } });
+      const items = parseSearch<any>(res).items;
+      if (!items.length) break;
+      for (const it of items) {
+        if (!it.product_id) continue;
+        await this.mysql.upsertItem('sh_product', String(it.product_id), it); // dual-write raw+list, fill revenue theo product_id
+        upserted++;
+      }
+      fetched += items.length;
+      if (items.length < 24) break; // hết trang
+    }
+    return { fetched, upserted };
+  }
+
+  // Batch: duyệt shop đã cào catalog nhưng CHƯA fill doanh thu sp → enrich từng shop + đánh mốc prod_rev_synced_at.
+  // Block toàn cục (hết token) → DỪNG ngay (shop chưa mốc vẫn chờ) → chạy lại khi có token là tiếp đúng chỗ.
+  async enrichProductRevenueRun(limitShops = 50, staleMs = 7 * 86400000): Promise<{ shops: number; upserted: number; stopped?: string }> {
+    const shops = await this.mysql.getShopsNeedingProductRevenue(limitShops, staleMs);
+    let done = 0; let upserted = 0;
+    for (const s of shops) {
+      try {
+        const r = await this.enrichShopProductsRevenue(s.shopId);
+        upserted += r.upserted;
+        await this.mysql.setShopProductRevenueSynced(s.shopId);
+        done++;
+      } catch (e) {
+        if (isGlobalBlock(e)) return { shops: done, upserted, stopped: 'blocked' }; // hết token/429 → dừng
+        await this.mysql.setShopProductRevenueSynced(s.shopId); // lỗi riêng shop → đánh mốc, sang shop kế
+        done++;
+      }
+    }
+    return { shops: done, upserted };
+  }
+
   setToken(token: string) {
     return this.auth.setRefreshToken(token);
   }

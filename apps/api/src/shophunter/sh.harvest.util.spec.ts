@@ -6,6 +6,7 @@ describe('isGlobalBlock', () => {
     expect(isGlobalBlock(new ShBlockedError('x', 503))).toBe(true); // rate-limit
     expect(isGlobalBlock(new ShBlockedError('x', 429))).toBe(true);
     expect(isGlobalBlock(new ShBlockedError('x', 401))).toBe(true); // auth
+    expect(isGlobalBlock(new ShBlockedError('x', 402))).toBe(true); // hết quota/subscription (account-level) → dừng, KHÔNG mark shop
     expect(isGlobalBlock(new ShBlockedError('x', 403))).toBe(true);
     expect(isGlobalBlock(new ShBlockedError('x'))).toBe(true);      // status undefined = mạng/parse
     expect(isGlobalBlock(new Error('lạ'))).toBe(true);              // lỗi không phải ShBlockedError → an toàn coi như chặn

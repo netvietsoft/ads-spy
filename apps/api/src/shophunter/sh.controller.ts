@@ -164,6 +164,19 @@ export class ShController {
     return this.harvest.runImportEnrich({ daily: Number.isFinite(n) ? n : undefined });
   }
 
+  // FILL doanh thu từng sản phẩm cho 1 shop từ ShopHunter (cần token). Fill vào đúng product_id (sh_product + list).
+  @Post('sh/shop/:id/enrich-products')
+  enrichShopProducts(@Param('id') id: string) {
+    return this.svc.enrichShopProductsRevenue(id);
+  }
+
+  // Batch: fill doanh thu sp cho các shop đã cào catalog nhưng chưa enrich (chạy khi có token; block → dừng, chạy lại tiếp).
+  @Post('sh/enrich/product-revenue/run')
+  enrichProductRevenueRun(@Query('limit') limit: string) {
+    const n = Number(limit);
+    return this.svc.enrichProductRevenueRun(Number.isFinite(n) && n > 0 ? n : undefined);
+  }
+
   @Get('sh/shops')
   shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
     return this.svc.explore('shops', {

@@ -1,13 +1,13 @@
 import { ShBlockedError } from './sh.client';
 
 // Phân biệt lỗi chặn-toàn-cục vs lỗi-riêng-1-shop, để tránh "poison pill" (1 shop trả 500 làm kẹt cả slice).
-//  - Chặn toàn cục (backoff + dừng tick, GIỮ cursor): 401/403 (auth hỏng), 429/503 (rate-limit),
-//    hoặc status undefined (lỗi mạng/parse) — đều là "thử lại sau".
+//  - Chặn toàn cục (backoff + dừng tick, GIỮ cursor): 401/403 (auth hỏng), 402 (hết quota/subscription — account-level),
+//    429/503 (rate-limit), hoặc status undefined (lỗi mạng/parse) — đều là "thử lại sau", KHÔNG đánh dấu shop đã xong.
 //  - Lỗi riêng 1 shop (KHÔNG chặn: đánh 'fail' + đi tiếp, cursor nhích qua): 400/404/500/502/504.
 export function isGlobalBlock(e: unknown): boolean {
   if (!(e instanceof ShBlockedError)) return true; // lỗi lạ → an toàn coi như chặn
   const s = e.status;
-  return s === undefined || s === 401 || s === 403 || s === 429 || s === 503;
+  return s === undefined || s === 401 || s === 402 || s === 403 || s === 429 || s === 503;
 }
 
 export function randInt(min: number, max: number, rand: number = Math.random()): number {

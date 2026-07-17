@@ -227,6 +227,9 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'catalog_synced_at', 'catalog_synced_at BIGINT');
     await this.ensureColumn(pool, 'sh_shop', 'catalog_status', 'catalog_status VARCHAR(16)');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_catalog_sync', 'catalog_synced_at');
+    // Đã fill doanh thu TỪNG sản phẩm của shop từ ShopHunter (search must_include_shop_ids) — mốc để resume enrich.
+    await this.ensureColumn(pool, 'sh_shop', 'prod_rev_synced_at', 'prod_rev_synced_at BIGINT');
+    await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_prodrev_sync', 'prod_rev_synced_at');
 
     // Affiliate check: tín hiệu (yes/no/blocked) + link trang affiliate của shop.
     await this.ensureColumn(pool, 'sh_shop', 'affiliate_checked_at', 'affiliate_checked_at BIGINT');
@@ -1146,6 +1149,26 @@ export class ShMysql implements OnModuleInit {
   async setShopCatalog(shopId: string, status: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query('UPDATE sh_shop SET catalog_synced_at = ?, catalog_status = ? WHERE shop_id = ?', [Date.now(), status, shopId]);
+  }
+
+  // Shop cần FILL doanh thu từng sản phẩm từ ShopHunter: đã cào catalog (có sp shopify) nhưng chưa enrich doanh thu.
+  // NULL (chưa từng enrich) xếp đầu; quá hạn staleMs cho thử lại. Chạy khi có token ShopHunter (enrichShopProductsRevenue).
+  async getShopsNeedingProductRevenue(limit: number, staleMs: number): Promise<{ shopId: string }[]> {
+    await this.ensureReady();
+    const cutoff = Date.now() - staleMs;
+    const [rows] = await this.pool!.query(
+      `SELECT shop_id FROM sh_shop
+        WHERE catalog_synced_at IS NOT NULL
+          AND (prod_rev_synced_at IS NULL OR prod_rev_synced_at < ?)
+        ORDER BY prod_rev_synced_at ASC LIMIT ?`,
+      [cutoff, limit],
+    );
+    return (rows as any[]).map((r) => ({ shopId: r.shop_id }));
+  }
+
+  async setShopProductRevenueSynced(shopId: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_shop SET prod_rev_synced_at = ? WHERE shop_id = ?', [Date.now(), shopId]);
   }
 
   // Shop cần check affiliate — rotation NULL trước rồi cũ nhất; bỏ 'blocked' chưa quá hạn (copy pattern catalog).
