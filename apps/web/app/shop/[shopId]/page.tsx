@@ -80,7 +80,7 @@ export default function ShopDetailPage() {
             <span>Month <b>{money(s.month_current_period_revenue)}</b></span>
             <span>Ads <b>{s.active_ad_count ?? 0}</b>{adsLink && <a className="dl" href={adsLink} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ xem ads</a>}</span>
             <span>SKU <b>{s.sku_count ?? 0}</b>{skuLink && <a className="dl" href={skuLink} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ sản phẩm</a>}</span>
-            <span title="Số sản phẩm của shop hiện có trong DB">Sản phẩm (DB) <b>{d!.productCount ?? 0}</b>{(d!.productCount ?? 0) > 0 && <a className="dl" href={`/?tab=localdb&pshop=${shopId}`} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ xem</a>}</span>
+            <span title="Số sản phẩm của shop hiện có trong DB">Sản phẩm (DB) <b>{d!.productCount ?? 0}</b>{(d!.productCount ?? 0) > 0 && <a className="dl" href={`/localdb/products?pshop=${shopId}`} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ xem</a>}</span>
             <span>{s.country} · {s.currency}</span>
           </div>
           <div style={{ display: 'flex', gap: 16, margin: '0 0 12px', flexWrap: 'wrap', fontSize: 13, opacity: 0.9 }}>

@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Advertiser,
   CreativeBrief,
@@ -46,22 +47,36 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report';
+// Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
+const SOURCE_TO_PATH: Record<Source, string> = {
+  google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
+  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import',
+};
+function pathToSource(p: string): Source {
+  if (p.startsWith('/facebookads')) return 'facebook';
+  if (p.startsWith('/tiktokads')) return 'tiktok';
+  if (p.startsWith('/shophuntershopify')) return 'shophunter';
+  if (p.startsWith('/localdb')) return 'localdb';
+  if (p.startsWith('/trackshopify')) return 'track';
+  if (p.startsWith('/reportlocaldb')) return 'report';
+  if (p.startsWith('/import')) return 'import';
+  return 'google'; // '/', '/googleads', và fallback
+}
+
 export default function Home() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [source, setSource] = useState<'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report'>('google');
-  // Deep-link tab qua ?tab= : đọc lúc mở, đồng bộ URL khi đổi tab (bookmark/chia sẻ được từng menu).
-  const TABS = ['google', 'facebook', 'tiktok', 'shophunter', 'localdb', 'track', 'import', 'report'] as const;
-  const firstTab = useRef(true);
+  const pathname = usePathname();
+  const router = useRouter();
+  const [source, setSource] = useState<Source>('google');
+  // URL path → mở đúng tab. Link cũ ?tab=X → redirect sang path mới (tương thích bookmark cũ).
   useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get('tab') as any;
-    if (t && (TABS as readonly string[]).includes(t)) setSource(t);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (firstTab.current) { firstTab.current = false; return; }
-    const u = new URL(window.location.href);
-    if (source === 'google') u.searchParams.delete('tab'); else u.searchParams.set('tab', source);
-    window.history.replaceState(null, '', u.toString());
-  }, [source]);
+    const t = new URLSearchParams(window.location.search).get('tab');
+    if (t && (SOURCE_TO_PATH as Record<string, string>)[t]) { router.replace(SOURCE_TO_PATH[t as Source]); return; }
+    setSource(pathToSource(pathname || '/'));
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Bấm tab → điều hướng sang URL của tab đó (path-effect ở trên sẽ set source).
+  const goTab = (s: Source) => { setSource(s); router.push(SOURCE_TO_PATH[s]); };
   const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -322,41 +337,41 @@ export default function Home() {
       <div className="sources">
         <button
           className={`srcbtn ${source === 'google' ? 'active' : ''}`}
-          onClick={() => setSource('google')}
+          onClick={() => goTab('google')}
           type="button"
         >
           🔵 Google Ads
         </button>
         <button
           className={`srcbtn ${source === 'facebook' ? 'active' : ''}`}
-          onClick={() => setSource('facebook')}
+          onClick={() => goTab('facebook')}
           type="button"
         >
           🔷 Facebook Ads
         </button>
         <button
           className={`srcbtn ${source === 'tiktok' ? 'active' : ''}`}
-          onClick={() => setSource('tiktok')}
+          onClick={() => goTab('tiktok')}
           type="button"
         >
           🎵 TikTok Ads
         </button>
         <button
           className={`srcbtn ${source === 'shophunter' ? 'active' : ''}`}
-          onClick={() => setSource('shophunter')}
+          onClick={() => goTab('shophunter')}
         >
           🛍 ShopHunter
         </button>
-        <button className={`srcbtn ${source === 'localdb' ? 'active' : ''}`} onClick={() => setSource('localdb')}>🗄 Local DB</button>
-        <button className={`srcbtn ${source === 'track' ? 'active' : ''}`} onClick={() => setSource('track')}>🔎 Track</button>
-        <button className={`srcbtn ${source === 'import' ? 'active' : ''}`} onClick={() => setSource('import')}>📥 Import</button>
-        <button className={`srcbtn ${source === 'report' ? 'active' : ''}`} onClick={() => setSource('report')}>📊 Báo cáo</button>
+        <button className={`srcbtn ${source === 'localdb' ? 'active' : ''}`} onClick={() => goTab('localdb')}>🗄 Local DB</button>
+        <button className={`srcbtn ${source === 'track' ? 'active' : ''}`} onClick={() => goTab('track')}>🔎 Track</button>
+        <button className={`srcbtn ${source === 'import' ? 'active' : ''}`} onClick={() => goTab('import')}>📥 Import</button>
+        <button className={`srcbtn ${source === 'report' ? 'active' : ''}`} onClick={() => goTab('report')}>📊 Báo cáo</button>
       </div>
 
       {source === 'facebook' && <FacebookPanel />}
       {source === 'tiktok' && <TiktokPanel />}
       {source === 'shophunter' && <ShopHunterPanel />}
-      {source === 'localdb' && <LocalDbPanel />}
+      {source === 'localdb' && <LocalDbPanel subTab={pathname === '/localdb/products' ? 'products' : 'shops'} />}
       {source === 'track' && <TrackPanel />}
       {source === 'import' && <ImportPanel />}
       {source === 'report' && <ReportPanel />}

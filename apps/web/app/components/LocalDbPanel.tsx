@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { shLocalShops, shLocalProducts, shLocalFilters, shLocalSuggest, ShLocalResult, shAssetProxy, shShopSite, shProductUrl, shFavShops, shLocalExportUrl } from '../api';
 import { ShLogo } from './ShLogo';
 import { CategoryPicker } from './CategoryPicker';
@@ -42,8 +43,11 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_badge', label: '' },
 ];
 
-export function LocalDbPanel() {
-  const [tab, setTab] = useState<'shops' | 'products'>('shops');
+export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {}) {
+  const router = useRouter();
+  const [tab, setTab] = useState<'shops' | 'products'>(subTab ?? 'shops');
+  // Đồng bộ sub-tab theo URL (/localdb/shops ↔ /localdb/products), gồm cả nút back/forward trình duyệt.
+  useEffect(() => { if (subTab && subTab !== tab) setTab(subTab); }, [subTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [data, setData] = useState<ShLocalResult>({ items: [], total: 0, page: 1, pageSize: 100 });
   const [sort, setSort] = useState('revenue_month'); // mặc định: DT Tháng cao → thấp (cả tab Shops lẫn Products)
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
@@ -104,6 +108,7 @@ export function LocalDbPanel() {
     setTab(t); setData({ items: [], total: 0, page: 1, pageSize });
     setSort('revenue_month'); setDir('desc'); setPage(1); setCountry(''); setCategory('');
     setQ(''); setQInput(''); setSugs([]); setShowSug(false); setShopFilter('');
+    router.push('/localdb/' + t); // đổi URL theo sub-tab
   };
   const applyQ = (val: string) => { const v = val.trim(); setQ(v); setQInput(v); setSugs([]); setShowSug(false); setPage(1); };
   const clickSort = (k: string) => {
