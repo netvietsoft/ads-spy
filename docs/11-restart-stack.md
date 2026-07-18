@@ -2,7 +2,18 @@
 
 > Log dựng lại toàn bộ sau khi **restart máy**. Cập nhật: 2026-07-14 (chiều).
 
-## ⚡ TRẠNG THÁI PHIÊN 2026-07-15 (mới nhất — đọc trước)
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-18 (mới nhất — đọc trước)
+- **Git HEAD:** `54b5366` trên `main`, **ĐÃ PUSH origin/main**. Từ 2026-07-16→18 làm: tách bảng sản phẩm list/detail (fix 3M tìm chậm) + enrich doanh thu sp + **deploy lên VPS dpboss.pet** + login + URL routing + sort mặc định. Chi tiết: CHANGELOG mục 2026-07-16/17/18.
+- **VPS dpboss.pet** (`netviet@netviettest`): web :3062, api :8075, chạy **PM2** (`ecosystem.config.js`). Redeploy nhanh: `bash deploy.sh`. Deploy chỉ web (sau khi pull): `cd ~/projects-deploy/ads-spy && git pull origin main && npm run build && pm2 restart ads-spy-web --update-env`.
+- **DB VPS:** MySQL 8.0.46, DB `shophunter` (chung server nhiều DB khác — ⚠️ RAM có hạn, crawl+MySQL nặng dễ **OOM→502**; `free -h` trước khi cào). Ads google/fb/tiktok dùng **Prisma/SQLite** `apps/api/prisma/dev.db` RIÊNG. **Đã migrate ~4M sp + 46k shop** local→VPS (mysqldump). `SH_MYSQL_URL` đọc từ env (root@127.0.0.1 no-pass chạy được trên VPS này).
+- **CÒN DANG DỞ trên VPS** (làm khi quay lại):
+  1. **Deploy code mới nhất**: lệnh deploy web ở trên (nạp login + sort mặc định + URL routing `49cd94b`).
+  2. **Bật login**: `echo "export SITE_PASSWORD='...'" >> ~/.bashrc && source ~/.bashrc` rồi `pm2 restart ads-spy-web --update-env`. (Rỗng = không chặn.)
+  3. **Backfill `sh_product_list` trên VPS** (đang RỖNG — cần để tab Products có data): `sudo mysql shophunter -e "ALTER TABLE sh_product_list DROP INDEX ft_name;"` → `node scripts/product-list-backfill.js` (nền: nohup) → `sudo mysql shophunter -e "ALTER TABLE sh_product_list ADD FULLTEXT ft_name(name);"`.
+  4. **(tùy) Cào tiếp Shopify trên VPS**: scp `scripts/proxies.txt` lên `scripts/` → `nohup node scripts/catalog-bulk-scan.js > ~/catalog-scan.log 2>&1 &` (tự tiếp tục qua `catalog_synced_at`).
+- **Bẫy restore/deploy VPS đã học:** (1) **collation** — dump tái tạo `sh_product` = `0900_ai_ci` khớp `sh_product_list`; nếu tạo bảng rỗng bằng ensureReady trên DB default `unicode_ci` rồi JOIN → lỗi "Illegal mix of collations" (restore data là hết). (2) **ĐỪNG Ctrl-C giữa `mysql < dump`** — ngắt → buffer mis-parse ra lỗi 1064 giả (tưởng dump hỏng); dùng `pv` để biết đang chạy. (3) scripts standalone đã cross-platform (relative path + SH_MYSQL_URL), chạy trên Linux OK.
+
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-15 (đọc trước)
 - **Git HEAD:** `ba999e9` trên `main`, **ĐÃ PUSH origin/main** (repo public `netvietsoft/ads-spy`). ⚠️ Proxy credentials KHÔNG còn trong repo — đọc từ `scripts/proxies.txt` (gitignored) hoặc env `AFF_PROXIES`; nếu file này mất phải tạo lại (host:port:user:pass mỗi dòng) mới chạy được scanner.
 - **Sự cố phiên trước:** MySQL bị **tắt bình thường** lúc ~10:47 (không crash) → catalog scanner đang chạy văng với `FATAL Server shutdown in progress`. Đã start lại MySQL (InnoDB recovery sạch ~50s, KHÔNG hỏng dữ liệu). Standalone scanner (node nền) chết theo phiên Claude Code — phải chạy lại tay.
 - **Affiliate scan:** ✅ XONG (không cần chạy lại). Kết quả: **~9.900 shop `yes` (có link đăng ký) + ~4.260 `app` = ~14.160 shop có affiliate** trên 46.663. Xem: Local DB tab Shops → tích "Có affiliate"/sort cột Aff/Xuất Excel.
