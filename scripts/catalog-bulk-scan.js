@@ -1,13 +1,13 @@
 // Kéo CATALOG Shopify (products.json) HÀNG LOẠT qua PROXY XOAY — nhanh & tránh Shopify bóp IP đơn.
 // Mỗi shop chưa cào (catalog_synced_at NULL) → fetchShopifyCatalog (phân trang) → INSERT IGNORE sp mới (source='shopify',
 // KHÔNG đè sp ShopHunter) → set catalog_synced_at. Proxy đọc từ scripts/proxies.txt (gitignored) hoặc env AFF_PROXIES.
-// Chạy: E:\Programming\node.exe D:\SetupC\Projects\google-ads-spy\scripts\catalog-bulk-scan.js
-const http = require('http'); const tls = require('tls'); const https = require('https'); const fs = require('fs');
-const P = 'D:/SetupC/Projects/google-ads-spy/apps/api';
-const { shopifyHttp, fetchShopifyCatalog } = require(P + '/dist/shophunter/shopify.client.js');
-const mysql = require('D:/SetupC/Projects/google-ads-spy/node_modules/mysql2/promise');
+// Chạy: node scripts/catalog-bulk-scan.js (cần build dist trước). DB: env SH_MYSQL_URL hoặc mặc định root@127.0.0.1.
+const http = require('http'); const tls = require('tls'); const https = require('https'); const fs = require('fs'); const path = require('path');
+const REPO = path.resolve(__dirname, '..'); // scripts/ ở gốc repo
+const { shopifyHttp, fetchShopifyCatalog } = require(path.join(REPO, 'apps/api/dist/shophunter/shopify.client.js'));
+const mysql = require(path.join(REPO, 'node_modules/mysql2/promise'));
 
-const PROXY_FILE = 'D:/SetupC/Projects/google-ads-spy/scripts/proxies.txt';
+const PROXY_FILE = path.join(REPO, 'scripts/proxies.txt');
 const rawP = (process.env.AFF_PROXIES || (fs.existsSync(PROXY_FILE) ? fs.readFileSync(PROXY_FILE, 'utf8') : '')).trim();
 if (!rawP) { console.error('THIẾU proxy: scripts/proxies.txt hoặc env AFF_PROXIES.'); process.exit(1); }
 const PROXIES = rawP.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
@@ -44,7 +44,8 @@ shopifyHttp.get = proxiedGet;
 const cut = (s, n) => (s == null ? null : String(s).slice(0, n));
 
 (async () => {
-  const pool = await mysql.createPool({ host: '127.0.0.1', port: 3306, user: 'root', password: '', database: 'shophunter', connectionLimit: CONC + 2 });
+  const U = new URL(process.env.SH_MYSQL_URL || 'mysql://root@127.0.0.1:3306/shophunter');
+  const pool = await mysql.createPool({ host: U.hostname, port: Number(U.port || 3306), user: decodeURIComponent(U.username || 'root'), password: decodeURIComponent(U.password || ''), database: U.pathname.replace(/^\//, '') || 'shophunter', connectionLimit: CONC + 2 });
   const t0 = Date.now();
   let shops = 0, newProducts = 0, blocked = 0, empty = 0, rl = 0;
 
