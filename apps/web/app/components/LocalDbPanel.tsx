@@ -102,7 +102,7 @@ export function LocalDbPanel() {
 
   const switchTab = (t: 'shops' | 'products') => {
     setTab(t); setData({ items: [], total: 0, page: 1, pageSize });
-    setSort('fetched_at'); setDir('desc'); setPage(1); setCountry(''); setCategory('');
+    setSort('revenue_month'); setDir('desc'); setPage(1); setCountry(''); setCategory('');
     setQ(''); setQInput(''); setSugs([]); setShowSug(false); setShopFilter('');
   };
   const applyQ = (val: string) => { const v = val.trim(); setQ(v); setQInput(v); setSugs([]); setShowSug(false); setPage(1); };
