@@ -4,6 +4,24 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-18 — Deploy VPS dpboss.pet: login + URL routing + sort mặc định + migrate data
+
+### Deploy ShopHunter lên VPS (dpboss.pet — PM2, MySQL 8.0.46)
+- **Scripts chạy được trên Linux**: `product-list-backfill.js` + `catalog-bulk-scan.js` bỏ hardcode `D:/SetupC/...` → dùng đường dẫn tương đối (`__dirname`) + đọc DB từ **env `SH_MYSQL_URL`** (parse URL, decode mật khẩu). `ecosystem.config.js` cũng đọc `SH_MYSQL_URL` từ env (không hardcode mật khẩu — repo public).
+- **Migrate ~4M sp + 46k shop từ local → VPS** bằng `mysqldump` (bỏ `sh_product_list` → backfill lại trên VPS; `--single-transaction --quick`; gzip -1 ~884MB). Bài học restore: (1) **collation** `sh_product_list` (`0900_ai_ci` do `CHARACTER SET utf8mb4`) vs `sh_product` (theo DB default `unicode_ci`) → lỗi "Illegal mix of collations" khi JOIN; dump tái tạo `sh_product` với `0900_ai_ci` nên sau restore khớp lại. (2) **Đừng Ctrl-C giữa chừng** — restore lớn bị ngắt → buffer mis-parse ra lỗi 1064 (tưởng dump hỏng). (3) `max_allowed_packet` VPS 64MB đủ; dùng `pv` để biết đang chạy.
+- **Resume crawl**: catalog scanner tự tiếp tục nhờ `sh_shop.catalog_synced_at` (đi kèm dump) — chạy lại lệnh là cào tiếp shop chưa cào, không trùng.
+
+### Login: 1 mật khẩu chung cho cả site
+- `apps/web/middleware.ts` chặn mọi trang (trừ `/login`) khi có env **`SITE_PASSWORD`**; rỗng = mở (dev). Cookie `site_auth` = sha256(mật khẩu), httpOnly. `/login` + `POST /api/login` (verify+set cookie) + `DELETE` (logout). *(Lưu ý: chặn UI web; API `api.dpboss.pet` vẫn mở — khoá riêng nếu cần.)*
+
+### Local DB: sort mặc định DT Tháng
+- Cả tab Shops lẫn Products mặc định `revenue_month` cao→thấp (sửa cả init lẫn reset-khi-đổi-tab, trước là `fetched_at`).
+
+### URL riêng cho từng tab (route thật, thay `?tab=`)
+- `/googleads /facebookads /tiktokads /shophuntershopify /trackshopify /reportlocaldb /import` + `/localdb/shops` `/localdb/products`. Catch-all `app/[...slug]` render cùng SPA `Home`, map path↔tab; `/login` `/product/...` `/shop/...` ưu tiên riêng. Link cũ `?tab=X` tự redirect. Sub-tab Local DB đổi URL + back/forward chạy đúng.
+
+---
+
 ## 2026-07-17 — Fill doanh thu TỪNG sản phẩm từ ShopHunter (fix "shop có doanh thu nhưng list sản phẩm trống")
 
 **Vấn đề:** sản phẩm crawl từ catalog Shopify (`products.json`) không kèm doanh thu → cột DT trong danh sách trống, dù trang shop detail hiện doanh thu (đọc từ blob `sh_shop.raw` ShopHunter). Doanh thu từng-sản-phẩm chưa bao giờ ghi vào record sản phẩm riêng lẻ.
