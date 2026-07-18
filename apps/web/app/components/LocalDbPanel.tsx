@@ -45,7 +45,7 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
 export function LocalDbPanel() {
   const [tab, setTab] = useState<'shops' | 'products'>('shops');
   const [data, setData] = useState<ShLocalResult>({ items: [], total: 0, page: 1, pageSize: 100 });
-  const [sort, setSort] = useState('fetched_at'); // mặc định: mới update nhất lên đầu (xem data mới về)
+  const [sort, setSort] = useState('revenue_month'); // mặc định: DT Tháng cao → thấp (cả tab Shops lẫn Products)
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
