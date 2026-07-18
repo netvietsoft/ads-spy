@@ -11,7 +11,9 @@ module.exports = {
       // SH_MYSQL_URL: DB riêng cho ShopHunter — SỬA lại cho đúng MySQL trên VPS (xem DEPLOY.md).
       env: {
         PORT: '8075', NODE_ENV: 'production', GOOGLE_PROXY: process.env.GOOGLE_PROXY || '',
-        SH_MYSQL_URL: 'mysql://root:CHANGE_ME@127.0.0.1:3306/shophunter', SH_CACHE_TTL_HOURS: '6',
+        // SH_MYSQL_URL đọc từ env (KHÔNG hardcode mật khẩu — repo public). Set trước khi pm2 start, vd:
+        //   export SH_MYSQL_URL='mysql://shop:PASS@127.0.0.1:3306/shophunter'
+        SH_MYSQL_URL: process.env.SH_MYSQL_URL || 'mysql://root@127.0.0.1:3306/shophunter', SH_CACHE_TTL_HOURS: '6',
       },
       max_memory_restart: '900M',
       time: true,
