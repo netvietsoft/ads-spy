@@ -38,4 +38,17 @@ describe('ShController jobs endpoints', () => {
     const c = ctrl({ getJobs: jest.fn(), toggle: jest.fn(), runOnce: jest.fn() });
     expect(() => c.runJobOnce('bogus')).toThrow(BadRequestException);
   });
+
+  it('POST config name hợp lệ → jobsSvc.setJobCfg(name, body)', async () => {
+    const jobs = { setJobCfg: jest.fn(async (n: string, c: any) => ({ ...c })) };
+    const c = ctrl(jobs);
+    const r = await c.setJobConfig('enrich', { batch: 100, paceMs: 500 });
+    expect(jobs.setJobCfg).toHaveBeenCalledWith('enrich', { batch: 100, paceMs: 500 });
+    expect(r).toEqual({ batch: 100, paceMs: 500 });
+  });
+
+  it('POST config name sai → BadRequestException', () => {
+    const c = ctrl({ setJobCfg: jest.fn() });
+    expect(() => c.setJobConfig('bogus', {})).toThrow(BadRequestException);
+  });
 });

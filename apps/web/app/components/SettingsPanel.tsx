@@ -1,14 +1,43 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { ShJob, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { ShJob, shJobs, shToggleJob, shRunJobOnce, shSetJobConfig } from '../api';
 import { ProxyPanel } from './ProxyPanel';
 import { ShTokenBox } from './ShTokenBox';
 
 const STATUS_VI: Record<string, string> = { ok: 'OK', idle: 'Nghỉ (hết việc)', blocked: 'Bị chặn', no_proxy: 'Thiếu proxy', running: 'Đang chạy' };
+const CFG_LABEL: Record<string, string> = {
+  daily: 'Trần/ngày', perTick: 'Mỗi lượt (cron)', skipPct: 'Bỏ lượt %', delayMs: 'Nghỉ/shop (ms)',
+  concurrency: 'Số luồng', batch: 'Shop/lượt', paceMs: 'Nghỉ giữa lượt (ms)',
+};
 const fmtTime = (ms: number | null) => (ms ? new Date(ms).toLocaleString() : '—');
 
-function JobCard({ job, busyToggle, busyRun, onToggle, onRunNow }:
-  { job: ShJob; busyToggle: boolean; busyRun: boolean; onToggle: (on: boolean) => void; onRunNow: () => void }) {
+function JobTuner({ cfg, busy, onSave }: { cfg: Record<string, number>; busy: boolean; onSave: (c: Record<string, number>) => void }) {
+  const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState<Record<string, number>>({ ...cfg });
+  return (
+    <div className="jobtuner-wrap">
+      <button type="button" className="srcbtn jobtuner-btn" onClick={() => { setEdit({ ...cfg }); setOpen((o) => !o); }}>
+        {open ? '▾' : '▸'} Tốc độ
+      </button>
+      {open && (
+        <div className="jobtuner">
+          {Object.keys(cfg).map((k) => (
+            <label key={k} className="jobtuner-f">
+              <span>{CFG_LABEL[k] || k}</span>
+              <input type="number" value={edit[k] ?? 0}
+                onChange={(e) => setEdit((s) => ({ ...s, [k]: Number(e.target.value) }))} />
+            </label>
+          ))}
+          <button type="button" className="srcbtn active jobtuner-save" disabled={busy} onClick={() => onSave(edit)}>{busy ? '…' : 'Lưu'}</button>
+          <span className="jobtuner-hint">Càng mạnh (batch/luồng ↑, nghỉ ↓) càng nhanh nhưng dễ bị chặn.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JobCard({ job, busyToggle, busyRun, busyCfg, onToggle, onRunNow, onSaveCfg }:
+  { job: ShJob; busyToggle: boolean; busyRun: boolean; busyCfg: boolean; onToggle: (on: boolean) => void; onRunNow: () => void; onSaveCfg: (c: Record<string, number>) => void }) {
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [job.logs]);
   const badge = job.running
@@ -36,6 +65,7 @@ function JobCard({ job, busyToggle, busyRun, onToggle, onRunNow }:
         Lượt gần nhất: {fmtTime(job.lastRunAt)} · Trạng thái: {STATUS_VI[job.lastStatus || ''] || job.lastStatus || '—'}
         {statsStr && ' · ' + statsStr}
       </div>
+      <JobTuner cfg={job.cfg || {}} busy={busyCfg} onSave={onSaveCfg} />
       <div className="joblog" ref={logRef}>
         {job.logs.length
           ? job.logs.map((l, i) => (
@@ -63,6 +93,11 @@ export function SettingsPanel() {
     try { await shRunJobOnce(name); await reload(); } catch { /* ignore */ }
     setBusy('');
   };
+  const saveCfg = async (name: string, cfg: Record<string, number>) => {
+    setBusy(name + ':cfg');
+    try { await shSetJobConfig(name, cfg); await reload(); } catch { /* ignore */ }
+    setBusy('');
+  };
   return (
     <div style={{ maxWidth: 960 }}>
       <ShTokenBox />
@@ -76,8 +111,8 @@ export function SettingsPanel() {
       )}
       {jobs.map((j) => (
         <JobCard key={j.name} job={j}
-          busyToggle={busy === j.name} busyRun={busy === j.name + ':run'}
-          onToggle={(on) => toggle(j.name, on)} onRunNow={() => runNow(j.name)} />
+          busyToggle={busy === j.name} busyRun={busy === j.name + ':run'} busyCfg={busy === j.name + ':cfg'}
+          onToggle={(on) => toggle(j.name, on)} onRunNow={() => runNow(j.name)} onSaveCfg={(c) => saveCfg(j.name, c)} />
       ))}
       <div style={{ marginTop: 24 }}>
         <ProxyPanel />

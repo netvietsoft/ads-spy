@@ -4,7 +4,7 @@ import { ShClient, ShBlockedError } from './sh.client';
 import { ShService, SH_SNAPSHOT_DEFAULT_DIR } from './sh.service';
 import { ShMysql, HarvestState, SliceState } from './sh.mysql';
 import { parseSearch, parseShopColumns } from './sh.parser';
-import { shouldRunNow, pickSip, randInt, isGlobalBlock } from './sh.harvest.util';
+import { shouldRunNow, randInt, isGlobalBlock } from './sh.harvest.util';
 import { SLICE_CAP } from './sh.slices';
 import { loadCatTree, catRoots, catChildren } from './sh.categories';
 
@@ -37,6 +37,19 @@ export class ShHarvestService {
   private running = false;
   private revsyncRunning = false;
 
+  // Tham số tốc độ chỉnh từ web (lưu DB job:harvest:cfg) — nạp lúc chạy, fallback env (tương thích cũ).
+  private hcfg = { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1 };
+  private async loadCfg(): Promise<void> {
+    const def = { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1 };
+    const eDaily = Number(process.env.SH_HARVEST_DAILY); if (Number.isFinite(eDaily) && eDaily > 0) def.daily = eDaily;
+    const eConc = Number(process.env.SH_HARVEST_CONCURRENCY); if (Number.isFinite(eConc) && eConc > 0) def.concurrency = eConc;
+    const eSkip = Number(process.env.SH_HARVEST_SKIP_PCT); if (Number.isFinite(eSkip)) def.skipPct = eSkip;
+    const out = { ...def };
+    const raw = await this.mysql.getSetting('job:harvest:cfg').catch(() => null);
+    if (raw) { try { const o = JSON.parse(raw); for (const k of Object.keys(def) as (keyof typeof def)[]) if (typeof o[k] === 'number' && Number.isFinite(o[k])) out[k] = o[k]; } catch { /* giữ default */ } }
+    this.hcfg = out;
+  }
+
   constructor(
     private readonly client: ShClient,
     private readonly svc: ShService,
@@ -67,11 +80,11 @@ export class ShHarvestService {
 
   async tick(): Promise<{ ran: boolean; reason: string; processed?: number; sliceKey?: string }> {
     if (!(await this.harvestEnabled())) return { ran: false, reason: 'disabled' };
-    const cap = Number(process.env.SH_HARVEST_DAILY) || 500;
+    await this.loadCfg();
+    const cap = this.hcfg.daily;
     const activeStart = Number(process.env.SH_HARVEST_ACTIVE_START) || 8;
     const activeEnd = Number(process.env.SH_HARVEST_ACTIVE_END) || 23;
-    const skipPctRaw = Number(process.env.SH_HARVEST_SKIP_PCT);
-    const skipPct = Number.isFinite(skipPctRaw) ? skipPctRaw : 30;
+    const skipPct = this.hcfg.skipPct;
     const key = this.dailyKey();
     const used = await this.mysql.getDailyCount(key);
     const decision = shouldRunNow({ hour: new Date().getHours(), rand: Math.random(), used, cap, activeStart, activeEnd, skipPct });
@@ -81,9 +94,7 @@ export class ShHarvestService {
     const jitterMs = Number.isFinite(jitterRaw) ? jitterRaw : 480000;
     if (jitterMs > 0) await this.sleep(randInt(0, jitterMs));
 
-    const sipMin = Number(process.env.SH_HARVEST_SIP_MIN) || 10;
-    const sipMax = Number(process.env.SH_HARVEST_SIP_MAX) || 25;
-    const sip = pickSip(cap - used, sipMin, sipMax);
+    const sip = Math.max(1, Math.min(cap - used, this.hcfg.perTick));
     const summary: any = await this.runHarvest({ daily: sip });
     const processed = Number(summary?.processed) || 0;
     await this.mysql.addDailyCount(key, processed);
@@ -99,10 +110,11 @@ export class ShHarvestService {
     return `${today}:${mode}`;
   }
 
-  getDaily(): Promise<{ day: string; used: number; cap: number }> {
+  async getDaily(): Promise<{ day: string; used: number; cap: number }> {
     const day = new Date().toISOString().slice(0, 10);
-    const cap = Number(process.env.SH_HARVEST_DAILY) || 500;
-    return this.mysql.getDailyCount(this.dailyKey()).then((used) => ({ day, used, cap }));
+    await this.loadCfg();
+    const used = await this.mysql.getDailyCount(this.dailyKey());
+    return { day, used, cap: this.hcfg.daily };
   }
 
   getStatus(): Promise<HarvestState> {
@@ -120,13 +132,14 @@ export class ShHarvestService {
   resetDeepSlices() { return this.mysql.resetDeepSlices(); }
 
   async runHarvest(opts: { daily?: number }): Promise<HarvestSummary | HarvestSliceSummary | SnapshotSummary | CatalogSyncSummary | { shops: number; yes: number; blocked: number }> {
+    await this.loadCfg();
     const mode = process.env.SH_HARVEST_MODE || 'slices';
     if (mode === 'slices') return this.runHarvestSlices(opts);
     if (mode === 'deep') return this.runHarvestDeep(process.env.SH_HARVEST_TYPE === 'products' ? 'products' : 'shops', opts);
     if (mode === 'import') return this.runImportEnrich(opts);
     if (mode === 'revsync') return this.runRevenueSync(opts);
     if (mode === 'snapshot') return this.runSnapshotImport();
-    if (mode === 'catalog') return this.svc.catalogSyncStep(opts);
+    if (mode === 'catalog') return this.svc.catalogSyncStep({ ...opts, delayMs: this.hcfg.delayMs, concurrency: this.hcfg.concurrency });
     if (mode === 'affiliate') return this.svc.affiliateSyncStep(opts);
     return this.runHarvestFlat(opts);
   }
@@ -141,7 +154,7 @@ export class ShHarvestService {
   async runRevenueSync(opts: { daily?: number }): Promise<HarvestSliceSummary> {
     if (this.revsyncRunning) throw new Error('Revsync đang chạy, bỏ qua yêu cầu chồng.');
     this.revsyncRunning = true;
-    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 500);
+    const quota = opts.daily ?? this.hcfg.daily;
     const staleMs = (Number(process.env.SH_REVSYNC_STALE_HOURS) || 20) * 3600000;
     let processed = 0, ok = 0, skipped = 0, status = 'ok';
     try {
@@ -171,8 +184,8 @@ export class ShHarvestService {
     this.running = true;
 
     const sort = process.env.SH_HARVEST_SORT || 'month_current_period_revenue';
-    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 1000);
-    const concurrency = Math.max(1, Number(process.env.SH_HARVEST_CONCURRENCY) || 1);
+    const quota = opts.daily ?? this.hcfg.daily;
+    const concurrency = this.hcfg.concurrency;
     const maxRetries = 5;
 
     const state = await this.mysql.getHarvestState(HARVEST_ID);
@@ -266,8 +279,8 @@ export class ShHarvestService {
     if (this.running) throw new Error('Harvest đang chạy, bỏ qua yêu cầu chồng.');
     this.running = true;
     const sort = process.env.SH_HARVEST_SORT || 'month_current_period_revenue';
-    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 1000);
-    const concurrency = Math.max(1, Number(process.env.SH_HARVEST_CONCURRENCY) || 1);
+    const quota = opts.daily ?? this.hcfg.daily;
+    const concurrency = this.hcfg.concurrency;
     const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
     const maxRetries = 5;
 
@@ -344,7 +357,7 @@ export class ShHarvestService {
     if (this.running) throw new Error('Harvest đang chạy, bỏ qua yêu cầu chồng.');
     this.running = true;
     const sort = process.env.SH_HARVEST_SORT || 'month_current_period_revenue';
-    const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 1000);
+    const quota = opts.daily ?? this.hcfg.daily;
     const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
     const maxRetries = 5;
 
@@ -531,8 +544,6 @@ export class ShHarvestService {
   }
 
   private randDelayMs(): number {
-    const min = Number(process.env.SH_HARVEST_DELAY_MIN_MS) || Number(process.env.SH_HARVEST_DELAY_MS) || 1500;
-    const max = Number(process.env.SH_HARVEST_DELAY_MAX_MS) || Number(process.env.SH_HARVEST_DELAY_MS) || 3000;
-    return randInt(Math.min(min, max), Math.max(min, max));
+    return this.hcfg.delayMs; // nghỉ/shop chỉnh từ web (job:harvest:cfg.delayMs)
   }
 }

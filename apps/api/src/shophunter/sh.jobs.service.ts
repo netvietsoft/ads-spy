@@ -15,13 +15,21 @@ const DESC: Record<JobName, string> = {
   catalog: 'Cào products.json Shopify qua proxy xoay (sh.service.catalogSyncStep).',
 };
 
-const ENRICH_BATCH = 50;
-const CATALOG_BATCH = 25;  // nhỏ để Tắt catalog phản hồi nhanh (1 bước ~≤1' thay vì ~7' với 200); throughput ~không đổi vì sleep/shop chi phối
-const RUNONCE_HARVEST = 20; // "Chạy ngay" harvest: 1 lượt nhỏ, bỏ qua gating cron
-const PACE_MS = 1500;    // nghỉ ngắn khi còn việc
 const IDLE_MS = 120000;  // 2' khi hết việc
 const BLOCK_MS = 300000; // 5' khi bị chặn
 const TICK_MS = 2000;    // nhịp kiểm cờ enabled (để tắt nhanh)
+
+// Tham số tốc độ chỉnh từ web (lưu DB job:<name>:cfg) — đọc lúc chạy → sửa sống, không cần restart.
+const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
+  harvest: { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1 },
+  enrich: { batch: 50, paceMs: 1500 },
+  catalog: { batch: 25, paceMs: 1500, delayMs: 2000, concurrency: 1 },
+};
+// Kẹp an toàn khi chỉnh từ web (min,max).
+const CFG_BOUNDS: Record<string, [number, number]> = {
+  daily: [1, 100000], perTick: [1, 2000], skipPct: [0, 100], delayMs: [0, 60000],
+  concurrency: [1, 8], batch: [1, 1000], paceMs: [0, 600000],
+};
 
 interface JobMem { running: boolean; lastRunAt: number | null; lastStatus: string | null; stats: Record<string, number>; }
 
@@ -29,6 +37,7 @@ export interface JobView {
   name: JobName; enabled: boolean; running: boolean;
   lastRunAt: number | null; lastStatus: string | null;
   stats: Record<string, number>; desc: string;
+  cfg: Record<string, number>;
   logs: { ts: number; level: string; msg: string }[];
 }
 
@@ -55,6 +64,29 @@ export class ShJobsService implements OnModuleInit {
     }
   }
 
+  // Đọc tham số tốc độ của job (DB job:<name>:cfg) merge lên default; giá trị lạ → dùng default.
+  async getJobCfg(name: JobName): Promise<Record<string, number>> {
+    const def = DEFAULT_CFG[name];
+    const out: Record<string, number> = { ...def };
+    const raw = await this.mysql.getSetting(`job:${name}:cfg`).catch(() => null);
+    if (raw) { try { const o = JSON.parse(raw); for (const k of Object.keys(def)) if (typeof o[k] === 'number' && Number.isFinite(o[k])) out[k] = o[k]; } catch { /* giữ default */ } }
+    return out;
+  }
+
+  // Lưu tham số tốc độ (chỉ nhận key hợp lệ của job, kẹp trong CFG_BOUNDS, làm tròn).
+  async setJobCfg(name: string, cfg: Record<string, any>): Promise<Record<string, number>> {
+    if (!(JOB_NAMES as readonly string[]).includes(name)) throw new Error('Job không hợp lệ: ' + name);
+    const n = name as JobName; const def = DEFAULT_CFG[n];
+    const out: Record<string, number> = { ...def };
+    for (const k of Object.keys(def)) {
+      const v = Number(cfg[k]);
+      if (Number.isFinite(v)) { const [lo, hi] = CFG_BOUNDS[k] || [0, 1e9]; out[k] = Math.min(hi, Math.max(lo, Math.round(v))); }
+    }
+    await this.mysql.setSetting(`job:${n}:cfg`, JSON.stringify(out));
+    await this.mysql.appendJobLog(n, 'info', 'Đổi tham số tốc độ: ' + JSON.stringify(out)).catch(() => {});
+    return out;
+  }
+
   async isEnabled(name: JobName): Promise<boolean> {
     const f = await this.mysql.getSetting(this.key(name));
     if (f === '1') return true;
@@ -68,6 +100,7 @@ export class ShJobsService implements OnModuleInit {
     for (const name of JOB_NAMES) {
       const enabled = await this.isEnabled(name).catch(() => false);
       const logs = await this.mysql.tailJobLog(name, 200).catch(() => []);
+      const cfg = await this.getJobCfg(name).catch(() => ({ ...DEFAULT_CFG[name] }));
       let { stats, lastRunAt, lastStatus } = this.mem[name];
       if (name === 'harvest') {
         const st = await this.harvest.getStatus().catch(() => null);
@@ -75,7 +108,7 @@ export class ShJobsService implements OnModuleInit {
         if (st) { lastRunAt = st.lastRunAt; lastStatus = st.lastStatus; }
         stats = { used: daily?.used ?? 0, cap: daily?.cap ?? 0, totalSeen: st?.totalSeen ?? 0 };
       }
-      out.push({ name, enabled, running: this.mem[name].running, lastRunAt, lastStatus, stats, desc: DESC[name], logs });
+      out.push({ name, enabled, running: this.mem[name].running, lastRunAt, lastStatus, stats, cfg, desc: DESC[name], logs });
     }
     return out;
   }
@@ -101,7 +134,8 @@ export class ShJobsService implements OnModuleInit {
     await this.mysql.appendJobLog(name, 'info', 'Chạy ngay (thủ công)').catch(() => {});
     try {
       if (name === 'harvest') {
-        const r: any = await this.harvest.runHarvest({ daily: RUNONCE_HARVEST });
+        const hc = await this.getJobCfg('harvest');
+        const r: any = await this.harvest.runHarvest({ daily: hc.perTick });
         await this.mysql.appendJobLog('harvest', 'info', `Chạy ngay xong: processed=${r?.processed ?? 0} status=${r?.status ?? '-'}`).catch(() => {});
       } else if (name === 'catalog') {
         this.wireProxy();
@@ -170,7 +204,8 @@ export class ShJobsService implements OnModuleInit {
   }
 
   private async stepEnrich(): Promise<{ pace: number }> {
-    const r = await this.svc.enrichProductRevenueRun(ENRICH_BATCH);
+    const cfg = await this.getJobCfg('enrich');
+    const r = await this.svc.enrichProductRevenueRun(cfg.batch);
     this.mem.enrich.lastRunAt = Date.now();
     this.mem.enrich.stats = { shops: r.shops, upserted: r.upserted };
     if (r.stopped) {
@@ -185,10 +220,11 @@ export class ShJobsService implements OnModuleInit {
     }
     this.mem.enrich.lastStatus = 'ok';
     await this.mysql.appendJobLog('enrich', 'info', `+${r.upserted} doanh thu sp / ${r.shops} shop`).catch(() => {});
-    return { pace: PACE_MS };
+    return { pace: cfg.paceMs };
   }
 
   private async stepCatalog(): Promise<{ pace: number }> {
+    const cfg = await this.getJobCfg('catalog');
     this.catalogProxies = (await this.mysql.listProxiesFull(true).catch(() => []))
       .filter((r: any) => (r.type || 'http') === 'http')
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
@@ -198,7 +234,7 @@ export class ShJobsService implements OnModuleInit {
       await this.mysql.appendJobLog('catalog', 'warn', 'Chưa có proxy http enabled — thêm ở mục Proxy. Tạm dừng cào.').catch(() => {});
       return { pace: IDLE_MS };
     }
-    const r = await this.svc.catalogSyncStep({ daily: CATALOG_BATCH });
+    const r = await this.svc.catalogSyncStep({ daily: cfg.batch, delayMs: cfg.delayMs, concurrency: cfg.concurrency });
     this.mem.catalog.lastRunAt = Date.now();
     this.mem.catalog.stats = { shops: r.shops, newProducts: r.newProducts, blocked: r.blocked };
     if (r.shops === 0) {
@@ -213,7 +249,7 @@ export class ShJobsService implements OnModuleInit {
     }
     this.mem.catalog.lastStatus = 'ok';
     await this.mysql.appendJobLog('catalog', 'info', `${r.shops} shop, +${r.newProducts} sp, ${r.blocked} chặn`).catch(() => {});
-    return { pace: PACE_MS };
+    return { pace: cfg.paceMs };
   }
 
   // Prune log 24h/lần (giữ 24h gần nhất).

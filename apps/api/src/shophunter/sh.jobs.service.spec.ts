@@ -63,6 +63,31 @@ describe('ShJobsService.stillEnabled (loop không chết vì lỗi transient)', 
   });
 });
 
+describe('ShJobsService cfg (tham số tốc độ)', () => {
+  it('getJobCfg: chưa set → default; số lạ trong DB bị bỏ, giữ default', async () => {
+    const { s, mysql } = make();
+    mysql.getSetting.mockResolvedValue(null);
+    expect(await s.getJobCfg('enrich')).toEqual({ batch: 50, paceMs: 1500 });
+    mysql.getSetting.mockResolvedValue(JSON.stringify({ batch: 100, paceMs: 'xxx' }));
+    expect(await s.getJobCfg('enrich')).toEqual({ batch: 100, paceMs: 1500 }); // paceMs lạ → default
+  });
+
+  it('setJobCfg: kẹp trong bounds + chỉ giữ key hợp lệ, ghi DB', async () => {
+    const { s, mysql } = make();
+    const out = await s.setJobCfg('catalog', { batch: 99999, concurrency: 50, paceMs: 300, bogus: 1 });
+    expect(out.batch).toBe(1000);      // kẹp max 1000
+    expect(out.concurrency).toBe(8);   // kẹp max 8
+    expect(out.paceMs).toBe(300);
+    expect((out as any).bogus).toBeUndefined(); // key lạ bị loại
+    expect(mysql.setSetting).toHaveBeenCalledWith('job:catalog:cfg', JSON.stringify(out));
+  });
+
+  it('setJobCfg name sai → throw', async () => {
+    const { s } = make();
+    await expect(s.setJobCfg('bogus', {})).rejects.toThrow();
+  });
+});
+
 describe('ShJobsService.runOnce (Chạy ngay)', () => {
   it('name hợp lệ → {started:true} + kích doRunOnce fire-and-forget', async () => {
     const { s } = make();

@@ -17,6 +17,10 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 ### Frontend — tab ⚙️ Cài đặt (`/settings`)
 - Thay tab 🌐 Proxy; `ProxyPanel` chuyển vào trong Settings. `SettingsPanel` poll `GET sh/jobs` mỗi 4s: mỗi job 1 card (công tắc On/Off, badge Đang chạy/Nghỉ/Bị chặn/Tắt, số liệu lượt gần nhất, khung log tự cuộn) + Proxy phía dưới.
 
+### Bổ sung: chỉnh tốc độ job từ web (không cần restart)
+- Mỗi job có mục **"Tốc độ"** (số/​job lưu DB `job:<name>:cfg`, đọc lúc chạy → sửa sống): **harvest** = trần/ngày, mỗi-lượt(cron), bỏ-lượt%, nghỉ/shop, số luồng · **enrich** = shop/lượt, nghỉ-giữa-lượt · **catalog** = shop/lượt, nghỉ-giữa-lượt, nghỉ/shop, **số luồng** (catalogSyncStep giờ chạy song song). Giá trị bị **kẹp an toàn** (vd concurrency ≤8, batch ≤1000). Endpoint `POST /api/sh/jobs/:name/config`.
+- Cảnh báo hiển thị: càng mạnh (batch/luồng ↑, nghỉ ↓) càng nhanh nhưng dễ bị chặn (429). harvest vẫn theo cron ~30' nên perTick + trần/ngày là đòn bẩy chính; catalog/enrich đổi ăn ngay ở vòng loop kế.
+
 ### Bổ sung: nút "Chạy ngay" + token ShopHunter vào Settings
 - **Nút "Chạy ngay"** mỗi job: chạy 1 lượt NGAY (bỏ qua gating cron), chạy nền (fire-and-forget) + ghi `sh_job_log` → thấy kết quả liền thay vì đợi ~30' (harvest ~20 shop, enrich ~50, catalog ~25). Endpoint `POST /api/sh/jobs/:name/run-now`. Giải quyết khó hiểu "bật harvest xong không thấy log" (harvest là cron, không chạy tức thì).
 - **Quản lý token ShopHunter** tách thành `ShTokenBox` (dùng chung), đặt làm **mục đầu tiên** trong tab Cài đặt. Tab ShopHunter **bỏ hẳn** banner kết nối (quản lý token tập trung ở Settings).

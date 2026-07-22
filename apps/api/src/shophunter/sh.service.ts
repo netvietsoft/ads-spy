@@ -537,12 +537,14 @@ export class ShService {
   // 'blocked' (products.json 401/403/404/password) → setShopCatalog('blocked'), BỎ QUA shop đó và đếm — KHÔNG
   // dừng cả pipeline (Shopify không dùng isGlobalBlock, chặn chỉ theo từng shop); 'empty' → setShopCatalog('empty')
   // (không phải blocked). Throttle sleep(randDelayMs()) giữa các shop, giống các step harvest khác.
-  async catalogSyncStep(opts: { daily?: number }): Promise<{ shops: number; newProducts: number; blocked: number }> {
+  async catalogSyncStep(opts: { daily?: number; delayMs?: number; concurrency?: number }): Promise<{ shops: number; newProducts: number; blocked: number }> {
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 500);
     const staleMs = (Number(process.env.SH_CATALOG_STALE_HOURS) || 24) * 3600000;
+    const fixedDelay = opts.delayMs != null && Number.isFinite(opts.delayMs) ? opts.delayMs : null; // null = giữ ngẫu nhiên/shop như cũ
+    const conc = Math.max(1, Math.min(8, Number(opts.concurrency) || 1));
     const list = await this.mysql.getShopsNeedingCatalog(quota, staleMs);
-    let shops = 0, newProducts = 0, blocked = 0;
-    for (const { shopId, url } of list) {
+    let shops = 0, newProducts = 0, blocked = 0, idx = 0;
+    const one = async (shopId: string, url: string) => {
       try {
         const r = await fetchShopifyCatalog(url);
         if (r.status === 'ok') {
@@ -564,8 +566,12 @@ export class ShService {
         this.logger.warn(`shop ${shopId}: lỗi catalog sync (${(e as Error).message}) — bỏ qua, sang shop kế.`);
       }
       shops++;
-      await this.sleep(this.randDelayMs());
-    }
+      const d = fixedDelay != null ? fixedDelay : this.randDelayMs();
+      if (d > 0) await this.sleep(d);
+    };
+    // Chạy song song `conc` luồng (mỗi fetch xoay proxy khác nhau) → cào catalog nhanh hơn khi tăng concurrency.
+    const worker = async () => { while (idx < list.length) { const it = list[idx++]; await one(it.shopId, it.url); } };
+    await Promise.all(Array.from({ length: conc }, () => worker()));
     return { shops, newProducts, blocked };
   }
 

@@ -599,7 +599,8 @@ export interface ShJobLog { ts: number; level: string; msg: string }
 export interface ShJob {
   name: string; enabled: boolean; running: boolean;
   lastRunAt: number | null; lastStatus: string | null;
-  stats: Record<string, number>; desc: string; logs: ShJobLog[];
+  stats: Record<string, number>; desc: string;
+  cfg: Record<string, number>; logs: ShJobLog[];
 }
 export async function shJobs(): Promise<ShJob[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/jobs`));
@@ -611,4 +612,9 @@ export async function shToggleJob(name: string, on: boolean): Promise<ShJob> {
 }
 export async function shRunJobOnce(name: string): Promise<{ started: boolean }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/jobs/${name}/run-now`, { method: 'POST' }));
+}
+export async function shSetJobConfig(name: string, cfg: Record<string, number>): Promise<Record<string, number>> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/jobs/${name}/config`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cfg),
+  }));
 }

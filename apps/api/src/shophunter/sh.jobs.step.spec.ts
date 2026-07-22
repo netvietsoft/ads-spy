@@ -1,7 +1,7 @@
 import { ShJobsService } from './sh.jobs.service';
 
 function make() {
-  const mysql: any = { appendJobLog: jest.fn(async () => {}), listProxiesFull: jest.fn(async () => []) };
+  const mysql: any = { getSetting: jest.fn(async () => null), appendJobLog: jest.fn(async () => {}), listProxiesFull: jest.fn(async () => []) };
   const svc: any = {};
   const harvest: any = {};
   return { s: new ShJobsService(svc, mysql, harvest), mysql, svc };
