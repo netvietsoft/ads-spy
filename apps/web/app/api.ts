@@ -593,3 +593,19 @@ export async function shImportStats(type: 'shop' | 'product' = 'shop'): Promise<
 export async function shImportEnrich(daily = 50): Promise<{ processed: number; ok: number; skipped: number; status: string }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import/enrich`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ daily }) }));
 }
+
+// ===== Job nền (Settings) =====
+export interface ShJobLog { ts: number; level: string; msg: string }
+export interface ShJob {
+  name: string; enabled: boolean; running: boolean;
+  lastRunAt: number | null; lastStatus: string | null;
+  stats: Record<string, number>; desc: string; logs: ShJobLog[];
+}
+export async function shJobs(): Promise<ShJob[]> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/jobs`));
+}
+export async function shToggleJob(name: string, on: boolean): Promise<ShJob> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/jobs/${name}/toggle`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on }),
+  }));
+}
