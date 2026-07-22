@@ -82,6 +82,9 @@ export class ShMysql implements OnModuleInit {
   // Cache dropdown Nước/Danh mục (query DISTINCT quét toàn bảng) → khỏi quét mỗi lần mở tab, đỡ đứng khi harvest chạy.
   private filtersCache = new Map<string, { v: { countries: string[]; categories: string[] }; t: number }>();
   private filtersLoading = new Map<string, Promise<{ countries: string[]; categories: string[] }>>();
+  // Cache COUNT(*) — InnoDB không lưu sẵn row-count nên COUNT toàn bảng sh_product_list (4M) ~600ms/lần.
+  // Total chỉ để hiển thị "x / N" nên cache ngắn (stale vài chục giây chấp nhận được).
+  private countCache = new Map<string, { n: number; t: number }>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -812,6 +815,17 @@ export class ShMysql implements OnModuleInit {
   }
 
   // Đọc bảng list nhẹ sh_product_list (không JSON, có FULLTEXT ft_name + index revenue/price/country/category) — nhanh cho sort/lọc/tìm.
+  // COUNT(*) có cache ngắn theo (bảng + điều kiện WHERE + params). table/whereSql là literal do code dựng (không phải input) → an toàn.
+  private async cachedCount(table: string, whereSql: string, params: any[], ttlMs: number): Promise<number> {
+    const key = `${table}|${whereSql}|${JSON.stringify(params)}`;
+    const hit = this.countCache.get(key);
+    if (hit && Date.now() - hit.t < ttlMs) return hit.n;
+    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM ${table} ${whereSql}`, params);
+    const n = Number((cnt as any[])[0].n) || 0;
+    this.countCache.set(key, { n, t: Date.now() });
+    return n;
+  }
+
   async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     // Sort/lọc/tìm/đếm chạy trên sh_product_list (bảng nhẹ, cột thật + index) — KHÔNG scan raw 3M dòng.
@@ -851,8 +865,7 @@ export class ShMysql implements OnModuleInit {
        ${orderBy}`,
       [...params, o.limit, o.offset],
     );
-    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_product_list ${whereSql}`, params);
-    const total = Number((cnt as any[])[0].n) || 0;
+    const total = await this.cachedCount('sh_product_list', whereSql, params, 60000);
     const items = (rows as any[]).map((r) => ({ ...r, _fetched_at: r._fetched_at == null ? null : Number(r._fetched_at) }));
     return { items, total };
   }
@@ -891,8 +904,11 @@ export class ShMysql implements OnModuleInit {
           const categories = await distinct('SELECT DISTINCT up_category v FROM sh_shop WHERE up_category IS NOT NULL ORDER BY up_category'); // danh mục user gắn (ORDER BY cột trong SELECT — DISTINCT không cho order theo cột ngoài)
           out = { countries: okCountry(countries), categories };
         } else {
-          const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_country')) v FROM sh_product ORDER BY v");
-          const categories = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.category_id[last]')) v FROM sh_product ORDER BY v");
+          // Dùng cột thật có index trên sh_product_list (idx_pl_country/idx_pl_category) — index scan nhanh.
+          // TRƯỚC: JSON_EXTRACT trên sh_product.raw (4M dòng LONGTEXT) → full-scan ~5 phút, hammer MySQL → cả app chậm.
+          // Cũng nhất quán hơn: bộ lọc localProducts lọc theo sh_product_list.shop_country/category_last (không phải raw).
+          const countries = await distinct('SELECT DISTINCT shop_country v FROM sh_product_list WHERE shop_country IS NOT NULL ORDER BY shop_country');
+          const categories = await distinct('SELECT DISTINCT category_last v FROM sh_product_list WHERE category_last IS NOT NULL ORDER BY category_last');
           out = { countries: okCountry(countries), categories };
         }
         this.filtersCache.set(type, { v: out, t: Date.now() });
