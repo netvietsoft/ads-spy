@@ -1,0 +1,65 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { ShJob, shJobs, shToggleJob } from '../api';
+import { ProxyPanel } from './ProxyPanel';
+
+const STATUS_VI: Record<string, string> = { ok: 'OK', idle: 'Nghỉ (hết việc)', blocked: 'Bị chặn', no_proxy: 'Thiếu proxy', running: 'Đang chạy' };
+const fmtTime = (ms: number | null) => (ms ? new Date(ms).toLocaleString() : '—');
+
+function JobCard({ job, busy, onToggle }: { job: ShJob; busy: boolean; onToggle: (on: boolean) => void }) {
+  const logRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [job.logs]);
+  const badge = job.running
+    ? <span className="jobbadge run">● Đang chạy</span>
+    : job.enabled ? <span className="jobbadge">Bật (chờ)</span> : <span className="jobbadge off">Tắt</span>;
+  const statsStr = Object.entries(job.stats || {}).map(([k, v]) => `${k}=${v}`).join(' · ');
+  return (
+    <div className="jobcard">
+      <div className="jobhead">
+        <div>
+          <div className="jobtitle">{job.name}</div>
+          <div className="jobdesc">{job.desc}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {badge}
+          <button className={`srcbtn ${job.enabled ? 'active' : ''}`} disabled={busy} onClick={() => onToggle(!job.enabled)}>
+            {busy ? '…' : job.enabled ? 'Tắt' : 'Bật'}
+          </button>
+        </div>
+      </div>
+      <div className="jobmeta">
+        Lượt gần nhất: {fmtTime(job.lastRunAt)} · Trạng thái: {STATUS_VI[job.lastStatus || ''] || job.lastStatus || '—'}
+        {statsStr && ' · ' + statsStr}
+      </div>
+      <div className="joblog" ref={logRef}>
+        {job.logs.length
+          ? job.logs.map((l, i) => (
+            <div key={i}>[{new Date(l.ts).toLocaleTimeString()}] {l.level !== 'info' ? `(${l.level}) ` : ''}{l.msg}</div>
+          ))
+          : <span style={{ opacity: 0.6 }}>Chưa có log.</span>}
+      </div>
+    </div>
+  );
+}
+
+export function SettingsPanel() {
+  const [jobs, setJobs] = useState<ShJob[]>([]);
+  const [busy, setBusy] = useState('');
+  const reload = () => shJobs().then(setJobs).catch(() => {});
+  useEffect(() => { reload(); const t = setInterval(reload, 4000); return () => clearInterval(t); }, []);
+  const toggle = async (name: string, on: boolean) => {
+    setBusy(name);
+    try { await shToggleJob(name, on); await reload(); } catch { /* ignore */ }
+    setBusy('');
+  };
+  return (
+    <div style={{ maxWidth: 960 }}>
+      <h3 style={{ margin: '4px 0' }}>⚙️ Cài đặt — Job nền</h3>
+      <p style={{ fontSize: 13, opacity: 0.7 }}>Bật/tắt và theo dõi log các job. harvest chạy theo lịch (cron); enrich/catalog chạy nền liên tục khi bật.</p>
+      {jobs.map((j) => <JobCard key={j.name} job={j} busy={busy === j.name} onToggle={(on) => toggle(j.name, on)} />)}
+      <div style={{ marginTop: 24 }}>
+        <ProxyPanel />
+      </div>
+    </div>
+  );
+}

@@ -243,3 +243,14 @@ button.ghost.danger { color: var(--danger); }
 .badge-local{font-size:11px;background:rgba(91,157,255,.18);color:#8fbaff;border-radius:5px;padding:1px 6px}
 .badge-harvest{font-size:11px;background:rgba(65,209,138,.18);color:#41d18a;border-radius:5px;padding:1px 6px;font-weight:600}
 :root[data-theme='light'] .badge-harvest{background:rgba(10,143,69,.12);color:#0a8f45}
+
+/* Settings — job card */
+.jobcard { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); padding: 14px 16px; margin: 10px 0; }
+.jobhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.jobtitle { font-weight: 700; font-size: 14px; text-transform: capitalize; }
+.jobdesc { font-size: 12px; color: var(--muted); margin: 2px 0 6px; max-width: 620px; }
+.jobmeta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.jobbadge { font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.jobbadge.run { color: var(--accent-2); border-color: var(--accent-2); }
+.jobbadge.off { color: var(--muted); }
+.joblog { margin-top: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; height: 180px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
