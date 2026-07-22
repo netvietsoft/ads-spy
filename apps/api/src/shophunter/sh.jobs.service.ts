@@ -36,7 +36,7 @@ export class ShJobsService implements OnModuleInit {
   private readonly logger = new Logger('ShJobs');
   private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank() };
   private catalogProxies: ProxyForGet[] = [];
-  private proxyWired = false;
+  private origShopifyGet: typeof shopifyHttp.get | null = null;
 
   constructor(
     private readonly svc: ShService,
@@ -110,6 +110,7 @@ export class ShJobsService implements OnModuleInit {
         await this.interruptibleSleep(name, pace);
       }
     } finally {
+      if (name === 'catalog') this.unwireProxy();
       this.mem[name].running = false;
     }
   }
@@ -117,7 +118,7 @@ export class ShJobsService implements OnModuleInit {
   // isEnabled nhưng lỗi DB tạm thời → coi như vẫn bật (khỏi chết loop vì blip); chỉ tắt khi đọc được cờ false.
   private async stillEnabled(name: JobName): Promise<boolean> {
     try { return await this.isEnabled(name); }
-    catch { return true; }
+    catch (e) { await this.mysql.appendJobLog(name, 'warn', 'Đọc cờ enabled lỗi (giữ chạy): ' + (e as Error).message).catch(() => {}); return true; }
   }
 
   // Ngủ nhưng kiểm cờ mỗi TICK_MS → tắt job từ web phản hồi nhanh (≤2s), không kẹt hết BLOCK_MS.
@@ -127,9 +128,13 @@ export class ShJobsService implements OnModuleInit {
   }
 
   private wireProxy(): void {
-    if (this.proxyWired) return;
-    this.proxyWired = true;
+    if (this.origShopifyGet) return;            // already wired for this run
+    this.origShopifyGet = shopifyHttp.get;
     shopifyHttp.get = makeProxiedGet(() => this.catalogProxies);
+  }
+
+  private unwireProxy(): void {
+    if (this.origShopifyGet) { shopifyHttp.get = this.origShopifyGet; this.origShopifyGet = null; }
   }
 
   private async step(name: JobName): Promise<{ pace: number }> {
