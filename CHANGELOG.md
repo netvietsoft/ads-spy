@@ -4,6 +4,25 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-22 — Menu ⚙️ Cài đặt: giám sát + bật/tắt job nền (harvest/enrich/catalog) + Proxy
+
+### Backend — `ShJobsService` (1 service quản 3 job nền)
+- **Cờ On/Off lưu bền DB** (`fbSetting` key `job:<name>:enabled`) → job tự sống lại sau khi API restart. `harvest` `'1'`→bật / `'0'`→tắt / chưa set → fallback env `SH_HARVEST_ENABLED` (tương thích cũ).
+- **harvest**: giữ `@Cron` sẵn có; toggle chỉ đổi cờ DB mà `tick()` đọc (không loop mới). Ghi kết quả tick vào `sh_job_log`.
+- **enrich / catalog**: loop nền nhẹ, mỗi bước có giới hạn (enrich 50 shop, catalog 200 shop) + nghỉ; bị chặn → backoff dài; **lỗi transient KHÔNG giết loop** (catch trong vòng lặp, `stillEnabled` coi lỗi đọc cờ tạm thời = vẫn bật). Tắt từ web phản hồi ≤2s (interruptible sleep).
+- **catalog qua proxy xoay in-process**: `makeProxiedGet` (CONNECT+TLS, xoay `sh_proxy` enabled+http) gắn vào `shopifyHttp.get` **chỉ khi loop chạy** rồi khôi phục lại khi dừng (không rò seam sang affiliate scanner). Không có proxy → idle + cảnh báo, KHÔNG fetch trực tiếp (bảo vệ IP VPS).
+- **Bảng `sh_job_log` (MySQL)** ghi log từng bước; prune `@Cron` 24h/lần (giữ log 24h gần nhất). Tránh lỗi 502: mọi việc nặng chạy nền, web chỉ poll ngắn.
+- Endpoints: `GET /api/sh/jobs` (trạng thái + số liệu + log), `POST /api/sh/jobs/:name/toggle` (validate tên → 400 nếu sai).
+
+### Frontend — tab ⚙️ Cài đặt (`/settings`)
+- Thay tab 🌐 Proxy; `ProxyPanel` chuyển vào trong Settings. `SettingsPanel` poll `GET sh/jobs` mỗi 4s: mỗi job 1 card (công tắc On/Off, badge Đang chạy/Nghỉ/Bị chặn/Tắt, số liệu lượt gần nhất, khung log tự cuộn) + Proxy phía dưới.
+
+### Ghi chú
+- Spec + plan: `docs/superpowers/specs/2026-07-22-*.md`, `docs/superpowers/plans/2026-07-22-*.md`. Test: 17 spec mới (joblog/proxy-get/jobs-service/jobs-step/harvest-gate/controller-jobs).
+- Deploy VPS: `git pull` → build API + `NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet` build web → `pm2 restart ads-spy-api ads-spy-web --update-env` (KHÔNG `restart all`). Không cần prisma migrate.
+
+---
+
 ## 2026-07-18 — Deploy VPS dpboss.pet: login + URL routing + sort mặc định + migrate data
 
 ### Deploy ShopHunter lên VPS (dpboss.pet — PM2, MySQL 8.0.46)
