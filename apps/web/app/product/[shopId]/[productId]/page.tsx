@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ShDetail, shProductDetail, shProductRevenueDaily, shAssetProxy, shShopSite, shProductUrl } from '../../../api';
+import { ShDetail, shProductDetail, shProductRevenueDaily, shAssetProxy, shShopSite, shProductUrl, shSyncProductRevenue } from '../../../api';
 import { ShBarChart } from '../../../components/ShBarChart';
+import { SyncControls } from '../../../components/SyncControls';
 import { ShLogo } from '../../../components/ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
@@ -78,7 +79,10 @@ export default function ProductDetailPage() {
             <span>Δ Tháng <b className={(p.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.month_revenue_percent_change)}</b></span>
           </div>
           <h4>Biểu đồ doanh thu {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
-          <ShBarChart points={series} />
+          <ShBarChart points={series} headerRight={
+            <SyncControls series={series}
+              onSync={async () => { const r = await shSyncProductRevenue(shopId, productId); setDaily(await shProductRevenueDaily(shopId, productId).catch(() => daily)); return r; }} />
+          } />
           {series.length > 0 && (
             <details style={{ margin: '8px 0' }}>
               <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.9 }}>Số theo từng ngày ({series.length} ngày)</summary>

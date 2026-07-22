@@ -199,6 +199,20 @@ export class ShController {
     return this.svc.enrichShopProductsRevenue(id);
   }
 
+  // Đồng bộ NGAY chuỗi doanh thu ngày cho 1 shop (nút "Đồng bộ" trên trang chi tiết) → ghi thẳng DB.
+  @Post('sh/shop/:id/sync-revenue')
+  shopSyncRevenue(@Param('id') id: string) {
+    if (!id) throw new BadRequestException('Thiếu shop id.');
+    return this.svc.syncShopRevenue(id);
+  }
+
+  // Đồng bộ NGAY chuỗi doanh thu ngày cho 1 sản phẩm → ghi thẳng DB.
+  @Post('sh/product/:shopId/:productId/sync-revenue')
+  productSyncRevenue(@Param('shopId') shopId: string, @Param('productId') productId: string) {
+    if (!shopId || !productId) throw new BadRequestException('Thiếu id.');
+    return this.svc.syncProductRevenue(shopId, productId);
+  }
+
   // Batch: fill doanh thu sp cho các shop đã cào catalog nhưng chưa enrich (chạy khi có token; block → dừng, chạy lại tiếp).
   @Post('sh/enrich/product-revenue/run')
   enrichProductRevenueRun(@Query('limit') limit: string) {

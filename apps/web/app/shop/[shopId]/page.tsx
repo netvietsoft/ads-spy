@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ShDetail, shShopDetail, shShopRevenueDaily, shProductDetail, shAssetProxy, shShopSite, shFavShops, shSetFavShop } from '../../api';
+import { ShDetail, shShopDetail, shShopRevenueDaily, shProductDetail, shAssetProxy, shShopSite, shFavShops, shSetFavShop, shSyncShopRevenue, shEnrichShopProducts } from '../../api';
 import { ShChart } from '../../components/ShChart';
 import { ShBarChart } from '../../components/ShBarChart';
+import { SyncControls } from '../../components/SyncControls';
 import { ShLogo } from '../../components/ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
@@ -90,7 +91,11 @@ export default function ShopDetailPage() {
           </div>
 
           <h4>Biểu đồ doanh thu {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
-          <ShBarChart points={series} />
+          <ShBarChart points={series} headerRight={
+            <SyncControls series={series}
+              onSync={async () => { const r = await shSyncShopRevenue(shopId); setDaily(await shShopRevenueDaily(shopId).catch(() => daily)); return r; }}
+              onEnrich={() => shEnrichShopProducts(shopId)} />
+          } />
           {series.length > 0 && (
             <details style={{ margin: '8px 0' }}>
               <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.9 }}>Số theo từng ngày ({series.length} ngày)</summary>

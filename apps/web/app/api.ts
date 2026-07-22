@@ -553,6 +553,16 @@ export async function shShopRevenueDaily(shopId: string): Promise<{ date_str: st
 export async function shProductRevenueDaily(shopId: string, productId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/product/${shopId}/${productId}/revenue-daily`));
 }
+// Đồng bộ NGAY doanh thu (ghi thẳng DB) — dùng ở trang chi tiết shop/sản phẩm.
+export async function shSyncShopRevenue(shopId: string): Promise<'ok' | 'skip'> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/sync-revenue`, { method: 'POST' }));
+}
+export async function shSyncProductRevenue(shopId: string, productId: string): Promise<'ok' | 'skip'> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/product/${shopId}/${productId}/sync-revenue`, { method: 'POST' }));
+}
+export async function shEnrichShopProducts(shopId: string): Promise<{ fetched: number; upserted: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/enrich-products`, { method: 'POST' }));
+}
 export interface ShCheckResult { domain: string; isShopify: boolean; reason?: string; shopId?: string; identifyType?: string; detail?: any }
 export async function shCheckDomain(domain: string): Promise<ShCheckResult> {
   return jsonOrThrow(await fetch(`${API}/api/sh/check?domain=${encodeURIComponent(domain)}`));

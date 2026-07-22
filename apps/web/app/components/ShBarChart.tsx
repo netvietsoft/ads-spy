@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 type Pt = { date_str: string; revenue: number | null; sale_count?: number | null };
 const money = (n: number) => '$' + Math.round(n).toLocaleString();
@@ -20,7 +20,7 @@ function periodKeyLabel(d: Date, gran: Gran): { key: string; label: string } {
 
 // Biểu đồ doanh thu + số đơn, gom tuần/tháng/quý/năm, chọn khoảng (mặc định 3 tháng), Cột/Line.
 // Rộng co giãn theo container (ResizeObserver) → luôn lấp đầy bằng bảng số liệu, cột phân bổ theo tỉ lệ.
-export function ShBarChart({ points }: { points: Pt[] }) {
+export function ShBarChart({ points, headerRight }: { points: Pt[]; headerRight?: ReactNode }) {
   const dates = points.map((p) => p.date_str).filter(Boolean).sort();
   const maxDate = dates.length ? dates[dates.length - 1] : new Date().toISOString().slice(0, 10);
   // Mặc định: xem theo NGÀY, khoảng 1 tháng gần nhất (dạng Cột — kind='bar' bên dưới).
@@ -90,9 +90,12 @@ export function ShBarChart({ points }: { points: Pt[] }) {
           }}>{lbl}</button>)}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 4, flexWrap: 'wrap' }}>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: REV, borderRadius: 2, marginRight: 4 }} />Doanh thu · tổng <b>{money(totRev)}</b></span>
-        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: ORD, borderRadius: 2, marginRight: 4 }} />Số đơn · tổng <b>{totOrd.toLocaleString()}</b></span>
+      <div style={{ display: 'flex', gap: 16, fontSize: 12, marginBottom: 4, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: REV, borderRadius: 2, marginRight: 4 }} />Doanh thu · tổng <b>{money(totRev)}</b></span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: ORD, borderRadius: 2, marginRight: 4 }} />Số đơn · tổng <b>{totOrd.toLocaleString()}</b></span>
+        </div>
+        {headerRight && <div style={{ marginLeft: 'auto' }}>{headerRight}</div>}
       </div>
       <div ref={wrapRef} style={{ width: '100%', borderBottom: '1px solid var(--border)', position: 'relative' }}>
         {/* 3 icon chọn loại biểu đồ — trong khung chart, góc phải trên */}

@@ -21,6 +21,9 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 - Bỏ chữ "ShopHunter" khỏi mọi thông báo lỗi hiển thị cho user: HTTP 400 → **"Vượt quá giới hạn dữ liệu."** (bỏ đoạn giải thích ~1000), lỗi khác → "Lỗi tải dữ liệu (HTTP N)."; default → "Máy chủ dữ liệu…".
 - **Chart shop bền hơn** (`shopDetail`): dùng `Promise.allSettled` (1 call phụ ads/similar/chart lỗi KHÔNG vứt cả detail → không rơi về fallback rỗng chart). Chart 90 ngày: live rỗng/lỗi → **fallback chuỗi tích luỹ revsync** trong DB → nhiều shop có biểu đồ hơn.
 
+### Nút "Đồng bộ" trên trang chi tiết shop/sản phẩm
+- Trang `/shop/:id` + `/product/:shopId/:productId`: góc phải legend biểu đồ hiện **trạng thái đồng bộ** — "⚠ Chưa đồng bộ (mới nhất DD/MM)" nếu dữ liệu cách hôm nay > 2 ngày, hoặc "✓ Đã đồng bộ". Kèm nút **🔄 Đồng bộ** (shop có thêm **Enrich SP**) → gọi chart 90 ngày, **ghi thẳng DB** (`sh_shop_revenue_daily`/`sh_product_revenue_daily`) rồi nạp lại chart ngay. Endpoint `POST sh/shop/:id/sync-revenue`, `sh/product/:shopId/:productId/sync-revenue`, `syncProductRevenue`.
+
 ### Trang /home + đăng nhập 2 quyền
 - **Cổng đăng nhập 2 quyền** (mật khẩu để ở ENV, repo public không hardcode): **guest** = `SITE_PASSWORD` (vd Netviet@123) → chỉ 7 mục; **admin** = `ADMIN_PASSWORD` → toàn quyền. Quyền suy từ hash `site_auth` (an toàn, không giả mạo). Middleware **chặn thật** guest khỏi `/import` + `/settings` (→ redirect /home); menu trên cùng ẩn 2 mục đó với guest.
 - **Trang `/home`**: landing lưới 7 công cụ (Google/FB/TikTok/Shopify/Local DB/Track/Báo cáo). Đăng nhập xong về /home.

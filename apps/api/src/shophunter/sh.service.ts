@@ -540,6 +540,14 @@ export class ShService {
     return chart.length ? 'ok' : 'skip';
   }
 
+  // Đồng bộ doanh thu ngày cho 1 sản phẩm: gọi revenue chart sp (1 call) → dồn vào kho product_revenue_daily.
+  async syncProductRevenue(shopId: string, productId: string): Promise<'ok' | 'skip'> {
+    const revR = await this.client.productChartRevenue(shopId, productId);
+    const chart = Array.isArray((revR as any)?.items) ? (revR as any).items : [];
+    await this.mysql.appendProductRevenueDaily(productId, chart);
+    return chart.length ? 'ok' : 'skip';
+  }
+
   // --- Catalog Shopify (products.json, miễn phí) ---
   // Đồng bộ catalog: xoay vòng shop theo catalog_synced_at cũ nhất (getShopsNeedingCatalog), mỗi shop 1 lần
   // fetchShopifyCatalog(url). 'ok' → bulkUpsertShopifyProducts (chỉ thêm sp mới, không đè) + setShopCatalog('ok');
