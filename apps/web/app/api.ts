@@ -554,10 +554,10 @@ export async function shProductRevenueDaily(shopId: string, productId: string): 
   return jsonOrThrow(await fetch(`${API}/api/sh/product/${shopId}/${productId}/revenue-daily`));
 }
 // Đồng bộ NGAY doanh thu (ghi thẳng DB) — dùng ở trang chi tiết shop/sản phẩm.
-export async function shSyncShopRevenue(shopId: string): Promise<'ok' | 'skip'> {
+export async function shSyncShopRevenue(shopId: string): Promise<{ ok: boolean; result: 'ok' | 'skip' }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/sync-revenue`, { method: 'POST' }));
 }
-export async function shSyncProductRevenue(shopId: string, productId: string): Promise<'ok' | 'skip'> {
+export async function shSyncProductRevenue(shopId: string, productId: string): Promise<{ ok: boolean; result: 'ok' | 'skip' }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/product/${shopId}/${productId}/sync-revenue`, { method: 'POST' }));
 }
 export async function shEnrichShopProducts(shopId: string): Promise<{ fetched: number; upserted: number }> {

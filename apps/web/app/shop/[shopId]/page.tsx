@@ -93,7 +93,7 @@ export default function ShopDetailPage() {
           <h4>Biểu đồ doanh thu {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
           <ShBarChart points={series} headerRight={
             <SyncControls series={series}
-              onSync={async () => { const r = await shSyncShopRevenue(shopId); setDaily(await shShopRevenueDaily(shopId).catch(() => daily)); return r; }}
+              onSync={async () => { const j = await shSyncShopRevenue(shopId); setDaily(await shShopRevenueDaily(shopId).catch(() => daily)); return j.result; }}
               onEnrich={() => shEnrichShopProducts(shopId)} />
           } />
           {series.length > 0 && (
