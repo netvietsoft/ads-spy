@@ -50,7 +50,8 @@ function JobCard({ job, busyToggle, busyRun, onToggle, onRunNow }:
 export function SettingsPanel() {
   const [jobs, setJobs] = useState<ShJob[]>([]);
   const [busy, setBusy] = useState(''); // '' | '<name>' (toggle) | '<name>:run' (chạy ngay)
-  const reload = () => shJobs().then(setJobs).catch(() => {});
+  const [err, setErr] = useState<string | null>(null);
+  const reload = () => shJobs().then((j) => { setJobs(j); setErr(null); }).catch((e) => setErr((e as Error).message));
   useEffect(() => { reload(); const t = setInterval(reload, 4000); return () => clearInterval(t); }, []);
   const toggle = async (name: string, on: boolean) => {
     setBusy(name);
@@ -67,6 +68,12 @@ export function SettingsPanel() {
       <ShTokenBox />
       <h3 style={{ margin: '18px 0 4px' }}>⚙️ Cài đặt — Job nền</h3>
       <p style={{ fontSize: 13, opacity: 0.7 }}>Bật/tắt và theo dõi log các job. harvest chạy theo lịch (cron); enrich/catalog chạy nền liên tục khi bật. Bấm <b>Chạy ngay</b> để chạy 1 lượt liền, không đợi lịch.</p>
+      {err && jobs.length === 0 && (
+        <div className="err">
+          Không tải được danh sách job: {err}. Kiểm tra API (NEXT_PUBLIC_API_ORIGIN khi build web).{' '}
+          <button className="srcbtn" onClick={reload}>Thử lại</button>
+        </div>
+      )}
       {jobs.map((j) => (
         <JobCard key={j.name} job={j}
           busyToggle={busy === j.name} busyRun={busy === j.name + ':run'}
