@@ -8,6 +8,7 @@ import { ShShopModal } from './ShShopModal';
 import { ShFilters } from './ShFilters';
 import { ShCategories } from './ShCategories';
 import { ShListFilters } from './ShListFilters';
+import { Collapsible } from './Collapsible';
 import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
@@ -145,11 +146,11 @@ export function ShopHunterPanel() {
       </div>
 
       <div className="layout" style={{ marginTop: 8 }}>
-        <div className="panel">
-          <h3>Bộ lọc</h3>
+        <div className="filtercol">
           <ShFilters type={tab} value={filters} onChange={setFilters} />
-          <div className="shfgtitle" style={{ marginTop: 14 }}>Danh mục</div>
-          <ShCategories selected={cats} onChange={setCats} />
+          <Collapsible title="Danh mục" active={cats.length > 0}>
+            <ShCategories selected={cats} onChange={setCats} />
+          </Collapsible>
           <ShListFilters type={tab} value={lists} onChange={setLists} />
           <button className="srcbtn active" style={{ width: '100%', marginTop: 10 }} onClick={() => load(true)} disabled={loading}>Áp dụng lọc</button>
         </div>
