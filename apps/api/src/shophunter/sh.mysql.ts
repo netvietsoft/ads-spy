@@ -262,6 +262,12 @@ export class ShMysql implements OnModuleInit {
       enabled TINYINT(1) NOT NULL DEFAULT 1, status VARCHAR(12), ping_ms INT, checked_at BIGINT,
       UNIQUE KEY uq_proxy (host, port))`);
 
+    // Log job nền (harvest/enrich/catalog) hiển thị lên web. Prune 24h/lần (ShJobsService).
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_job_log (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY, job VARCHAR(16) NOT NULL, ts BIGINT NOT NULL,
+      level VARCHAR(8) NOT NULL, msg VARCHAR(1024) NOT NULL,
+      KEY idx_job_id (job, id), KEY idx_ts (ts))`);
+
     this.pool = pool;
   }
 
@@ -1364,6 +1370,30 @@ export class ShMysql implements OnModuleInit {
     await this.prisma.fbSetting
       .upsert({ where: { key }, create: { key, value }, update: { value } })
       .catch(() => undefined);
+  }
+
+  // ===== Log job nền =====
+  async appendJobLog(job: string, level: string, msg: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      'INSERT INTO sh_job_log (job, ts, level, msg) VALUES (?, ?, ?, ?)',
+      [String(job).slice(0, 16), Date.now(), String(level).slice(0, 8), String(msg).slice(0, 1024)],
+    );
+  }
+
+  async tailJobLog(job: string, limit = 200): Promise<{ ts: number; level: string; msg: string }[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
+      'SELECT ts, level, msg FROM sh_job_log WHERE job = ? ORDER BY id DESC LIMIT ?',
+      [job, limit],
+    );
+    return (rows as any[]).map((r) => ({ ts: Number(r.ts), level: r.level, msg: r.msg })).reverse();
+  }
+
+  async pruneJobLog(olderThanMs: number): Promise<number> {
+    await this.ensureReady();
+    const [res] = await this.pool!.query('DELETE FROM sh_job_log WHERE ts < ?', [olderThanMs]);
+    return (res as any).affectedRows || 0;
   }
 
   // Thống kê độ phủ đồng bộ (catalog Shopify + doanh thu ngày) cho dashboard admin — COUNT/MIN đơn giản,
