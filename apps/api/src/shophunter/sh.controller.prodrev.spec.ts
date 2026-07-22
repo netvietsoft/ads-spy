@@ -8,7 +8,7 @@ function makeController() {
     productRevenueDaily: jest.fn(),
     coverageStats: jest.fn(),
   } as any;
-  const ctrl = new ShController(svc, {} as any, {} as any);
+  const ctrl = new ShController(svc, {} as any, {} as any, {} as any);
   return { ctrl, svc };
 }
 

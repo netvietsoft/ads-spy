@@ -5,6 +5,7 @@ import { ShService, SH_SNAPSHOT_DEFAULT_DIR } from './sh.service';
 import { ShClient, SH_SORTS_SHOPS, SH_SORTS_PRODUCTS } from './sh.client';
 import { ShBlockedFilter } from './sh.blocked.filter';
 import { ShHarvestService } from './sh.harvest.service';
+import { ShJobsService } from './sh.jobs.service';
 
 const ALLOWED_ASSET = /(^|\.)(shopify\.com|shopifycdn\.com|myshopify\.com|shophunter\.io|cloudfront\.net)$/i;
 const REVENUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -76,6 +77,7 @@ export class ShController {
     private readonly svc: ShService,
     private readonly client: ShClient,
     private readonly harvest: ShHarvestService,
+    private readonly jobsSvc: ShJobsService,
   ) {}
 
   @Post('sh/token')
@@ -293,6 +295,19 @@ export class ShController {
   @Get('sh/harvest/daily')
   harvestDaily() {
     return this.harvest.getDaily();
+  }
+
+  // ===== Job nền (Settings): giám sát + bật/tắt =====
+  @Get('sh/jobs')
+  jobsList() {
+    return this.jobsSvc.getJobs();
+  }
+
+  @Post('sh/jobs/:name/toggle')
+  toggleJob(@Param('name') name: string, @Body('on') on: any) {
+    const valid = ['harvest', 'enrich', 'catalog'];
+    if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
+    return this.jobsSvc.toggle(name, !!on);
   }
 
   @Get('sh/sync/coverage')
