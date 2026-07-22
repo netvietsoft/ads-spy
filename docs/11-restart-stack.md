@@ -2,7 +2,76 @@
 
 > Log dựng lại toàn bộ sau khi **restart máy**. Cập nhật: 2026-07-14 (chiều).
 
-## ⚡ TRẠNG THÁI PHIÊN 2026-07-18 (mới nhất — đọc trước)
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-22 (mới nhất — đọc trước): Menu Cài đặt + Job nền
+
+- **Git HEAD:** `da9cdf3` trên `main`, **ĐÃ PUSH origin/main**. Session này làm: (1) bộ lọc ShopHunter thu/xổ (collapsible), (2) **menu ⚙️ Cài đặt** = Proxy + giám sát/bật-tắt 3 job nền (harvest/enrich/catalog) + log lên web, (3) nút **"Chạy ngay"** mỗi job, (4) token ShopHunter dời vào đầu Settings. Chi tiết: CHANGELOG mục 2026-07-22.
+- **Cơ chế job** (hiểu để đọc log đúng):
+  - **harvest**: chạy bằng `@Cron` mỗi 30' (`SH_HARVEST_CRON`), có gating (bỏ ~30% lượt, jitter ≤8', chỉ giờ 8–23), cần token ShopHunter. Toggle Bật/Tắt = cờ DB `job:harvest:enabled` (`fbSetting`) mà cron đọc; chưa set → fallback env `SH_HARVEST_ENABLED`. **KHÔNG chạy tức thì** — bật xong phải đợi cron (dùng "Chạy ngay" để chạy liền).
+  - **enrich / catalog**: loop nền nhẹ khi Bật (enrich 50 shop/lượt, catalog 25), backoff khi bị chặn, **không chết loop vì lỗi transient**. catalog cào Shopify **qua proxy xoay** (`sh_proxy` enabled+http) — không có proxy → idle + log cảnh báo, KHÔNG fetch trực tiếp.
+  - **Log**: bảng MySQL `sh_job_log` (prune @Cron 03:00 mỗi ngày, giữ 24h). Web `/settings` poll `GET /api/sh/jobs` mỗi 4s.
+
+### Deploy code mới lên VPS dpboss.pet — TỪNG LỆNH
+```bash
+# 1) SSH vào VPS (host quen: netviet@netviettest)
+cd ~/projects-deploy/ads-spy
+git pull origin main
+
+# 2) Build backend
+cd apps/api && npm run build
+
+# 3) Build frontend — PHẢI bake API origin lúc build (NEXT_PUBLIC_* là build-time)
+cd ../web && NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build
+
+# 4) Restart CHỈ 2 process (⚠️ KHÔNG 'pm2 restart all' — VPS có nhiều app khác)
+pm2 restart ads-spy-api ads-spy-web --update-env
+pm2 status ads-spy-api ads-spy-web
+```
+- **KHÔNG cần prisma migrate**: `sh_job_log` là bảng MySQL raw (tự tạo trong `ShMysql.connect()`); cờ Bật/Tắt dùng `fbSetting` (SQLite) đã có.
+- **⚠️ KHÔNG commit `downloads/`** (chứa dump DB `sh-dump-*.sql.gz`) — repo public. Nên thêm `downloads/` vào `.gitignore`.
+
+### Kiểm tra sau deploy — TỪNG LỆNH
+```bash
+curl -s https://api.dpboss.pet/api/sh/jobs | head -c 500        # 3 job, đúng shape
+pm2 logs ads-spy-api --lines 30 --nostream                       # log API (cron/khởi động)
+free -h                                                          # ⚠️ RAM (crawl+MySQL nặng dễ OOM→502)
+```
+
+### Vận hành trên web — https://dpboss.pet/settings
+1. **Kết nối token** (mục ĐẦU): dán ShopHunter refresh token (localStorage key `...refreshToken`) → **Lưu token**. Đổi/thoát bằng nút "Đổi token / Thoát".
+2. Mỗi job có: **Bật/Tắt** (lưu bền, tự chạy lại sau restart), **Chạy ngay** (1 lượt liền, bỏ gating), badge trạng thái, khung log tự cuộn.
+3. **Proxy** (cuối trang): dán mỗi dòng `host:port:user:pass` hoặc `host:port` (HTTP). `socks5://user:pass@host:port` thêm/test được nhưng **catalog chưa dùng SOCKS**. Dạng `server=...&port=...&secret=...` (MTProto/Shadowsocks) **KHÔNG nhận** — cần proxy HTTP/HTTPS.
+
+### Vận hành qua API (nếu không dùng web) — TỪNG LỆNH
+```bash
+# Trạng thái tất cả job (enabled/running/lastStatus/stats/logs)
+curl -s https://api.dpboss.pet/api/sh/jobs
+
+# Bật / Tắt 1 job  (name = harvest | enrich | catalog)
+curl -s -X POST https://api.dpboss.pet/api/sh/jobs/catalog/toggle  -H 'content-type: application/json' -d '{"on":true}'
+curl -s -X POST https://api.dpboss.pet/api/sh/jobs/catalog/toggle  -H 'content-type: application/json' -d '{"on":false}'
+
+# Chạy NGAY 1 lượt (nền, bỏ gating cron) — xem kết quả ở log
+curl -s -X POST https://api.dpboss.pet/api/sh/jobs/harvest/run-now
+```
+
+### Chạy/test ở LOCAL trước khi deploy — TỪNG LỆNH
+```bash
+# MySQL local phải chạy trước (Laragon, hoặc mysqld trực tiếp — xem phần 2026-07-14)
+cd apps/api && npm run build && npm run start          # API :3100 (hoặc: npm run dev)
+cd apps/web && npm run dev                              # web  :3101
+# Build thử FE giống prod:
+cd apps/web && NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build
+# Test BE (spec job dùng MySQL local — chạy tuần tự tránh timeout):
+cd apps/api && npx jest src/shophunter --runInBand --forceExit
+```
+
+### Troubleshoot
+- **harvest log "Bị chặn" ngay** → token ShopHunter hết hạn → đổi token ở đầu Settings, bấm "Chạy ngay" test lại.
+- **catalog log "Thiếu proxy"** → thêm proxy HTTP ở Settings → Proxy.
+- **Bật harvest không thấy log** → đúng (cron 30', không tức thì); bấm "Chạy ngay".
+- **502 khi cào lớn** → mọi việc nặng đã chạy nền (web chỉ poll ngắn); tránh gọi `harvest/run?daily=` lớn đồng bộ. Kiểm `free -h`, `pm2 logs ads-spy-api`.
+
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-18
 - **Git HEAD:** `54b5366` trên `main`, **ĐÃ PUSH origin/main**. Từ 2026-07-16→18 làm: tách bảng sản phẩm list/detail (fix 3M tìm chậm) + enrich doanh thu sp + **deploy lên VPS dpboss.pet** + login + URL routing + sort mặc định. Chi tiết: CHANGELOG mục 2026-07-16/17/18.
 - **VPS dpboss.pet** (`netviet@netviettest`): web :3062, api :8075, chạy **PM2** (`ecosystem.config.js`). Redeploy nhanh: `bash deploy.sh`. Deploy chỉ web (sau khi pull): `cd ~/projects-deploy/ads-spy && git pull origin main && npm run build && pm2 restart ads-spy-web --update-env`.
 - **DB VPS:** MySQL 8.0.46, DB `shophunter` (chung server nhiều DB khác — ⚠️ RAM có hạn, crawl+MySQL nặng dễ **OOM→502**; `free -h` trước khi cào). Ads google/fb/tiktok dùng **Prisma/SQLite** `apps/api/prisma/dev.db` RIÊNG. **Đã migrate ~4M sp + 46k shop** local→VPS (mysqldump). `SH_MYSQL_URL` đọc từ env (root@127.0.0.1 no-pass chạy được trên VPS này).
