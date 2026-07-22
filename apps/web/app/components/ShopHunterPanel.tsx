@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ShExplore, ShSort, shExplore, shSorts, shAssetProxy, shShopSite, shProductUrl,
 } from '../api';
@@ -38,12 +38,13 @@ function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
     <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
       <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={24} />
-        <span>{s.shop_title || s.url}</span>
+        <span style={{ fontSize: 14 }}>{s.shop_title || s.url}</span>
       </div>
       <div className="fbbody">{s.url}</div>
       <div className="fbplat">
-        Day {money(s.day_current_period_revenue)} <span style={{ color: (s.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(s.day_revenue_percent_change)}</span>
-        {' · '}Week {money(s.week_current_period_revenue)}
+        <b>Day</b> <b className="rev">{money(s.day_current_period_revenue)}</b>{' '}
+        <b style={{ color: (s.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(s.day_revenue_percent_change)}</b>
+        {' · '}<b>Week</b> <b className="rev">{money(s.week_current_period_revenue)}</b>
       </div>
       <div className="fbplat">Ads {s.active_ad_count ?? 0} · SKU {s.sku_count ?? 0} · {s.country} · {s.currency}</div>
       <div className="fbfoot">
@@ -66,7 +67,8 @@ function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
       </div>
       {p.shop_url ? <div className="fbbody" style={{ opacity: 0.6, fontSize: 11 }}>{p.shop_url}</div> : null}
       <div className="fbplat">
-        Day {money(p.day_current_period_revenue)} <span style={{ color: (p.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(p.day_revenue_percent_change)}</span>
+        <b>Day</b> <b className="rev">{money(p.day_current_period_revenue)}</b>{' '}
+        <b style={{ color: (p.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(p.day_revenue_percent_change)}</b>
         {' · '}Ads {p.product_active_ad_count ?? 0}
       </div>
       <div className="fbfoot">
@@ -108,6 +110,18 @@ export function ShopHunterPanel() {
     setLoading(false);
   }
 
+  // Lazy-load: cuộn tới nút "Tải thêm" (trong 400px) → tự tải trang kế, khỏi bấm.
+  const moreRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver((e) => {
+      if (e[0].isIntersecting && !loading && items.length < total) load(false);
+    }, { rootMargin: '400px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [items.length, total, loading, from]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const sortList = tab === 'shops' ? sorts.shops : sorts.products;
 
   return (
@@ -145,7 +159,7 @@ export function ShopHunterPanel() {
           </div>
           <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Tìm ${tab}...`} />
-            <button className="srcbtn active" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
+            <button className="srcbtn findbtn" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
             {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}
           </div>
 
@@ -161,7 +175,7 @@ export function ShopHunterPanel() {
 
           {items.length > 0 && items.length < total && (
             <div style={{ textAlign: 'center', margin: 16 }}>
-              <button className="srcbtn" onClick={() => load(false)} disabled={loading}>Tải thêm</button>
+              <button ref={moreRef} className="srcbtn loadmore" onClick={() => load(false)} disabled={loading}>{loading ? 'Đang tải...' : 'Tải thêm'}</button>
             </div>
           )}
         </div>

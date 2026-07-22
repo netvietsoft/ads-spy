@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Advertiser,
@@ -79,6 +79,13 @@ export default function Home() {
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   // Bấm tab → điều hướng sang URL của tab đó (path-effect ở trên sẽ set source).
   const goTab = (s: Source) => { setSource(s); router.push(SOURCE_TO_PATH[s]); };
+  // Menu là <a href> thật (chuột phải → Mở tab mới). Chuột trái thường → điều hướng SPA (không reload);
+  // giữ Ctrl/Cmd/Shift/chuột-giữa cho trình duyệt tự mở tab mới.
+  const navClick = (e: ReactMouseEvent, s: Source) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+    e.preventDefault();
+    goTab(s);
+  };
   const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -336,17 +343,15 @@ export default function Home() {
         </button>
       </div>
 
-      <div className="topnav">
-        <button type="button" className={`srcbtn ${source === 'google' ? 'active' : ''}`} onClick={() => goTab('google')}>Google Ads</button>
-        <button type="button" className={`srcbtn ${source === 'facebook' ? 'active' : ''}`} onClick={() => goTab('facebook')}>Facebook Ads</button>
-        <button type="button" className={`srcbtn ${source === 'tiktok' ? 'active' : ''}`} onClick={() => goTab('tiktok')}>TikTok Ads</button>
-        <button type="button" className={`srcbtn ${source === 'shophunter' ? 'active' : ''}`} onClick={() => goTab('shophunter')}>ShopHunter</button>
-        <button type="button" className={`srcbtn ${source === 'localdb' ? 'active' : ''}`} onClick={() => goTab('localdb')}>Local DB</button>
-        <button type="button" className={`srcbtn ${source === 'track' ? 'active' : ''}`} onClick={() => goTab('track')}>Track</button>
-        <button type="button" className={`srcbtn ${source === 'import' ? 'active' : ''}`} onClick={() => goTab('import')}>Import</button>
-        <button type="button" className={`srcbtn ${source === 'report' ? 'active' : ''}`} onClick={() => goTab('report')}>Báo cáo</button>
-        <button type="button" className={`srcbtn ${source === 'settings' ? 'active' : ''}`} onClick={() => goTab('settings')}>Cài đặt</button>
-      </div>
+      <nav className="topnav">
+        {([
+          ['google', 'Google Ads'], ['facebook', 'Facebook Ads'], ['tiktok', 'TikTok Ads'],
+          ['shophunter', 'Shopify'], ['localdb', 'Local DB'], ['track', 'Track'],
+          ['import', 'Import'], ['report', 'Báo cáo'], ['settings', 'Cài đặt'],
+        ] as [Source, string][]).map(([s, label]) => (
+          <a key={s} href={SOURCE_TO_PATH[s]} className={`srcbtn ${source === s ? 'active' : ''}`} onClick={(e) => navClick(e, s)}>{label}</a>
+        ))}
+      </nav>
 
       {source === 'facebook' && <FacebookPanel />}
       {source === 'tiktok' && <TiktokPanel />}

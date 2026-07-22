@@ -46,7 +46,7 @@ body {
 
 /* Menu ngang trên cùng — bỏ icon, kiểu tab gạch chân, đổi màu khi hover */
 .topnav { display: flex; flex-wrap: wrap; gap: 2px; margin: 20px 0 12px; border-bottom: 1px solid var(--border); }
-.topnav .srcbtn { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; color: var(--muted); padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer; transition: color 0.12s, background 0.12s; }
+.topnav .srcbtn { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; color: var(--muted); padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; transition: color 0.12s, background 0.12s; }
 .topnav .srcbtn:hover { color: var(--text); background: var(--panel-2); }
 .topnav .srcbtn.active { color: var(--accent); background: none; border-bottom-color: var(--accent); }
 .srcbtn { background: var(--panel); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer; }
@@ -81,7 +81,7 @@ body {
 .fbthumb .vidtag { color: var(--accent); font-size: 18px; }
 .playbadge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
 .countbadge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
-.fbfoot { display: flex; flex-wrap: nowrap; gap: 12px; margin-top: 2px; white-space: nowrap; }
+.fbfoot { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 12px; margin-top: 2px; white-space: nowrap; }
 
 .modes { display: flex; gap: 8px; margin-top: 18px; }
 
@@ -274,3 +274,14 @@ button.ghost.danger { color: var(--danger); }
 .layout.filters-collapsed { grid-template-columns: 1fr; }
 .fbgrid.shgrid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 .filtertoggle { padding: 6px 11px; font-size: 16px; line-height: 1; font-weight: 700; }
+/* sort bar nhỏ lại */
+.shsortbar .srcbtn { font-size: 13px; padding: 6px 11px; }
+/* nút Tìm: nền xanh, chữ trắng */
+.findbtn { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+.findbtn:hover:not(:disabled) { filter: brightness(1.08); }
+/* nút Tải thêm: xanh đậm, nổi bật */
+.loadmore { background: var(--accent); color: #fff; border: 1px solid var(--accent); font-weight: 700; padding: 10px 28px; }
+.loadmore:hover:not(:disabled) { filter: brightness(1.08); }
+/* chỉ số tiền: xanh đậm */
+.rev { color: #16b877; font-weight: 700; }
+:root[data-theme='light'] .rev { color: #0a8f5b; }

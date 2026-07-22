@@ -17,6 +17,10 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 ### Frontend — tab ⚙️ Cài đặt (`/settings`)
 - Thay tab 🌐 Proxy; `ProxyPanel` chuyển vào trong Settings. `SettingsPanel` poll `GET sh/jobs` mỗi 4s: mỗi job 1 card (công tắc On/Off, badge Đang chạy/Nghỉ/Bị chặn/Tắt, số liệu lượt gần nhất, khung log tự cuộn) + Proxy phía dưới.
 
+### UI tinh chỉnh
+- **Menu trên cùng**: item là `<a href>` thật → chuột phải "Mở tab mới" được (chuột trái vẫn SPA, không reload). Đổi nhãn **ShopHunter → Shopify**.
+- **Tab Shopify**: thanh sort chữ+nút nhỏ lại; nút **Tìm** nền xanh chữ trắng; nút **Tải thêm** xanh đậm + **lazy-load** (cuộn tới là tự tải, khỏi bấm — IntersectionObserver). Card: chỉ số tiền **xanh đậm**, nhãn Day/Week + % **in đậm**; tiêu đề shop nhỏ hơn; footer sản phẩm **Xem sản phẩm** (trái) · **Shop** (phải).
+
 ### Bổ sung: chỉnh tốc độ job từ web (không cần restart)
 - Mỗi job có mục **"Tốc độ"** (số/​job lưu DB `job:<name>:cfg`, đọc lúc chạy → sửa sống): **harvest** = trần/ngày, mỗi-lượt(cron), bỏ-lượt%, nghỉ/shop, số luồng · **enrich** = shop/lượt, nghỉ-giữa-lượt · **catalog** = shop/lượt, nghỉ-giữa-lượt, nghỉ/shop, **số luồng** (catalogSyncStep giờ chạy song song). Giá trị bị **kẹp an toàn** (vd concurrency ≤8, batch ≤1000). Endpoint `POST /api/sh/jobs/:name/config`.
 - Cảnh báo hiển thị: càng mạnh (batch/luồng ↑, nghỉ ↓) càng nhanh nhưng dễ bị chặn (429). harvest vẫn theo cron ~30' nên perTick + trần/ngày là đòn bẩy chính; catalog/enrich đổi ăn ngay ở vòng loop kế.
