@@ -17,10 +17,11 @@ import { ShClient } from './shophunter/sh.client';
 import { ShAuth } from './shophunter/sh.auth';
 import { ShMysql } from './shophunter/sh.mysql';
 import { ShHarvestService } from './shophunter/sh.harvest.service';
+import { ShJobsService } from './shophunter/sh.jobs.service';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
   controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController],
-  providers: [PrismaService, GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService],
+  providers: [PrismaService, GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService],
 })
 export class AppModule {}
