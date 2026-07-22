@@ -44,6 +44,13 @@ body {
 
 .sources { display: flex; gap: 10px; margin: 20px 0 6px; }
 
+/* Trang /home — lưới công cụ */
+.homegrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.homecard { display: block; text-decoration: none; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; transition: border-color 0.12s, transform 0.08s; }
+.homecard:hover { border-color: var(--accent); transform: translateY(-2px); }
+.homecard-t { font-size: 18px; font-weight: 700; color: var(--text); }
+.homecard-d { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
 /* Thanh menu cố định (sticky) ở mọi trang — brand + theme + menu ngang */
 .topbar { position: sticky; top: 0; z-index: 30; background: var(--bg); border-bottom: 1px solid var(--border); }
 .topbar-inner { max-width: 1180px; margin: 0 auto; padding: 12px 20px 0; display: flex; align-items: center; justify-content: space-between; }

@@ -17,7 +17,7 @@ export default function LoginPage() {
       });
       if (r.ok) {
         const next = new URLSearchParams(window.location.search).get('next');
-        window.location.href = next && next.startsWith('/') ? next : '/';
+        window.location.href = next && next.startsWith('/') ? next : '/home';
         return;
       }
       setErr(true);

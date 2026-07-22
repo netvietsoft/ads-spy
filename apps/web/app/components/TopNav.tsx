@@ -27,9 +27,17 @@ export function TopNav() {
   const router = useRouter();
   const active = activeHref(pathname);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  // Quyền để hiện menu: guest ẩn Import + Cài đặt (chặn thật ở middleware, đây chỉ hiển thị). '' = mở/dev → hiện đủ.
+  const [role, setRole] = useState('');
 
   useEffect(() => { setTheme(((localStorage.getItem('theme') as 'dark' | 'light') || 'dark')); }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('theme', theme); }, [theme]);
+  useEffect(() => {
+    const m = document.cookie.match(/(?:^|; )site_role=([^;]+)/);
+    setRole(m ? decodeURIComponent(m[1]) : '');
+  }, [pathname]);
+
+  const items = role === 'guest' ? NAV.filter(([href]) => href !== '/import' && href !== '/settings') : NAV;
 
   // Chuột trái thường → điều hướng SPA (không reload); Ctrl/Cmd/Shift/chuột-giữa → để browser mở tab mới.
   const nav = (e: ReactMouseEvent, href: string) => {
@@ -47,7 +55,7 @@ export function TopNav() {
         </button>
       </div>
       <nav className="topnav">
-        {NAV.map(([href, label]) => (
+        {items.map(([href, label]) => (
           <a key={href} href={href} className={`srcbtn ${active === href ? 'active' : ''}`} onClick={(e) => nav(e, href)}>{label}</a>
         ))}
       </nav>

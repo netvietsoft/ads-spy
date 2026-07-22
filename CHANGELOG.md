@@ -21,6 +21,11 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 - Bỏ chữ "ShopHunter" khỏi mọi thông báo lỗi hiển thị cho user: HTTP 400 → **"Vượt quá giới hạn dữ liệu."** (bỏ đoạn giải thích ~1000), lỗi khác → "Lỗi tải dữ liệu (HTTP N)."; default → "Máy chủ dữ liệu…".
 - **Chart shop bền hơn** (`shopDetail`): dùng `Promise.allSettled` (1 call phụ ads/similar/chart lỗi KHÔNG vứt cả detail → không rơi về fallback rỗng chart). Chart 90 ngày: live rỗng/lỗi → **fallback chuỗi tích luỹ revsync** trong DB → nhiều shop có biểu đồ hơn.
 
+### Trang /home + đăng nhập 2 quyền
+- **Cổng đăng nhập 2 quyền** (mật khẩu để ở ENV, repo public không hardcode): **guest** = `SITE_PASSWORD` (vd Netviet@123) → chỉ 7 mục; **admin** = `ADMIN_PASSWORD` → toàn quyền. Quyền suy từ hash `site_auth` (an toàn, không giả mạo). Middleware **chặn thật** guest khỏi `/import` + `/settings` (→ redirect /home); menu trên cùng ẩn 2 mục đó với guest.
+- **Trang `/home`**: landing lưới 7 công cụ (Google/FB/TikTok/Shopify/Local DB/Track/Báo cáo). Đăng nhập xong về /home.
+- ⚠️ Chặn ở tầng WEB (UI/route). API `api.dpboss.pet` vẫn mở (chưa gate) — muốn chặn tuyệt đối cả API là việc riêng.
+
 ### UI tinh chỉnh
 - **Menu cố định mọi trang**: tách `TopNav` (brand + theme + menu) vào `layout.tsx` → hiện **sticky** ở tất cả route kể cả `/product/*`, `/shop/*`. Menu là `<a href>` thật (chuột phải "Mở tab mới"; chuột trái SPA). Đổi nhãn **ShopHunter → Shopify**.
 - Thông báo ShopHunter **HTTP 400 → "Vượt quá giới hạn dữ liệu (chỉ xem ~1000 kết quả đầu)"** thay vì mã lỗi khó hiểu.
