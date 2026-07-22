@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, Res, UseFilters } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseFilters } from '@nestjs/common';
 import type { Response } from 'express';
 import { Readable } from 'stream';
 import { ShService, SH_SNAPSHOT_DEFAULT_DIR } from './sh.service';
@@ -93,6 +93,28 @@ export class ShController {
   tokenStatus() {
     return this.svc.tokenStatus();
   }
+
+  // ===== Proxy (crawler Shopify) =====
+  @Get('sh/proxies')
+  listProxies() { return this.svc.listProxies(); }
+
+  @Post('sh/proxies')
+  addProxies(@Body('text') text: string) {
+    if (!text || !text.trim()) throw new BadRequestException('Thiếu danh sách proxy.');
+    return this.svc.addProxies(text);
+  }
+
+  @Post('sh/proxies/test')
+  testAllProxies() { return this.svc.testAllProxies(); }
+
+  @Post('sh/proxies/:id/test')
+  testProxy(@Param('id') id: string) { return this.svc.testProxy(Number(id)); }
+
+  @Patch('sh/proxies/:id')
+  updateProxy(@Param('id') id: string, @Body() body: any) { return this.svc.updateProxy(Number(id), body || {}); }
+
+  @Delete('sh/proxies/:id')
+  deleteProxy(@Param('id') id: string) { return this.svc.deleteProxy(Number(id)); }
 
   @Get('sh/sorts')
   sorts() {

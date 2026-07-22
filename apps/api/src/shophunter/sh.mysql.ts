@@ -255,6 +255,13 @@ export class ShMysql implements OnModuleInit {
     await this.ensureIndex(pool, 'sh_product_list', 'idx_pl_country', 'shop_country');
     await this.ensureIndex(pool, 'sh_product_list', 'idx_pl_category', 'category_last');
 
+    // Proxy dùng chung cho crawler Shopify (quản lý qua web). UNIQUE(host,port) để dán trùng thì cập nhật.
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_proxy (
+      id INT AUTO_INCREMENT PRIMARY KEY, raw VARCHAR(512) NOT NULL, type VARCHAR(12) NOT NULL DEFAULT 'http',
+      host VARCHAR(255) NOT NULL, port INT NOT NULL, username VARCHAR(128), password VARCHAR(255),
+      enabled TINYINT(1) NOT NULL DEFAULT 1, status VARCHAR(12), ping_ms INT, checked_at BIGINT,
+      UNIQUE KEY uq_proxy (host, port))`);
+
     this.pool = pool;
   }
 
@@ -1169,6 +1176,65 @@ export class ShMysql implements OnModuleInit {
   async setShopProductRevenueSynced(shopId: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query('UPDATE sh_shop SET prod_rev_synced_at = ? WHERE shop_id = ?', [Date.now(), shopId]);
+  }
+
+  // ===== Proxy (dùng chung cho crawler Shopify) =====
+  async listProxies(): Promise<any[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT id, raw, type, host, port, username, enabled, status, ping_ms, checked_at FROM sh_proxy ORDER BY id');
+    return (rows as any[]).map((r) => ({ ...r, enabled: !!r.enabled, checked_at: r.checked_at == null ? null : Number(r.checked_at) }));
+  }
+
+  async addProxies(rows: { raw: string; type: string; host: string; port: number; username: string | null; password: string | null }[]): Promise<number> {
+    await this.ensureReady();
+    if (!rows.length) return 0;
+    let n = 0;
+    for (const p of rows) {
+      const [res]: any = await this.pool!.query(
+        `INSERT INTO sh_proxy (raw, type, host, port, username, password, enabled) VALUES (?,?,?,?,?,?,1)
+         ON DUPLICATE KEY UPDATE raw=VALUES(raw), type=VALUES(type), username=VALUES(username), password=VALUES(password), enabled=1`,
+        [p.raw.slice(0, 512), p.type, p.host.slice(0, 255), p.port, p.username, p.password],
+      );
+      n += res.affectedRows ? 1 : 0;
+    }
+    return n;
+  }
+
+  async updateProxy(id: number, fields: { enabled?: boolean; raw?: string; type?: string; host?: string; port?: number; username?: string | null; password?: string | null }): Promise<void> {
+    await this.ensureReady();
+    const set: string[] = []; const vals: any[] = [];
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === undefined) continue;
+      set.push(`${k} = ?`); vals.push(k === 'enabled' ? (v ? 1 : 0) : v);
+    }
+    if (!set.length) return;
+    vals.push(id);
+    await this.pool!.query(`UPDATE sh_proxy SET ${set.join(', ')} WHERE id = ?`, vals);
+  }
+
+  async deleteProxy(id: number): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('DELETE FROM sh_proxy WHERE id = ?', [id]);
+  }
+
+  async setProxyStatus(id: number, status: string, pingMs: number | null): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_proxy SET status = ?, ping_ms = ?, checked_at = ? WHERE id = ?', [status, pingMs, Date.now(), id]);
+  }
+
+  async getProxyById(id: number): Promise<any | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT * FROM sh_proxy WHERE id = ?', [id]);
+    return (rows as any[])[0] || null;
+  }
+
+  // Full (kèm password) cho test + scanner. onlyEnabled=true → chỉ proxy đang bật.
+  async listProxiesFull(onlyEnabled = false): Promise<any[]> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
+      'SELECT id, raw, type, host, port, username, password FROM sh_proxy' + (onlyEnabled ? ' WHERE enabled = 1' : '') + ' ORDER BY id',
+    );
+    return rows as any[];
   }
 
   // Shop cần check affiliate — rotation NULL trước rồi cũ nhất; bỏ 'blocked' chưa quá hạn (copy pattern catalog).

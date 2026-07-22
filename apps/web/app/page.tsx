@@ -28,6 +28,7 @@ import { LocalDbPanel } from './components/LocalDbPanel';
 import { TrackPanel } from './components/TrackPanel';
 import { ImportPanel } from './components/ImportPanel';
 import { ReportPanel } from './components/ReportPanel';
+import { ProxyPanel } from './components/ProxyPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
 import { LazyGrid } from './components/LazyGrid';
@@ -47,11 +48,11 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
-type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report';
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'proxy';
 // Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
 const SOURCE_TO_PATH: Record<Source, string> = {
   google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
-  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import',
+  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', proxy: '/proxy',
 };
 function pathToSource(p: string): Source {
   if (p.startsWith('/facebookads')) return 'facebook';
@@ -61,6 +62,7 @@ function pathToSource(p: string): Source {
   if (p.startsWith('/trackshopify')) return 'track';
   if (p.startsWith('/reportlocaldb')) return 'report';
   if (p.startsWith('/import')) return 'import';
+  if (p.startsWith('/proxy')) return 'proxy';
   return 'google'; // '/', '/googleads', và fallback
 }
 
@@ -366,6 +368,7 @@ export default function Home() {
         <button className={`srcbtn ${source === 'track' ? 'active' : ''}`} onClick={() => goTab('track')}>🔎 Track</button>
         <button className={`srcbtn ${source === 'import' ? 'active' : ''}`} onClick={() => goTab('import')}>📥 Import</button>
         <button className={`srcbtn ${source === 'report' ? 'active' : ''}`} onClick={() => goTab('report')}>📊 Báo cáo</button>
+        <button className={`srcbtn ${source === 'proxy' ? 'active' : ''}`} onClick={() => goTab('proxy')}>🌐 Proxy</button>
       </div>
 
       {source === 'facebook' && <FacebookPanel />}
@@ -375,6 +378,7 @@ export default function Home() {
       {source === 'track' && <TrackPanel />}
       {source === 'import' && <ImportPanel />}
       {source === 'report' && <ReportPanel />}
+      {source === 'proxy' && <ProxyPanel />}
 
       {source === 'google' && (
       <>

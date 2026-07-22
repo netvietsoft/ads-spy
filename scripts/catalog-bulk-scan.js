@@ -8,9 +8,9 @@ const { shopifyHttp, fetchShopifyCatalog } = require(path.join(REPO, 'apps/api/d
 const mysql = require(path.join(REPO, 'node_modules/mysql2/promise'));
 
 const PROXY_FILE = path.join(REPO, 'scripts/proxies.txt');
-const rawP = (process.env.AFF_PROXIES || (fs.existsSync(PROXY_FILE) ? fs.readFileSync(PROXY_FILE, 'utf8') : '')).trim();
-if (!rawP) { console.error('THIẾU proxy: scripts/proxies.txt hoặc env AFF_PROXIES.'); process.exit(1); }
-const PROXIES = rawP.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
+// Nạp trong IIFE: ưu tiên bảng sh_proxy (quản lý qua web) → fallback proxies.txt/env AFF_PROXIES.
+let PROXIES = [];
+const parseProxyLines = (raw) => (raw || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
   .map((l) => { const [host, port, user, pass] = l.split(':'); return { host, port: +port, user, pass }; });
 
 const CONC = 3, BATCH = 500, PACE = 300;
@@ -46,6 +46,17 @@ const cut = (s, n) => (s == null ? null : String(s).slice(0, n));
 (async () => {
   const U = new URL(process.env.SH_MYSQL_URL || 'mysql://root@127.0.0.1:3306/shophunter');
   const pool = await mysql.createPool({ host: U.hostname, port: Number(U.port || 3306), user: decodeURIComponent(U.username || 'root'), password: decodeURIComponent(U.password || ''), database: U.pathname.replace(/^\//, '') || 'shophunter', connectionLimit: CONC + 2 });
+
+  // Proxy: ưu tiên bảng sh_proxy (enabled + http — crawler dùng HTTP CONNECT) → fallback proxies.txt / env.
+  let proxySrc = 'sh_proxy';
+  try {
+    const [prows] = await pool.query("SELECT host, port, username, password FROM sh_proxy WHERE enabled = 1 AND type = 'http'");
+    PROXIES = (prows || []).map((r) => ({ host: r.host, port: Number(r.port), user: r.username || '', pass: r.password || '' }));
+  } catch { PROXIES = []; }
+  if (!PROXIES.length) { proxySrc = 'file/env'; PROXIES = parseProxyLines(process.env.AFF_PROXIES || (fs.existsSync(PROXY_FILE) ? fs.readFileSync(PROXY_FILE, 'utf8') : '')); }
+  if (!PROXIES.length) { console.error('THIẾU proxy: thêm ở tab Proxy (web) hoặc scripts/proxies.txt / env AFF_PROXIES.'); await pool.end(); process.exit(1); }
+  console.log(`[proxy] dùng ${PROXIES.length} proxy (nguồn: ${proxySrc})`);
+
   const t0 = Date.now();
   let shops = 0, newProducts = 0, blocked = 0, empty = 0, rl = 0;
 

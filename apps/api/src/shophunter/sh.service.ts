@@ -10,6 +10,7 @@ import { isGlobalBlock, randInt } from './sh.harvest.util';
 import { loadCatTree, resolveCategoryByNames, categoryPathFromIds } from './sh.categories';
 import { fetchShopifyCatalog } from './shopify.client';
 import { checkShopAffiliate } from './affiliate.client';
+import { parseProxies, testProxy } from './sh.proxy';
 
 // Map header TSV (file scraper mới) → field import. Bền với ký tự Δ / (Weekly)/(Monthly).
 function tsvHeaderToField(h: string): string | null {
@@ -473,6 +474,36 @@ export class ShService {
   }
   tokenStatus() {
     return this.auth.status();
+  }
+
+  // ===== Proxy (crawler Shopify) =====
+  listProxies() { return this.mysql.listProxies(); }
+  async addProxies(text: string) {
+    const { ok, bad } = parseProxies(text);
+    const added = await this.mysql.addProxies(ok);
+    return { added, parsed: ok.length, bad }; // bad = dòng không nhận dạng được (báo lên UI)
+  }
+  updateProxy(id: number, fields: { enabled?: boolean; raw?: string; type?: string; host?: string; port?: number; username?: string | null; password?: string | null }) {
+    return this.mysql.updateProxy(id, fields);
+  }
+  deleteProxy(id: number) { return this.mysql.deleteProxy(id); }
+  async testProxy(id: number) {
+    const p = await this.mysql.getProxyById(id);
+    if (!p) return { id, live: false, error: 'not_found' };
+    const r = await testProxy({ type: p.type, host: p.host, port: p.port, username: p.username, password: p.password, raw: p.raw });
+    await this.mysql.setProxyStatus(id, r.live ? 'live' : 'die', r.pingMs);
+    return { id, ...r };
+  }
+  async testAllProxies() {
+    const list = await this.mysql.listProxiesFull(false);
+    let live = 0;
+    for (let i = 0; i < list.length; i += 6) { // test lô 6 song song
+      const batch = list.slice(i, i + 6);
+      const res = await Promise.all(batch.map((p: any) =>
+        testProxy({ type: p.type, host: p.host, port: p.port, username: p.username, password: p.password, raw: p.raw }).then((r) => ({ id: p.id, r }))));
+      for (const { id, r } of res) { await this.mysql.setProxyStatus(id, r.live ? 'live' : 'die', r.pingMs); if (r.live) live++; }
+    }
+    return { tested: list.length, live, die: list.length - live };
   }
 
   localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean }) { return this.mysql.queryLocalShops(o); }

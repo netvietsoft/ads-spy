@@ -430,6 +430,25 @@ export async function shSetToken(refreshToken: string): Promise<ShTokenStatus> {
 export async function shClearToken(): Promise<{ ok: boolean }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/token`, { method: 'DELETE' }));
 }
+
+// ---- Proxy (crawler Shopify) ----
+export interface ShProxy { id: number; raw: string; type: string; host: string; port: number; username: string | null; enabled: boolean; status: string | null; ping_ms: number | null; checked_at: number | null; }
+export async function shProxies(): Promise<ShProxy[]> { return jsonOrThrow(await fetch(`${API}/api/sh/proxies`)); }
+export async function shAddProxies(text: string): Promise<{ added: number; parsed: number; bad: string[] }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/proxies`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) }));
+}
+export async function shTestAllProxies(): Promise<{ tested: number; live: number; die: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/proxies/test`, { method: 'POST' }));
+}
+export async function shTestProxy(id: number): Promise<{ id: number; live: boolean; pingMs: number | null }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/proxies/${id}/test`, { method: 'POST' }));
+}
+export async function shUpdateProxy(id: number, fields: Record<string, unknown>): Promise<{ ok?: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/proxies/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fields) }));
+}
+export async function shDeleteProxy(id: number): Promise<{ ok?: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/proxies/${id}`, { method: 'DELETE' }));
+}
 export async function shExplore(
   type: 'shops' | 'products',
   params: { sort?: string; q?: string; from?: number; categories?: string; filters?: Record<string, { gte: number | string | null; lte: number | string | null }>; lists?: Record<string, string[]> } = {},
