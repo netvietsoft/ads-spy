@@ -19,12 +19,16 @@ git pull origin main
 # 2) Build backend
 cd apps/api && npm run build
 
-# 3) Build frontend — PHẢI bake API origin lúc build (NEXT_PUBLIC_* là build-time)
-cd ../web && NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build
+# 3) Build frontend — PHẢI bake API origin (NEXT_PUBLIC_* là build-time) + PHẢI xoá .next cũ
+#    (build đè lên .next cũ → chunk/manifest lệch → ChunkLoadError "Unexpected token '<'" ở client)
+cd ../web && pm2 stop ads-spy-web && rm -rf .next && NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build
 
 # 4) Restart CHỈ 2 process (⚠️ KHÔNG 'pm2 restart all' — VPS có nhiều app khác)
 pm2 restart ads-spy-api ads-spy-web --update-env
 pm2 status ads-spy-api ads-spy-web
+
+# 5) Purge cache Cloudflare (dpboss.pet → Caching → Purge Everything) + hard refresh (Ctrl+Shift+R)
+#    Không purge → Cloudflare giữ HTML/chunk cũ → vẫn lỗi ChunkLoadError dù server đã đúng.
 ```
 - **KHÔNG cần prisma migrate**: `sh_job_log` là bảng MySQL raw (tự tạo trong `ShMysql.connect()`); cờ Bật/Tắt dùng `fbSetting` (SQLite) đã có.
 - **⚠️ KHÔNG commit `downloads/`** (chứa dump DB `sh-dump-*.sql.gz`) — repo public. Nên thêm `downloads/` vào `.gitignore`.
@@ -66,6 +70,7 @@ cd apps/api && npx jest src/shophunter --runInBand --forceExit
 ```
 
 ### Troubleshoot
+- **"Application error: client-side exception" + Console `ChunkLoadError`/`Unexpected token '<'`** → `.next` cũ lệch chunk. Fix: `pm2 stop ads-spy-web && rm -rf .next && NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build && pm2 restart ads-spy-web --update-env` + **purge Cloudflare** + Ctrl+Shift+R. (LUÔN `rm -rf .next` khi build lại FE.)
 - **harvest log "Bị chặn" ngay** → token ShopHunter hết hạn → đổi token ở đầu Settings, bấm "Chạy ngay" test lại.
 - **catalog log "Thiếu proxy"** → thêm proxy HTTP ở Settings → Proxy.
 - **Bật harvest không thấy log** → đúng (cron 30', không tức thì); bấm "Chạy ngay".
