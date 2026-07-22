@@ -427,6 +427,9 @@ export async function shSetToken(refreshToken: string): Promise<ShTokenStatus> {
     }),
   );
 }
+export async function shClearToken(): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/token`, { method: 'DELETE' }));
+}
 export async function shExplore(
   type: 'shops' | 'products',
   params: { sort?: string; q?: string; from?: number; categories?: string; filters?: Record<string, { gte: number | string | null; lte: number | string | null }>; lists?: Record<string, string[]> } = {},

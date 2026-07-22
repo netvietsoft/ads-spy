@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Res, UseFilters } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query, Res, UseFilters } from '@nestjs/common';
 import type { Response } from 'express';
 import { Readable } from 'stream';
 import { ShService, SH_SNAPSHOT_DEFAULT_DIR } from './sh.service';
@@ -82,6 +82,11 @@ export class ShController {
   setToken(@Body('refreshToken') refreshToken: string) {
     if (!refreshToken || !refreshToken.trim()) throw new BadRequestException('Thiếu refresh token.');
     return this.svc.setToken(refreshToken.trim());
+  }
+
+  @Delete('sh/token')
+  clearToken() {
+    return this.svc.clearToken();
   }
 
   @Get('sh/token/status')

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import {
-  ShExplore, ShSort, ShTokenStatus, shExplore, shSorts, shSetToken, shTokenStatus, shAssetProxy, shShopSite, shProductUrl,
+  ShExplore, ShSort, ShTokenStatus, shExplore, shSorts, shSetToken, shClearToken, shTokenStatus, shAssetProxy, shShopSite, shProductUrl,
 } from '../api';
 import { LazyGrid } from './LazyGrid';
 import { ShShopModal } from './ShShopModal';
@@ -114,6 +114,13 @@ export function ShopHunterPanel() {
     catch (e) { setErr((e as Error).message); }
   }
 
+  // Xóa token cũ (thoát ShopHunter) → hiện lại ô dán token để add token mới.
+  async function clearToken() {
+    setErr(null);
+    try { await shClearToken(); setStatus({ valid: false }); setToken(''); }
+    catch (e) { setErr((e as Error).message); }
+  }
+
   const sortList = tab === 'shops' ? sorts.shops : sorts.products;
 
   return (
@@ -125,7 +132,12 @@ export function ShopHunterPanel() {
           <button className="srcbtn" onClick={saveToken}>Lưu token</button>
         </div>
       )}
-      {status?.valid && <div className="savedbanner">Đã kết nối ShopHunter: {status.email}</div>}
+      {status?.valid && (
+        <div className="savedbanner" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span>Đã kết nối ShopHunter: {status.email}</span>
+          <button type="button" className="srcbtn" onClick={clearToken}>Đổi token / Thoát</button>
+        </div>
+      )}
 
       <div className="sources" style={{ marginTop: 8 }}>
         <button type="button" className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); setTotal(0); setFilters({}); setCats([]); setLists({}); }}>Shops</button>

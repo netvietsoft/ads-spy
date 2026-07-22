@@ -94,6 +94,15 @@ export class ShAuth {
     return { valid: true, email: this.email, expiresAt: this.expSec * 1000 };
   }
 
+  // Xóa refresh token đã lưu + quên id-token trong RAM → trạng thái "chưa kết nối" để dán token mới.
+  async clearRefreshToken(): Promise<{ ok: true }> {
+    await this.prisma.fbSetting.deleteMany({ where: { key: TOKEN_KEY } }).catch(() => undefined);
+    this.idToken = null;
+    this.expSec = 0;
+    this.email = undefined;
+    return { ok: true };
+  }
+
   async status(): Promise<{ valid: boolean; email?: string; expiresAt?: number }> {
     const rt = await this.readRefreshToken();
     if (!rt) return { valid: false };

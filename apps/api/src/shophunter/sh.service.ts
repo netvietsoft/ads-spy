@@ -468,6 +468,9 @@ export class ShService {
   setToken(token: string) {
     return this.auth.setRefreshToken(token);
   }
+  clearToken() {
+    return this.auth.clearRefreshToken();
+  }
   tokenStatus() {
     return this.auth.status();
   }
