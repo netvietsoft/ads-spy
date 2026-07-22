@@ -254,3 +254,8 @@ button.ghost.danger { color: var(--danger); }
 .jobbadge.run { color: var(--accent-2); border-color: var(--accent-2); }
 .jobbadge.off { color: var(--muted); }
 .joblog { margin-top: 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; height: 180px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
+
+/* ShopHunter: thu/mở cột lọc (nút ‹ ›) + lưới sản phẩm dày hơn (≈4/hàng khi mở lọc, nhiều hơn khi thu) */
+.layout.filters-collapsed { grid-template-columns: 1fr; }
+.fbgrid.shgrid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.filtertoggle { padding: 6px 11px; font-size: 16px; line-height: 1; font-weight: 700; }

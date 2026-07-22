@@ -9,7 +9,6 @@ import { ShFilters } from './ShFilters';
 import { ShCategories } from './ShCategories';
 import { ShListFilters } from './ShListFilters';
 import { Collapsible } from './Collapsible';
-import { ShTokenBox } from './ShTokenBox';
 import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
@@ -92,6 +91,7 @@ export function ShopHunterPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(true);
 
   useEffect(() => { shSorts().then(setSorts).catch(() => {}); }, []);
 
@@ -112,25 +112,27 @@ export function ShopHunterPanel() {
 
   return (
     <div>
-      <ShTokenBox />
-
       <div className="sources" style={{ marginTop: 8 }}>
         <button type="button" className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); setTotal(0); setFilters({}); setCats([]); setLists({}); }}>Shops</button>
         <button type="button" className={`srcbtn ${tab === 'products' ? 'active' : ''}`} onClick={() => { setTab('products'); setItems([]); setFrom(0); setTotal(0); setFilters({}); setCats([]); setLists({}); }}>Products</button>
       </div>
 
-      <div className="layout" style={{ marginTop: 8 }}>
-        <div className="filtercol">
-          <ShFilters type={tab} value={filters} onChange={setFilters} />
-          <Collapsible title="Danh mục" active={cats.length > 0}>
-            <ShCategories selected={cats} onChange={setCats} />
-          </Collapsible>
-          <ShListFilters type={tab} value={lists} onChange={setLists} />
-          <button className="srcbtn active" style={{ width: '100%', marginTop: 10 }} onClick={() => load(true)} disabled={loading}>Áp dụng lọc</button>
-        </div>
+      <div className={`layout ${filtersOpen ? '' : 'filters-collapsed'}`} style={{ marginTop: 8 }}>
+        {filtersOpen && (
+          <div className="filtercol">
+            <ShFilters type={tab} value={filters} onChange={setFilters} />
+            <Collapsible title="Danh mục" active={cats.length > 0}>
+              <ShCategories selected={cats} onChange={setCats} />
+            </Collapsible>
+            <ShListFilters type={tab} value={lists} onChange={setLists} />
+            <button className="srcbtn active" style={{ width: '100%', marginTop: 10 }} onClick={() => load(true)} disabled={loading}>Áp dụng lọc</button>
+          </div>
+        )}
 
         <div>
           <div className="shsortbar">
+            <button type="button" className="srcbtn filtertoggle" onClick={() => setFiltersOpen((o) => !o)}
+              title={filtersOpen ? 'Thu gọn bộ lọc' : 'Hiện bộ lọc'}>{filtersOpen ? '‹' : '›'}</button>
             {sortList.map((s) => {
               const active = (sort || sortList[0]?.value) === s.value;
               return (
@@ -150,7 +152,7 @@ export function ShopHunterPanel() {
           {err && <div className="err">{err}</div>}
 
           <LazyGrid
-            className="fbgrid"
+            className="fbgrid shgrid"
             items={items}
             render={(it) => tab === 'shops'
               ? <ShopCard key={it.shop_id} s={it} onOpen={() => setOpenShop(it.shop_id)} />
