@@ -25,4 +25,17 @@ describe('ShController jobs endpoints', () => {
     const c = ctrl({ getJobs: jest.fn(), toggle: jest.fn() });
     expect(() => c.toggleJob('bogus', true)).toThrow(BadRequestException);
   });
+
+  it('POST run-now name hợp lệ → jobsSvc.runOnce(name)', async () => {
+    const jobs = { getJobs: jest.fn(), toggle: jest.fn(), runOnce: jest.fn(async (n: string) => ({ started: true })) };
+    const c = ctrl(jobs);
+    const r = await c.runJobOnce('catalog');
+    expect(jobs.runOnce).toHaveBeenCalledWith('catalog');
+    expect(r).toEqual({ started: true });
+  });
+
+  it('POST run-now name sai → BadRequestException', () => {
+    const c = ctrl({ getJobs: jest.fn(), toggle: jest.fn(), runOnce: jest.fn() });
+    expect(() => c.runJobOnce('bogus')).toThrow(BadRequestException);
+  });
 });

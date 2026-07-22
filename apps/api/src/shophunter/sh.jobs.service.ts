@@ -17,6 +17,7 @@ const DESC: Record<JobName, string> = {
 
 const ENRICH_BATCH = 50;
 const CATALOG_BATCH = 25;  // nhỏ để Tắt catalog phản hồi nhanh (1 bước ~≤1' thay vì ~7' với 200); throughput ~không đổi vì sleep/shop chi phối
+const RUNONCE_HARVEST = 20; // "Chạy ngay" harvest: 1 lượt nhỏ, bỏ qua gating cron
 const PACE_MS = 1500;    // nghỉ ngắn khi còn việc
 const IDLE_MS = 120000;  // 2' khi hết việc
 const BLOCK_MS = 300000; // 5' khi bị chặn
@@ -86,6 +87,32 @@ export class ShJobsService implements OnModuleInit {
     await this.mysql.appendJobLog(n, 'info', on ? 'Bật job (từ web)' : 'Tắt job (từ web)').catch(() => {});
     if (on) this.start(n); else this.stop(n);
     return (await this.getJobs()).find((j) => j.name === n)!;
+  }
+
+  // "Chạy ngay" (thủ công): chạy 1 lượt NGAY, bỏ qua gating cron. Fire-and-forget → HTTP trả liền,
+  // kết quả xem qua log. An toàn khi loop đang chạy: harvest có guard riêng; enrich/catalog upsert idempotent.
+  async runOnce(name: string): Promise<{ started: boolean }> {
+    if (!(JOB_NAMES as readonly string[]).includes(name)) throw new Error('Job không hợp lệ: ' + name);
+    void this.doRunOnce(name as JobName);
+    return { started: true };
+  }
+
+  private async doRunOnce(name: JobName): Promise<void> {
+    await this.mysql.appendJobLog(name, 'info', 'Chạy ngay (thủ công)').catch(() => {});
+    try {
+      if (name === 'harvest') {
+        const r: any = await this.harvest.runHarvest({ daily: RUNONCE_HARVEST });
+        await this.mysql.appendJobLog('harvest', 'info', `Chạy ngay xong: processed=${r?.processed ?? 0} status=${r?.status ?? '-'}`).catch(() => {});
+      } else if (name === 'catalog') {
+        this.wireProxy();
+        try { await this.stepCatalog(); }
+        finally { if (!this.mem.catalog.running) this.unwireProxy(); } // loop đang chạy thì để nguyên seam (loop tự khôi phục)
+      } else {
+        await this.stepEnrich();
+      }
+    } catch (e) {
+      await this.mysql.appendJobLog(name, 'error', 'Chạy ngay lỗi: ' + (e as Error).message).catch(() => {});
+    }
   }
 
   private start(name: JobName): void {

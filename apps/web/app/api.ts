@@ -609,3 +609,6 @@ export async function shToggleJob(name: string, on: boolean): Promise<ShJob> {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on }),
   }));
 }
+export async function shRunJobOnce(name: string): Promise<{ started: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/jobs/${name}/run-now`, { method: 'POST' }));
+}

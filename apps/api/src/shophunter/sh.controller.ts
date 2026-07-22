@@ -310,6 +310,13 @@ export class ShController {
     return this.jobsSvc.toggle(name, !!on);
   }
 
+  @Post('sh/jobs/:name/run-now')
+  runJobOnce(@Param('name') name: string) {
+    const valid = ['harvest', 'enrich', 'catalog'];
+    if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
+    return this.jobsSvc.runOnce(name);
+  }
+
   @Get('sh/sync/coverage')
   syncCoverage() {
     return this.svc.coverageStats(); // độ phủ đồng bộ catalog + doanh thu ngày (dashboard admin)

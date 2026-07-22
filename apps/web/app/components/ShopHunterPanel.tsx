@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import {
-  ShExplore, ShSort, ShTokenStatus, shExplore, shSorts, shSetToken, shClearToken, shTokenStatus, shAssetProxy, shShopSite, shProductUrl,
+  ShExplore, ShSort, shExplore, shSorts, shAssetProxy, shShopSite, shProductUrl,
 } from '../api';
 import { LazyGrid } from './LazyGrid';
 import { ShShopModal } from './ShShopModal';
@@ -9,6 +9,7 @@ import { ShFilters } from './ShFilters';
 import { ShCategories } from './ShCategories';
 import { ShListFilters } from './ShListFilters';
 import { Collapsible } from './Collapsible';
+import { ShTokenBox } from './ShTokenBox';
 import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
@@ -90,11 +91,9 @@ export function ShopHunterPanel() {
   const [lists, setLists] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [token, setToken] = useState('');
-  const [status, setStatus] = useState<ShTokenStatus | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
 
-  useEffect(() => { shSorts().then(setSorts).catch(() => {}); shTokenStatus().then(setStatus).catch(() => {}); }, []);
+  useEffect(() => { shSorts().then(setSorts).catch(() => {}); }, []);
 
   async function load(reset: boolean, sortVal?: string) {
     setLoading(true); setErr(null);
@@ -109,36 +108,11 @@ export function ShopHunterPanel() {
     setLoading(false);
   }
 
-  async function saveToken() {
-    setErr(null);
-    try { const st = await shSetToken(token.trim()); setStatus(st); if (st.valid) setToken(''); else setErr('Token không hợp lệ.'); }
-    catch (e) { setErr((e as Error).message); }
-  }
-
-  // Xóa token cũ (thoát ShopHunter) → hiện lại ô dán token để add token mới.
-  async function clearToken() {
-    setErr(null);
-    try { await shClearToken(); setStatus({ valid: false }); setToken(''); }
-    catch (e) { setErr((e as Error).message); }
-  }
-
   const sortList = tab === 'shops' ? sorts.shops : sorts.products;
 
   return (
     <div>
-      {!status?.valid && (
-        <div className="proxybox">
-          <p>Dán ShopHunter <b>refresh token</b> (localStorage key <code>...refreshToken</code>) để bắt đầu:</p>
-          <textarea value={token} onChange={(e) => setToken(e.target.value)} rows={2} placeholder="eyJ..." style={{ width: '100%' }} />
-          <button className="srcbtn" onClick={saveToken}>Lưu token</button>
-        </div>
-      )}
-      {status?.valid && (
-        <div className="savedbanner" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span>Đã kết nối ShopHunter: {status.email}</span>
-          <button type="button" className="srcbtn" onClick={clearToken}>Đổi token / Thoát</button>
-        </div>
-      )}
+      <ShTokenBox />
 
       <div className="sources" style={{ marginTop: 8 }}>
         <button type="button" className={`srcbtn ${tab === 'shops' ? 'active' : ''}`} onClick={() => { setTab('shops'); setItems([]); setFrom(0); setTotal(0); setFilters({}); setCats([]); setLists({}); }}>Shops</button>

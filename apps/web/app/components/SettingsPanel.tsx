@@ -1,12 +1,14 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { ShJob, shJobs, shToggleJob } from '../api';
+import { ShJob, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { ProxyPanel } from './ProxyPanel';
+import { ShTokenBox } from './ShTokenBox';
 
 const STATUS_VI: Record<string, string> = { ok: 'OK', idle: 'Nghỉ (hết việc)', blocked: 'Bị chặn', no_proxy: 'Thiếu proxy', running: 'Đang chạy' };
 const fmtTime = (ms: number | null) => (ms ? new Date(ms).toLocaleString() : '—');
 
-function JobCard({ job, busy, onToggle }: { job: ShJob; busy: boolean; onToggle: (on: boolean) => void }) {
+function JobCard({ job, busyToggle, busyRun, onToggle, onRunNow }:
+  { job: ShJob; busyToggle: boolean; busyRun: boolean; onToggle: (on: boolean) => void; onRunNow: () => void }) {
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [job.logs]);
   const badge = job.running
@@ -22,8 +24,11 @@ function JobCard({ job, busy, onToggle }: { job: ShJob; busy: boolean; onToggle:
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {badge}
-          <button className={`srcbtn ${job.enabled ? 'active' : ''}`} disabled={busy} onClick={() => onToggle(!job.enabled)}>
-            {busy ? '…' : job.enabled ? 'Tắt' : 'Bật'}
+          <button className="srcbtn" disabled={busyRun} onClick={onRunNow} title="Chạy 1 lượt ngay (bỏ qua lịch cron) — xem kết quả ở log">
+            {busyRun ? '…' : 'Chạy ngay'}
+          </button>
+          <button className={`srcbtn ${job.enabled ? 'active' : ''}`} disabled={busyToggle} onClick={() => onToggle(!job.enabled)}>
+            {busyToggle ? '…' : job.enabled ? 'Tắt' : 'Bật'}
           </button>
         </div>
       </div>
@@ -44,7 +49,7 @@ function JobCard({ job, busy, onToggle }: { job: ShJob; busy: boolean; onToggle:
 
 export function SettingsPanel() {
   const [jobs, setJobs] = useState<ShJob[]>([]);
-  const [busy, setBusy] = useState('');
+  const [busy, setBusy] = useState(''); // '' | '<name>' (toggle) | '<name>:run' (chạy ngay)
   const reload = () => shJobs().then(setJobs).catch(() => {});
   useEffect(() => { reload(); const t = setInterval(reload, 4000); return () => clearInterval(t); }, []);
   const toggle = async (name: string, on: boolean) => {
@@ -52,11 +57,21 @@ export function SettingsPanel() {
     try { await shToggleJob(name, on); await reload(); } catch { /* ignore */ }
     setBusy('');
   };
+  const runNow = async (name: string) => {
+    setBusy(name + ':run');
+    try { await shRunJobOnce(name); await reload(); } catch { /* ignore */ }
+    setBusy('');
+  };
   return (
     <div style={{ maxWidth: 960 }}>
-      <h3 style={{ margin: '4px 0' }}>⚙️ Cài đặt — Job nền</h3>
-      <p style={{ fontSize: 13, opacity: 0.7 }}>Bật/tắt và theo dõi log các job. harvest chạy theo lịch (cron); enrich/catalog chạy nền liên tục khi bật.</p>
-      {jobs.map((j) => <JobCard key={j.name} job={j} busy={busy === j.name} onToggle={(on) => toggle(j.name, on)} />)}
+      <ShTokenBox />
+      <h3 style={{ margin: '18px 0 4px' }}>⚙️ Cài đặt — Job nền</h3>
+      <p style={{ fontSize: 13, opacity: 0.7 }}>Bật/tắt và theo dõi log các job. harvest chạy theo lịch (cron); enrich/catalog chạy nền liên tục khi bật. Bấm <b>Chạy ngay</b> để chạy 1 lượt liền, không đợi lịch.</p>
+      {jobs.map((j) => (
+        <JobCard key={j.name} job={j}
+          busyToggle={busy === j.name} busyRun={busy === j.name + ':run'}
+          onToggle={(on) => toggle(j.name, on)} onRunNow={() => runNow(j.name)} />
+      ))}
       <div style={{ marginTop: 24 }}>
         <ProxyPanel />
       </div>

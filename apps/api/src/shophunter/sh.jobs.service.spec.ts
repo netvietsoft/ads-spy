@@ -63,6 +63,22 @@ describe('ShJobsService.stillEnabled (loop không chết vì lỗi transient)', 
   });
 });
 
+describe('ShJobsService.runOnce (Chạy ngay)', () => {
+  it('name hợp lệ → {started:true} + kích doRunOnce fire-and-forget', async () => {
+    const { s } = make();
+    const spy = jest.spyOn(s as any, 'doRunOnce').mockResolvedValue(undefined);
+    await expect(s.runOnce('enrich')).resolves.toEqual({ started: true });
+    expect(spy).toHaveBeenCalledWith('enrich');
+  });
+
+  it('name sai → throw (không kích doRunOnce)', async () => {
+    const { s } = make();
+    const spy = jest.spyOn(s as any, 'doRunOnce').mockResolvedValue(undefined);
+    await expect(s.runOnce('bogus')).rejects.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
 describe('ShJobsService wireProxy/unwireProxy (khôi phục seam shopifyHttp.get)', () => {
   it('wire override rồi unwire khôi phục về getter gốc; wire 2 lần vẫn không lưu proxied làm gốc', () => {
     const { s } = make();

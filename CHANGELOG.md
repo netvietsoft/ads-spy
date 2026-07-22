@@ -17,6 +17,10 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 ### Frontend — tab ⚙️ Cài đặt (`/settings`)
 - Thay tab 🌐 Proxy; `ProxyPanel` chuyển vào trong Settings. `SettingsPanel` poll `GET sh/jobs` mỗi 4s: mỗi job 1 card (công tắc On/Off, badge Đang chạy/Nghỉ/Bị chặn/Tắt, số liệu lượt gần nhất, khung log tự cuộn) + Proxy phía dưới.
 
+### Bổ sung: nút "Chạy ngay" + token ShopHunter vào Settings
+- **Nút "Chạy ngay"** mỗi job: chạy 1 lượt NGAY (bỏ qua gating cron), chạy nền (fire-and-forget) + ghi `sh_job_log` → thấy kết quả liền thay vì đợi ~30' (harvest ~20 shop, enrich ~50, catalog ~25). Endpoint `POST /api/sh/jobs/:name/run-now`. Giải quyết khó hiểu "bật harvest xong không thấy log" (harvest là cron, không chạy tức thì).
+- **Quản lý token ShopHunter** tách thành `ShTokenBox` (dùng chung), đặt làm **mục đầu tiên** trong tab Cài đặt; tab ShopHunter tái sử dụng cùng component (không còn code trùng).
+
 ### Hoàn thiện (fast-follow sau review)
 - Catalog batch 200→**25** (bấm Tắt phản hồi nhanh ~≤1' thay vì ~7'; throughput gần như không đổi vì sleep/shop chi phối). Reset số liệu lượt cũ khi catalog thiếu proxy (UI không hiện số cũ gây hiểu nhầm). Bỏ nhánh code chết trong `step()`. Thêm test wire/unwire proxy seam (khôi phục `shopifyHttp.get`).
 
