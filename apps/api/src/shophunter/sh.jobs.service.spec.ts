@@ -47,3 +47,17 @@ describe('ShJobsService toggle/getJobs', () => {
     expect(jobs.map((j) => j.name).sort()).toEqual(['catalog', 'enrich', 'harvest']);
   });
 });
+
+describe('ShJobsService.stillEnabled (loop không chết vì lỗi transient)', () => {
+  it('isEnabled throw (DB blip) → stillEnabled trả true (coi như vẫn bật)', async () => {
+    const { s, mysql } = make();
+    mysql.getSetting.mockImplementation(async () => { throw new Error('ECONNRESET'); });
+    await expect((s as any).stillEnabled('enrich')).resolves.toBe(true);
+  });
+
+  it('isEnabled đọc được cờ "0" → stillEnabled trả giá trị thật false', async () => {
+    const { s, mysql } = make();
+    mysql.getSetting.mockImplementation(async (k: string) => (k === 'job:enrich:enabled' ? '0' : null));
+    await expect((s as any).stillEnabled('enrich')).resolves.toBe(false);
+  });
+});

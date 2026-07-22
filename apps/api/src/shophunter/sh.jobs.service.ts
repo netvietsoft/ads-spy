@@ -100,21 +100,30 @@ export class ShJobsService implements OnModuleInit {
   private async loop(name: JobName): Promise<void> {
     if (name === 'catalog') this.wireProxy();
     try {
-      while (await this.isEnabled(name)) {
-        const { pace } = await this.step(name);
+      while (await this.stillEnabled(name)) {
+        let pace = BLOCK_MS;
+        try {
+          pace = (await this.step(name)).pace;
+        } catch (e) {
+          await this.mysql.appendJobLog(name, 'error', 'Step lỗi (nghỉ rồi thử lại): ' + (e as Error).message).catch(() => {});
+        }
         await this.interruptibleSleep(name, pace);
       }
-    } catch (e) {
-      await this.mysql.appendJobLog(name, 'error', 'Loop lỗi: ' + (e as Error).message).catch(() => {});
     } finally {
       this.mem[name].running = false;
     }
   }
 
+  // isEnabled nhưng lỗi DB tạm thời → coi như vẫn bật (khỏi chết loop vì blip); chỉ tắt khi đọc được cờ false.
+  private async stillEnabled(name: JobName): Promise<boolean> {
+    try { return await this.isEnabled(name); }
+    catch { return true; }
+  }
+
   // Ngủ nhưng kiểm cờ mỗi TICK_MS → tắt job từ web phản hồi nhanh (≤2s), không kẹt hết BLOCK_MS.
   private async interruptibleSleep(name: JobName, ms: number): Promise<void> {
     let waited = 0;
-    while (waited < ms && (await this.isEnabled(name))) { await this.sleep(Math.min(TICK_MS, ms - waited)); waited += TICK_MS; }
+    while (waited < ms && (await this.stillEnabled(name))) { await this.sleep(Math.min(TICK_MS, ms - waited)); waited += TICK_MS; }
   }
 
   private wireProxy(): void {
