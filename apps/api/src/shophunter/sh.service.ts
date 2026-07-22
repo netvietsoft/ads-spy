@@ -91,15 +91,24 @@ export class ShService {
     const cached = await this.mysql.getDetail(key, TTL_MS);
     if (cached) return { ...cached, ...cat, productCount, cached: true };
     try {
-      const [detailR, revR, adsR, simR] = await Promise.all([
+      // allSettled: 1 call phụ (ads/similar/chart) lỗi KHÔNG được vứt cả detail (trước dùng Promise.all → 1 lỗi → mất hết → fallback local rỗng chart).
+      const [detailR, revR, adsR, simR] = await Promise.allSettled([
         this.client.shopDetail(shopId), this.client.shopChartRevenue(shopId),
         this.client.shopChartAds(shopId), this.client.shopsSimilar(shopId),
       ]);
+      const detail = detailR.status === 'fulfilled' ? (detailR.value?.item?.item ?? null) : null;
+      if (!detail) throw (detailR.status === 'rejected' ? detailR.reason : new Error('detail rỗng'));
+      const revV: any = revR.status === 'fulfilled' ? revR.value : null;
+      const adsV: any = adsR.status === 'fulfilled' ? adsR.value : null;
+      const simV: any = simR.status === 'fulfilled' ? simR.value : null;
+      // Chart: ưu tiên chart 90 ngày live; live rỗng/lỗi → dùng chuỗi tích luỹ (revsync) trong DB.
+      let revenueChart = Array.isArray(revV?.items) ? revV.items : [];
+      if (!revenueChart.length) revenueChart = await this.mysql.getRevenueDaily(shopId).catch(() => []);
       const out = {
-        detail: detailR?.item?.item ?? null,
-        revenueChart: Array.isArray(revR?.items) ? revR.items : [],
-        adsChart: adsR?.history ?? null,
-        similar: Array.isArray(simR?.items) ? simR.items : [],
+        detail,
+        revenueChart,
+        adsChart: adsV?.history ?? null,
+        similar: Array.isArray(simV?.items) ? simV.items : [],
       };
       await this.mysql.setDetail(key, out);
       return { ...out, ...cat, productCount, cached: false };

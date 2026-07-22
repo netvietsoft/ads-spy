@@ -5,17 +5,17 @@ const SEARCH_URL = 'https://app.shophunter.io/prod/v3/search';
 
 export class ShBlockedError extends Error {
   status?: number; // HTTP status nếu có (undefined = lỗi mạng/parse). Dùng để phân biệt rate-limit vs lỗi 1 shop.
-  constructor(message = 'ShopHunter đang giới hạn hoặc không truy cập được. Thử lại sau.', status?: number) {
+  constructor(message = 'Máy chủ dữ liệu đang giới hạn hoặc không truy cập được. Thử lại sau.', status?: number) {
     super(message);
     this.name = 'ShBlockedError';
     this.status = status;
   }
 }
 
-// Thông báo lỗi HTTP thân thiện: 400 = vượt trần phân trang ShopHunter (~1000 kết quả đầu) → hiển thị dễ hiểu.
+// Thông báo lỗi HTTP thân thiện + KHÔNG lộ nguồn dữ liệu (de-brand).
 function shHttpMsg(status: number): string {
-  if (status === 400) return 'Vượt quá giới hạn dữ liệu (ShopHunter chỉ cho xem ~1000 kết quả đầu — lọc hẹp hơn để xem thêm).';
-  return `ShopHunter trả HTTP ${status}.`;
+  if (status === 400) return 'Vượt quá giới hạn dữ liệu.';
+  return `Lỗi tải dữ liệu (HTTP ${status}).`;
 }
 
 // fetch có timeout (AbortController) — tránh TREO vô hạn khi ShopHunter throttle/hang connection (nếu không, run harvest kẹt → cờ running kẹt → cron skip mãi).
@@ -102,7 +102,7 @@ export class ShClient {
         res = await doCall(token);
       }
     } catch (e) {
-      throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`);
+      throw new ShBlockedError(`Không tải được dữ liệu: ${(e as Error).message}`);
     }
     const text = await res.text();
     if (!res.ok) throw new ShBlockedError(shHttpMsg(res.status), res.status);
@@ -129,7 +129,7 @@ export class ShClient {
     try {
       res = await doCall(token);
       if (res.status === 401 || res.status === 403) { this.auth.invalidate(); token = await this.auth.getToken(); res = await doCall(token); }
-    } catch (e) { throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`); }
+    } catch (e) { throw new ShBlockedError(`Không tải được dữ liệu: ${(e as Error).message}`); }
     const text = await res.text();
     if (!res.ok) throw new ShBlockedError(shHttpMsg(res.status), res.status);
     try { return JSON.parse(text); } catch { throw new ShBlockedError(); }
@@ -161,7 +161,7 @@ export class ShClient {
     try {
       res = await doCall(token);
       if (res.status === 401 || res.status === 403) { this.auth.invalidate(); token = await this.auth.getToken(); res = await doCall(token); }
-    } catch (e) { throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`); }
+    } catch (e) { throw new ShBlockedError(`Không tải được dữ liệu: ${(e as Error).message}`); }
     const text = await res.text();
     let j: any = {}; try { j = JSON.parse(text); } catch { /* để {} */ }
     if (res.ok) return { shopId: j.shop_id != null ? String(j.shop_id) : undefined, identifyType: j.identify_type };
