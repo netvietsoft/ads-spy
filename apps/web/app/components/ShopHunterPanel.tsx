@@ -38,7 +38,7 @@ function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
     <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
       <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={24} />
-        <span style={{ fontSize: 14 }}>{s.shop_title || s.url}</span>
+        <span style={{ fontSize: 13 }}>{s.shop_title || s.url}</span>
       </div>
       <div className="fbbody">{s.url}</div>
       <div className="fbplat">
@@ -48,7 +48,7 @@ function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
       </div>
       <div className="fbplat">Ads {s.active_ad_count ?? 0} · SKU {s.sku_count ?? 0} · {s.country} · {s.currency}</div>
       <div className="fbfoot">
-        <a className="dl" href={`https://${s.url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Mở store</a>
+        <a className="dl" style={{ marginLeft: 'auto' }} href={`https://${s.url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Mở store</a>
       </div>
     </div>
   );
@@ -60,7 +60,7 @@ function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
   return (
     <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
       {img ? <div className="fbmedia"><img src={shAssetProxy(img)} alt={p.product_title} loading="lazy" /><span className="countbadge">{money(p.price)}</span></div> : null}
-      <div className="fbpage">{p.product_title}</div>
+      <div className="fbpage" style={{ fontSize: 13 }}>{p.product_title}</div>
       <div className="fbbody" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={16} />
         <span>{p.shop_title || p.product_vendor || p.shop_id}</span>
@@ -158,7 +158,7 @@ export function ShopHunterPanel() {
             })}
           </div>
           <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Tìm ${tab}...`} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Tìm ${tab}...`} style={{ width: 340, maxWidth: '100%' }} />
             <button className="srcbtn findbtn" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
             {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}
           </div>

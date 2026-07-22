@@ -12,6 +12,12 @@ export class ShBlockedError extends Error {
   }
 }
 
+// Thông báo lỗi HTTP thân thiện: 400 = vượt trần phân trang ShopHunter (~1000 kết quả đầu) → hiển thị dễ hiểu.
+function shHttpMsg(status: number): string {
+  if (status === 400) return 'Vượt quá giới hạn dữ liệu (ShopHunter chỉ cho xem ~1000 kết quả đầu — lọc hẹp hơn để xem thêm).';
+  return `ShopHunter trả HTTP ${status}.`;
+}
+
 // fetch có timeout (AbortController) — tránh TREO vô hạn khi ShopHunter throttle/hang connection (nếu không, run harvest kẹt → cờ running kẹt → cron skip mãi).
 async function fetchT(url: string, opts: any = {}, ms = 20000): Promise<Response> {
   const ctrl = new AbortController();
@@ -99,7 +105,7 @@ export class ShClient {
       throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`);
     }
     const text = await res.text();
-    if (!res.ok) throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`, res.status);
+    if (!res.ok) throw new ShBlockedError(shHttpMsg(res.status), res.status);
     try {
       return JSON.parse(text);
     } catch {
@@ -125,7 +131,7 @@ export class ShClient {
       if (res.status === 401 || res.status === 403) { this.auth.invalidate(); token = await this.auth.getToken(); res = await doCall(token); }
     } catch (e) { throw new ShBlockedError(`Không gọi được ShopHunter: ${(e as Error).message}`); }
     const text = await res.text();
-    if (!res.ok) throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`, res.status);
+    if (!res.ok) throw new ShBlockedError(shHttpMsg(res.status), res.status);
     try { return JSON.parse(text); } catch { throw new ShBlockedError(); }
   }
 
@@ -160,7 +166,7 @@ export class ShClient {
     let j: any = {}; try { j = JSON.parse(text); } catch { /* để {} */ }
     if (res.ok) return { shopId: j.shop_id != null ? String(j.shop_id) : undefined, identifyType: j.identify_type };
     if (res.status === 400) return { error: j.message || 'unknown' }; // not_shopify_store / reachability_error
-    throw new ShBlockedError(`ShopHunter trả HTTP ${res.status}.`, res.status);
+    throw new ShBlockedError(shHttpMsg(res.status), res.status);
   }
 
   async fetchAsset(url: string): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {

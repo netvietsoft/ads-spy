@@ -44,6 +44,12 @@ body {
 
 .sources { display: flex; gap: 10px; margin: 20px 0 6px; }
 
+/* Thanh menu cố định (sticky) ở mọi trang — brand + theme + menu ngang */
+.topbar { position: sticky; top: 0; z-index: 30; background: var(--bg); border-bottom: 1px solid var(--border); }
+.topbar-inner { max-width: 1180px; margin: 0 auto; padding: 12px 20px 0; display: flex; align-items: center; justify-content: space-between; }
+.brand-h { font-size: 22px; margin: 0; letter-spacing: -0.02em; font-weight: 800; }
+.topbar .topnav { max-width: 1180px; margin: 6px auto 0; padding: 0 20px; border-bottom: 0; }
+
 /* Menu ngang trên cùng — bỏ icon, kiểu tab gạch chân, đổi màu khi hover */
 .topnav { display: flex; flex-wrap: wrap; gap: 2px; margin: 20px 0 12px; border-bottom: 1px solid var(--border); }
 .topnav .srcbtn { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; color: var(--muted); padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; transition: color 0.12s, background 0.12s; }

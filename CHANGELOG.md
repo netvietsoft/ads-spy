@@ -18,7 +18,9 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 - Thay tab 🌐 Proxy; `ProxyPanel` chuyển vào trong Settings. `SettingsPanel` poll `GET sh/jobs` mỗi 4s: mỗi job 1 card (công tắc On/Off, badge Đang chạy/Nghỉ/Bị chặn/Tắt, số liệu lượt gần nhất, khung log tự cuộn) + Proxy phía dưới.
 
 ### UI tinh chỉnh
-- **Menu trên cùng**: item là `<a href>` thật → chuột phải "Mở tab mới" được (chuột trái vẫn SPA, không reload). Đổi nhãn **ShopHunter → Shopify**.
+- **Menu cố định mọi trang**: tách `TopNav` (brand + theme + menu) vào `layout.tsx` → hiện **sticky** ở tất cả route kể cả `/product/*`, `/shop/*`. Menu là `<a href>` thật (chuột phải "Mở tab mới"; chuột trái SPA). Đổi nhãn **ShopHunter → Shopify**.
+- Thông báo ShopHunter **HTTP 400 → "Vượt quá giới hạn dữ liệu (chỉ xem ~1000 kết quả đầu)"** thay vì mã lỗi khó hiểu.
+- Tab Shopify: tiêu đề card **13px**; ô tìm kiếm **rộng gấp đôi**; shop card link **↗ Mở store căn phải**.
 - **Tab Shopify**: thanh sort chữ+nút nhỏ lại; nút **Tìm** nền xanh chữ trắng; nút **Tải thêm** xanh đậm + **lazy-load** (cuộn tới là tự tải, khỏi bấm — IntersectionObserver). Card: chỉ số tiền **xanh đậm**, nhãn Day/Week + % **in đậm**; tiêu đề shop nhỏ hơn; footer sản phẩm **Xem sản phẩm** (trái) · **Shop** (phải).
 
 ### Bổ sung: chỉnh tốc độ job từ web (không cần restart)

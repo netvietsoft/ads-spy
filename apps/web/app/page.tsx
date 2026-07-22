@@ -1,5 +1,5 @@
 'use client';
-import { type MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Advertiser,
@@ -67,7 +67,6 @@ function pathToSource(p: string): Source {
 }
 
 export default function Home() {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const pathname = usePathname();
   const router = useRouter();
   const [source, setSource] = useState<Source>('google');
@@ -77,15 +76,6 @@ export default function Home() {
     if (t && (SOURCE_TO_PATH as Record<string, string>)[t]) { router.replace(SOURCE_TO_PATH[t as Source]); return; }
     setSource(pathToSource(pathname || '/'));
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Bấm tab → điều hướng sang URL của tab đó (path-effect ở trên sẽ set source).
-  const goTab = (s: Source) => { setSource(s); router.push(SOURCE_TO_PATH[s]); };
-  // Menu là <a href> thật (chuột phải → Mở tab mới). Chuột trái thường → điều hướng SPA (không reload);
-  // giữ Ctrl/Cmd/Shift/chuột-giữa cho trình duyệt tự mở tab mới.
-  const navClick = (e: ReactMouseEvent, s: Source) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
-    e.preventDefault();
-    goTab(s);
-  };
   const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -101,16 +91,6 @@ export default function Home() {
   useEffect(() => {
     refreshHistory();
   }, []);
-
-  // Theme sáng/tối — nạp từ localStorage, áp vào <html data-theme>.
-  useEffect(() => {
-    const saved = (localStorage.getItem('theme') as 'dark' | 'light') || 'dark';
-    setTheme(saved);
-  }, []);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('theme', theme);
-  }, [theme]);
 
   function beginLoad() {
     setLoading(true);
@@ -329,30 +309,6 @@ export default function Home() {
 
   return (
     <div className="container">
-      <div className="brand" style={{ justifyContent: 'space-between', width: '100%' }}>
-        <h1>
-          Ads <span className="dot">Spy</span>
-        </h1>
-        <button
-          className="ghost"
-          type="button"
-          onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-          title="Đổi giao diện sáng/tối"
-        >
-          {theme === 'dark' ? '☀️ Sáng' : '🌙 Tối'}
-        </button>
-      </div>
-
-      <nav className="topnav">
-        {([
-          ['google', 'Google Ads'], ['facebook', 'Facebook Ads'], ['tiktok', 'TikTok Ads'],
-          ['shophunter', 'Shopify'], ['localdb', 'Local DB'], ['track', 'Track'],
-          ['import', 'Import'], ['report', 'Báo cáo'], ['settings', 'Cài đặt'],
-        ] as [Source, string][]).map(([s, label]) => (
-          <a key={s} href={SOURCE_TO_PATH[s]} className={`srcbtn ${source === s ? 'active' : ''}`} onClick={(e) => navClick(e, s)}>{label}</a>
-        ))}
-      </nav>
-
       {source === 'facebook' && <FacebookPanel />}
       {source === 'tiktok' && <TiktokPanel />}
       {source === 'shophunter' && <ShopHunterPanel />}

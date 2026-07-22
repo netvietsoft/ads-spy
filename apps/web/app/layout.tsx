@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import { TopNav } from './components/TopNav';
 
 export const metadata: Metadata = {
   title: 'Google Ads Spy',
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi">
-      <body>{children}</body>
+      <body>
+        <TopNav />
+        {children}
+      </body>
     </html>
   );
 }
