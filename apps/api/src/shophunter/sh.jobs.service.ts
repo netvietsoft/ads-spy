@@ -16,7 +16,7 @@ const DESC: Record<JobName, string> = {
 };
 
 const ENRICH_BATCH = 50;
-const CATALOG_BATCH = 200;
+const CATALOG_BATCH = 25;  // nhỏ để Tắt catalog phản hồi nhanh (1 bước ~≤1' thay vì ~7' với 200); throughput ~không đổi vì sleep/shop chi phối
 const PACE_MS = 1500;    // nghỉ ngắn khi còn việc
 const IDLE_MS = 120000;  // 2' khi hết việc
 const BLOCK_MS = 300000; // 5' khi bị chặn
@@ -137,10 +137,9 @@ export class ShJobsService implements OnModuleInit {
     if (this.origShopifyGet) { shopifyHttp.get = this.origShopifyGet; this.origShopifyGet = null; }
   }
 
+  // Chỉ enrich & catalog vào loop (harvest chạy bằng @Cron nên không tới đây) → không còn nhánh chết.
   private async step(name: JobName): Promise<{ pace: number }> {
-    if (name === 'enrich') return this.stepEnrich();
-    if (name === 'catalog') return this.stepCatalog();
-    return { pace: IDLE_MS };
+    return name === 'catalog' ? this.stepCatalog() : this.stepEnrich();
   }
 
   private async stepEnrich(): Promise<{ pace: number }> {
@@ -168,6 +167,7 @@ export class ShJobsService implements OnModuleInit {
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
     if (!this.catalogProxies.length) {
       this.mem.catalog.lastStatus = 'no_proxy';
+      this.mem.catalog.stats = {}; // reset số liệu lượt trước để UI không hiện số cũ gây hiểu nhầm khi đang thiếu proxy
       await this.mysql.appendJobLog('catalog', 'warn', 'Chưa có proxy http enabled — thêm ở mục Proxy. Tạm dừng cào.').catch(() => {});
       return { pace: IDLE_MS };
     }

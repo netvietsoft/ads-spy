@@ -1,4 +1,5 @@
 import { ShJobsService } from './sh.jobs.service';
+import { shopifyHttp } from './shopify.client';
 
 function make() {
   const mysql: any = {
@@ -59,5 +60,22 @@ describe('ShJobsService.stillEnabled (loop không chết vì lỗi transient)', 
     const { s, mysql } = make();
     mysql.getSetting.mockImplementation(async (k: string) => (k === 'job:enrich:enabled' ? '0' : null));
     await expect((s as any).stillEnabled('enrich')).resolves.toBe(false);
+  });
+});
+
+describe('ShJobsService wireProxy/unwireProxy (khôi phục seam shopifyHttp.get)', () => {
+  it('wire override rồi unwire khôi phục về getter gốc; wire 2 lần vẫn không lưu proxied làm gốc', () => {
+    const { s } = make();
+    const orig = shopifyHttp.get;
+    try {
+      (s as any).catalogProxies = [{ host: '1.2.3.4', port: 8080, username: 'u', password: 'p' }];
+      (s as any).wireProxy();
+      expect(shopifyHttp.get).not.toBe(orig);   // đã override sang proxied
+      (s as any).wireProxy();                    // gọi lại: guard no-op, KHÔNG lưu proxied làm "gốc"
+      (s as any).unwireProxy();
+      expect(shopifyHttp.get).toBe(orig);        // khôi phục đúng getter gốc
+    } finally {
+      shopifyHttp.get = orig; // an toàn: khôi phục dù assertion fail giữa chừng, không rò sang spec khác
+    }
   });
 });

@@ -17,6 +17,9 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 ### Frontend — tab ⚙️ Cài đặt (`/settings`)
 - Thay tab 🌐 Proxy; `ProxyPanel` chuyển vào trong Settings. `SettingsPanel` poll `GET sh/jobs` mỗi 4s: mỗi job 1 card (công tắc On/Off, badge Đang chạy/Nghỉ/Bị chặn/Tắt, số liệu lượt gần nhất, khung log tự cuộn) + Proxy phía dưới.
 
+### Hoàn thiện (fast-follow sau review)
+- Catalog batch 200→**25** (bấm Tắt phản hồi nhanh ~≤1' thay vì ~7'; throughput gần như không đổi vì sleep/shop chi phối). Reset số liệu lượt cũ khi catalog thiếu proxy (UI không hiện số cũ gây hiểu nhầm). Bỏ nhánh code chết trong `step()`. Thêm test wire/unwire proxy seam (khôi phục `shopifyHttp.get`).
+
 ### Ghi chú
 - Spec + plan: `docs/superpowers/specs/2026-07-22-*.md`, `docs/superpowers/plans/2026-07-22-*.md`. Test: 17 spec mới (joblog/proxy-get/jobs-service/jobs-step/harvest-gate/controller-jobs).
 - Deploy VPS: `git pull` → build API + `NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet` build web → `pm2 restart ads-spy-api ads-spy-web --update-env` (KHÔNG `restart all`). Không cần prisma migrate.
