@@ -43,6 +43,12 @@ body {
 .brand p { color: var(--muted); margin: 6px 0 0; font-size: 14px; }
 
 .sources { display: flex; gap: 10px; margin: 20px 0 6px; }
+
+/* Menu ngang trên cùng — bỏ icon, kiểu tab gạch chân, đổi màu khi hover */
+.topnav { display: flex; flex-wrap: wrap; gap: 2px; margin: 20px 0 12px; border-bottom: 1px solid var(--border); }
+.topnav .srcbtn { background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; color: var(--muted); padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer; transition: color 0.12s, background 0.12s; }
+.topnav .srcbtn:hover { color: var(--text); background: var(--panel-2); }
+.topnav .srcbtn.active { color: var(--accent); background: none; border-bottom-color: var(--accent); }
 .srcbtn { background: var(--panel); color: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer; }
 .srcbtn.active { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
 /* Nút điều khiển biểu đồ (Tuần/Tháng/Quý/Năm, Cột/Line) nhỏ gọn, đồng bộ với text quanh biểu đồ */

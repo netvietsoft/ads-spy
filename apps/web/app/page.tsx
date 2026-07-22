@@ -336,39 +336,16 @@ export default function Home() {
         </button>
       </div>
 
-      <div className="sources">
-        <button
-          className={`srcbtn ${source === 'google' ? 'active' : ''}`}
-          onClick={() => goTab('google')}
-          type="button"
-        >
-          🔵 Google Ads
-        </button>
-        <button
-          className={`srcbtn ${source === 'facebook' ? 'active' : ''}`}
-          onClick={() => goTab('facebook')}
-          type="button"
-        >
-          🔷 Facebook Ads
-        </button>
-        <button
-          className={`srcbtn ${source === 'tiktok' ? 'active' : ''}`}
-          onClick={() => goTab('tiktok')}
-          type="button"
-        >
-          🎵 TikTok Ads
-        </button>
-        <button
-          className={`srcbtn ${source === 'shophunter' ? 'active' : ''}`}
-          onClick={() => goTab('shophunter')}
-        >
-          🛍 ShopHunter
-        </button>
-        <button className={`srcbtn ${source === 'localdb' ? 'active' : ''}`} onClick={() => goTab('localdb')}>🗄 Local DB</button>
-        <button className={`srcbtn ${source === 'track' ? 'active' : ''}`} onClick={() => goTab('track')}>🔎 Track</button>
-        <button className={`srcbtn ${source === 'import' ? 'active' : ''}`} onClick={() => goTab('import')}>📥 Import</button>
-        <button className={`srcbtn ${source === 'report' ? 'active' : ''}`} onClick={() => goTab('report')}>📊 Báo cáo</button>
-        <button className={`srcbtn ${source === 'settings' ? 'active' : ''}`} onClick={() => goTab('settings')}>⚙️ Cài đặt</button>
+      <div className="topnav">
+        <button type="button" className={`srcbtn ${source === 'google' ? 'active' : ''}`} onClick={() => goTab('google')}>Google Ads</button>
+        <button type="button" className={`srcbtn ${source === 'facebook' ? 'active' : ''}`} onClick={() => goTab('facebook')}>Facebook Ads</button>
+        <button type="button" className={`srcbtn ${source === 'tiktok' ? 'active' : ''}`} onClick={() => goTab('tiktok')}>TikTok Ads</button>
+        <button type="button" className={`srcbtn ${source === 'shophunter' ? 'active' : ''}`} onClick={() => goTab('shophunter')}>ShopHunter</button>
+        <button type="button" className={`srcbtn ${source === 'localdb' ? 'active' : ''}`} onClick={() => goTab('localdb')}>Local DB</button>
+        <button type="button" className={`srcbtn ${source === 'track' ? 'active' : ''}`} onClick={() => goTab('track')}>Track</button>
+        <button type="button" className={`srcbtn ${source === 'import' ? 'active' : ''}`} onClick={() => goTab('import')}>Import</button>
+        <button type="button" className={`srcbtn ${source === 'report' ? 'active' : ''}`} onClick={() => goTab('report')}>Báo cáo</button>
+        <button type="button" className={`srcbtn ${source === 'settings' ? 'active' : ''}`} onClick={() => goTab('settings')}>Cài đặt</button>
       </div>
 
       {source === 'facebook' && <FacebookPanel />}
