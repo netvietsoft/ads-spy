@@ -24,8 +24,9 @@ module.exports = {
       // next binary (hoisted về node_modules gốc do npm workspaces)
       script: '../../node_modules/next/dist/bin/next',
       args: 'start -p 3062',
-      // SITE_PASSWORD: mật khẩu chung cho cả site (đọc từ env; KHÔNG đặt = không chặn). Set: export SITE_PASSWORD='...'
-      env: { NODE_ENV: 'production', SITE_PASSWORD: process.env.SITE_PASSWORD || '' },
+      // Mật khẩu đọc từ env (KHÔNG hardcode — repo public). SITE_PASSWORD=guest (7 mục), ADMIN_PASSWORD=admin (đủ).
+      // Set trước khi start: export SITE_PASSWORD='...' ADMIN_PASSWORD='...'
+      env: { NODE_ENV: 'production', SITE_PASSWORD: process.env.SITE_PASSWORD || '', ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '' },
       max_memory_restart: '700M',
       time: true,
     },
