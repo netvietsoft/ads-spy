@@ -535,6 +535,9 @@ export class ShService {
   async syncShopRevenue(shopId: string): Promise<'ok' | 'skip'> {
     const revR = await this.client.shopChartRevenue(shopId);
     const chart = Array.isArray((revR as any)?.items) ? (revR as any).items : [];
+    // DIAGNOSTIC: log shape/counts để soi vì sao chỉ lưu được ít ngày (xoá sau khi tìm ra nguyên nhân).
+    const kept = chart.filter((p: any) => p && p.date_str && (p.revenue != null || p.sale_count != null)).length;
+    this.logger.log(`[syncRev] shop ${shopId}: respKeys=${JSON.stringify(Object.keys((revR as any) || {}))} items=${chart.length} kept=${kept} itemKeys=${JSON.stringify(Object.keys(chart[0] || {}))} first=${JSON.stringify(chart[0] || {}).slice(0, 220)} last=${JSON.stringify(chart[chart.length - 1] || {}).slice(0, 220)}`);
     await this.mysql.appendRevenueDaily(shopId, chart);
     await this.mysql.setRevenueSynced(shopId);
     return chart.length ? 'ok' : 'skip';
