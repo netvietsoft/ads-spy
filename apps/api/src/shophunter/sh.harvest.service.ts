@@ -47,14 +47,26 @@ export class ShHarvestService {
   async scheduled(): Promise<void> {
     try {
       const r = await this.tick();
-      if (r.ran) this.logger.log(`Cron tick: ${JSON.stringify(r)}`);
+      if (r.ran) {
+        this.logger.log(`Cron tick: ${JSON.stringify(r)}`);
+        await this.mysql.appendJobLog('harvest', 'info', `tick: processed=${r.processed ?? 0} slice=${r.sliceKey ?? '-'}`).catch(() => {});
+      }
     } catch (e) {
       this.logger.error(`Cron tick lỗi: ${(e as Error).message}`);
+      await this.mysql.appendJobLog('harvest', 'error', `tick lỗi: ${(e as Error).message}`).catch(() => {});
     }
   }
 
+  // Bật/tắt harvest: ưu tiên cờ DB (đặt từ web), fallback env SH_HARVEST_ENABLED (tương thích cũ).
+  private async harvestEnabled(): Promise<boolean> {
+    const f = await this.mysql.getSetting('job:harvest:enabled');
+    if (f === '1') return true;
+    if (f === '0') return false;
+    return process.env.SH_HARVEST_ENABLED === 'true';
+  }
+
   async tick(): Promise<{ ran: boolean; reason: string; processed?: number; sliceKey?: string }> {
-    if (process.env.SH_HARVEST_ENABLED !== 'true') return { ran: false, reason: 'disabled' };
+    if (!(await this.harvestEnabled())) return { ran: false, reason: 'disabled' };
     const cap = Number(process.env.SH_HARVEST_DAILY) || 500;
     const activeStart = Number(process.env.SH_HARVEST_ACTIVE_START) || 8;
     const activeEnd = Number(process.env.SH_HARVEST_ACTIVE_END) || 23;
