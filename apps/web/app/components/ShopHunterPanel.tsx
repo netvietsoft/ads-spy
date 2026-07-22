@@ -71,7 +71,7 @@ function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
       </div>
       <div className="fbfoot">
         {purl && <a className="dl" href={purl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Xem sản phẩm</a>}
-        {site && <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>🏪 Shop</a>}
+        {site && <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Shop</a>}
       </div>
     </div>
   );

@@ -81,7 +81,7 @@ body {
 .fbthumb .vidtag { color: var(--accent); font-size: 18px; }
 .playbadge { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
 .countbadge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
-.fbfoot { display: flex; gap: 14px; margin-top: 2px; }
+.fbfoot { display: flex; flex-wrap: nowrap; gap: 12px; margin-top: 2px; white-space: nowrap; }
 
 .modes { display: flex; gap: 8px; margin-top: 18px; }
 
