@@ -19,6 +19,10 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 ### Frontend
 - Nhãn tuner đổi `batch`: "Shop/lượt" → **"Số/lượt (batch)"** (dùng chung cho cả SP lẫn shop).
 
+### Fix collation JOIN (2e03203)
+- Lỗi **"Illegal mix of collations (utf8mb4_unicode_ci vs utf8mb4_0900_ai_ci)"** khi `productrev` JOIN `sh_product_revsync` ↔ `sh_product_list`: DB migrate (VPS) có `sh_product_list.product_id` = **unicode_ci**, còn bảng phụ tạo mới nhận **DB-default 0900_ai_ci** → lệch.
+- **Fix:** `ensureRevsyncTable` đọc collation THẬT của `sh_product_list.product_id` lúc chạy → tạo bảng phụ đúng collation đó; bảng đã lệch từ trước → `ALTER MODIFY` cho khớp (bảng nhỏ, tức thì; tự lành khi restart/redeploy). Tên collation lọc regex chống injection.
+
 ---
 
 ## 2026-07-22 — Menu ⚙️ Cài đặt: giám sát + bật/tắt job nền (harvest/enrich/catalog) + Proxy
