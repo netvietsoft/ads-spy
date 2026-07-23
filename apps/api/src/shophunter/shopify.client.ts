@@ -63,6 +63,32 @@ function normalizeDomain(shopUrl: string): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const STOREFRONT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
+
+// Tiền tệ THẬT của shop từ storefront /meta.json (ShopHunter hay gắn sai `currency`). Trả mã ISO (INR/JPY/USD…) hoặc null.
+export async function fetchStorefrontCurrency(shopUrl: string): Promise<string | null> {
+  const domain = normalizeDomain(shopUrl);
+  try {
+    const res = await shopifyHttp.get(`https://${domain}/meta.json`, { 'user-agent': STOREFRONT_UA });
+    if (res.status !== 200) return null;
+    const c = JSON.parse(res.body)?.currency;
+    return typeof c === 'string' && /^[A-Za-z]{3}$/.test(c) ? c.toUpperCase() : null;
+  } catch { return null; }
+}
+
+// Giá MIN (rẻ nhất) trong các variant của 1 sản phẩm — theo tiền tệ store — từ /products/{handle}.json.
+export async function fetchProductMinPrice(shopUrl: string, handle: string): Promise<number | null> {
+  if (!handle) return null;
+  const domain = normalizeDomain(shopUrl);
+  try {
+    const res = await shopifyHttp.get(`https://${domain}/products/${encodeURIComponent(handle)}.json`, { 'user-agent': STOREFRONT_UA });
+    if (res.status !== 200) return null;
+    const variants = JSON.parse(res.body)?.product?.variants;
+    const prices = (Array.isArray(variants) ? variants : []).map((v: any) => Number(v?.price)).filter((n: number) => Number.isFinite(n) && n > 0);
+    return prices.length ? Math.min(...prices) : null;
+  } catch { return null; }
+}
+
 export async function fetchShopifyCatalog(
   shopUrl: string,
   opts?: { maxPages?: number; pageDelayMs?: number; retryDelayMs?: number },

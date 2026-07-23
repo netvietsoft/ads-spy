@@ -4,6 +4,16 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-23 — Đồng bộ giá + doanh thu từ STOREFRONT (tiền tệ thật), DT = giá(USD)×số đơn, Δ từ DB
+
+- **Phát hiện gốc:** ShopHunter gắn SAI tiền tệ 1 số shop (vd `suta.in` là **INR** nhưng ShopHunter ghi `currency=USD/country=US`; storefront meta.json xác nhận INR, giá ₹1.680). Không field nào (currency/country/locale) lộ tiền tệ thật → **nguồn tin cậy duy nhất là storefront**.
+- **Format chuẩn `syncProductPriceRevenue`:** (1) tiền tệ thật từ `storefront/meta.json` → cache `sh_shop.storefront_currency`; (2) **giá MIN variant** từ `/products/{handle}.json` (tiền tệ store) → `giá USD = min × tỉ giá`; (3) **doanh thu ngày = giá(USD) × số đơn** (sale_count ShopHunter — chỉ số đếm đáng tin) → ghi ĐÈ `sh_product_revenue_daily`. Δ tăng/giảm tính TỪ chuỗi ngày trong DB (không lấy Δ ShopHunter).
+- **Storefront chặn IP datacenter (429 `local_rate_limited`)** → mọi fetch giá đi **qua proxy xoay** (như catalog). Job **`productrev` nâng cấp**: giờ đồng bộ giá+DT storefront (needsProxy). Nút "Đồng bộ" ở trang chi tiết SP đi qua `jobsSvc.syncProductPriceRevenueViaProxy` (mượn proxy).
+- **Trang chi tiết SP:** giá USD thật (sau đồng bộ), Day/Week/Month + Δ **tính từ chuỗi ngày DB (USD)**, biểu đồ/bảng đọc daily (đã USD — bỏ nhân đôi quy đổi). Helper `periodStats`.
+- **Cần token + proxy** (VPS). Local không proxy → fetch giá 429 (chỉ lấy được currency).
+
+---
+
 ## 2026-07-23 — Quy đổi doanh thu về USD khi hiển thị (ShopHunter trả tiền tệ gốc)
 
 - **Phát hiện:** ShopHunter trả doanh thu theo **tiền tệ GỐC của shop** (`currency`/`shop_currency`: INR, JPY, EUR…) nhưng `price` theo USD; app gắn nhãn "$" cho cả doanh thu → số phóng đại theo tỉ giá (vd shop IN: `$377.954` thực ra ₹377.954 ≈ $4.553; shop JP `rev/đơn = 3000 JPY = giá $20.86 × 143.8`).

@@ -167,6 +167,8 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'logo_url', 'logo_url VARCHAR(1024)');
     await this.ensureColumn(pool, 'sh_shop', 'detail_fetched_at', 'detail_fetched_at BIGINT');
     await this.ensureColumn(pool, 'sh_shop', 'harvested_at', 'harvested_at BIGINT');
+    // Tiền tệ THẬT của shop lấy từ storefront /meta.json (ShopHunter hay gắn sai `currency`) — dùng để quy đổi USD.
+    await this.ensureColumn(pool, 'sh_shop', 'storefront_currency', 'storefront_currency VARCHAR(8)');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_revenue', 'revenue');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_harvested', 'harvested_at');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_fetched', 'fetched_at');
@@ -580,6 +582,27 @@ export class ShMysql implements OnModuleInit {
   }
 
   // Dồn chuỗi doanh thu ngày sản phẩm vào kho append-only (copy y appendRevenueDaily của shop, đổi bảng/khoá → product_id).
+  // Storefront của 1 sản phẩm (để crào giá thật): shop_url + product_handle từ raw.
+  async getProductStorefront(productId: string): Promise<{ shopUrl: string | null; handle: string | null } | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
+      "SELECT JSON_UNQUOTE(JSON_EXTRACT(raw,'$.shop_url')) shop_url, JSON_UNQUOTE(JSON_EXTRACT(raw,'$.product_handle')) handle FROM sh_product WHERE product_id = ?",
+      [productId],
+    );
+    const r = (rows as any[])[0];
+    if (!r) return null;
+    return { shopUrl: r.shop_url || null, handle: r.handle || null };
+  }
+  async getStorefrontCurrency(shopId: string): Promise<string | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query('SELECT storefront_currency FROM sh_shop WHERE shop_id = ?', [shopId]);
+    return (rows as any[])[0]?.storefront_currency || null;
+  }
+  async setStorefrontCurrency(shopId: string, currency: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_shop SET storefront_currency = ? WHERE shop_id = ?', [currency, shopId]);
+  }
+
   async appendProductRevenueDaily(productId: string, chart: any): Promise<void> {
     if (!Array.isArray(chart) || !chart.length) return;
     await this.ensureReady();

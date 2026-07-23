@@ -570,7 +570,7 @@ export async function shProductRevenueDaily(shopId: string, productId: string): 
 export async function shSyncShopRevenue(shopId: string): Promise<{ ok: boolean; result: 'ok' | 'skip' }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/sync-revenue`, { method: 'POST' }));
 }
-export async function shSyncProductRevenue(shopId: string, productId: string): Promise<{ ok: boolean; result: 'ok' | 'skip' }> {
+export async function shSyncProductRevenue(shopId: string, productId: string): Promise<{ ok: boolean; result: string; priceUsd?: number; currency?: string | null; days?: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/product/${shopId}/${productId}/sync-revenue`, { method: 'POST' }));
 }
 export async function shEnrichShopProducts(shopId: string): Promise<{ fetched: number; upserted: number }> {

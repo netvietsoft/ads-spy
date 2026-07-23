@@ -8,7 +8,8 @@ import { parseSearch, parseShopColumns, productToShopRaw } from './sh.parser';
 import { shQueryHash } from './sh.hash';
 import { isGlobalBlock, randInt } from './sh.harvest.util';
 import { loadCatTree, resolveCategoryByNames, categoryPathFromIds } from './sh.categories';
-import { fetchShopifyCatalog } from './shopify.client';
+import { fetchShopifyCatalog, fetchStorefrontCurrency, fetchProductMinPrice } from './shopify.client';
+import { toUsd } from './sh.currency';
 import { checkShopAffiliate } from './affiliate.client';
 import { parseProxies, testProxy } from './sh.proxy';
 
@@ -560,6 +561,31 @@ export class ShService {
     const chart = Array.isArray((revR as any)?.items) ? (revR as any).items : [];
     await this.mysql.appendProductRevenueDaily(productId, chart);
     return chart.length ? 'ok' : 'skip';
+  }
+
+  // "Format chuẩn" đồng bộ GIÁ + DOANH THU từ nguồn ĐÁNG TIN (storefront), tránh dữ liệu ShopHunter gắn sai tiền tệ.
+  // 1) tiền tệ THẬT từ storefront /meta.json (cache vào sh_shop.storefront_currency)
+  // 2) giá MIN variant từ /products/{handle}.json (tiền tệ store) → giá USD = min × tỉ giá
+  // 3) doanh thu ngày = giá USD × SỐ ĐƠN (sale_count của ShopHunter — chỉ số đếm, đáng tin) → ghi đè sh_product_revenue_daily
+  // Δ tăng/giảm về sau tính TỪ chuỗi ngày này trong DB (không lấy Δ của ShopHunter).
+  async syncProductPriceRevenue(shopId: string, productId: string): Promise<{ status: 'ok' | 'no_storefront' | 'no_price' | 'skip'; priceLocal?: number; priceUsd?: number; currency?: string | null; days?: number }> {
+    const info = await this.mysql.getProductStorefront(productId);
+    if (!info?.shopUrl || !info.handle) return { status: 'no_storefront' };
+    let currency = await this.mysql.getStorefrontCurrency(shopId);
+    if (!currency) {
+      currency = await fetchStorefrontCurrency(info.shopUrl);
+      if (currency) await this.mysql.setStorefrontCurrency(shopId, currency).catch(() => {});
+    }
+    const priceLocal = await fetchProductMinPrice(info.shopUrl, info.handle);
+    if (priceLocal == null) return { status: 'no_price', currency };
+    const priceUsd = toUsd(priceLocal, currency) ?? 0;
+    const revR = await this.client.productChartRevenue(shopId, productId);
+    const src = Array.isArray((revR as any)?.items) ? (revR as any).items : [];
+    const items = src
+      .filter((x: any) => x && x.date_str)
+      .map((x: any) => ({ date_str: x.date_str, sale_count: x.sale_count ?? null, revenue: Math.round(priceUsd * (Number(x.sale_count) || 0) * 100) / 100 }));
+    await this.mysql.appendProductRevenueDaily(productId, items); // ON DUPLICATE → ghi đè (không cộng dồn)
+    return { status: items.length ? 'ok' : 'skip', priceLocal, priceUsd, currency, days: items.length };
   }
 
   // --- Catalog Shopify (products.json, miễn phí) ---

@@ -213,11 +213,13 @@ export class ShController {
     return { ok: true, result: await this.svc.syncShopRevenue(id) };
   }
 
-  // Đồng bộ NGAY chuỗi doanh thu ngày cho 1 sản phẩm → ghi thẳng DB.
+  // Đồng bộ NGAY giá (storefront, tiền tệ thật) + doanh thu ngày = giá(USD)×số đơn → ghi thẳng DB (ghi đè).
+  // Qua jobsSvc để MƯỢN proxy xoay (storefront chặn IP datacenter → 429; phải đi proxy như catalog).
   @Post('sh/product/:shopId/:productId/sync-revenue')
   async productSyncRevenue(@Param('shopId') shopId: string, @Param('productId') productId: string) {
     if (!shopId || !productId) throw new BadRequestException('Thiếu id.');
-    return { ok: true, result: await this.svc.syncProductRevenue(shopId, productId) };
+    const r = await this.jobsSvc.syncProductPriceRevenueViaProxy(shopId, productId);
+    return { ok: true, result: r.status, priceUsd: r.priceUsd, currency: r.currency, days: r.days };
   }
 
   // Batch: fill doanh thu sp cho các shop đã cào catalog nhưng chưa enrich (chạy khi có token; block → dừng, chạy lại tiếp).

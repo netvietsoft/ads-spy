@@ -14,7 +14,7 @@ const DESC: Record<JobName, string> = {
   harvest: 'Cào shop/product từ ShopHunter API (cần token) → ghi sh_shop/sh_product. Chạy theo cron nhẹ.',
   enrich: 'Fill doanh thu từng sản phẩm cho shop đã cào catalog (sh.service.enrichProductRevenueRun).',
   catalog: 'Cào products.json Shopify qua proxy xoay (sh.service.catalogSyncStep).',
-  productrev: 'Đồng bộ doanh thu NGÀY từng sản phẩm (doanh thu cao→thấp) → sh_product_revenue_daily. Cần token.',
+  productrev: 'Đồng bộ GIÁ (storefront, tiền tệ thật) + doanh thu NGÀY = giá(USD)×số đơn từng sản phẩm (doanh thu cao→thấp). Cần token + proxy.',
   affiliate: 'Quét affiliate cho shop mới/chưa quét (qua proxy Shopify) → sh_shop.affiliate_*. Shop mới tự vào hàng đợi.',
   importenrich: 'Enrich item đã import (mục Import): lấy detail/doanh thu → sh_shop/sh_product. Chạy liên tục cho hết hàng chờ. Cần token.',
 };
@@ -148,7 +148,7 @@ export class ShJobsService implements OnModuleInit {
       } else if (this.needsProxy(name)) {
         this.wireProxy();
         try { await this.step(name, true); } // force=true: bỏ qua giới hạn giờ + trần ngày khi bấm tay
-        finally { if (!this.mem.catalog.running && !this.mem.affiliate.running) this.unwireProxy(); }
+        finally { if (!this.anyProxyJobRunning()) this.unwireProxy(); }
       } else {
         await this.step(name, true);
       }
@@ -181,11 +181,21 @@ export class ShJobsService implements OnModuleInit {
     } finally {
       this.mem[name].running = false;
       // Chỉ khôi phục seam proxy khi KHÔNG còn job proxy nào chạy (catalog + affiliate dùng chung shopifyHttp.get).
-      if (this.needsProxy(name) && !this.mem.catalog.running && !this.mem.affiliate.running) this.unwireProxy();
+      if (this.needsProxy(name) && !this.anyProxyJobRunning()) this.unwireProxy();
     }
   }
 
-  private needsProxy(name: JobName): boolean { return name === 'catalog' || name === 'affiliate'; }
+  private needsProxy(name: JobName): boolean { return name === 'catalog' || name === 'affiliate' || name === 'productrev'; }
+  private anyProxyJobRunning(): boolean { return this.mem.catalog.running || this.mem.affiliate.running || this.mem.productrev.running; }
+
+  // Đồng bộ giá+DT 1 sản phẩm (từ web) qua PROXY xoay (storefront chặn IP datacenter). Mượn seam proxy, khôi phục nếu không có loop proxy chạy.
+  async syncProductPriceRevenueViaProxy(shopId: string, productId: string) {
+    await this.refreshProxies();
+    const alreadyWired = !!this.origShopifyGet;
+    if (this.catalogProxies.length && !alreadyWired) this.wireProxy();
+    try { return await this.svc.syncProductPriceRevenue(shopId, productId); }
+    finally { if (!alreadyWired && !this.anyProxyJobRunning()) this.unwireProxy(); }
+  }
   private dayKey(name: JobName): string { return `${new Date().toISOString().slice(0, 10)}:${name}`; }
   private withinActiveHours(cfg: Record<string, number>): boolean {
     const s = cfg.activeStart ?? 0, e = cfg.activeEnd ?? 24;
@@ -289,8 +299,8 @@ export class ShJobsService implements OnModuleInit {
     const worker = async () => {
       while (idx < list.length && !blocked) {
         const it = list[idx++];
-        try { await this.svc.syncProductRevenue(it.shopId, it.productId); await this.mysql.setProductRevDailySynced(it.productId); ok++; }
-        catch (e) { if (isGlobalBlock(e)) { blocked = true; break; } /* lỗi riêng 1 sp → bỏ qua, KHÔNG mark → thử lại vòng sau */ }
+        try { const r = await this.svc.syncProductPriceRevenue(it.shopId, it.productId); if (r.status === 'ok') { await this.mysql.setProductRevDailySynced(it.productId); ok++; } }
+        catch (e) { if (isGlobalBlock(e)) { blocked = true; break; } /* lỗi riêng 1 sp (429 storefront/no price) → bỏ qua, KHÔNG mark → thử lại vòng sau */ }
       }
     };
     await Promise.all(Array.from({ length: Math.max(1, Math.min(8, cfg.concurrency)) }, () => worker()));

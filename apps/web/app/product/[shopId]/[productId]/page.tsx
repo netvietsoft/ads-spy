@@ -10,12 +10,25 @@ import { ShLogo } from '../../../components/ShLogo';
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 
+// Day/Week/Month + Δ% tính TỪ chuỗi doanh thu ngày (USD) trong DB. daily sắp xếp tăng dần theo ngày.
+function periodStats(daily: { revenue: number | null }[]) {
+  const rev = daily.map((x) => Number(x.revenue) || 0);
+  const n = rev.length;
+  const sum = (from: number, to: number) => rev.slice(Math.max(0, from), Math.max(0, to)).reduce((a, b) => a + b, 0);
+  const delta = (curV: number, prev: number) => (prev > 0 ? ((curV - prev) / prev) * 100 : null);
+  const day = n ? rev[n - 1] : 0, dayPrev = n > 1 ? rev[n - 2] : 0;
+  const week = sum(n - 7, n), weekPrev = sum(n - 14, n - 7);
+  const month = sum(n - 30, n), monthPrev = sum(n - 60, n - 30);
+  return { day, week, month, dDay: delta(day, dayPrev), dWeek: delta(week, weekPrev), dMonth: delta(month, monthPrev) };
+}
+
 export default function ProductDetailPage() {
   const params = useParams<{ shopId: string; productId: string }>();
   const shopId = String(params?.shopId || '');
   const productId = String(params?.productId || '');
   const [d, setD] = useState<ShDetail | null>(null);
   const [daily, setDaily] = useState<{ date_str: string; revenue: number | null; sale_count: number | null }[]>([]);
+  const [syncedPrice, setSyncedPrice] = useState<number | null>(null); // giá USD thật (min variant × tỉ giá) trả về từ đồng bộ
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,9 +47,12 @@ export default function ProductDetailPage() {
   const p = d?.detail;
   const site = shShopSite(p);
   const purl = shProductUrl(p);
-  const cur = p?.shop_currency; // doanh thu ShopHunter theo tiền tệ shop → quy đổi USD khi hiển thị
-  const series = daily.length ? daily : (d?.revenueChart || []);
-  const seriesUsd = series.map((x) => ({ ...x, revenue: toUsd(x.revenue, cur) as number | null }));
+  const cur = p?.shop_currency;
+  // Bảng daily (sh_product_revenue_daily) GIỜ lưu USD (đồng bộ giá×đơn). revenueChart (ShopHunter live) là tiền tệ gốc → chỉ quy đổi fallback đó.
+  const hasDaily = daily.length > 0;
+  const seriesUsd = hasDaily ? daily : (d?.revenueChart || []).map((x) => ({ ...x, revenue: toUsd(x.revenue, cur) as number | null }));
+  // Day/Week/Month + Δ tăng/giảm TÍNH TỪ chuỗi ngày trong DB (USD), không lấy chỉ số ShopHunter — khi đã đồng bộ.
+  const st = hasDaily ? periodStats(seriesUsd as any[]) : null;
 
   return (
     <div style={{ maxWidth: 880, margin: '0 auto', padding: '22px 18px' }}>
@@ -60,7 +76,7 @@ export default function ProductDetailPage() {
           <div style={{ display: 'flex', gap: 14, margin: '10px 0', flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt={p.product_title} style={{ width: 220, maxWidth: '100%', borderRadius: 8, maxHeight: 260, objectFit: 'contain', flex: '0 0 auto' }} /> : null}
             <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>Giá: {money(p.price)}</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>Giá: {money(syncedPrice ?? p.price)}{syncedPrice == null && <span style={{ fontSize: 12, fontWeight: 400, opacity: 0.6 }}> (bấm Đồng bộ để lấy giá USD thật)</span>}</div>
               {p.product_vendor && <div style={{ marginTop: 6 }}>Nhà bán: <b>{p.product_vendor}</b></div>}
               {Array.isArray(p.product_tags) && p.product_tags.length > 0 && (
                 <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85, wordBreak: 'break-word' }}><b>Mô tả khác:</b> {p.product_tags.join(', ')}</div>
@@ -68,27 +84,27 @@ export default function ProductDetailPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 16, margin: '12px 0 4px', flexWrap: 'wrap' }}>
-            <span>Day <b>{money(toUsd(p.day_current_period_revenue, cur))}</b></span>
-            <span>Week <b>{money(toUsd(p.week_current_period_revenue, cur))}</b></span>
-            <span>Month <b>{money(toUsd(p.month_current_period_revenue, cur))}</b></span>
+            <span>Day <b>{money(st ? st.day : toUsd(p.day_current_period_revenue, cur))}</b></span>
+            <span>Week <b>{money(st ? st.week : toUsd(p.week_current_period_revenue, cur))}</b></span>
+            <span>Month <b>{money(st ? st.month : toUsd(p.month_current_period_revenue, cur))}</b></span>
             <span>Ads <b>{p.product_active_ad_count ?? 0}</b>{p.ads_archive_page_id ? <a className="dl" href={`https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&view_all_page_id=${p.ads_archive_page_id}`} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ ads</a> : null}</span>
           </div>
           <div style={{ display: 'flex', gap: 16, margin: '0 0 12px', flexWrap: 'wrap', fontSize: 13, opacity: 0.9 }}>
             <span>Đơn ngày <b>{p.day_current_period_sale_count ?? '—'}</b></span>
             <span>Đơn tuần <b>{p.week_current_period_sale_count ?? '—'}</b></span>
             <span>Đơn tháng <b>{p.month_current_period_sale_count ?? '—'}</b></span>
-            <span>Δ Ngày <b className={(p.day_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.day_revenue_percent_change)}</b></span>
-            <span>Δ Tuần <b className={(p.week_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.week_revenue_percent_change)}</b></span>
-            <span>Δ Tháng <b className={(p.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.month_revenue_percent_change)}</b></span>
+            <span>Δ Ngày <b className={((st ? st.dDay : p.day_revenue_percent_change) ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(st ? st.dDay : p.day_revenue_percent_change)}</b></span>
+            <span>Δ Tuần <b className={((st ? st.dWeek : p.week_revenue_percent_change) ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(st ? st.dWeek : p.week_revenue_percent_change)}</b></span>
+            <span>Δ Tháng <b className={((st ? st.dMonth : p.month_revenue_percent_change) ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(st ? st.dMonth : p.month_revenue_percent_change)}</b></span>
           </div>
-          <h4>Biểu đồ doanh thu {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
+          <h4>Biểu đồ doanh thu {seriesUsd.length > 90 ? `(${seriesUsd.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
           <ShBarChart points={seriesUsd} headerRight={
-            <SyncControls series={series}
-              onSync={async () => { const j = await shSyncProductRevenue(shopId, productId); setDaily(await shProductRevenueDaily(shopId, productId).catch(() => daily)); return j.result; }} />
+            <SyncControls series={seriesUsd}
+              onSync={async () => { const j = await shSyncProductRevenue(shopId, productId); if (typeof j.priceUsd === 'number') setSyncedPrice(j.priceUsd); setDaily(await shProductRevenueDaily(shopId, productId).catch(() => daily)); return j.result; }} />
           } />
-          {series.length > 0 && (
+          {seriesUsd.length > 0 && (
             <details style={{ margin: '8px 0' }}>
-              <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.9 }}>Số theo từng ngày ({series.length} ngày)</summary>
+              <summary style={{ cursor: 'pointer', fontSize: 13, opacity: 0.9 }}>Số theo từng ngày ({seriesUsd.length} ngày)</summary>
               <div style={{ maxHeight: 240, overflow: 'auto', marginTop: 6 }}>
                 <table className="localtbl">
                   <thead><tr><th>Ngày</th><th>Doanh thu</th><th>Đơn</th></tr></thead>
