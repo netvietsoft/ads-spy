@@ -388,10 +388,17 @@ export class ShMysql implements OnModuleInit {
       await this.upsertProductList([rawToListRow(o, null, Date.now())].filter(Boolean) as ListRow[]);
       return;
     }
+    // sh_shop: ngoài raw, ghi luôn cột phẳng shop_name + revenue (= DT tháng) để shop cào-từ-search cũng lên báo cáo
+    // phân bố bậc (đọc cột revenue) & tìm theo tên. COALESCE giữ giá trị harvest cũ khi item search thiếu (không ghi đè null).
+    const so = raw && typeof raw === 'object' ? (raw as any) : {};
+    const shopName = so.shop_title != null ? String(so.shop_title).slice(0, 255) : null;
+    const revRaw = so.month_current_period_revenue ?? so.revenue ?? so.total_revenue;
+    const revenue = revRaw == null || revRaw === '' || !Number.isFinite(Number(revRaw)) ? null : Number(revRaw);
     await this.pool!.query(
-      `INSERT INTO ${table} (${pk}, raw, fetched_at) VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE raw = VALUES(raw), fetched_at = VALUES(fetched_at)`,
-      [id, JSON.stringify(raw), Date.now()],
+      `INSERT INTO ${table} (${pk}, raw, fetched_at, shop_name, revenue) VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE raw = VALUES(raw), fetched_at = VALUES(fetched_at),
+         shop_name = COALESCE(VALUES(shop_name), shop_name), revenue = COALESCE(VALUES(revenue), revenue)`,
+      [id, JSON.stringify(raw), Date.now(), shopName, revenue],
     );
   }
 

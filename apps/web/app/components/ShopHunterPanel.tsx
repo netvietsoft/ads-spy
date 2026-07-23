@@ -59,6 +59,7 @@ function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
         <b>Day</b> <b className="rev">{money(s.day_current_period_revenue)}</b>{' '}
         <b style={{ color: (s.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(s.day_revenue_percent_change)}</b>
         {' · '}<b>Week</b> <b className="rev">{money(s.week_current_period_revenue)}</b>
+        {' · '}<b>Tháng</b> <b className="rev">{money(s.month_current_period_revenue)}</b>
       </div>
       <div className="fbplat">Ads {s.active_ad_count ?? 0} · SKU {s.sku_count ?? 0} · {s.country} · {s.currency}</div>
       <div className="fbfoot">
@@ -84,6 +85,7 @@ function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
       <div className="fbplat">
         <b>Day</b> <b className="rev">{money(p.day_current_period_revenue)}</b>{' '}
         <b style={{ color: (p.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(p.day_revenue_percent_change)}</b>
+        {' · '}<b>Tháng</b> <b className="rev">{money(p.month_current_period_revenue)}</b>
         {' · '}Ads {p.product_active_ad_count ?? 0}
       </div>
       <div className="fbfoot">
