@@ -150,8 +150,6 @@ export class ShMysql implements OnModuleInit {
   // Cache COUNT(*) — InnoDB không lưu sẵn row-count nên COUNT toàn bảng sh_product_list (4M) ~600ms/lần.
   // Total chỉ để hiển thị "x / N" nên cache ngắn (stale vài chục giây chấp nhận được).
   private countCache = new Map<string, { n: number; t: number }>();
-  // Cache báo cáo phân bố bậc doanh thu (quét sh_product_list 4M ~1-2s) → 5' đủ tươi cho báo cáo.
-  private bucketCache: { t: number; data: RevenueBucketReport } | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -1174,62 +1172,81 @@ export class ShMysql implements OnModuleInit {
 
   // Báo cáo phân bố: đếm shop (cột revenue, index) + sản phẩm (revenue_month, idx_pl_rev_month) theo từng bậc doanh thu.
   // 1 truy vấn SUM(CASE...) mỗi bảng → quét cột-index 1 lần. Cache 5' (đếm 4M sp không rẻ). Biên bậc là hằng số code → an toàn SQL.
-  async reportRevenueBuckets(): Promise<RevenueBucketReport> {
-    await this.ensureReady();
-    if (this.bucketCache && Date.now() - this.bucketCache.t < 5 * 60000) return this.bucketCache.data;
-    const countByBucket = async (table: string, col: string): Promise<number[]> => {
-      const parts = REVENUE_BUCKETS.map((b, i) => {
-        const cond = b.lo == null ? `${col} IS NULL OR ${col} < ${b.hi}`
-          : b.hi == null ? `${col} >= ${b.lo}`
-            : `${col} >= ${b.lo} AND ${col} < ${b.hi}`;
-        return `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END) b${i}`;
-      });
-      const [r] = await this.pool!.query(`SELECT ${parts.join(', ')} FROM ${table}`);
-      const row = (r as any[])[0] || {};
-      return REVENUE_BUCKETS.map((_, i) => Number(row['b' + i]) || 0);
-    };
-    // Shop: quy đổi USD tại chỗ (tiền tệ thật = storefront_currency, fallback currency trong raw). Sản phẩm: revenue_month
-    // sẽ được job productrev ghi USD dần (gradual) → tạm tính trên giá trị đang có.
-    const shopCur = `COALESCE(storefront_currency, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')))`;
-    const shops = await countByBucket('sh_shop', `(revenue * ${rateCaseSql(shopCur)})`);
-    const products = await countByBucket('sh_product_list', 'revenue_month');
-    const data: RevenueBucketReport = {
-      buckets: REVENUE_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })),
-      shops, products,
-      total: { shops: shops.reduce((a, b) => a + b, 0), products: products.reduce((a, b) => a + b, 0) },
-    };
-    this.bucketCache = { t: Date.now(), data };
+  // Cache báo cáo NẶNG vào DB (fbSetting) 24h — worker "phân tích" refresh hằng ngày (force) → request luôn nhanh, không tính cold.
+  private async dbReportCache<T>(key: string, ttlMs: number, force: boolean, compute: () => Promise<T>): Promise<T> {
+    if (!force) {
+      const raw = await this.getSetting(key).catch(() => null);
+      if (raw) { try { const o = JSON.parse(raw); if (o && Date.now() - o.t < ttlMs) return o.data as T; } catch { /* hỏng → tính lại */ } }
+    }
+    const data = await compute();
+    await this.setSetting(key, JSON.stringify({ t: Date.now(), data })).catch(() => {});
     return data;
+  }
+
+  async reportRevenueBuckets(force = false): Promise<RevenueBucketReport> {
+    await this.ensureReady();
+    return this.dbReportCache('analysis:revbuckets', 24 * 3600000, force, async () => {
+      const countByBucket = async (table: string, col: string): Promise<number[]> => {
+        const parts = REVENUE_BUCKETS.map((b, i) => {
+          const cond = b.lo == null ? `${col} IS NULL OR ${col} < ${b.hi}`
+            : b.hi == null ? `${col} >= ${b.lo}`
+              : `${col} >= ${b.lo} AND ${col} < ${b.hi}`;
+          return `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END) b${i}`;
+        });
+        const [r] = await this.pool!.query(`SELECT ${parts.join(', ')} FROM ${table}`);
+        const row = (r as any[])[0] || {};
+        return REVENUE_BUCKETS.map((_, i) => Number(row['b' + i]) || 0);
+      };
+      const shopCur = `COALESCE(storefront_currency, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')))`;
+      const shops = await countByBucket('sh_shop', `(revenue * ${rateCaseSql(shopCur)})`);
+      const products = await countByBucket('sh_product_list', 'revenue_month');
+      return {
+        buckets: REVENUE_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })),
+        shops, products,
+        total: { shops: shops.reduce((a, b) => a + b, 0), products: products.reduce((a, b) => a + b, 0) },
+      };
+    });
+  }
+
+  // Worker "Phân tích shop" 24h: tính lại (force) các báo cáo nặng của shop → ghi đè DB. Gọi từ @Cron hằng ngày + "chạy ngay".
+  async refreshAnalysis(): Promise<void> {
+    await this.reportRevenueBuckets(true).catch(() => {});
+    for (const p of ['day', 'week', 'month'] as const) await this.reportOrderBuckets('shops', p, true).catch(() => {});
   }
 
   private orderBucketCache = new Map<string, { t: number; data: OrderBucketReport }>();
   // Bảng xếp hạng SỐ ĐƠN theo kỳ (day/week/month): số lượng + trung bình đơn + tổng doanh thu (USD) mỗi bậc.
   // shop: quét sh_shop raw JSON (46k, DT×tỉ giá tiền tệ thật). sản phẩm: bảng phụ sh_product_sales (job productrev ghi dần). Cache 5'.
-  async reportOrderBuckets(type: 'shops' | 'products', period: 'day' | 'week' | 'month'): Promise<OrderBucketReport> {
+  async reportOrderBuckets(type: 'shops' | 'products', period: 'day' | 'week' | 'month', force = false): Promise<OrderBucketReport> {
     await this.ensureReady();
-    const cacheKey = `${type}:${period}`;
+    const compute = async (): Promise<OrderBucketReport> => {
+      let cntExpr: string, revExpr: string, table: string;
+      if (type === 'products') {
+        cntExpr = `${period}_count`; revExpr = `${period}_rev`; table = 'sh_product_sales';
+      } else {
+        const f = ORDER_FIELD[period] || ORDER_FIELD.month;
+        cntExpr = `CAST(JSON_EXTRACT(raw, '${f}') AS SIGNED)`;
+        revExpr = `(CAST(JSON_EXTRACT(raw, '${f.replace('sale_count', 'revenue')}') AS DECIMAL(30,2)) * ${rateCaseSql(SHOP_CUR_EXPR)})`;
+        table = 'sh_shop';
+      }
+      // Tính cnt + rev(USD) MỘT LẦN/dòng trong subquery (tránh đánh giá rateCase 36 lần/dòng).
+      const parts = ORDER_BUCKETS.map((b, i) => {
+        const cond = b.hi == null ? `cnt >= ${b.lo}` : `cnt >= ${b.lo} AND cnt < ${b.hi}`;
+        return `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END) c${i}, SUM(CASE WHEN ${cond} THEN cnt ELSE 0 END) s${i}, SUM(CASE WHEN ${cond} THEN rev ELSE 0 END) r${i}`;
+      });
+      const [r] = await this.pool!.query(`SELECT ${parts.join(', ')} FROM (SELECT ${cntExpr} AS cnt, ${revExpr} AS rev FROM ${table}) t`);
+      const row = (r as any[])[0] || {};
+      const counts = ORDER_BUCKETS.map((_, i) => Number(row['c' + i]) || 0);
+      const avgOrders = ORDER_BUCKETS.map((_, i) => { const c = Number(row['c' + i]) || 0; return c ? Math.round((Number(row['s' + i]) || 0) / c) : 0; });
+      const totalRev = ORDER_BUCKETS.map((_, i) => Math.round(Number(row['r' + i]) || 0));
+      return { buckets: ORDER_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })), counts, avgOrders, totalRev, total: counts.reduce((a, b) => a + b, 0) };
+    };
+    // Shop = nặng (quét JSON 46k) → cache DB 24h + worker refresh. Sản phẩm = bảng phụ nhẹ → cache RAM 5'.
+    if (type === 'shops') return this.dbReportCache(`analysis:orders:shops:${period}`, 24 * 3600000, force, compute);
+    const cacheKey = `products:${period}`;
     const hit = this.orderBucketCache.get(cacheKey);
     if (hit && Date.now() - hit.t < 5 * 60000) return hit.data;
-    let cntExpr: string, revExpr: string, table: string;
-    if (type === 'products') {
-      cntExpr = `${period}_count`; revExpr = `${period}_rev`; table = 'sh_product_sales';
-    } else {
-      const f = ORDER_FIELD[period] || ORDER_FIELD.month;
-      cntExpr = `CAST(JSON_EXTRACT(raw, '${f}') AS SIGNED)`;
-      revExpr = `(CAST(JSON_EXTRACT(raw, '${f.replace('sale_count', 'revenue')}') AS DECIMAL(30,2)) * ${rateCaseSql(SHOP_CUR_EXPR)})`;
-      table = 'sh_shop';
-    }
-    // Tính cnt + rev(USD) MỘT LẦN/dòng trong subquery (tránh đánh giá rateCase 36 lần/dòng → nhanh hơn nhiều).
-    const parts = ORDER_BUCKETS.map((b, i) => {
-      const cond = b.hi == null ? `cnt >= ${b.lo}` : `cnt >= ${b.lo} AND cnt < ${b.hi}`;
-      return `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END) c${i}, SUM(CASE WHEN ${cond} THEN cnt ELSE 0 END) s${i}, SUM(CASE WHEN ${cond} THEN rev ELSE 0 END) r${i}`;
-    });
-    const [r] = await this.pool!.query(`SELECT ${parts.join(', ')} FROM (SELECT ${cntExpr} AS cnt, ${revExpr} AS rev FROM ${table}) t`);
-    const row = (r as any[])[0] || {};
-    const counts = ORDER_BUCKETS.map((_, i) => Number(row['c' + i]) || 0);
-    const avgOrders = ORDER_BUCKETS.map((_, i) => { const c = Number(row['c' + i]) || 0; return c ? Math.round((Number(row['s' + i]) || 0) / c) : 0; });
-    const totalRev = ORDER_BUCKETS.map((_, i) => Math.round(Number(row['r' + i]) || 0));
-    const data: OrderBucketReport = { buckets: ORDER_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })), counts, avgOrders, totalRev, total: counts.reduce((a, b) => a + b, 0) };
+    const data = await compute();
     this.orderBucketCache.set(cacheKey, { t: Date.now(), data });
     return data;
   }
@@ -1278,7 +1295,7 @@ export class ShMysql implements OnModuleInit {
       `UPDATE sh_shop SET revenue = CAST(JSON_EXTRACT(raw, '$.month_current_period_revenue') AS DECIMAL(20,2))
         WHERE JSON_EXTRACT(raw, '$.month_current_period_revenue') IS NOT NULL`,
     );
-    this.bucketCache = null;
+    await this.refreshAnalysis().catch(() => {}); // revenue shop đổi → tính lại + ghi đè cache báo cáo
     return Number((r as any).affectedRows) || 0;
   }
 

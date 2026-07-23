@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { shReport, shReportTopShops, shReportTopProducts, shLocalFilters, ShReport, ShTopShops, ShTopProducts } from '../api';
+import { usePathname, useRouter } from 'next/navigation';
+import { shReport, shReportTopShops, shReportTopProducts, shLocalFilters, shAnalyzeNow, ShReport, ShTopShops, ShTopProducts } from '../api';
 import { CategoryPicker } from './CategoryPicker';
 import { RevenueBucketReport } from './RevenueBucketReport';
-import { OrderRankReport } from './OrderRankReport';
+import { OrderRankReport, OrderRankList, parseOrderPath, orderUrl } from './OrderRankReport';
 
 const money = (n: number) => '$' + Math.round(n).toLocaleString();
 const num = (n: number) => Number(n || 0).toLocaleString();
@@ -63,15 +64,35 @@ function ProductTop({ title, rows }: { title: string; rows: any[] }) {
 }
 
 export function ReportPanel() {
-  const [tab, setTab] = useState<'overview' | 'buckets' | 'orders'>('overview');
+  const pathname = usePathname();
+  const router = useRouter();
+  const ord = parseOrderPath(pathname); // URL có /Shop|Product/day.. → mở thẳng tab "Xếp hạng số đơn"
+  const [tab, setTab] = useState<'overview' | 'buckets' | 'orders'>(ord ? 'orders' : 'overview');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeMsg, setAnalyzeMsg] = useState('');
+  useEffect(() => { if (ord) setTab('orders'); }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Danh sách đầy đủ (mở tab mới): /reportlocaldb/Shop/day/list — bỏ khung tab, hiện list toàn màn.
+  if (ord?.isList) return <div style={{ marginTop: 8 }}><OrderRankList kind={ord.kind} period={ord.period} /></div>;
+
+  const analyzeNow = async () => {
+    setAnalyzing(true); setAnalyzeMsg('');
+    try { await shAnalyzeNow(); setAnalyzeMsg('Đang phân tích nền (~1–2 phút). Tải lại trang sau đó để xem số mới.'); }
+    catch (e) { setAnalyzeMsg('Lỗi: ' + (e as Error).message); }
+    setAnalyzing(false);
+  };
   return (
     <div style={{ marginTop: 8 }}>
-      <div className="sources">
+      <div className="sources" style={{ alignItems: 'center' }}>
         <button className={`srcbtn ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Tổng quan</button>
         <button className={`srcbtn ${tab === 'buckets' ? 'active' : ''}`} onClick={() => setTab('buckets')}>Phân bố doanh thu</button>
-        <button className={`srcbtn ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>Xếp hạng số đơn</button>
+        <button className={`srcbtn ${tab === 'orders' ? 'active' : ''}`} onClick={() => { setTab('orders'); router.push(orderUrl(ord?.kind ?? 'shops', ord?.period ?? 'month')); }}>Xếp hạng số đơn</button>
+        <button className="srcbtn" style={{ marginLeft: 'auto' }} disabled={analyzing} onClick={analyzeNow} title="Tính lại báo cáo nặng (phân bố + xếp hạng shop) rồi ghi đè DB. Worker tự chạy 24h/lần.">
+          {analyzing ? '⏳ Đang gửi…' : '🔄 Phân tích lại'}
+        </button>
       </div>
-      {tab === 'overview' ? <OverviewReport /> : tab === 'buckets' ? <RevenueBucketReport /> : <OrderRankReport />}
+      {analyzeMsg && <div className="hint" style={{ margin: '6px 0' }}>{analyzeMsg}</div>}
+      {tab === 'overview' ? <OverviewReport /> : tab === 'buckets' ? <RevenueBucketReport /> : <OrderRankReport kind={ord?.kind ?? 'shops'} period={ord?.period ?? 'month'} />}
     </div>
   );
 }

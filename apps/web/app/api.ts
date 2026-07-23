@@ -563,6 +563,10 @@ export async function shReportBuckets(): Promise<ShBucketReport> {
 export async function shReconcileShopRevenue(): Promise<{ ok: boolean; updated: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/report/reconcile-shop-revenue`, { method: 'POST' }));
 }
+// Chạy worker "Phân tích shop" ngay (nền) — báo cáo nặng tính lại + ghi đè DB.
+export async function shAnalyzeNow(): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/report/analyze-now`, { method: 'POST' }));
+}
 export interface ShOrderBucketReport { buckets: { key: string; lo: number; hi: number | null }[]; counts: number[]; avgOrders: number[]; totalRev: number[]; total: number }
 export async function shReportOrderBuckets(type: 'shops' | 'products', period: 'day' | 'week' | 'month'): Promise<ShOrderBucketReport> {
   return jsonOrThrow(await fetch(`${API}/api/sh/report/order-buckets?type=${type}&period=${period}`));

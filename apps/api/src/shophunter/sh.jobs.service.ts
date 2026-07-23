@@ -359,4 +359,18 @@ export class ShJobsService implements OnModuleInit {
     const n = await this.mysql.pruneJobLog(Date.now() - 24 * 3600000).catch(() => 0);
     if (n) this.logger.log(`Prune sh_job_log: xoá ${n} dòng >24h`);
   }
+
+  // Worker "Phân tích shop" — tổng hợp báo cáo nặng (phân bố bậc + xếp hạng số đơn shop) 1 lần/ngày, ghi đè DB → báo cáo luôn nhanh.
+  @Cron('0 2 * * *')
+  async refreshAnalysisCron(): Promise<void> {
+    const t0 = Date.now();
+    await this.mysql.refreshAnalysis().catch((e) => this.logger.warn('refreshAnalysis lỗi: ' + (e as Error).message));
+    this.logger.log(`Phân tích shop (24h) xong sau ${Math.round((Date.now() - t0) / 1000)}s`);
+  }
+
+  // Chạy phân tích NGAY (từ web) — bỏ qua lịch, tính lại + ghi đè DB.
+  async runAnalysisNow(): Promise<{ ok: boolean }> {
+    void this.mysql.refreshAnalysis().catch(() => {});
+    return { ok: true };
+  }
 }

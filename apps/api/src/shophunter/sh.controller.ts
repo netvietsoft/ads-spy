@@ -446,6 +446,12 @@ export class ShController {
     return { ok: true, updated: n };
   }
 
+  // Chạy "Phân tích shop" NGAY (nền) — tính lại báo cáo nặng + ghi đè DB, khỏi chờ lịch 24h.
+  @Post('sh/report/analyze-now')
+  analyzeNow() {
+    return this.jobsSvc.runAnalysisNow();
+  }
+
   @Get('sh/local/filters')
   localFilters(@Query('type') type: string) {
     return this.svc.localFilters(type === 'products' ? 'products' : 'shops');
