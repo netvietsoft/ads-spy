@@ -29,10 +29,10 @@ export class SearchController {
     return this.search.search(domain);
   }
 
-  // Proxy cho Google (IP server hay bị Google chặn /sorry)
+  // Proxy cho Google — dùng CHUNG danh sách sh_proxy (/settings), quay vòng.
   @Get('settings/proxy')
   getProxy() {
-    return this.google.getProxyStatus();
+    return this.google.proxyStatusFresh();
   }
 
   @Post('settings/proxy')

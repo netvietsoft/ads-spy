@@ -13,6 +13,7 @@ import {
 } from './response.parser';
 import { CreativeDetail, SearchCreativesResult, SuggestResult } from './google.types';
 import { PrismaService } from '../prisma.service';
+import { ShMysql } from '../shophunter/sh.mysql';
 
 const BASE = 'https://adstransparency.google.com/anji/_/rpc';
 const RETRY_DELAYS_MS = [900, 2500]; // backoff khi bị throttle (2 lần thử lại)
@@ -59,22 +60,26 @@ export class GoogleClient {
   private proxies: string[] = []; // danh sách proxy (quay vòng)
   private dispatchers: any[] = [];
   private idx = 0;
-  private loaded = false;
+  private loadedAt = 0; // mốc nạp proxy gần nhất (nạp lại theo TTL để bắt proxy mới thêm ở /settings)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly mysql: ShMysql) {}
 
-  // Nạp danh sách proxy: DB (đặt từ web) → fallback env.
+  // Nạp danh sách proxy DÙNG CHUNG từ sh_proxy (/settings) để quay vòng — fallback setting google_proxy/env cũ. Nạp lại mỗi 2'.
   private async ensureProxy(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
+    if (this.loadedAt && Date.now() - this.loadedAt < 120000) return;
+    this.loadedAt = Date.now();
     let raw = '';
     try {
-      const s = await this.prisma.fbSetting.findUnique({ where: { key: PROXY_KEY } });
-      if (s?.value) raw = s.value;
-    } catch {
-      /* chưa có DB */
+      const rows = await this.mysql.listProxiesFull(true).catch(() => []);
+      raw = (rows as any[])
+        .filter((r) => r && r.host && r.port)
+        .map((r) => { const t = (r.type || 'http').toLowerCase(); const auth = r.username ? `${r.username}:${r.password || ''}@` : ''; return `${t}://${auth}${r.host}:${r.port}`; })
+        .join('\n');
+    } catch { /* MySQL chưa sẵn sàng */ }
+    if (!raw) {
+      try { const s = await this.prisma.fbSetting.findUnique({ where: { key: PROXY_KEY } }); if (s?.value) raw = s.value; } catch { /* chưa có DB */ }
+      if (!raw) raw = process.env.GOOGLE_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy || '';
     }
-    if (!raw) raw = process.env.GOOGLE_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy || '';
     await this.applyProxies(raw);
   }
 
@@ -103,13 +108,19 @@ export class GoogleClient {
     await this.prisma.fbSetting
       .upsert({ where: { key: PROXY_KEY }, create: { key: PROXY_KEY, value: raw || '' }, update: { value: raw || '' } })
       .catch(() => undefined);
-    this.loaded = true;
+    this.loadedAt = Date.now();
     await this.applyProxies(raw);
     return this.getProxyStatus();
   }
 
   getProxyStatus(): { count: number; proxies: string[] } {
     return { count: this.proxies.length, proxies: this.proxies.map(maskProxy) };
+  }
+
+  // Nạp proxy (sh_proxy) rồi trả trạng thái — cho UI hiển thị đúng số proxy dùng chung từ /settings.
+  async proxyStatusFresh(): Promise<{ count: number; proxies: string[] }> {
+    await this.ensureProxy();
+    return this.getProxyStatus();
   }
 
   // Test TỪNG proxy: thử tra nike.com qua mỗi proxy, trả ok/thông báo.

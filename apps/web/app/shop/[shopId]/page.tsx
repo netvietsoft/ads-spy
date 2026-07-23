@@ -9,6 +9,7 @@ import { SyncControls } from '../../components/SyncControls';
 import { ShLogo } from '../../components/ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
+const GREEN = { color: '#159b62', fontWeight: 700 } as const; // tiền: xanh đậm
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 const cls = (n: any) => ((n ?? 0) >= 0 ? 'g-up' : 'g-down');
 
@@ -42,7 +43,7 @@ function TopProduct({ shopId, p }: { shopId: string; p: any }) {
             ? <a href={`/product/${shopId}/${p.product_id}`} target="_blank" rel="noreferrer" className="dl">{p.product_title || '(sp)'}</a>
             : (p.product_title || '(sp)')}
         </div>
-        <b>{money(toUsd(p.week_current_period_revenue ?? p.revenue, p.shop_currency))}</b>
+        <b style={GREEN}>{money(toUsd(p.week_current_period_revenue ?? p.revenue, p.shop_currency))}</b>
       </div>
     </div>
   );
@@ -120,7 +121,7 @@ export default function ShopDetailPage() {
                 <table className="localtbl">
                   <thead><tr><th>Ngày</th><th>Doanh thu</th><th>Đơn</th></tr></thead>
                   <tbody>{seriesUsd.slice().reverse().map((p) => (
-                    <tr key={p.date_str}><td style={{ whiteSpace: 'nowrap' }}>{p.date_str}</td><td>{money(p.revenue)}</td><td>{p.sale_count ?? '—'}</td></tr>
+                    <tr key={p.date_str}><td style={{ whiteSpace: 'nowrap' }}>{p.date_str}</td><td style={GREEN}>{money(p.revenue)}</td><td>{p.sale_count ?? '—'}</td></tr>
                   ))}</tbody>
                 </table>
               </div>
@@ -151,7 +152,7 @@ export default function ShopDetailPage() {
                 return (
                   <li key={x.shop_id}>
                     {site ? <a href={site} target="_blank" rel="noreferrer" className="dl">{x.shop_title || x.url}</a> : (x.shop_title || x.url)}
-                    {' — Day '}{money(toUsd(x.day_current_period_revenue, x.currency))}
+                    {' — Day '}<b style={GREEN}>{money(toUsd(x.day_current_period_revenue, x.currency))}</b>
                     {x.shop_id && <a href={`/shop/${x.shop_id}`} target="_blank" rel="noreferrer" className="dl" style={{ marginLeft: 8 }}>xem chi tiết ↗</a>}
                   </li>
                 );

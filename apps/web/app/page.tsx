@@ -323,9 +323,9 @@ export default function Home() {
       <div className="fbauth" style={{ marginTop: 12 }}>
         <span className="authstatus">
           {proxyStatus && proxyStatus.count > 0 ? (
-            <span className="pill ok">🛡 {proxyStatus.count} proxy (quay vòng)</span>
+            <span className="pill ok">🛡 {proxyStatus.count} proxy từ Cài đặt (quay vòng)</span>
           ) : (
-            <span className="pill off">🌐 Google: IP trực tiếp (server có thể bị chặn)</span>
+            <span className="pill off">⚠️ Chưa có proxy — thêm ở <a href="/settings" style={{ color: 'inherit', textDecoration: 'underline' }}>Cài đặt → Proxy</a></span>
           )}
         </span>
         <button className="ghost" type="button" onClick={() => setShowProxy((v) => !v)}>
@@ -335,9 +335,9 @@ export default function Home() {
       {showProxy && (
         <div className="fbauth-box">
           <p className="hint" style={{ marginTop: 0 }}>
-            Nhập <b>nhiều proxy, mỗi dòng 1 cái</b> — hệ thống <b>quay vòng</b> và tự đổi proxy khi 1 cái bị chặn.
-            Hỗ trợ <code>http</code>/<code>socks5</code>/<code>socks4</code>: <code>socks5://host:port</code>,{' '}
-            <code>http://user:pass@host:port</code>. Để trống + Lưu = bỏ hết (IP trực tiếp).
+            Google dùng CHUNG danh sách proxy ở <a href="/settings" style={{ textDecoration: 'underline' }}>Cài đặt → Proxy</a> (quay vòng, tự đổi khi bị chặn). Bấm <b>Kiểm tra</b> để thử proxy với Google.
+            Ô dưới chỉ là <b>dự phòng riêng cho Google</b> (dùng khi Cài đặt chưa có proxy): mỗi dòng 1 cái, hỗ trợ{' '}
+            <code>http://user:pass@host:port</code> / <code>socks5://host:port</code>.
           </p>
           <textarea
             className="fbauth-ta"

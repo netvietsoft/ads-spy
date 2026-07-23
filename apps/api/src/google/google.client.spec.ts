@@ -1,8 +1,9 @@
 import { GoogleClient, GoogleBlockedError } from './google.client';
 
-// Prisma giả (không có proxy trong DB) để khởi tạo client trong test.
+// Prisma + ShMysql giả (không có proxy) để khởi tạo client trong test.
 const fakePrisma = { fbSetting: { findUnique: async () => null } } as any;
-const newClient = () => new GoogleClient(fakePrisma);
+const fakeMysql = { listProxiesFull: async () => [] } as any;
+const newClient = () => new GoogleClient(fakePrisma, fakeMysql);
 
 function mockFetchOnce(jsonText: string) {
   const fn = jest.fn().mockResolvedValue({
