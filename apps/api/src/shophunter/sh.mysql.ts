@@ -3,6 +3,13 @@ import mysql from 'mysql2/promise';
 import { ShBlockedError } from './sh.client';
 import { PrismaService } from '../prisma.service';
 import { rawToListRow, listRowTuple, LIST_COLS, ListRow } from './sh.product-list';
+import { CURRENCY_USD } from './sh.currency';
+
+// Biểu thức SQL nhân doanh thu (tiền tệ gốc) × tỉ giá → USD, theo mã tiền tệ ở curExpr. Số trong CASE là hằng code → an toàn.
+function rateCaseSql(curExpr: string): string {
+  const cases = Object.entries(CURRENCY_USD).filter(([k]) => k !== 'USD').map(([k, v]) => `WHEN '${k}' THEN ${v}`).join(' ');
+  return `CASE UPPER(${curExpr}) ${cases} ELSE 1 END`;
+}
 
 type Table = 'sh_shop' | 'sh_product';
 
@@ -10,10 +17,13 @@ type Table = 'sh_shop' | 'sh_product';
 const LAST_SNAPSHOT_SETTING_KEY = 'shophunter_last_snapshot_imported';
 
 const numExpr = (path: string) => `CAST(JSON_EXTRACT(raw, '${path}') AS DECIMAL(30,6))`;
+// Doanh thu shop quy đổi USD để SẮP XẾP đúng (dữ liệu lưu theo tiền tệ gốc, trộn nhiều loại). Tiền tệ thật = storefront_currency, fallback raw.currency.
+const SHOP_CUR_EXPR = `COALESCE(storefront_currency, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')))`;
+const usdRevExpr = (path: string) => `(${numExpr(path)} * ${rateCaseSql(SHOP_CUR_EXPR)})`;
 export const SHOP_LOCAL_SORTS: Record<string, string> = {
-  revenue_day: numExpr('$.day_current_period_revenue'),
-  revenue_week: numExpr('$.week_current_period_revenue'),
-  revenue_month: numExpr('$.month_current_period_revenue'),
+  revenue_day: usdRevExpr('$.day_current_period_revenue'),
+  revenue_week: usdRevExpr('$.week_current_period_revenue'),
+  revenue_month: usdRevExpr('$.month_current_period_revenue'),
   growth_day: numExpr('$.day_revenue_percent_change'),
   growth_week: numExpr('$.week_revenue_percent_change'),
   growth_month: numExpr('$.month_revenue_percent_change'),
@@ -894,8 +904,10 @@ export class ShMysql implements OnModuleInit {
     if (o.q) { where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)"); params.push('%' + o.q + '%', '%' + o.q + '%'); } // khớp cả tên lẫn domain
     if (o.aff) { where.push("affiliate_status IN ('yes','app')"); } // shop có affiliate (link công khai hoặc app đã cài)
     if (o.fav) { where.push('shop_id IN (SELECT shop_id FROM sh_fav_shop)'); } // chỉ shop đã thả tim
-    if (o.revMin != null) { where.push('revenue >= ?'); params.push(o.revMin); } // lọc theo bậc doanh thu tháng (cột revenue có index)
-    if (o.revMax != null) { where.push('revenue < ?'); params.push(o.revMax); }
+    // Lọc bậc doanh thu theo USD (khớp báo cáo bậc): revenue(gốc) × tỉ giá tiền tệ thật.
+    const revUsd = `(revenue * ${rateCaseSql(SHOP_CUR_EXPR)})`;
+    if (o.revMin != null) { where.push(`${revUsd} >= ?`); params.push(o.revMin); }
+    if (o.revMax != null) { where.push(`${revUsd} < ?`); params.push(o.revMax); }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
@@ -1109,7 +1121,10 @@ export class ShMysql implements OnModuleInit {
       const row = (r as any[])[0] || {};
       return REVENUE_BUCKETS.map((_, i) => Number(row['b' + i]) || 0);
     };
-    const shops = await countByBucket('sh_shop', 'revenue');
+    // Shop: quy đổi USD tại chỗ (tiền tệ thật = storefront_currency, fallback currency trong raw). Sản phẩm: revenue_month
+    // sẽ được job productrev ghi USD dần (gradual) → tạm tính trên giá trị đang có.
+    const shopCur = `COALESCE(storefront_currency, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')))`;
+    const shops = await countByBucket('sh_shop', `(revenue * ${rateCaseSql(shopCur)})`);
     const products = await countByBucket('sh_product_list', 'revenue_month');
     const data: RevenueBucketReport = {
       buckets: REVENUE_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })),
