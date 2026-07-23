@@ -926,7 +926,8 @@ export class ShMysql implements OnModuleInit {
               JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.shop_title')) AS shop_title,
               JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.shop_favicon_internal')) AS shop_favicon_internal,
               JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.shop_favicon_external')) AS shop_favicon_external,
-              JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.product_handle')) AS product_handle
+              JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.product_handle')) AS product_handle,
+              JSON_UNQUOTE(JSON_EXTRACT(p.raw, '$.shop_currency')) AS shop_currency
        FROM (SELECT product_id, shop_id, name, thumbnail, price, revenue_day, revenue_week, revenue_month,
                     shop_country, source, updated_at
              FROM sh_product_list ${whereSql} ${orderBy} LIMIT ? OFFSET ?) lean

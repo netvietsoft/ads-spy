@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { shLocalShops, shLocalProducts, shLocalFilters, shLocalSuggest, ShLocalResult, shAssetProxy, shShopSite, shProductUrl, shFavShops, shLocalExportUrl } from '../api';
+import { toUsd } from '../currency';
 import { ShLogo } from './ShLogo';
 import { CategoryPicker } from './CategoryPicker';
 
@@ -246,9 +247,9 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
                     : s._affiliate === 'blocked' ? <span style={{ opacity: 0.35 }} title="Shop chặn/không truy cập được">⃠</span>
                     : ''}</td>
                   <td className="wrap" style={{ maxWidth: '22ch', fontSize: 12, opacity: 0.85 }} title={s._up_category_path || ''}>{s._up_category_path ? shortCat(s._up_category_path) : (s._up_category ? (catNames[s._up_category] || s._up_category) : '—')}</td>
-                  <td>{money(s.day_current_period_revenue)}</td>
-                  <td>{money(s.week_current_period_revenue)}</td>
-                  <td>{money(s.month_current_period_revenue)}</td>
+                  <td>{money(toUsd(s.day_current_period_revenue, s.currency))}</td>
+                  <td>{money(toUsd(s.week_current_period_revenue, s.currency))}</td>
+                  <td>{money(toUsd(s.month_current_period_revenue, s.currency))}</td>
                   <td className={(s.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.month_revenue_percent_change)}</td>
                   <td>{s.fb_followers ?? '—'}</td>
                   <td>{s.active_ad_count ?? 0}</td>
@@ -279,9 +280,9 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
                   <td>{p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={52} height={52} style={{ borderRadius: 8, objectFit: 'cover', display: 'block' }} loading="lazy" /> : null}</td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
                   <td>{money(p.price)}</td>
-                  <td>{money(p.day_current_period_revenue)}</td>
-                  <td>{money(p.week_current_period_revenue)}</td>
-                  <td>{money(p.month_current_period_revenue)}</td>
+                  <td>{money(toUsd(p.day_current_period_revenue, p.shop_currency))}</td>
+                  <td>{money(toUsd(p.week_current_period_revenue, p.shop_currency))}</td>
+                  <td>{money(toUsd(p.month_current_period_revenue, p.shop_currency))}</td>
                   <td className="wrap">
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: '30ch' }}>
                       <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={20} />

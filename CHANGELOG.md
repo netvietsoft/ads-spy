@@ -4,6 +4,14 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-23 — Quy đổi doanh thu về USD khi hiển thị (ShopHunter trả tiền tệ gốc)
+
+- **Phát hiện:** ShopHunter trả doanh thu theo **tiền tệ GỐC của shop** (`currency`/`shop_currency`: INR, JPY, EUR…) nhưng `price` theo USD; app gắn nhãn "$" cho cả doanh thu → số phóng đại theo tỉ giá (vd shop IN: `$377.954` thực ra ₹377.954 ≈ $4.553; shop JP `rev/đơn = 3000 JPY = giá $20.86 × 143.8`).
+- **Sửa:** thêm `apps/web/app/currency.ts` (bảng tỉ giá xấp xỉ + `toUsd(amount, currency)`), quy đổi doanh thu → USD **lúc hiển thị** ở: trang chi tiết sản phẩm/shop (số + biểu đồ + bảng ngày + sp tương tự), card tìm kiếm (shop dùng `currency`, sp dùng `shop_currency`), danh sách Local DB (shop + sản phẩm). `price` giữ nguyên USD. Query `queryLocalProducts` lộ thêm `shop_currency`. Giá trị lưu trong DB giữ nguyên tiền tệ gốc → không nhân đôi.
+- **Còn lại (làm sau):** báo cáo phân bố bậc + lọc theo khoảng doanh thu vẫn tính trên cột `revenue`/`revenue_month` LOCAL (trộn tiền tệ) → cần chuẩn hoá USD ở tầng lưu/aggregation (đã bàn: shop reconcile, sản phẩm chuẩn dần). Theme chi tiết page mặc định Sáng.
+
+---
+
 ## 2026-07-23 — Theme sáng mặc định · card DT tháng · job importenrich · sửa lệch báo cáo bậc
 
 ### Giao diện

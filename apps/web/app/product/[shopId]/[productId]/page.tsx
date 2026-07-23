@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ShDetail, shProductDetail, shProductRevenueDaily, shAssetProxy, shShopSite, shProductUrl, shSyncProductRevenue } from '../../../api';
+import { toUsd } from '../../../currency';
 import { ShBarChart } from '../../../components/ShBarChart';
 import { SyncControls } from '../../../components/SyncControls';
 import { ShLogo } from '../../../components/ShLogo';
@@ -18,7 +19,7 @@ export default function ProductDetailPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = (typeof localStorage !== 'undefined' && (localStorage.getItem('theme') as 'dark' | 'light')) || 'dark';
+    const saved = (typeof localStorage !== 'undefined' && (localStorage.getItem('theme') as 'dark' | 'light')) || 'light';
     document.documentElement.dataset.theme = saved;
   }, []);
   useEffect(() => {
@@ -33,7 +34,9 @@ export default function ProductDetailPage() {
   const p = d?.detail;
   const site = shShopSite(p);
   const purl = shProductUrl(p);
+  const cur = p?.shop_currency; // doanh thu ShopHunter theo tiền tệ shop → quy đổi USD khi hiển thị
   const series = daily.length ? daily : (d?.revenueChart || []);
+  const seriesUsd = series.map((x) => ({ ...x, revenue: toUsd(x.revenue, cur) as number | null }));
 
   return (
     <div style={{ maxWidth: 880, margin: '0 auto', padding: '22px 18px' }}>
@@ -65,9 +68,9 @@ export default function ProductDetailPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 16, margin: '12px 0 4px', flexWrap: 'wrap' }}>
-            <span>Day <b>{money(p.day_current_period_revenue)}</b></span>
-            <span>Week <b>{money(p.week_current_period_revenue)}</b></span>
-            <span>Month <b>{money(p.month_current_period_revenue)}</b></span>
+            <span>Day <b>{money(toUsd(p.day_current_period_revenue, cur))}</b></span>
+            <span>Week <b>{money(toUsd(p.week_current_period_revenue, cur))}</b></span>
+            <span>Month <b>{money(toUsd(p.month_current_period_revenue, cur))}</b></span>
             <span>Ads <b>{p.product_active_ad_count ?? 0}</b>{p.ads_archive_page_id ? <a className="dl" href={`https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&view_all_page_id=${p.ads_archive_page_id}`} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ ads</a> : null}</span>
           </div>
           <div style={{ display: 'flex', gap: 16, margin: '0 0 12px', flexWrap: 'wrap', fontSize: 13, opacity: 0.9 }}>
@@ -79,7 +82,7 @@ export default function ProductDetailPage() {
             <span>Δ Tháng <b className={(p.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(p.month_revenue_percent_change)}</b></span>
           </div>
           <h4>Biểu đồ doanh thu {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
-          <ShBarChart points={series} headerRight={
+          <ShBarChart points={seriesUsd} headerRight={
             <SyncControls series={series}
               onSync={async () => { const j = await shSyncProductRevenue(shopId, productId); setDaily(await shProductRevenueDaily(shopId, productId).catch(() => daily)); return j.result; }} />
           } />
@@ -89,7 +92,7 @@ export default function ProductDetailPage() {
               <div style={{ maxHeight: 240, overflow: 'auto', marginTop: 6 }}>
                 <table className="localtbl">
                   <thead><tr><th>Ngày</th><th>Doanh thu</th><th>Đơn</th></tr></thead>
-                  <tbody>{series.slice().reverse().map((x) => (
+                  <tbody>{seriesUsd.slice().reverse().map((x) => (
                     <tr key={x.date_str}><td style={{ whiteSpace: 'nowrap' }}>{x.date_str}</td><td>{money(x.revenue)}</td><td>{x.sale_count ?? '—'}</td></tr>
                   ))}</tbody>
                 </table>
@@ -108,7 +111,7 @@ export default function ProductDetailPage() {
                       {x.product_image_external ? <img src={shAssetProxy(x.product_image_external)} alt="" width={64} height={64} style={{ borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} loading="lazy" /> : <div style={{ width: 64, height: 64, flex: '0 0 auto', borderRadius: 8, background: 'var(--panel-2)' }} />}
                       <div style={{ minWidth: 0 }}>
                         <a href={`/product/${x.shop_id}/${x.product_id}`} target="_blank" rel="noreferrer" className="dl" style={{ fontWeight: 600, fontSize: 13, display: 'block' }}>{x.product_title}</a>
-                        <div className="fbplat" style={{ marginTop: 2 }}>{money(x.price)}{typeof x.day_current_period_revenue === 'number' ? ` · Day ${money(x.day_current_period_revenue)}` : ''}</div>
+                        <div className="fbplat" style={{ marginTop: 2 }}>{money(x.price)}{typeof x.day_current_period_revenue === 'number' ? ` · Day ${money(toUsd(x.day_current_period_revenue, x.shop_currency))}` : ''}</div>
                         <div style={{ display: 'flex', gap: 10, marginTop: 5, flexWrap: 'wrap' }}>
                           {sp && <a className="dl" href={sp} target="_blank" rel="noreferrer">↗ Sản phẩm</a>}
                           {ss && <a className="dl" href={ss} target="_blank" rel="noreferrer" style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏪 {x.shop_url}</a>}

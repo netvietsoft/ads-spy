@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ShExplore, ShSort, shExplore, shSorts, shAssetProxy, shShopSite, shProductUrl,
 } from '../api';
+import { toUsd } from '../currency';
 import { LazyGrid } from './LazyGrid';
 import { ShShopModal } from './ShShopModal';
 import { ShFilters } from './ShFilters';
@@ -56,11 +57,11 @@ function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
       </div>
       <div className="fbbody">{s.url}</div>
       <div className="fbplat">
-        <b>Day</b> <b className="rev">{money(s.day_current_period_revenue)}</b>{' '}
+        <b>Day</b> <b className="rev">{money(toUsd(s.day_current_period_revenue, s.currency))}</b>{' '}
         <b style={{ color: (s.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(s.day_revenue_percent_change)}</b>
-        {' · '}<b>Week</b> <b className="rev">{money(s.week_current_period_revenue)}</b>
+        {' · '}<b>Week</b> <b className="rev">{money(toUsd(s.week_current_period_revenue, s.currency))}</b>
       </div>
-      <div className="fbplat" style={{ textAlign: 'left' }}><b>Month</b> <b className="rev">{money(s.month_current_period_revenue)}</b></div>
+      <div className="fbplat" style={{ textAlign: 'left' }}><b>Month</b> <b className="rev">{money(toUsd(s.month_current_period_revenue, s.currency))}</b></div>
       <div className="fbplat">Ads {s.active_ad_count ?? 0} · SKU {s.sku_count ?? 0} · {s.country} · {s.currency}</div>
       <div className="fbfoot">
         <a className="dl" style={{ marginLeft: 'auto' }} href={`https://${s.url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Mở store</a>
@@ -83,11 +84,11 @@ function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
       </div>
       {p.shop_url ? <div className="fbbody" style={{ opacity: 0.6, fontSize: 11 }}>{p.shop_url}</div> : null}
       <div className="fbplat">
-        <b>Day</b> <b className="rev">{money(p.day_current_period_revenue)}</b>{' '}
+        <b>Day</b> <b className="rev">{money(toUsd(p.day_current_period_revenue, p.shop_currency))}</b>{' '}
         <b style={{ color: (p.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(p.day_revenue_percent_change)}</b>
-        {' · '}<b>Week</b> <b className="rev">{money(p.week_current_period_revenue)}</b>
+        {' · '}<b>Week</b> <b className="rev">{money(toUsd(p.week_current_period_revenue, p.shop_currency))}</b>
       </div>
-      <div className="fbplat" style={{ textAlign: 'left' }}><b>Month</b> <b className="rev">{money(p.month_current_period_revenue)}</b>{' · '}Ads {p.product_active_ad_count ?? 0}</div>
+      <div className="fbplat" style={{ textAlign: 'left' }}><b>Month</b> <b className="rev">{money(toUsd(p.month_current_period_revenue, p.shop_currency))}</b>{' · '}Ads {p.product_active_ad_count ?? 0}</div>
       <div className="fbfoot">
         {purl && <a className="dl" href={purl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Xem sản phẩm</a>}
         {site && <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Shop</a>}

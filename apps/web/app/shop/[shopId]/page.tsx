@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ShDetail, shShopDetail, shShopRevenueDaily, shProductDetail, shAssetProxy, shShopSite, shFavShops, shSetFavShop, shSyncShopRevenue, shEnrichShopProducts } from '../../api';
+import { toUsd } from '../../currency';
 import { ShChart } from '../../components/ShChart';
 import { ShBarChart } from '../../components/ShBarChart';
 import { SyncControls } from '../../components/SyncControls';
@@ -29,7 +30,7 @@ function TopProduct({ shopId, p }: { shopId: string; p: any }) {
             ? <a href={`/product/${shopId}/${p.product_id}`} target="_blank" rel="noreferrer" className="dl">{p.product_title || '(sp)'}</a>
             : (p.product_title || '(sp)')}
         </div>
-        <b>{money(p.week_current_period_revenue ?? p.revenue)}</b>
+        <b>{money(toUsd(p.week_current_period_revenue ?? p.revenue, p.shop_currency))}</b>
       </div>
     </div>
   );
@@ -44,7 +45,7 @@ export default function ShopDetailPage() {
   const [fav, setFav] = useState(false);
 
   useEffect(() => {
-    const saved = (typeof localStorage !== 'undefined' && (localStorage.getItem('theme') as 'dark' | 'light')) || 'dark';
+    const saved = (typeof localStorage !== 'undefined' && (localStorage.getItem('theme') as 'dark' | 'light')) || 'light';
     document.documentElement.dataset.theme = saved;
   }, []);
   useEffect(() => { if (shopId) shShopDetail(shopId).then(setD).catch((e) => setErr((e as Error).message)); }, [shopId]);
@@ -53,7 +54,9 @@ export default function ShopDetailPage() {
   const toggleFav = () => { const next = !fav; setFav(next); shSetFavShop(shopId, next).catch(() => setFav(!next)); };
 
   const s = d?.detail;
+  const scur = s?.currency; // doanh thu theo tiền tệ shop → quy đổi USD khi hiển thị
   const series = daily.length ? daily : (d?.revenueChart || []);
+  const seriesUsd = series.map((x) => ({ ...x, revenue: toUsd(x.revenue, scur) as number | null }));
   const adsLink = s?.ads_archive_page_id ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&view_all_page_id=${s.ads_archive_page_id}` : null;
   const skuLink = s?.url ? `https://${String(s.url).replace(/^https?:\/\//, '')}/collections/all` : null;
 
@@ -76,9 +79,9 @@ export default function ShopDetailPage() {
           {d!.upCategoryPath && <div style={{ margin: '6px 0', fontSize: 13 }}>🏷️ Danh mục: <b>{d!.upCategoryPath.replace(/ > /g, ' → ')}</b></div>}
 
           <div style={{ display: 'flex', gap: 16, margin: '12px 0 4px', flexWrap: 'wrap' }}>
-            <span>Day <b>{money(s.day_current_period_revenue)}</b></span>
-            <span>Week <b>{money(s.week_current_period_revenue)}</b></span>
-            <span>Month <b>{money(s.month_current_period_revenue)}</b></span>
+            <span>Day <b>{money(toUsd(s.day_current_period_revenue, scur))}</b></span>
+            <span>Week <b>{money(toUsd(s.week_current_period_revenue, scur))}</b></span>
+            <span>Month <b>{money(toUsd(s.month_current_period_revenue, scur))}</b></span>
             <span>Ads <b>{s.active_ad_count ?? 0}</b>{adsLink && <a className="dl" href={adsLink} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ xem ads</a>}</span>
             <span>SKU <b>{s.sku_count ?? 0}</b>{skuLink && <a className="dl" href={skuLink} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ sản phẩm</a>}</span>
             <span title="Số sản phẩm của shop hiện có trong DB">Sản phẩm (DB) <b>{d!.productCount ?? 0}</b>{(d!.productCount ?? 0) > 0 && <a className="dl" href={`/localdb/products?pshop=${shopId}`} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ xem</a>}</span>
@@ -91,7 +94,7 @@ export default function ShopDetailPage() {
           </div>
 
           <h4>Biểu đồ doanh thu {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
-          <ShBarChart points={series} headerRight={
+          <ShBarChart points={seriesUsd} headerRight={
             <SyncControls series={series}
               onSync={async () => { const j = await shSyncShopRevenue(shopId); setDaily(await shShopRevenueDaily(shopId).catch(() => daily)); return j.result; }}
               onEnrich={() => shEnrichShopProducts(shopId)} />
@@ -102,7 +105,7 @@ export default function ShopDetailPage() {
               <div style={{ maxHeight: 240, overflow: 'auto', marginTop: 6 }}>
                 <table className="localtbl">
                   <thead><tr><th>Ngày</th><th>Doanh thu</th><th>Đơn</th></tr></thead>
-                  <tbody>{series.slice().reverse().map((p) => (
+                  <tbody>{seriesUsd.slice().reverse().map((p) => (
                     <tr key={p.date_str}><td style={{ whiteSpace: 'nowrap' }}>{p.date_str}</td><td>{money(p.revenue)}</td><td>{p.sale_count ?? '—'}</td></tr>
                   ))}</tbody>
                 </table>
@@ -134,7 +137,7 @@ export default function ShopDetailPage() {
                 return (
                   <li key={x.shop_id}>
                     {site ? <a href={site} target="_blank" rel="noreferrer" className="dl">{x.shop_title || x.url}</a> : (x.shop_title || x.url)}
-                    {' — Day '}{money(x.day_current_period_revenue)}
+                    {' — Day '}{money(toUsd(x.day_current_period_revenue, x.currency))}
                     {x.shop_id && <a href={`/shop/${x.shop_id}`} target="_blank" rel="noreferrer" className="dl" style={{ marginLeft: 8 }}>xem chi tiết ↗</a>}
                   </li>
                 );
