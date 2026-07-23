@@ -34,6 +34,7 @@ const SORT_VI: Record<string, string> = {
   week_current_period_revenue: 'Doanh thu Tuần',
   week_revenue_percent_change: 'Tăng trưởng Tuần',
   month_current_period_revenue: 'Doanh thu Tháng',
+  month_revenue_percent_change: 'Tăng trưởng Tháng',
   active_ad_count: 'Ads',
   active_ad_count_percent_change: 'Ads % Change',
   product_active_ad_count: 'Product Ads',
@@ -43,6 +44,8 @@ const SORT_VI: Record<string, string> = {
   shop_day_revenue_percent_change: 'Shop TT Ngày',
   shop_week_current_period_revenue: 'Shop DT Tuần',
   shop_week_revenue_percent_change: 'Shop TT Tuần',
+  shop_month_current_period_revenue: 'Shop DT Tháng',
+  shop_month_revenue_percent_change: 'Shop TT Tháng',
   shop_active_ad_count: 'Shop Ads',
   shop_active_ad_count_percent_change: 'Shop Ads %',
 };
@@ -180,6 +183,7 @@ export function ShopHunterPanel() {
             <button className="srcbtn findbtn" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
             {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}
           </div>
+          <div className="hint" style={{ fontSize: 12, marginTop: -4 }}>⚠️ Lọc &amp; sắp xếp theo doanh thu chạy trên ShopHunter theo <b>tiền tệ GỐC của shop</b> (không phải USD) — chỉ số hiển thị trên thẻ đã quy đổi USD.</div>
 
           {err && <div className="err">{err}</div>}
 

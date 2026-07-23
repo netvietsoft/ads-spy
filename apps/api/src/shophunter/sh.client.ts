@@ -36,6 +36,8 @@ export const SH_SORTS_SHOPS: { value: string; label: string }[] = [
   { value: 'day_revenue_percent_change', label: 'Revenue % Change (Day)' },
   { value: 'week_current_period_revenue', label: 'Revenue (Week)' },
   { value: 'week_revenue_percent_change', label: 'Revenue % Change (Week)' },
+  { value: 'month_current_period_revenue', label: 'Revenue (Month)' },
+  { value: 'month_revenue_percent_change', label: 'Revenue % Change (Month)' },
   { value: 'active_ad_count', label: 'Ads' },
   { value: 'active_ad_count_percent_change', label: 'Ads % Change' },
 ];
@@ -44,6 +46,8 @@ export const SH_SORTS_PRODUCTS: { value: string; label: string }[] = [
   { value: 'day_revenue_percent_change', label: 'Revenue % Change (Day)' },
   { value: 'week_current_period_revenue', label: 'Revenue (Week)' },
   { value: 'week_revenue_percent_change', label: 'Revenue % Change (Week)' },
+  { value: 'month_current_period_revenue', label: 'Revenue (Month)' },
+  { value: 'month_revenue_percent_change', label: 'Revenue % Change (Month)' },
   { value: 'product_active_ad_count', label: 'Product Ads' },
   { value: 'product_active_ad_count_percent_change', label: 'Product Ads % Change' },
   { value: 'product_published_at', label: 'Newest First' },
@@ -51,6 +55,8 @@ export const SH_SORTS_PRODUCTS: { value: string; label: string }[] = [
   { value: 'shop_day_revenue_percent_change', label: 'Shop Revenue % Change (Day)' },
   { value: 'shop_week_current_period_revenue', label: 'Shop Revenue (Week)' },
   { value: 'shop_week_revenue_percent_change', label: 'Shop Revenue % Change (Week)' },
+  { value: 'shop_month_current_period_revenue', label: 'Shop Revenue (Month)' },
+  { value: 'shop_month_revenue_percent_change', label: 'Shop Revenue % Change (Month)' },
   { value: 'shop_active_ad_count', label: 'Shop Ads' },
   { value: 'shop_active_ad_count_percent_change', label: 'Shop Ads % Change' },
 ];
