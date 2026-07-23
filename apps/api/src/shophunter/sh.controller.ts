@@ -319,21 +319,21 @@ export class ShController {
 
   @Post('sh/jobs/:name/toggle')
   toggleJob(@Param('name') name: string, @Body('on') on: any) {
-    const valid = ['harvest', 'enrich', 'catalog'];
+    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate'];
     if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.toggle(name, !!on);
   }
 
   @Post('sh/jobs/:name/run-now')
   runJobOnce(@Param('name') name: string) {
-    const valid = ['harvest', 'enrich', 'catalog'];
+    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate'];
     if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.runOnce(name);
   }
 
   @Post('sh/jobs/:name/config')
   setJobConfig(@Param('name') name: string, @Body() body: any) {
-    const valid = ['harvest', 'enrich', 'catalog'];
+    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate'];
     if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.setJobCfg(name, body || {});
   }

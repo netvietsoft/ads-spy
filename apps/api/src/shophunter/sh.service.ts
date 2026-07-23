@@ -592,27 +592,31 @@ export class ShService {
     return { shops, newProducts, blocked };
   }
 
-  // Quét tín hiệu affiliate (yes/no/blocked + link) — copy khung catalogSyncStep: rotation, cách ly lỗi per-shop.
-  async affiliateSyncStep(opts: { daily?: number }): Promise<{ shops: number; yes: number; app: number; blocked: number }> {
+  // Quét tín hiệu affiliate (yes/no/blocked + link) — khung như catalogSyncStep: rotation, cách ly lỗi per-shop, concurrency.
+  async affiliateSyncStep(opts: { daily?: number; delayMs?: number; concurrency?: number }): Promise<{ shops: number; yes: number; app: number; blocked: number }> {
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 500);
     const staleMs = (Number(process.env.SH_AFFILIATE_STALE_HOURS) || 720) * 3600000; // 30 ngày — affiliate ít đổi
+    const fixedDelay = opts.delayMs != null && Number.isFinite(opts.delayMs) ? opts.delayMs : null;
+    const conc = Math.max(1, Math.min(8, Number(opts.concurrency) || 1));
     const list = await this.mysql.getShopsNeedingAffiliate(quota, staleMs);
-    let shops = 0, yes = 0, app = 0, blocked = 0;
-    for (const { shopId, url } of list) {
+    let shops = 0, yes = 0, app = 0, blocked = 0, idx = 0;
+    const one = async (shopId: string, url: string) => {
       try {
         const r = await checkShopAffiliate(url);
-        if (r.status === 'ratelimited') { this.logger.warn(`shop ${shopId}: 429 Shopify bóp IP — KHÔNG lưu, thử lại sau`); shops++; await this.sleep(this.randDelayMs() * 4); continue; }
+        if (r.status === 'ratelimited') { this.logger.warn(`shop ${shopId}: 429 Shopify bóp IP — KHÔNG lưu, thử lại sau`); shops++; await this.sleep((fixedDelay ?? this.randDelayMs()) * 4); return; }
         await this.mysql.setShopAffiliate(shopId, r.status, r.link);
         if (r.status === 'yes') { yes++; this.logger.log(`shop ${shopId}: affiliate ${r.via} → ${r.link}`); }
-        else if (r.status === 'app') { app++; this.logger.log(`shop ${shopId}: affiliate app ${r.via} (không có link công khai)`); }
-        else if (r.status === 'blocked') { blocked++; this.logger.log(`shop ${shopId}: affiliate blocked`); }
-        else this.logger.log(`shop ${shopId}: affiliate không có`);
+        else if (r.status === 'app') app++;
+        else if (r.status === 'blocked') blocked++;
       } catch (e) {
-        this.logger.warn(`shop ${shopId}: lỗi affiliate check (${(e as Error).message}) — bỏ qua, sang shop kế.`);
+        this.logger.warn(`shop ${shopId}: lỗi affiliate check (${(e as Error).message}) — bỏ qua.`);
       }
       shops++;
-      await this.sleep(this.randDelayMs());
-    }
+      const d = fixedDelay != null ? fixedDelay : this.randDelayMs();
+      if (d > 0) await this.sleep(d);
+    };
+    const worker = async () => { while (idx < list.length) { const it = list[idx++]; await one(it.shopId, it.url); } };
+    await Promise.all(Array.from({ length: conc }, () => worker()));
     return { shops, yes, app, blocked };
   }
 

@@ -257,6 +257,10 @@ export class ShMysql implements OnModuleInit {
     await this.ensureIndexMulti(pool, 'sh_product_list', 'idx_pl_updated', 'updated_at, product_id');
     await this.ensureIndex(pool, 'sh_product_list', 'idx_pl_country', 'shop_country');
     await this.ensureIndex(pool, 'sh_product_list', 'idx_pl_category', 'category_last');
+    // Mốc "đã đồng bộ chuỗi doanh thu ngày" của job revsync-sp — bảng RIÊNG (không ALTER sh_product_list 4M dòng:
+    // ADD COLUMN ở đó bị MySQL rebuild toàn bảng ~20 phút + khoá metadata, treo cả app). Bảng phụ tạo tức thì.
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_revsync (
+      product_id VARCHAR(32) NOT NULL PRIMARY KEY, synced_at BIGINT)`);
 
     // Proxy dùng chung cho crawler Shopify (quản lý qua web). UNIQUE(host,port) để dán trùng thì cập nhật.
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_proxy (
@@ -868,6 +872,29 @@ export class ShMysql implements OnModuleInit {
     const total = await this.cachedCount('sh_product_list', whereSql, params, 60000);
     const items = (rows as any[]).map((r) => ({ ...r, _fetched_at: r._fetched_at == null ? null : Number(r._fetched_at) }));
     return { items, total };
+  }
+
+  // Job revsync-sp: sản phẩm cần đồng bộ doanh thu ngày — ưu tiên DOANH THU THÁNG cao→thấp (top trước),
+  // trong sp đã có ở sh_product_list (đã cào), chưa sync hoặc quá hạn staleMs. Mốc sync ở bảng phụ sh_product_revsync.
+  async getProductsNeedingRevDaily(limit: number, staleMs: number): Promise<{ productId: string; shopId: string }[]> {
+    await this.ensureReady();
+    const cutoff = Date.now() - staleMs;
+    const [rows] = await this.pool!.query(
+      `SELECT p.product_id, p.shop_id FROM sh_product_list p
+        LEFT JOIN sh_product_revsync r ON r.product_id = p.product_id
+        WHERE p.revenue_month IS NOT NULL AND p.shop_id IS NOT NULL
+          AND (r.synced_at IS NULL OR r.synced_at < ?)
+        ORDER BY p.revenue_month DESC, p.product_id LIMIT ?`,
+      [cutoff, limit],
+    );
+    return (rows as any[]).map((r) => ({ productId: r.product_id, shopId: r.shop_id }));
+  }
+  async setProductRevDailySynced(productId: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      'INSERT INTO sh_product_revsync (product_id, synced_at) VALUES (?, ?) ON DUPLICATE KEY UPDATE synced_at = VALUES(synced_at)',
+      [productId, Date.now()],
+    );
   }
 
   // Gợi ý tên (autocomplete) từ DB: products → product_title (cột có index, quét index-only nhanh); shops → shop_name.

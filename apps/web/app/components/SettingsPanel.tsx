@@ -7,7 +7,7 @@ import { ShTokenBox } from './ShTokenBox';
 const STATUS_VI: Record<string, string> = { ok: 'OK', idle: 'Nghỉ (hết việc)', blocked: 'Bị chặn', no_proxy: 'Thiếu proxy', running: 'Đang chạy' };
 const CFG_LABEL: Record<string, string> = {
   daily: 'Trần/ngày', perTick: 'Mỗi lượt (cron)', skipPct: 'Bỏ lượt %', delayMs: 'Nghỉ/shop (ms)',
-  concurrency: 'Số luồng', batch: 'Shop/lượt', paceMs: 'Nghỉ giữa lượt (ms)',
+  concurrency: 'Số luồng', batch: 'Số/lượt (batch)', paceMs: 'Nghỉ giữa lượt (ms)',
   activeStart: 'Giờ bắt đầu (0-24)', activeEnd: 'Giờ kết thúc (0-24)',
 };
 const fmtTime = (ms: number | null) => (ms ? new Date(ms).toLocaleString() : '—');

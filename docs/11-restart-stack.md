@@ -4,7 +4,7 @@
 
 ## ⚡ TRẠNG THÁI PHIÊN 2026-07-23 (mới nhất — đọc trước): Auth 2 quyền + /home + tối ưu + đồng bộ chi tiết
 
-- **Git HEAD:** `ecb4649` trên `main`, **ĐÃ PUSH origin/main**. Nối tiếp phiên job-monitor (2026-07-22 bên dưới). Chi tiết đầy đủ: CHANGELOG mục 2026-07-22.
+- **Git HEAD:** `b54d1bc` trên `main`, **ĐÃ PUSH origin/main**. Nối tiếp phiên job-monitor (2026-07-22 bên dưới). Chi tiết đầy đủ: CHANGELOG mục 2026-07-23 + 2026-07-22.
 - **Đăng nhập 2 QUYỀN** (mật khẩu ở ENV, repo public KHÔNG hardcode):
   - `SITE_PASSWORD` = **guest** (vd `Netviet@123`) → chỉ 7 mục (Google/FB/TikTok/Shopify/Local DB/Track/Báo cáo); **CHẶN CỨNG `/import` + `/settings`** (middleware redirect /home) + ẩn khỏi menu.
   - `ADMIN_PASSWORD` = **admin** → đủ 9 mục (có Import + Cài đặt). **Chưa đặt ADMIN_PASSWORD → Import/Cài đặt khoá với mọi người.**
@@ -15,6 +15,8 @@
 - **UI:** ShopHunter → **Shopify** (nhãn); menu **sticky mọi trang** (TopNav trong layout, kể cả /shop /product) + item là `<a href>` (chuột phải mở tab mới); ô lọc số có **dấu ngăn nghìn**; card tiền xanh đậm; tab Shopify lazy-load, nút ‹/› thu/mở lọc, lưới ~4 sp/hàng.
 - **Nút "Đồng bộ" trang chi tiết** `/shop/:id` + `/product/:shopId/:productId`: báo "⚠ Chưa đồng bộ (mới nhất DD/MM)" nếu >2 ngày + nút **🔄 Đồng bộ** (shop có **Enrich SP**) → `POST sh/shop|product/.../sync-revenue` → `appendRevenueDaily` (**upsert tích luỹ**, bấm lại điền ngày thiếu). Token dùng chung với job nền → thi thoảng ShopHunter trả partial (ít ngày) → **bấm lại** là đủ dần.
 - **Job nền chỉnh tốc độ TỪ WEB** (Settings): mỗi job có mục "Tốc độ" (batch/pace/luồng/nghỉ/daily…) lưu `job:<name>:cfg` (fbSetting), đọc lúc chạy — sửa sống không cần restart. Nút **"Chạy ngay"** (`run-now`) mỗi job. catalog chạy **concurrency** (proxy xoay).
+- **+2 job nền mới (giờ 5 job):** **`productrev`** (revsync doanh thu NGÀY từng SP, doanh thu tháng cao→thấp, cần token) + **`affiliate`** (quét affiliate shop mới/chưa quét, qua proxy — dùng chung seam với catalog). Cấu hình batch/daily/paceMs/concurrency/activeStart/activeEnd; "Chạy ngay" = `force` (bỏ giới hạn giờ+quota). Mốc sync ở **bảng phụ `sh_product_revsync`** (KHÔNG thêm cột vào `sh_product_list`).
+- ⚠️ **BẪY đã sửa:** `ADD COLUMN` vào `sh_product_list` (~4M dòng) khiến MySQL 8 **rebuild toàn bảng ~20 phút** + khoá metadata → treo API + crawler. **Không bao giờ `ALTER` bảng lớn nóng**; dùng bảng phụ. (Kiểm nghẽn: `SELECT id,time,state,info FROM information_schema.processlist WHERE db='shophunter' AND command='Query'` — state `copy to tmp table` = đang rebuild → `KILL <id>` an toàn, bảng gốc còn nguyên.)
 - **Tối ưu tốc độ Local DB Products** (BE): bộ lọc products đọc **cột index `sh_product_list`** (bỏ JSON-scan `sh_product` 4M ~5 phút gây nghẽn); **cache COUNT(*) 60s**. → list ~26ms.
 - **Deploy** (nhắc lại, quan trọng):
   - FE: **LUÔN `rm -rf .next`** trước build + **purge Cloudflare** + Ctrl+Shift+R (nếu không → ChunkLoadError "Unexpected token '<'"). Bake `NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet`.

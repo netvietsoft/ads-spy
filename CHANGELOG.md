@@ -4,6 +4,23 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-23 — 2 job nền mới: `productrev` (revsync sản phẩm) + `affiliate` (quét shop mới)
+
+### Backend — thêm 2 job vào `ShJobsService` (giờ quản 5 job)
+- **`productrev`** (revsync sản phẩm): loop nền đồng bộ **doanh thu NGÀY** từng sản phẩm về `sh_product_revenue_daily`, ưu tiên **doanh thu tháng cao→thấp** trong các SP đã cào (`sh_product_list`). Cần token ShopHunter (không proxy). Xoay vòng: mỗi SP sync lại sau ~20h.
+- **`affiliate`**: loop nền quét affiliate cho **shop mới/chưa quét** (qua proxy Shopify, dùng chung seam `shopifyHttp.get` với `catalog`). Shop mới `affiliate_checked_at` NULL → tự vào đầu hàng đợi. Gọi `svc.affiliateSyncStep` (worker theo `concurrency`).
+- **Cấu hình tốc độ mỗi job** (chỉnh sống từ web, kẹp `CFG_BOUNDS`): `batch` (số/lượt), `daily` (trần/ngày), `paceMs` (nghỉ giữa 2 lượt), `concurrency` (số luồng), `activeStart`/`activeEnd` (giờ chạy; bằng nhau = 24/7). Nút **Chạy ngay** truyền `force=true` → bỏ qua giới hạn giờ + trần ngày.
+- Endpoints `toggle`/`run-now`/`config` nhận thêm `productrev`,`affiliate`. `onModuleInit` tự bật lại nếu cờ DB = '1'.
+
+### Mốc "đã đồng bộ" ở bảng RIÊNG — KHÔNG `ALTER` bảng lớn
+- **Sự cố gặp & sửa:** thiết kế đầu tiên `ADD COLUMN rev_daily_synced_at` vào `sh_product_list` (~4M dòng). MySQL 8 **rebuild toàn bảng** (`copy to tmp table`, ~20 phút) + giữ metadata lock → treo cả API (pool cạn, `GET /api/sh/jobs` timeout) và chặn crawler ghi. Nếu deploy lên VPS sẽ treo production tương tự.
+- **Fix:** bỏ hẳn `ALTER`; tạo bảng phụ **`sh_product_revsync(product_id PK, synced_at)`** (tạo tức thì). `getProductsNeedingRevDaily` `LEFT JOIN` bảng phụ; `setProductRevDailySynced` upsert bảng phụ. Không bao giờ đụng schema `sh_product_list`.
+
+### Frontend
+- Nhãn tuner đổi `batch`: "Shop/lượt" → **"Số/lượt (batch)"** (dùng chung cho cả SP lẫn shop).
+
+---
+
 ## 2026-07-22 — Menu ⚙️ Cài đặt: giám sát + bật/tắt job nền (harvest/enrich/catalog) + Proxy
 
 ### Backend — `ShJobsService` (1 service quản 3 job nền)
