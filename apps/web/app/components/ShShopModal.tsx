@@ -1,13 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ShDetail, shShopDetail, shAssetProxy, shShopSite, shShopRevenueDaily } from '../api';
+import { ShDetail, shShopDetail, shAssetProxy, shShopRevenueDaily } from '../api';
 import { toUsd } from '../currency';
 import { ShChart } from './ShChart';
 import { ShLogo } from './ShLogo';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
-const GREEN = { color: '#159b62', fontWeight: 700 } as const; // tiền: xanh đậm
+const GREEN = { color: '#159b62', fontWeight: 700, fontSize: 13 } as const; // tiền: xanh đậm, cỡ 13
 
 export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string; categoryPath?: string | null; onClose: () => void }) {
   const [d, setD] = useState<ShDetail | null>(null);
@@ -92,17 +92,14 @@ export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string;
             {Array.isArray(d!.similar) && d!.similar.length > 0 && (
               <>
                 <h4>Shop tương tự</h4>
-                <ul>{d!.similar.slice(0, 8).map((x: any) => {
-                  const site = shShopSite(x);
-                  return (
-                    <li key={x.shop_id}>
-                      {site
-                        ? <a href={site} target="_blank" rel="noreferrer" className="dl">{x.shop_title || x.url}</a>
-                        : (x.shop_title || x.url)}
-                      {' — Day '}<b style={GREEN}>{money(toUsd(x.day_current_period_revenue, x.currency))}</b>
-                    </li>
-                  );
-                })}</ul>
+                <ul>{d!.similar.slice(0, 8).map((x: any) => (
+                  <li key={x.shop_id}>
+                    {x.shop_id
+                      ? <a href={`/shop/${x.shop_id}`} target="_blank" rel="noreferrer" className="dl">{x.shop_title || x.url}</a>
+                      : (x.shop_title || x.url)}
+                    {' — Day '}<b style={GREEN}>{money(toUsd(x.day_current_period_revenue, x.currency))}</b>
+                  </li>
+                ))}</ul>
               </>
             )}
           </>

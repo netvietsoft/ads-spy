@@ -183,7 +183,6 @@ export function ShopHunterPanel() {
             <button className="srcbtn findbtn" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
             {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}
           </div>
-          <div className="hint" style={{ fontSize: 12, marginTop: -4 }}>⚠️ Lọc &amp; sắp xếp theo doanh thu chạy trên ShopHunter theo <b>tiền tệ GỐC của shop</b> (không phải USD) — chỉ số hiển thị trên thẻ đã quy đổi USD.</div>
 
           {err && <div className="err">{err}</div>}
 
