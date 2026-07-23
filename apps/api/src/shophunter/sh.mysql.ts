@@ -128,7 +128,9 @@ const ORDER_FIELD: Record<string, string> = {
 
 export interface OrderBucketReport {
   buckets: { key: string; lo: number; hi: number | null }[];
-  counts: number[]; // số shop theo từng bậc số đơn
+  counts: number[];    // số shop/sản phẩm theo từng bậc số đơn
+  avgOrders: number[]; // trung bình số đơn mỗi bậc
+  totalRev: number[];  // tổng doanh thu (USD) mỗi bậc
   total: number;
 }
 
@@ -380,6 +382,13 @@ export class ShMysql implements OnModuleInit {
     if (curColl && curColl !== listColl) {
       await pool.query(`ALTER TABLE sh_product_revsync MODIFY product_id VARCHAR(32) COLLATE ${listColl} NOT NULL`);
     }
+    // Bảng phụ SỐ ĐƠN + doanh thu (USD) theo kỳ của sản phẩm — job productrev ghi dần → dùng cho "xếp hạng số đơn" sản phẩm.
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_sales (
+      product_id VARCHAR(32) COLLATE ${listColl} NOT NULL PRIMARY KEY,
+      day_count INT, week_count INT, month_count INT, day_rev DOUBLE, week_rev DOUBLE, month_rev DOUBLE, updated_at BIGINT)`);
+    await this.ensureIndex(pool, 'sh_product_sales', 'idx_ps_day', 'day_count');
+    await this.ensureIndex(pool, 'sh_product_sales', 'idx_ps_week', 'week_count');
+    await this.ensureIndex(pool, 'sh_product_sales', 'idx_ps_month', 'month_count');
   }
 
   private async ensureColumn(pool: mysql.Pool, table: string, column: string, definition: string): Promise<void> {
@@ -1049,6 +1058,17 @@ export class ShMysql implements OnModuleInit {
       [day, week, month, productId],
     );
   }
+  // Số đơn + doanh thu USD theo kỳ của 1 sản phẩm (job productrev ghi) → dùng cho bảng xếp hạng số đơn sản phẩm.
+  async setProductSales(productId: string, dayCnt: number, weekCnt: number, monthCnt: number, dayRev: number, weekRev: number, monthRev: number): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      `INSERT INTO sh_product_sales (product_id, day_count, week_count, month_count, day_rev, week_rev, month_rev, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE day_count=VALUES(day_count), week_count=VALUES(week_count), month_count=VALUES(month_count),
+         day_rev=VALUES(day_rev), week_rev=VALUES(week_rev), month_rev=VALUES(month_rev), updated_at=VALUES(updated_at)`,
+      [productId, dayCnt, weekCnt, monthCnt, dayRev, weekRev, monthRev, Date.now()],
+    );
+  }
   async setProductRevDailySynced(productId: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query(
@@ -1183,22 +1203,51 @@ export class ShMysql implements OnModuleInit {
   }
 
   private orderBucketCache = new Map<string, { t: number; data: OrderBucketReport }>();
-  // Bảng xếp hạng SỐ ĐƠN của shop theo kỳ (day/week/month) — độc lập tiền tệ. Quét sh_shop raw JSON (46k). Cache 5'/kỳ.
-  async reportOrderBuckets(period: 'day' | 'week' | 'month'): Promise<OrderBucketReport> {
+  // Bảng xếp hạng SỐ ĐƠN theo kỳ (day/week/month): số lượng + trung bình đơn + tổng doanh thu (USD) mỗi bậc.
+  // shop: quét sh_shop raw JSON (46k, DT×tỉ giá tiền tệ thật). sản phẩm: bảng phụ sh_product_sales (job productrev ghi dần). Cache 5'.
+  async reportOrderBuckets(type: 'shops' | 'products', period: 'day' | 'week' | 'month'): Promise<OrderBucketReport> {
     await this.ensureReady();
-    const hit = this.orderBucketCache.get(period);
+    const cacheKey = `${type}:${period}`;
+    const hit = this.orderBucketCache.get(cacheKey);
     if (hit && Date.now() - hit.t < 5 * 60000) return hit.data;
-    const cnt = `CAST(JSON_EXTRACT(raw, '${ORDER_FIELD[period] || ORDER_FIELD.month}') AS SIGNED)`;
+    let cntExpr: string, revExpr: string, table: string;
+    if (type === 'products') {
+      cntExpr = `${period}_count`; revExpr = `${period}_rev`; table = 'sh_product_sales';
+    } else {
+      const f = ORDER_FIELD[period] || ORDER_FIELD.month;
+      cntExpr = `CAST(JSON_EXTRACT(raw, '${f}') AS SIGNED)`;
+      revExpr = `(CAST(JSON_EXTRACT(raw, '${f.replace('sale_count', 'revenue')}') AS DECIMAL(30,2)) * ${rateCaseSql(SHOP_CUR_EXPR)})`;
+      table = 'sh_shop';
+    }
+    // Tính cnt + rev(USD) MỘT LẦN/dòng trong subquery (tránh đánh giá rateCase 36 lần/dòng → nhanh hơn nhiều).
     const parts = ORDER_BUCKETS.map((b, i) => {
-      const cond = b.hi == null ? `${cnt} >= ${b.lo}` : `${cnt} >= ${b.lo} AND ${cnt} < ${b.hi}`;
-      return `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END) b${i}`;
+      const cond = b.hi == null ? `cnt >= ${b.lo}` : `cnt >= ${b.lo} AND cnt < ${b.hi}`;
+      return `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END) c${i}, SUM(CASE WHEN ${cond} THEN cnt ELSE 0 END) s${i}, SUM(CASE WHEN ${cond} THEN rev ELSE 0 END) r${i}`;
     });
-    const [r] = await this.pool!.query(`SELECT ${parts.join(', ')} FROM sh_shop`);
+    const [r] = await this.pool!.query(`SELECT ${parts.join(', ')} FROM (SELECT ${cntExpr} AS cnt, ${revExpr} AS rev FROM ${table}) t`);
     const row = (r as any[])[0] || {};
-    const counts = ORDER_BUCKETS.map((_, i) => Number(row['b' + i]) || 0);
-    const data: OrderBucketReport = { buckets: ORDER_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })), counts, total: counts.reduce((a, b) => a + b, 0) };
-    this.orderBucketCache.set(period, { t: Date.now(), data });
+    const counts = ORDER_BUCKETS.map((_, i) => Number(row['c' + i]) || 0);
+    const avgOrders = ORDER_BUCKETS.map((_, i) => { const c = Number(row['c' + i]) || 0; return c ? Math.round((Number(row['s' + i]) || 0) / c) : 0; });
+    const totalRev = ORDER_BUCKETS.map((_, i) => Math.round(Number(row['r' + i]) || 0));
+    const data: OrderBucketReport = { buckets: ORDER_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })), counts, avgOrders, totalRev, total: counts.reduce((a, b) => a + b, 0) };
+    this.orderBucketCache.set(cacheKey, { t: Date.now(), data });
     return data;
+  }
+
+  // Danh sách sản phẩm trong 1 bậc số đơn (kỳ) — từ sh_product_sales JOIN sh_product_list lấy tên/ảnh/shop. Sắp theo số đơn giảm dần.
+  async queryProductsByOrders(period: 'day' | 'week' | 'month', lo: number, hi: number | null, limit: number): Promise<any[]> {
+    await this.ensureReady();
+    const cntCol = `${period}_count`, revCol = `${period}_rev`;
+    const cond = hi == null ? `ps.${cntCol} >= ?` : `ps.${cntCol} >= ? AND ps.${cntCol} < ?`;
+    const params: any[] = hi == null ? [lo] : [lo, hi];
+    const [rows] = await this.pool!.query(
+      `SELECT ps.product_id, ps.${cntCol} AS sale_count, ps.${revCol} AS revenue_usd, pl.shop_id,
+              pl.name AS product_title, pl.thumbnail AS product_image_external
+       FROM sh_product_sales ps JOIN sh_product_list pl ON pl.product_id = ps.product_id
+       WHERE ${cond} ORDER BY ps.${cntCol} DESC LIMIT ?`,
+      [...params, limit],
+    );
+    return rows as any[];
   }
 
   // Trạng thái từng ID so với Local DB (cho chấm màu ở tab tìm kiếm): map id → 'green'|'gray' cho ID ĐÃ có trong DB

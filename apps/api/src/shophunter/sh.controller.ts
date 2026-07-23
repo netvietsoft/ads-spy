@@ -421,11 +421,22 @@ export class ShController {
     return this.svc.reportRevenueBuckets();
   }
 
-  // Bảng xếp hạng SỐ ĐƠN của shop theo kỳ (day|week|month) — độc lập tiền tệ.
+  // Bảng xếp hạng SỐ ĐƠN theo kỳ (day|week|month) cho shop|product — số lượng + TB đơn + tổng DT (USD).
   @Get('sh/report/order-buckets')
-  reportOrderBuckets(@Query('period') period: string) {
+  reportOrderBuckets(@Query('type') type: string, @Query('period') period: string) {
     const p = period === 'day' || period === 'week' || period === 'month' ? period : 'month';
-    return this.svc.reportOrderBuckets(p);
+    const t = type === 'products' ? 'products' : 'shops';
+    return this.svc.reportOrderBuckets(t, p);
+  }
+
+  // Danh sách sản phẩm trong 1 bậc số đơn (kỳ) — cho expand ở báo cáo xếp hạng.
+  @Get('sh/report/order-products')
+  orderProducts(@Query('period') period: string, @Query('lo') lo: string, @Query('hi') hi: string, @Query('limit') limit: string) {
+    const p = period === 'day' || period === 'week' || period === 'month' ? period : 'month';
+    const loN = Number(lo) || 0;
+    const hiN = hi === '' || hi == null ? null : (Number.isFinite(Number(hi)) ? Number(hi) : null);
+    const lim = Math.min(200, Math.max(1, Number(limit) || 50));
+    return this.svc.productsByOrders(p, loN, hiN, lim);
   }
 
   // Sửa lệch cột revenue phẳng (báo cáo bậc dùng) khớp doanh thu tháng trong raw. Chạy 1 lần sau khi cập nhật code.

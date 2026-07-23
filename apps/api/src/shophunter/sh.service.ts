@@ -538,7 +538,8 @@ export class ShService {
   reportTopShops(o: { country?: string; category?: string }) { return this.mysql.reportTopShops(o); }
   reportTopProducts(o: { country?: string; category?: string }) { return this.mysql.reportTopProducts(o); }
   reportRevenueBuckets() { return this.mysql.reportRevenueBuckets(); }
-  reportOrderBuckets(period: 'day' | 'week' | 'month') { return this.mysql.reportOrderBuckets(period); }
+  reportOrderBuckets(type: 'shops' | 'products', period: 'day' | 'week' | 'month') { return this.mysql.reportOrderBuckets(type, period); }
+  productsByOrders(period: 'day' | 'week' | 'month', lo: number, hi: number | null, limit: number) { return this.mysql.queryProductsByOrders(period, lo, hi, limit); }
   reconcileShopRevenue() { return this.mysql.reconcileShopRevenue(); }
 
   // --- Kho doanh thu theo ngày (tích luỹ dài hạn) ---
@@ -598,7 +599,10 @@ export class ShService {
       const n = cnt.length;
       const sumLast = (k: number) => cnt.slice(Math.max(0, n - k)).reduce((a: number, b: number) => a + b, 0);
       const r2 = (v: number) => Math.round(v * 100) / 100;
-      await this.mysql.setProductListRevenueUsd(productId, r2(priceUsd * (cnt[n - 1] || 0)), r2(priceUsd * sumLast(7)), r2(priceUsd * sumLast(30))).catch(() => {});
+      const dC = cnt[n - 1] || 0, wC = sumLast(7), mC = sumLast(30);
+      const dR = r2(priceUsd * dC), wR = r2(priceUsd * wC), mR = r2(priceUsd * mC);
+      await this.mysql.setProductListRevenueUsd(productId, dR, wR, mR).catch(() => {});
+      await this.mysql.setProductSales(productId, dC, wC, mC, dR, wR, mR).catch(() => {}); // xếp hạng số đơn sản phẩm
     }
     return { status: items.length ? 'ok' : 'skip', priceLocal, priceUsd, currency, days: items.length };
   }

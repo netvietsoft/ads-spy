@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ShDetail, shShopDetail, shAssetProxy, shShopRevenueDaily } from '../api';
+import { ShDetail, shShopDetail, shAssetProxy, shShopRevenueDaily, shSyncShopRevenue } from '../api';
 import { toUsd } from '../currency';
 import { ShChart } from './ShChart';
 import { ShLogo } from './ShLogo';
@@ -13,8 +13,14 @@ export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string;
   const [d, setD] = useState<ShDetail | null>(null);
   const [daily, setDaily] = useState<{ date_str: string; revenue: number | null; sale_count: number | null }[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [syncMsg, setSyncMsg] = useState('');
   useEffect(() => { shShopDetail(shopId).then(setD).catch((e) => setErr((e as Error).message)); }, [shopId]);
   useEffect(() => { shShopRevenueDaily(shopId).then(setDaily).catch(() => setDaily([])); }, [shopId]);
+  const sync = async () => {
+    setSyncMsg('Đang đồng bộ…');
+    try { const r = await shSyncShopRevenue(shopId); setDaily(await shShopRevenueDaily(shopId).catch(() => daily)); setSyncMsg(r.result === 'skip' ? 'Nguồn chưa có dữ liệu.' : 'Xong ✓'); }
+    catch (e) { setSyncMsg('Lỗi: ' + (e as Error).message); }
+  };
   const s = d?.detail;
   const scur = (d as any)?.storefrontCurrency || s?.currency; // tiền tệ THẬT (storefront) → quy đổi USD
   // Chuỗi tích luỹ (>90 ngày dần) nếu có, không thì dùng chart 90 ngày từ detail. Doanh thu shop (local) → USD.
@@ -49,7 +55,11 @@ export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string;
               <span>Δ Tuần <b className={(s.week_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.week_revenue_percent_change)}</b></span>
               <span>Δ Tháng <b className={(s.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.month_revenue_percent_change)}</b></span>
             </div>
-            <h4>Doanh thu theo ngày {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h4 style={{ margin: '10px 0 4px' }}>Doanh thu theo ngày {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>
+              <button className="srcbtn" style={{ fontSize: 12 }} onClick={sync} title="Kéo doanh thu 90 ngày từ ShopHunter về DB">🔄 Đồng bộ</button>
+              {syncMsg && <span style={{ fontSize: 12, opacity: 0.8 }}>{syncMsg}</span>}
+            </div>
             <ShChart points={seriesUsd.map((p) => ({ date_str: p.date_str, value: p.revenue }))} />
             {series.length > 0 && (
               <details open style={{ margin: '6px 0' }}>
