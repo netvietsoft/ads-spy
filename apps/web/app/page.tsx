@@ -9,15 +9,12 @@ import {
   Suggestions,
   assetProxy,
   getHistory,
-  getProxy,
   getSearch,
   search,
   searchByAdvertiser,
-  setProxy,
   startRegionCheck,
   regionJob,
   suggest,
-  testProxy,
 } from './api';
 import { GEO_COUNTRIES } from './geo';
 import { CreativeModal } from './components/CreativeModal';
@@ -188,65 +185,6 @@ export default function Home() {
   const [gPage, setGPage] = useState(1);
   const [gSize, setGSize] = useState(100);
 
-  // Proxy Google (danh sách, quay vòng)
-  const [proxyStatus, setProxyStatus] = useState<{ count: number; proxies: string[] } | null>(null);
-  const [showProxy, setShowProxy] = useState(false);
-  const [proxyInput, setProxyInput] = useState('');
-  const [proxyMsg, setProxyMsg] = useState('');
-  const [proxyBusy, setProxyBusy] = useState(false);
-  const [proxyResults, setProxyResults] = useState<{ proxy: string; ok: boolean; message: string }[]>([]);
-
-  useEffect(() => {
-    getProxy().then(setProxyStatus).catch(() => {});
-  }, []);
-
-  async function saveProxy() {
-    setProxyBusy(true);
-    setProxyMsg('');
-    setProxyResults([]);
-    try {
-      const s = await setProxy(proxyInput);
-      setProxyStatus(s);
-      setProxyMsg(s.count ? `Đã lưu ${s.count} proxy (quay vòng).` : 'Đã xoá hết proxy (dùng IP trực tiếp).');
-    } catch (e: any) {
-      setProxyMsg(e.message || 'Lỗi lưu proxy');
-    } finally {
-      setProxyBusy(false);
-    }
-  }
-
-  async function clearProxy() {
-    setProxyBusy(true);
-    setProxyMsg('');
-    setProxyResults([]);
-    try {
-      const s = await setProxy('');
-      setProxyStatus(s);
-      setProxyInput('');
-      setProxyMsg('🗑️ Đã xoá hết proxy — Google dùng IP trực tiếp.');
-    } catch (e: any) {
-      setProxyMsg(e.message || 'Lỗi xoá proxy');
-    } finally {
-      setProxyBusy(false);
-    }
-  }
-
-  async function checkProxy() {
-    setProxyBusy(true);
-    setProxyMsg('Đang test từng proxy… (có thể lâu)');
-    setProxyResults([]);
-    try {
-      const r = await testProxy();
-      setProxyResults(r.results);
-      const okN = r.results.filter((x) => x.ok).length;
-      setProxyMsg(`Test xong: ${okN}/${r.results.length} proxy dùng được.`);
-    } catch (e: any) {
-      setProxyMsg('❌ ' + (e.message || 'lỗi'));
-    } finally {
-      setProxyBusy(false);
-    }
-  }
-
   // Lọc theo vùng (B)
   const [regionGeo, setRegionGeo] = useState(0);
   const [regionMatched, setRegionMatched] = useState<Set<string> | null>(null);
@@ -320,65 +258,6 @@ export default function Home() {
 
       {source === 'google' && (
       <>
-      <div className="fbauth" style={{ marginTop: 12 }}>
-        <span className="authstatus">
-          {proxyStatus && proxyStatus.count > 0 ? (
-            <span className="pill ok">🛡 {proxyStatus.count} proxy từ Cài đặt (quay vòng)</span>
-          ) : (
-            <span className="pill off">⚠️ Chưa có proxy — thêm ở <a href="/settings" style={{ color: 'inherit', textDecoration: 'underline' }}>Cài đặt → Proxy</a></span>
-          )}
-        </span>
-        <button className="ghost" type="button" onClick={() => setShowProxy((v) => !v)}>
-          Danh sách proxy
-        </button>
-      </div>
-      {showProxy && (
-        <div className="fbauth-box">
-          <p className="hint" style={{ marginTop: 0 }}>
-            Google dùng CHUNG danh sách proxy ở <a href="/settings" style={{ textDecoration: 'underline' }}>Cài đặt → Proxy</a> (quay vòng, tự đổi khi bị chặn). Bấm <b>Kiểm tra</b> để thử proxy với Google.
-            Ô dưới chỉ là <b>dự phòng riêng cho Google</b> (dùng khi Cài đặt chưa có proxy): mỗi dòng 1 cái, hỗ trợ{' '}
-            <code>http://user:pass@host:port</code> / <code>socks5://host:port</code>.
-          </p>
-          <textarea
-            className="fbauth-ta"
-            style={{ fontFamily: 'ui-monospace, monospace' }}
-            rows={5}
-            value={proxyInput}
-            onChange={(e) => setProxyInput(e.target.value)}
-            placeholder={'socks5://160.250.54.9:9000\nhttp://103.69.96.15:7777\nsocks4://27.76.199.156:1080'}
-          />
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button className="primary" type="button" onClick={saveProxy} disabled={proxyBusy}>
-              Lưu danh sách
-            </button>
-            <button className="ghost" type="button" onClick={checkProxy} disabled={proxyBusy}>
-              Test tất cả
-            </button>
-            {proxyStatus && proxyStatus.count > 0 && (
-              <button className="ghost danger" type="button" onClick={clearProxy} disabled={proxyBusy}>
-                🗑️ Xoá hết
-              </button>
-            )}
-            {proxyMsg && <span className="hint" style={{ margin: 0 }}>{proxyMsg}</span>}
-          </div>
-          {proxyStatus && proxyStatus.count > 0 && proxyResults.length === 0 && (
-            <div className="chips" style={{ marginTop: 8 }}>
-              {proxyStatus.proxies.map((p, i) => (
-                <span key={i} className="chip" style={{ cursor: 'default' }}>{p}</span>
-              ))}
-            </div>
-          )}
-          {proxyResults.length > 0 && (
-            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {proxyResults.map((r, i) => (
-                <div key={i} className="hint" style={{ margin: 0 }}>
-                  {r.ok ? '✅' : '❌'} <code>{r.proxy}</code> — {r.message}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
       <p style={{ color: 'var(--muted)', margin: '10px 0 0' }}>
         Tìm theo <b>domain</b> hoặc <b>từ khóa</b> → xem quảng cáo Google, nhà quảng cáo và tải asset.
       </p>
