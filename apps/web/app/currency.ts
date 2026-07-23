@@ -2,12 +2,12 @@
 // Tỉ giá XẤP XỈ (USD cho 1 đơn vị ngoại tệ) — cập nhật tay định kỳ. Tiền tệ lạ/không rõ → coi như USD (×1, không phóng đại).
 // LƯU Ý: chỉ nhân với DOANH THU (revenue) — KHÔNG áp cho `price` (ShopHunter đã trả price bằng USD).
 export const CURRENCY_USD: Record<string, number> = {
-  USD: 1, EUR: 1.08, GBP: 1.27, JPY: 0.0066, INR: 0.012, AUD: 0.66, CAD: 0.73, CNY: 0.14,
-  VND: 0.00004, KRW: 0.00073, BRL: 0.19, MXN: 0.058, THB: 0.028, SGD: 0.74, HKD: 0.128,
-  IDR: 0.000063, PHP: 0.017, MYR: 0.22, TWD: 0.031, TRY: 0.030, RUB: 0.011, ZAR: 0.054,
-  SEK: 0.095, NOK: 0.093, DKK: 0.145, PLN: 0.25, CHF: 1.12, NZD: 0.60, AED: 0.27, SAR: 0.27,
-  ILS: 0.27, RON: 0.22, CZK: 0.043, HUF: 0.0028, CLP: 0.0011, COP: 0.00025, ARS: 0.0011,
-  EGP: 0.020, NGN: 0.00065, UAH: 0.024, KES: 0.0078, PKR: 0.0036, BDT: 0.0084,
+  USD: 1, EUR: 1.1411, GBP: 1.3374, JPY: 0.0061317, INR: 0.010351, AUD: 0.69923, CAD: 0.70973, CNY: 0.14746,
+  VND: 0.000038071, KRW: 0.000676364, BRL: 0.19732, MXN: 0.057445, THB: 0.0296, SGD: 0.77455, HKD: 0.12755,
+  IDR: 0.000055855, PHP: 0.016174, MYR: 0.24468, TWD: 0.030855, TRY: 0.021167, RUB: 0.012738, ZAR: 0.06092,
+  SEK: 0.10308, NOK: 0.1042, DKK: 0.15287, PLN: 0.26354, CHF: 1.2289, NZD: 0.5815, AED: 0.27229, SAR: 0.26667,
+  ILS: 0.32652, RON: 0.21776, CZK: 0.04721, HUF: 0.0031377, CLP: 0.0010693, COP: 0.000310662, ARS: 0.000675283,
+  EGP: 0.019488, NGN: 0.000728503, UAH: 0.022335, KES: 0.0077332, PKR: 0.0036015, BDT: 0.0081028,
 };
 
 // Tỉ giá của 1 mã tiền tệ (mặc định 1 nếu không rõ).
