@@ -76,6 +76,34 @@ function rowToSlice(r: any): SliceState {
   };
 }
 
+// Bậc doanh thu THÁNG (USD) cho báo cáo phân bố — dùng chung shop (cột revenue) & sản phẩm (revenue_month).
+// lo/hi: khoảng [lo, hi); lo=null = "chưa có doanh thu" (NULL hoặc < hi); hi=null = ">= lo" (bậc cuối).
+export const REVENUE_BUCKETS: { key: string; lo: number | null; hi: number | null }[] = [
+  { key: 'none', lo: null, hi: 100 },
+  { key: '100-1k', lo: 100, hi: 1000 },
+  { key: '1k-10k', lo: 1000, hi: 10000 },
+  { key: '10k-50k', lo: 10000, hi: 50000 },
+  { key: '50k-100k', lo: 50000, hi: 100000 },
+  { key: '100k-200k', lo: 100000, hi: 200000 },
+  { key: '200k-400k', lo: 200000, hi: 400000 },
+  { key: '400k-600k', lo: 400000, hi: 600000 },
+  { key: '600k-800k', lo: 600000, hi: 800000 },
+  { key: '800k-1m', lo: 800000, hi: 1000000 },
+  { key: '1m-2m', lo: 1000000, hi: 2000000 },
+  { key: '2m-4m', lo: 2000000, hi: 4000000 },
+  { key: '4m-6m', lo: 4000000, hi: 6000000 },
+  { key: '6m-8m', lo: 6000000, hi: 8000000 },
+  { key: '8m-10m', lo: 8000000, hi: 10000000 },
+  { key: '10m+', lo: 10000000, hi: null },
+];
+
+export interface RevenueBucketReport {
+  buckets: { key: string; lo: number | null; hi: number | null }[];
+  shops: number[];    // đếm shop theo từng bậc (cùng thứ tự REVENUE_BUCKETS)
+  products: number[]; // đếm sản phẩm theo từng bậc
+  total: { shops: number; products: number };
+}
+
 @Injectable()
 export class ShMysql implements OnModuleInit {
   private pool: mysql.Pool | null = null;
@@ -85,6 +113,8 @@ export class ShMysql implements OnModuleInit {
   // Cache COUNT(*) — InnoDB không lưu sẵn row-count nên COUNT toàn bảng sh_product_list (4M) ~600ms/lần.
   // Total chỉ để hiển thị "x / N" nên cache ngắn (stale vài chục giây chấp nhận được).
   private countCache = new Map<string, { n: number; t: number }>();
+  // Cache báo cáo phân bố bậc doanh thu (quét sh_product_list 4M ~1-2s) → 5' đủ tươi cho báo cáo.
+  private bucketCache: { t: number; data: RevenueBucketReport } | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -820,7 +850,7 @@ export class ShMysql implements OnModuleInit {
     );
   }
 
-  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean }): Promise<{ items: any[]; total: number }> {
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
@@ -829,6 +859,8 @@ export class ShMysql implements OnModuleInit {
     if (o.q) { where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)"); params.push('%' + o.q + '%', '%' + o.q + '%'); } // khớp cả tên lẫn domain
     if (o.aff) { where.push("affiliate_status IN ('yes','app')"); } // shop có affiliate (link công khai hoặc app đã cài)
     if (o.fav) { where.push('shop_id IN (SELECT shop_id FROM sh_fav_shop)'); } // chỉ shop đã thả tim
+    if (o.revMin != null) { where.push('revenue >= ?'); params.push(o.revMin); } // lọc theo bậc doanh thu tháng (cột revenue có index)
+    if (o.revMax != null) { where.push('revenue < ?'); params.push(o.revMax); }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
@@ -854,7 +886,7 @@ export class ShMysql implements OnModuleInit {
     return n;
   }
 
-  async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string }): Promise<{ items: any[]; total: number }> {
+  async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     // Sort/lọc/tìm/đếm chạy trên sh_product_list (bảng nhẹ, cột thật + index) — KHÔNG scan raw 3M dòng.
     // ORDER BY cột-thật + product_id (cùng chiều) để bám index composite (idx_pl_rev_*/price/updated) → index scan,
@@ -866,6 +898,8 @@ export class ShMysql implements OnModuleInit {
     if (o.shop) { where.push('shop_id = ?'); params.push(o.shop); }
     if (o.country) { where.push('shop_country = ?'); params.push(o.country); }
     if (o.category) { where.push('category_last = ?'); params.push(o.category); }
+    if (o.revMin != null) { where.push('revenue_month >= ?'); params.push(o.revMin); } // lọc theo bậc doanh thu tháng (idx_pl_rev_month)
+    if (o.revMax != null) { where.push('revenue_month < ?'); params.push(o.revMax); }
     if (o.q) {
       // Token ≥3 ký tự → FULLTEXT prefix-match trên ft_name; toàn token ngắn → fallback LIKE.
       const tokens = o.q.trim().split(/\s+/).map((t) => t.replace(/[+\-<>()~*"@]/g, '')).filter((t) => t.length >= 3);
@@ -1014,6 +1048,33 @@ export class ShMysql implements OnModuleInit {
     const byRevenue = (await this.queryLocalProducts({ ...base, sort: 'revenue_month' })).items;
     const bySteady = (await this.queryLocalProducts({ ...base, sort: 'revenue_steady' })).items;
     return { byRevenue, bySteady };
+  }
+
+  // Báo cáo phân bố: đếm shop (cột revenue, index) + sản phẩm (revenue_month, idx_pl_rev_month) theo từng bậc doanh thu.
+  // 1 truy vấn SUM(CASE...) mỗi bảng → quét cột-index 1 lần. Cache 5' (đếm 4M sp không rẻ). Biên bậc là hằng số code → an toàn SQL.
+  async reportRevenueBuckets(): Promise<RevenueBucketReport> {
+    await this.ensureReady();
+    if (this.bucketCache && Date.now() - this.bucketCache.t < 5 * 60000) return this.bucketCache.data;
+    const countByBucket = async (table: string, col: string): Promise<number[]> => {
+      const parts = REVENUE_BUCKETS.map((b, i) => {
+        const cond = b.lo == null ? `${col} IS NULL OR ${col} < ${b.hi}`
+          : b.hi == null ? `${col} >= ${b.lo}`
+            : `${col} >= ${b.lo} AND ${col} < ${b.hi}`;
+        return `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END) b${i}`;
+      });
+      const [r] = await this.pool!.query(`SELECT ${parts.join(', ')} FROM ${table}`);
+      const row = (r as any[])[0] || {};
+      return REVENUE_BUCKETS.map((_, i) => Number(row['b' + i]) || 0);
+    };
+    const shops = await countByBucket('sh_shop', 'revenue');
+    const products = await countByBucket('sh_product_list', 'revenue_month');
+    const data: RevenueBucketReport = {
+      buckets: REVENUE_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })),
+      shops, products,
+      total: { shops: shops.reduce((a, b) => a + b, 0), products: products.reduce((a, b) => a + b, 0) },
+    };
+    this.bucketCache = { t: Date.now(), data };
+    return data;
   }
 
   async addTrackHistory(domain: string, shopId: string, shopTitle: string, identifyType: string): Promise<void> {

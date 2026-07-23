@@ -4,6 +4,19 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-23 — Báo cáo Local DB: phân bố theo bậc doanh thu tháng
+
+### Trang `/reportlocaldb` thêm tab "Phân bố doanh thu" (giữ nguyên tab "Tổng quan" cũ)
+- Đếm số **shop** và **sản phẩm** theo 16 bậc doanh thu tháng (chưa có DT → >$10M). Mỗi bậc: số lượng, **bấm mở top 50** (DT cao→thấp), nút **"Xem tất cả"** mở Local DB đã lọc sẵn bậc đó.
+- **Nhanh nhờ index:** shop đếm trên cột `sh_shop.revenue` (= `month_current_period_revenue`, có `idx_sh_shop_revenue`); sản phẩm trên `sh_product_list.revenue_month` (`idx_pl_rev_month`). 1 truy vấn `SUM(CASE…)`/bảng, **cache 5'**. Kiểm chứng: tổng các bậc = tổng toàn bộ (46.663 shop · 4.040.029 sp — khớp tuyệt đối).
+
+### Lọc Local DB theo khoảng doanh thu (`revMin`/`revMax`)
+- `sh/local/shops` + `sh/local/products` (+ export CSV) nhận `revMin`/`revMax` → `WHERE revenue[_month] >= ? AND < ?` (bám index). Dùng cho cả top-50 lẫn "Xem tất cả".
+- `LocalDbPanel` đọc `?revMin&revMax` từ URL (giống `?pshop`), hiện chip "DT Tháng: …" bấm ✕ để bỏ lọc.
+- Endpoint mới `GET /api/sh/report/buckets`.
+
+---
+
 ## 2026-07-23 — 2 job nền mới: `productrev` (revsync sản phẩm) + `affiliate` (quét shop mới)
 
 ### Backend — thêm 2 job vào `ShJobsService` (giờ quản 5 job)

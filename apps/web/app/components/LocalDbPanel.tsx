@@ -67,22 +67,28 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   const [favIds, setFavIds] = useState<Set<string>>(new Set()); // shop yêu thích → tim đỏ trong list
   const [affOnly, setAffOnly] = useState(false); // chỉ hiện shop có affiliate
   const [favOnly, setFavOnly] = useState(false); // chỉ hiện shop đã thả tim
+  const [revMin, setRevMin] = useState<number | null>(null); // lọc theo bậc doanh thu tháng (mở từ báo cáo phân bố)
+  const [revMax, setRevMax] = useState<number | null>(null);
 
   useEffect(() => { shFavShops().then((r) => setFavIds(new Set(r.ids))).catch(() => {}); }, []);
 
-  // Mở từ chi tiết shop: ?pshop=<id> → chuyển sang tab Products + lọc theo shop.
+  // Mở từ chi tiết shop: ?pshop=<id> → tab Products + lọc theo shop. Từ báo cáo phân bố: ?revMin/&revMax → lọc bậc doanh thu.
   useEffect(() => {
-    const ps = new URLSearchParams(window.location.search).get('pshop');
+    const sp = new URLSearchParams(window.location.search);
+    const ps = sp.get('pshop');
     if (ps) { setTab('products'); setShopFilter(ps); }
+    const rmin = sp.get('revMin'); const rmax = sp.get('revMax');
+    if (rmin) setRevMin(Number(rmin));
+    if (rmax) setRevMax(Number(rmax));
   }, []);
 
   useEffect(() => {
     setLoading(true); setErr(null);
     const req = tab === 'shops'
-      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined })
-      : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined });
+      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined })
+      : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined });
     req.then((r) => setData(r)).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
-  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly]);
+  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly, revMin, revMax]);
 
   // Gợi ý tên (debounce 250ms, tối thiểu 2 ký tự).
   useEffect(() => {
@@ -107,9 +113,13 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   const switchTab = (t: 'shops' | 'products') => {
     setTab(t); setData({ items: [], total: 0, page: 1, pageSize });
     setSort('revenue_month'); setDir('desc'); setPage(1); setCountry(''); setCategory('');
-    setQ(''); setQInput(''); setSugs([]); setShowSug(false); setShopFilter('');
+    setQ(''); setQInput(''); setSugs([]); setShowSug(false); setShopFilter(''); setRevMin(null); setRevMax(null);
     router.push('/localdb/' + t); // đổi URL theo sub-tab
   };
+  // Nhãn chip lọc bậc doanh thu (mở từ báo cáo phân bố).
+  const revLabel = revMin != null && revMax != null ? `$${revMin.toLocaleString('vi-VN')} – $${revMax.toLocaleString('vi-VN')}`
+    : revMin != null ? `≥ $${revMin.toLocaleString('vi-VN')}`
+      : revMax != null ? `< $${revMax.toLocaleString('vi-VN')}` : '';
   const applyQ = (val: string) => { const v = val.trim(); setQ(v); setQInput(v); setSugs([]); setShowSug(false); setPage(1); };
   const clickSort = (k: string) => {
     if (sort === k) setDir(dir === 'desc' ? 'asc' : 'desc');
@@ -134,8 +144,8 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
       <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
       <button className="srcbtn" title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel (CSV)`}
         onClick={() => window.open(tab === 'shops'
-          ? shLocalExportUrl('shops', { sort, dir, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined })
-          : shLocalExportUrl('products', { sort, dir, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined }), '_blank')}>
+          ? shLocalExportUrl('shops', { sort, dir, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined })
+          : shLocalExportUrl('products', { sort, dir, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined }), '_blank')}>
         ⬇ Xuất Excel
       </button>
     </div>
@@ -154,6 +164,12 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
           <span className="badge-harvest" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             Shop: {shopFilter}
             <span onClick={() => { setShopFilter(''); setPage(1); }} style={{ cursor: 'pointer', fontWeight: 700 }} title="Bỏ lọc shop">✕</span>
+          </span>
+        )}
+        {revLabel && (
+          <span className="badge-harvest" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            DT Tháng: {revLabel}
+            <span onClick={() => { setRevMin(null); setRevMax(null); setPage(1); router.replace('/localdb/' + tab); }} style={{ cursor: 'pointer', fontWeight: 700 }} title="Bỏ lọc doanh thu">✕</span>
           </span>
         )}
         <label>Nước:&nbsp;

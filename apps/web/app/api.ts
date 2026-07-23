@@ -481,7 +481,7 @@ export async function shSetFavShop(shopId: string, fav: boolean): Promise<{ ok: 
 }
 
 // URL tải CSV toàn bộ data đã lọc (mở trực tiếp để trình duyệt download).
-export function shLocalExportUrl(type: 'shops' | 'products', p: { sort?: string; dir?: string; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; shop?: string } = {}): string {
+export function shLocalExportUrl(type: 'shops' | 'products', p: { sort?: string; dir?: string; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; shop?: string; revMin?: number; revMax?: number } = {}): string {
   const qs = new URLSearchParams();
   qs.set('type', type);
   if (p.sort) qs.set('sort', p.sort);
@@ -492,10 +492,12 @@ export function shLocalExportUrl(type: 'shops' | 'products', p: { sort?: string;
   if (p.aff) qs.set('aff', '1');
   if (p.fav) qs.set('fav', '1');
   if (p.shop) qs.set('shop', p.shop);
+  if (p.revMin != null) qs.set('revMin', String(p.revMin));
+  if (p.revMax != null) qs.set('revMax', String(p.revMax));
   return `${API}/api/sh/local/export?${qs.toString()}`;
 }
 export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
-export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean } = {}): Promise<ShLocalResult> {
+export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
@@ -506,9 +508,11 @@ export async function shLocalShops(p: { sort?: string; dir?: string; page?: numb
   if (p.q) qs.set('q', p.q);
   if (p.aff) qs.set('aff', '1');
   if (p.fav) qs.set('fav', '1');
+  if (p.revMin != null) qs.set('revMin', String(p.revMin));
+  if (p.revMax != null) qs.set('revMax', String(p.revMax));
   return jsonOrThrow(await fetch(`${API}/api/sh/local/shops?${qs.toString()}`));
 }
-export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; shop?: string } = {}): Promise<ShLocalResult> {
+export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
@@ -518,6 +522,8 @@ export async function shLocalProducts(p: { sort?: string; dir?: string; page?: n
   if (p.category) qs.set('category', p.category);
   if (p.q) qs.set('q', p.q);
   if (p.shop) qs.set('shop', p.shop);
+  if (p.revMin != null) qs.set('revMin', String(p.revMin));
+  if (p.revMax != null) qs.set('revMax', String(p.revMax));
   return jsonOrThrow(await fetch(`${API}/api/sh/local/products?${qs.toString()}`));
 }
 export async function shLocalFilters(type: 'shops' | 'products'): Promise<{ countries: string[]; categories: string[] }> {
@@ -546,6 +552,10 @@ export async function shReportTopProducts(p: { country?: string; category?: stri
   if (p.country) qs.set('country', p.country);
   if (p.category) qs.set('category', p.category);
   return jsonOrThrow(await fetch(`${API}/api/sh/report/top-products?${qs.toString()}`));
+}
+export interface ShBucketReport { buckets: { key: string; lo: number | null; hi: number | null }[]; shops: number[]; products: number[]; total: { shops: number; products: number } }
+export async function shReportBuckets(): Promise<ShBucketReport> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/report/buckets`));
 }
 export async function shShopRevenueDaily(shopId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/revenue-daily`));

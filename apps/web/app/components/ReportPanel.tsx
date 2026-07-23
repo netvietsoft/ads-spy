@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { shReport, shReportTopShops, shReportTopProducts, shLocalFilters, ShReport, ShTopShops, ShTopProducts } from '../api';
 import { CategoryPicker } from './CategoryPicker';
+import { RevenueBucketReport } from './RevenueBucketReport';
 
 const money = (n: number) => '$' + Math.round(n).toLocaleString();
 const num = (n: number) => Number(n || 0).toLocaleString();
@@ -61,6 +62,19 @@ function ProductTop({ title, rows }: { title: string; rows: any[] }) {
 }
 
 export function ReportPanel() {
+  const [tab, setTab] = useState<'overview' | 'buckets'>('overview');
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div className="sources">
+        <button className={`srcbtn ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Tổng quan</button>
+        <button className={`srcbtn ${tab === 'buckets' ? 'active' : ''}`} onClick={() => setTab('buckets')}>Phân bố doanh thu</button>
+      </div>
+      {tab === 'overview' ? <OverviewReport /> : <RevenueBucketReport />}
+    </div>
+  );
+}
+
+function OverviewReport() {
   const [country, setCountry] = useState('');
   const [countries, setCountries] = useState<string[]>([]);
   const [cat, setCat] = useState<{ id: string | null; path: string | null }>({ id: null, path: null });

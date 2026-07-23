@@ -63,6 +63,13 @@ function parseLists(raw?: string): Record<string, string[]> {
   }
 }
 
+// Biên bậc doanh thu (lọc Local DB theo khoảng) — số hữu hạn >= 0 mới nhận, còn lại undefined (bỏ lọc).
+export function parseRev(v?: string): number | undefined {
+  if (v == null || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 export function localParams(sort?: string, dir?: string, page?: string, pageSize?: string) {
   const sizes = [50, 100, 150, 200];
   let ps = Number(pageSize) || 100; if (!sizes.includes(ps)) ps = 100;
@@ -344,25 +351,25 @@ export class ShController {
   }
 
   @Get('sh/local/shops')
-  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string) {
+  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string) {
     const p = localParams(sort, dir, page, pageSize);
-    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true' });
+    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true', revMin: parseRev(revMin), revMax: parseRev(revMax) });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
 
   @Get('sh/local/products')
-  async localProducts(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('shop') shop: string) {
+  async localProducts(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('shop') shop: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string) {
     const p = localParams(sort, dir, page, pageSize);
-    const r = await this.svc.localProducts({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, shop: shop || undefined });
+    const r = await this.svc.localProducts({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, shop: shop || undefined, revMin: parseRev(revMin), revMax: parseRev(revMax) });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
 
   // Xuất CSV (Excel mở được — có BOM UTF-8) TOÀN BỘ data đã lọc theo tiêu chí hiện tại (không phân trang). Cap 50k dòng.
   @Get('sh/local/export')
-  async exportLocal(@Res() res: Response, @Query('type') type: string, @Query('sort') sort: string, @Query('dir') dir: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('shop') shop: string) {
+  async exportLocal(@Res() res: Response, @Query('type') type: string, @Query('sort') sort: string, @Query('dir') dir: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('shop') shop: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string) {
     const isProd = type === 'products';
     // KHÔNG dùng localParams (nó kẹp pageSize về {50..200}) → export TOÀN BỘ đã lọc, cap 50k dòng.
-    const opt = { sort: sort || 'revenue_month', dir: (dir === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc', offset: 0, limit: 50000, country: country || undefined, category: category || undefined, q: q || undefined };
+    const opt = { sort: sort || 'revenue_month', dir: (dir === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc', offset: 0, limit: 50000, country: country || undefined, category: category || undefined, q: q || undefined, revMin: parseRev(revMin), revMax: parseRev(revMax) };
     const rows = isProd
       ? (await this.svc.localProducts({ ...opt, shop: shop || undefined })).items
       : (await this.svc.localShops({ ...opt, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true' })).items;
@@ -400,6 +407,12 @@ export class ShController {
   @Get('sh/report/top-products')
   reportTopProducts(@Query('country') country: string, @Query('category') category: string) {
     return this.svc.reportTopProducts({ country: country || undefined, category: category || undefined });
+  }
+
+  // Báo cáo phân bố: đếm shop + sản phẩm theo từng bậc doanh thu tháng (cache 5' trong service).
+  @Get('sh/report/buckets')
+  reportRevenueBuckets() {
+    return this.svc.reportRevenueBuckets();
   }
 
   @Get('sh/local/filters')
