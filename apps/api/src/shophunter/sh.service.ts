@@ -548,12 +548,18 @@ export class ShService {
   coverageStats() { return this.mysql.coverageStats(); }
   // Đồng bộ doanh thu ngày cho 1 shop: CHỈ gọi revenue chart (1 call) → dồn vào kho → đánh dấu đã sync.
   async syncShopRevenue(shopId: string): Promise<'ok' | 'skip'> {
+    // Tiền tệ THẬT từ storefront /meta.json (ShopHunter hay gắn sai) — lấy TRƯỚC (không phụ thuộc token/chart), meta.json nhẹ nên fetch trực tiếp.
+    if (!(await this.mysql.getStorefrontCurrency(shopId))) {
+      const url = await this.mysql.getShopUrl(shopId).catch(() => null);
+      if (url) { const c = await fetchStorefrontCurrency(url); if (c) await this.mysql.setStorefrontCurrency(shopId, c).catch(() => {}); }
+    }
     const revR = await this.client.shopChartRevenue(shopId);
     const chart = Array.isArray((revR as any)?.items) ? (revR as any).items : [];
     await this.mysql.appendRevenueDaily(shopId, chart);
     await this.mysql.setRevenueSynced(shopId);
     return chart.length ? 'ok' : 'skip';
   }
+  getStorefrontCurrency(shopId: string) { return this.mysql.getStorefrontCurrency(shopId); }
 
   // Đồng bộ doanh thu ngày cho 1 sản phẩm: gọi revenue chart sp (1 call) → dồn vào kho product_revenue_daily.
   async syncProductRevenue(shopId: string, productId: string): Promise<'ok' | 'skip'> {

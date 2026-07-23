@@ -12,6 +12,18 @@ const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefi
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 const cls = (n: any) => ((n ?? 0) >= 0 ? 'g-up' : 'g-down');
 
+// Day/Week/Month + Δ% tính TỪ chuỗi doanh thu ngày (USD) trong DB. daily sắp xếp tăng dần theo ngày.
+function periodStats(daily: { revenue: number | null }[]) {
+  const rev = daily.map((x) => Number(x.revenue) || 0);
+  const n = rev.length;
+  const sum = (from: number, to: number) => rev.slice(Math.max(0, from), Math.max(0, to)).reduce((a, b) => a + b, 0);
+  const delta = (curV: number, prev: number) => (prev > 0 ? ((curV - prev) / prev) * 100 : null);
+  const day = n ? rev[n - 1] : 0, dayPrev = n > 1 ? rev[n - 2] : 0;
+  const week = sum(n - 7, n), weekPrev = sum(n - 14, n - 7);
+  const month = sum(n - 30, n), monthPrev = sum(n - 60, n - 30);
+  return { day, week, month, dDay: delta(day, dayPrev), dWeek: delta(week, weekPrev), dMonth: delta(month, monthPrev) };
+}
+
 // 1 dòng Top Revenue Product: lazy lấy ảnh thumb qua productDetail (cache), tha thứ nếu lỗi.
 function TopProduct({ shopId, p }: { shopId: string; p: any }) {
   const [img, setImg] = useState<string | null>(null);
@@ -54,9 +66,11 @@ export default function ShopDetailPage() {
   const toggleFav = () => { const next = !fav; setFav(next); shSetFavShop(shopId, next).catch(() => setFav(!next)); };
 
   const s = d?.detail;
-  const scur = s?.currency; // doanh thu theo tiền tệ shop → quy đổi USD khi hiển thị
+  // Ưu tiên tiền tệ THẬT từ storefront (ShopHunter hay gắn sai `currency`). Doanh thu shop (local) → quy đổi USD khi hiển thị.
+  const scur = (d as any)?.storefrontCurrency || s?.currency;
   const series = daily.length ? daily : (d?.revenueChart || []);
   const seriesUsd = series.map((x) => ({ ...x, revenue: toUsd(x.revenue, scur) as number | null }));
+  const st = daily.length ? periodStats(seriesUsd as any[]) : null; // Day/Week/Month + Δ từ chuỗi ngày DB (USD)
   const adsLink = s?.ads_archive_page_id ? `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&view_all_page_id=${s.ads_archive_page_id}` : null;
   const skuLink = s?.url ? `https://${String(s.url).replace(/^https?:\/\//, '')}/collections/all` : null;
 
@@ -79,18 +93,18 @@ export default function ShopDetailPage() {
           {d!.upCategoryPath && <div style={{ margin: '6px 0', fontSize: 13 }}>🏷️ Danh mục: <b>{d!.upCategoryPath.replace(/ > /g, ' → ')}</b></div>}
 
           <div style={{ display: 'flex', gap: 16, margin: '12px 0 4px', flexWrap: 'wrap' }}>
-            <span>Day <b>{money(toUsd(s.day_current_period_revenue, scur))}</b></span>
-            <span>Week <b>{money(toUsd(s.week_current_period_revenue, scur))}</b></span>
-            <span>Month <b>{money(toUsd(s.month_current_period_revenue, scur))}</b></span>
+            <span>Day <b>{money(st ? st.day : toUsd(s.day_current_period_revenue, scur))}</b></span>
+            <span>Week <b>{money(st ? st.week : toUsd(s.week_current_period_revenue, scur))}</b></span>
+            <span>Month <b>{money(st ? st.month : toUsd(s.month_current_period_revenue, scur))}</b></span>
             <span>Ads <b>{s.active_ad_count ?? 0}</b>{adsLink && <a className="dl" href={adsLink} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ xem ads</a>}</span>
             <span>SKU <b>{s.sku_count ?? 0}</b>{skuLink && <a className="dl" href={skuLink} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ sản phẩm</a>}</span>
             <span title="Số sản phẩm của shop hiện có trong DB">Sản phẩm (DB) <b>{d!.productCount ?? 0}</b>{(d!.productCount ?? 0) > 0 && <a className="dl" href={`/localdb/products?pshop=${shopId}`} target="_blank" rel="noreferrer" style={{ marginLeft: 4 }}>↗ xem</a>}</span>
-            <span>{s.country} · {s.currency}</span>
+            <span>{s.country} · {scur}{(d as any)?.storefrontCurrency && (d as any).storefrontCurrency !== s.currency ? ' (storefront)' : ''}</span>
           </div>
           <div style={{ display: 'flex', gap: 16, margin: '0 0 12px', flexWrap: 'wrap', fontSize: 13, opacity: 0.9 }}>
-            <span>Δ Ngày <b className={cls(s.day_revenue_percent_change)}>{pct(s.day_revenue_percent_change)}</b></span>
-            <span>Δ Tuần <b className={cls(s.week_revenue_percent_change)}>{pct(s.week_revenue_percent_change)}</b></span>
-            <span>Δ Tháng <b className={cls(s.month_revenue_percent_change)}>{pct(s.month_revenue_percent_change)}</b></span>
+            <span>Δ Ngày <b className={cls(st ? st.dDay : s.day_revenue_percent_change)}>{pct(st ? st.dDay : s.day_revenue_percent_change)}</b></span>
+            <span>Δ Tuần <b className={cls(st ? st.dWeek : s.week_revenue_percent_change)}>{pct(st ? st.dWeek : s.week_revenue_percent_change)}</b></span>
+            <span>Δ Tháng <b className={cls(st ? st.dMonth : s.month_revenue_percent_change)}>{pct(st ? st.dMonth : s.month_revenue_percent_change)}</b></span>
           </div>
 
           <h4>Biểu đồ doanh thu {series.length > 90 ? `(${series.length} ngày — tích luỹ)` : '(90 ngày)'}</h4>

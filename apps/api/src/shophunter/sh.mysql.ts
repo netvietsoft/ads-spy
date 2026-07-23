@@ -598,6 +598,11 @@ export class ShMysql implements OnModuleInit {
     const [rows] = await this.pool!.query('SELECT storefront_currency FROM sh_shop WHERE shop_id = ?', [shopId]);
     return (rows as any[])[0]?.storefront_currency || null;
   }
+  async getShopUrl(shopId: string): Promise<string | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query("SELECT JSON_UNQUOTE(JSON_EXTRACT(raw,'$.url')) url FROM sh_shop WHERE shop_id = ?", [shopId]);
+    return (rows as any[])[0]?.url || null;
+  }
   async setStorefrontCurrency(shopId: string, currency: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query('UPDATE sh_shop SET storefront_currency = ? WHERE shop_id = ?', [currency, shopId]);

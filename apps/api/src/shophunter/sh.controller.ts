@@ -244,9 +244,12 @@ export class ShController {
   }
 
   @Get('sh/shop/:id')
-  shopDetail(@Param('id') id: string) {
+  async shopDetail(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Thiếu shop id.');
-    return this.svc.shopDetail(id);
+    const d = await this.svc.shopDetail(id);
+    // Tiền tệ THẬT (storefront) để FE quy đổi USD đúng — ShopHunter hay gắn sai `currency`.
+    const storefrontCurrency = await this.svc.getStorefrontCurrency(id).catch(() => null);
+    return { ...d, storefrontCurrency };
   }
 
   @Get('sh/shop/:id/revenue-daily')
