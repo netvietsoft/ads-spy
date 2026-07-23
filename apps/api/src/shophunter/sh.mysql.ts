@@ -1103,6 +1103,19 @@ export class ShMysql implements OnModuleInit {
     return out;
   }
 
+  // Sửa lệch cột phẳng sh_shop.revenue = doanh thu tháng trong raw JSON. Search bản cũ chỉ ghi raw (không ghi cột phẳng)
+  // → báo cáo phân bố bậc (đọc cột revenue) xếp shop sai bậc. Chạy 1 lần là đủ; search/harvest từ nay tự giữ đồng bộ.
+  // sh_shop ~46k → UPDATE nhanh (không như ALTER bảng lớn). Xoá cache báo cáo để đếm lại theo revenue mới.
+  async reconcileShopRevenue(): Promise<number> {
+    await this.ensureReady();
+    const [r] = await this.pool!.query(
+      `UPDATE sh_shop SET revenue = CAST(JSON_EXTRACT(raw, '$.month_current_period_revenue') AS DECIMAL(20,2))
+        WHERE JSON_EXTRACT(raw, '$.month_current_period_revenue') IS NOT NULL`,
+    );
+    this.bucketCache = null;
+    return Number((r as any).affectedRows) || 0;
+  }
+
   async addTrackHistory(domain: string, shopId: string, shopTitle: string, identifyType: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query(

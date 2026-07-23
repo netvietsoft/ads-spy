@@ -7,7 +7,7 @@ import { shopifyHttp } from './shopify.client';
 import { makeProxiedGet, ProxyForGet } from './shopify.proxy-get';
 import { isGlobalBlock } from './sh.harvest.util';
 
-const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate'] as const;
+const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 const DESC: Record<JobName, string> = {
@@ -16,6 +16,7 @@ const DESC: Record<JobName, string> = {
   catalog: 'Cào products.json Shopify qua proxy xoay (sh.service.catalogSyncStep).',
   productrev: 'Đồng bộ doanh thu NGÀY từng sản phẩm (doanh thu cao→thấp) → sh_product_revenue_daily. Cần token.',
   affiliate: 'Quét affiliate cho shop mới/chưa quét (qua proxy Shopify) → sh_shop.affiliate_*. Shop mới tự vào hàng đợi.',
+  importenrich: 'Enrich item đã import (mục Import): lấy detail/doanh thu → sh_shop/sh_product. Chạy liên tục cho hết hàng chờ. Cần token.',
 };
 
 const IDLE_MS = 120000;  // 2' khi hết việc
@@ -30,6 +31,7 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   catalog: { batch: 25, paceMs: 1500, delayMs: 2000, concurrency: 1 },
   productrev: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
   affiliate: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 2, activeStart: 8, activeEnd: 23 },
+  importenrich: { batch: 100, daily: 10000, paceMs: 1500, activeStart: 8, activeEnd: 23 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
 const CFG_BOUNDS: Record<string, [number, number]> = {
@@ -50,7 +52,7 @@ export interface JobView {
 @Injectable()
 export class ShJobsService implements OnModuleInit {
   private readonly logger = new Logger('ShJobs');
-  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank() };
+  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank() };
   private catalogProxies: ProxyForGet[] = [];
   private origShopifyGet: typeof shopifyHttp.get | null = null;
 
@@ -65,7 +67,7 @@ export class ShJobsService implements OnModuleInit {
   private sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
   async onModuleInit(): Promise<void> {
-    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate'] as JobName[]) {
+    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'] as JobName[]) {
       try { if (await this.isEnabled(name)) this.start(name); } catch { /* MySQL/Prisma chưa sẵn sàng — bỏ qua, bật lại từ web */ }
     }
   }
@@ -224,6 +226,7 @@ export class ShJobsService implements OnModuleInit {
     if (name === 'catalog') return this.stepCatalog();
     if (name === 'productrev') return this.stepProductrev(force);
     if (name === 'affiliate') return this.stepAffiliate(force);
+    if (name === 'importenrich') return this.stepImportEnrich(force);
     return this.stepEnrich();
   }
 
@@ -316,6 +319,27 @@ export class ShJobsService implements OnModuleInit {
     if (r.blocked >= r.shops) { this.mem.affiliate.lastStatus = 'blocked'; await this.mysql.appendJobLog('affiliate', 'warn', `Bị chặn nhiều (${r.blocked}/${r.shops}); nghỉ.`).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.affiliate.lastStatus = 'ok';
     await this.mysql.appendJobLog('affiliate', 'info', `${r.shops} shop · ${r.yes} yes · ${r.app} app · ${r.blocked} chặn`).catch(() => {});
+    return { pace: cfg.paceMs };
+  }
+
+  // Enrich item đã import (sh_imported/sh_imported_product) — chạy liên tục cho HẾT hàng chờ, độc lập với mode harvest.
+  // (Trước đây import-enrich chỉ chạy khi SH_HARVEST_MODE=import nên hay bị kẹt.) Cần token ShopHunter.
+  private async stepImportEnrich(force = false): Promise<{ pace: number }> {
+    const cfg = await this.getJobCfg('importenrich');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.importenrich.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('importenrich');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.importenrich.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: any;
+    try { r = await this.harvest.runImportEnrich({ daily: cfg.batch }); }
+    catch (e) { this.mem.importenrich.lastStatus = 'error'; await this.mysql.appendJobLog('importenrich', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, Number(r?.processed) || 0).catch(() => {});
+    this.mem.importenrich.lastRunAt = Date.now();
+    this.mem.importenrich.stats = { xu_ly: r?.processed || 0, ok: r?.ok || 0, bo_qua: r?.skipped || 0 };
+    if (r?.status === 'all_done') { this.mem.importenrich.lastStatus = 'idle'; await this.mysql.appendJobLog('importenrich', 'info', 'Hết item cần enrich; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    if (r?.status === 'blocked') { this.mem.importenrich.lastStatus = 'blocked'; await this.mysql.appendJobLog('importenrich', 'warn', `Bị chặn; nghỉ. đã xử lý ${r?.processed || 0}`).catch(() => {}); return { pace: BLOCK_MS }; }
+    if (!(Number(r?.processed) > 0)) { this.mem.importenrich.lastStatus = 'idle'; return { pace: IDLE_MS }; }
+    this.mem.importenrich.lastStatus = 'ok';
+    await this.mysql.appendJobLog('importenrich', 'info', `+${r?.ok || 0}/${r?.processed || 0} enrich (bỏ qua ${r?.skipped || 0})`).catch(() => {});
     return { pace: cfg.paceMs };
   }
 

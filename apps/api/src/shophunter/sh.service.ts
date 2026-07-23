@@ -537,6 +537,7 @@ export class ShService {
   reportTopShops(o: { country?: string; category?: string }) { return this.mysql.reportTopShops(o); }
   reportTopProducts(o: { country?: string; category?: string }) { return this.mysql.reportTopProducts(o); }
   reportRevenueBuckets() { return this.mysql.reportRevenueBuckets(); }
+  reconcileShopRevenue() { return this.mysql.reconcileShopRevenue(); }
 
   // --- Kho doanh thu theo ngày (tích luỹ dài hạn) ---
   revenueDaily(shopId: string) { return this.mysql.getRevenueDaily(shopId); }

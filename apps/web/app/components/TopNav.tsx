@@ -26,11 +26,11 @@ export function TopNav() {
   const pathname = usePathname() || '/';
   const router = useRouter();
   const active = activeHref(pathname);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'dark' | 'light'>('light');
   // Quyền để hiện menu: guest ẩn Import + Cài đặt (chặn thật ở middleware, đây chỉ hiển thị). '' = mở/dev → hiện đủ.
   const [role, setRole] = useState('');
 
-  useEffect(() => { setTheme(((localStorage.getItem('theme') as 'dark' | 'light') || 'dark')); }, []);
+  useEffect(() => { setTheme(((localStorage.getItem('theme') as 'dark' | 'light') || 'light')); }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('theme', theme); }, [theme]);
   useEffect(() => {
     const m = document.cookie.match(/(?:^|; )site_role=([^;]+)/);

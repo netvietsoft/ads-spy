@@ -326,21 +326,21 @@ export class ShController {
 
   @Post('sh/jobs/:name/toggle')
   toggleJob(@Param('name') name: string, @Body('on') on: any) {
-    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate'];
+    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'];
     if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.toggle(name, !!on);
   }
 
   @Post('sh/jobs/:name/run-now')
   runJobOnce(@Param('name') name: string) {
-    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate'];
+    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'];
     if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.runOnce(name);
   }
 
   @Post('sh/jobs/:name/config')
   setJobConfig(@Param('name') name: string, @Body() body: any) {
-    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate'];
+    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'];
     if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.setJobCfg(name, body || {});
   }
@@ -413,6 +413,13 @@ export class ShController {
   @Get('sh/report/buckets')
   reportRevenueBuckets() {
     return this.svc.reportRevenueBuckets();
+  }
+
+  // Sửa lệch cột revenue phẳng (báo cáo bậc dùng) khớp doanh thu tháng trong raw. Chạy 1 lần sau khi cập nhật code.
+  @Post('sh/report/reconcile-shop-revenue')
+  async reconcileShopRevenue() {
+    const n = await this.svc.reconcileShopRevenue();
+    return { ok: true, updated: n };
   }
 
   @Get('sh/local/filters')

@@ -557,6 +557,9 @@ export interface ShBucketReport { buckets: { key: string; lo: number | null; hi:
 export async function shReportBuckets(): Promise<ShBucketReport> {
   return jsonOrThrow(await fetch(`${API}/api/sh/report/buckets`));
 }
+export async function shReconcileShopRevenue(): Promise<{ ok: boolean; updated: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/report/reconcile-shop-revenue`, { method: 'POST' }));
+}
 export async function shShopRevenueDaily(shopId: string): Promise<{ date_str: string; revenue: number | null; sale_count: number | null }[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${shopId}/revenue-daily`));
 }

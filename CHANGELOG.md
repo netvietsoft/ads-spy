@@ -4,6 +4,25 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-23 — Theme sáng mặc định · card DT tháng · job importenrich · sửa lệch báo cáo bậc
+
+### Giao diện
+- **Theme mặc định = Sáng** (trước mặc định Tối). Người đã chọn Tối vẫn giữ (localStorage).
+- **Card tìm kiếm** (`/shophuntershopify`): nhãn **"Month"** (thay "Tháng") xuống dòng riêng, căn trái. Card **sản phẩm** hiện đủ **Day · Week** (dòng 1) + **Month · Ads** (dòng 2, căn trái).
+
+### Job nền `importenrich` (giờ 6 job) — drain hết hàng chờ enrich mục Import
+- **Sự cố:** enrich item đã import (mục `/import`) chỉ chạy khi `SH_HARVEST_MODE=import` (cron harvest chỉ 1 mode) → VPS chạy mode khác nên **35k hàng chờ không tự drain**.
+- **Fix:** thêm job nền `importenrich` (loop liên tục, độc lập mode harvest) gọi `runImportEnrich` mỗi lượt. Bật/tắt + tốc độ (batch/daily/paceMs/giờ) ở `/settings`. Cần token.
+
+### Báo cáo bậc: sửa shop xếp sai bậc (flat `revenue` lệch JSON month)
+- **Sự cố:** báo cáo đếm/lọc theo cột phẳng `sh_shop.revenue` nhưng sort/hiện theo JSON `month_current_period_revenue`. Search bản cũ chỉ ghi raw (không ghi cột phẳng) → 2 giá trị lệch → shop hiện $1.373 nằm trong bậc $100–$1.000.
+- **Fix:** (1) `upsertItem` (commit trước) đã ghi cột phẳng khi search → giữ đồng bộ từ nay. (2) Nút **"↻ Sửa lệch DT shop"** trong báo cáo (endpoint `POST sh/report/reconcile-shop-revenue`) chạy `UPDATE sh_shop SET revenue = json month` (46k dòng ~12s) sửa dữ liệu cũ. Xoá cache báo cáo để đếm lại.
+
+### Ghi chú dữ liệu (KHÔNG phải lỗi)
+- Doanh thu ShopHunter là **ước tính (GMV model)**, KHÔNG bằng số đơn × giá (vd sp $21, 161 đơn/ngày nhưng DT ngày $483k). Ta lưu **trung thực** theo raw ShopHunter (đã đối chiếu `revenue_day` = raw). Đây là bản chất dữ liệu ShopHunter.
+
+---
+
 ## 2026-07-23 — Chấm trạng thái Local DB trên card tìm kiếm Shopify
 
 - Mỗi card kết quả tìm (tab Shopify, `/shophuntershopify`) có **chấm tròn góc trên phải** so ID với Local DB:

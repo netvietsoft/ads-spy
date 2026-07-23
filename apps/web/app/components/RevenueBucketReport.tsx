@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { shReportBuckets, shLocalShops, shLocalProducts, ShBucketReport } from '../api';
+import { shReportBuckets, shLocalShops, shLocalProducts, shReconcileShopRevenue, ShBucketReport } from '../api';
 
 const money = (n: number) => '$' + Math.round(n).toLocaleString('vi-VN'); // dấu chấm ngăn nghìn: $100.000
 const num = (n: number) => Number(n || 0).toLocaleString('vi-VN');
@@ -99,10 +99,16 @@ export function RevenueBucketReport() {
   const [data, setData] = useState<ShBucketReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    setLoading(true); setErr(null);
-    shReportBuckets().then(setData).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
-  }, []);
+  const [fixing, setFixing] = useState(false);
+  const [note, setNote] = useState('');
+  const reload = () => { setLoading(true); setErr(null); shReportBuckets().then(setData).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false)); };
+  useEffect(() => { reload(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const fixShopRevenue = async () => {
+    setFixing(true); setNote('');
+    try { const r = await shReconcileShopRevenue(); setNote(`Đã đồng bộ lại doanh thu ${num(r.updated)} shop.`); reload(); }
+    catch (e) { setErr((e as Error).message); }
+    setFixing(false);
+  };
   return (
     <div style={{ marginTop: 12 }}>
       <p className="hint">Phân bố số lượng shop &amp; sản phẩm theo bậc <b>doanh thu tháng</b> (Local DB). Doanh thu lấy từ lần đồng bộ gần nhất (chỉ số tháng của ShopHunter, tính tới hôm qua). Bấm 1 bậc để xem top 50; “Xem tất cả” mở Local DB đã lọc sẵn bậc đó.</p>
@@ -110,7 +116,11 @@ export function RevenueBucketReport() {
       {loading && <div className="hint"><span className="spinner" /> Đang đếm phân bố…</div>}
       {data && (
         <>
-          <div style={{ margin: '6px 0 14px', opacity: 0.85 }}>Tổng: <b>{num(data.total.shops)}</b> shop · <b>{num(data.total.products)}</b> sản phẩm</div>
+          <div style={{ margin: '6px 0 14px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ opacity: 0.85 }}>Tổng: <b>{num(data.total.shops)}</b> shop · <b>{num(data.total.products)}</b> sản phẩm</span>
+            <button className="srcbtn" disabled={fixing} onClick={fixShopRevenue} title="Đồng bộ lại cột doanh thu shop (sửa shop xếp sai bậc do dữ liệu search cũ)">{fixing ? '…' : '↻ Sửa lệch DT shop'}</button>
+            {note && <span style={{ color: 'var(--accent-2)', fontSize: 13 }}>{note}</span>}
+          </div>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
             <BucketSection title="Báo cáo shop" kind="shops" buckets={data.buckets} counts={data.shops} />
             <BucketSection title="Báo cáo sản phẩm" kind="products" buckets={data.buckets} counts={data.products} />
