@@ -2,7 +2,26 @@
 
 > Log dựng lại toàn bộ sau khi **restart máy**. Cập nhật: 2026-07-14 (chiều).
 
-## ⚡ TRẠNG THÁI PHIÊN 2026-07-22 (mới nhất — đọc trước): Menu Cài đặt + Job nền
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-23 (mới nhất — đọc trước): Auth 2 quyền + /home + tối ưu + đồng bộ chi tiết
+
+- **Git HEAD:** `ecb4649` trên `main`, **ĐÃ PUSH origin/main**. Nối tiếp phiên job-monitor (2026-07-22 bên dưới). Chi tiết đầy đủ: CHANGELOG mục 2026-07-22.
+- **Đăng nhập 2 QUYỀN** (mật khẩu ở ENV, repo public KHÔNG hardcode):
+  - `SITE_PASSWORD` = **guest** (vd `Netviet@123`) → chỉ 7 mục (Google/FB/TikTok/Shopify/Local DB/Track/Báo cáo); **CHẶN CỨNG `/import` + `/settings`** (middleware redirect /home) + ẩn khỏi menu.
+  - `ADMIN_PASSWORD` = **admin** → đủ 9 mục (có Import + Cài đặt). **Chưa đặt ADMIN_PASSWORD → Import/Cài đặt khoá với mọi người.**
+  - Quyền suy từ hash cookie `site_auth` (an toàn). `ecosystem.config.js` (web env) đã truyền cả 2 biến.
+  - ⚠️ **Đặt/đổi mật khẩu:** sửa `~/.bashrc` (export SITE_PASSWORD/ADMIN_PASSWORD) → `source` → **`pm2 delete ads-spy-web && pm2 start ecosystem.config.js --only ads-spy-web && pm2 save`** (delete+start để env block đọc lại; `restart --update-env` KHÔNG chắc ăn). `grep`-conditional add KHÔNG ghi đè giá trị cũ → phải `sed -i '/export SITE_PASSWORD=/d;...'` xoá dòng cũ trước.
+  - `/api/login` nhận admin HOẶC guest → set `site_role`. Trang **`/home`** = landing 7 công cụ (đăng nhập xong về /home).
+  - ⚠️ Gate chỉ ở **tầng WEB**. **API `api.dpboss.pet` vẫn MỞ** (chưa auth) — gọi trực tiếp endpoint vẫn được.
+- **UI:** ShopHunter → **Shopify** (nhãn); menu **sticky mọi trang** (TopNav trong layout, kể cả /shop /product) + item là `<a href>` (chuột phải mở tab mới); ô lọc số có **dấu ngăn nghìn**; card tiền xanh đậm; tab Shopify lazy-load, nút ‹/› thu/mở lọc, lưới ~4 sp/hàng.
+- **Nút "Đồng bộ" trang chi tiết** `/shop/:id` + `/product/:shopId/:productId`: báo "⚠ Chưa đồng bộ (mới nhất DD/MM)" nếu >2 ngày + nút **🔄 Đồng bộ** (shop có **Enrich SP**) → `POST sh/shop|product/.../sync-revenue` → `appendRevenueDaily` (**upsert tích luỹ**, bấm lại điền ngày thiếu). Token dùng chung với job nền → thi thoảng ShopHunter trả partial (ít ngày) → **bấm lại** là đủ dần.
+- **Job nền chỉnh tốc độ TỪ WEB** (Settings): mỗi job có mục "Tốc độ" (batch/pace/luồng/nghỉ/daily…) lưu `job:<name>:cfg` (fbSetting), đọc lúc chạy — sửa sống không cần restart. Nút **"Chạy ngay"** (`run-now`) mỗi job. catalog chạy **concurrency** (proxy xoay).
+- **Tối ưu tốc độ Local DB Products** (BE): bộ lọc products đọc **cột index `sh_product_list`** (bỏ JSON-scan `sh_product` 4M ~5 phút gây nghẽn); **cache COUNT(*) 60s**. → list ~26ms.
+- **Deploy** (nhắc lại, quan trọng):
+  - FE: **LUÔN `rm -rf .next`** trước build + **purge Cloudflare** + Ctrl+Shift+R (nếu không → ChunkLoadError "Unexpected token '<'"). Bake `NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet`.
+  - Đổi cả API+web → build cả 2; restart **riêng** `ads-spy-api` / `ads-spy-web` (KHÔNG `pm2 restart all`).
+  - `sh_job_log` = MySQL raw (tự tạo lúc API boot); auth/job-flags/cfg dùng `fbSetting` (SQLite) → **KHÔNG cần prisma migrate** (chỉ `prisma generate` khi build mới).
+
+## ⚡ TRẠNG THÁI PHIÊN 2026-07-22: Menu Cài đặt + Job nền
 
 - **Git HEAD:** `da9cdf3` trên `main`, **ĐÃ PUSH origin/main**. Session này làm: (1) bộ lọc ShopHunter thu/xổ (collapsible), (2) **menu ⚙️ Cài đặt** = Proxy + giám sát/bật-tắt 3 job nền (harvest/enrich/catalog) + log lên web, (3) nút **"Chạy ngay"** mỗi job, (4) token ShopHunter dời vào đầu Settings. Chi tiết: CHANGELOG mục 2026-07-22.
 - **Cơ chế job** (hiểu để đọc log đúng):
