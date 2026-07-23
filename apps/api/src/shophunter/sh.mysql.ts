@@ -259,8 +259,9 @@ export class ShMysql implements OnModuleInit {
     await this.ensureIndex(pool, 'sh_product_list', 'idx_pl_category', 'category_last');
     // Mốc "đã đồng bộ chuỗi doanh thu ngày" của job revsync-sp — bảng RIÊNG (không ALTER sh_product_list 4M dòng:
     // ADD COLUMN ở đó bị MySQL rebuild toàn bảng ~20 phút + khoá metadata, treo cả app). Bảng phụ tạo tức thì.
-    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_revsync (
-      product_id VARCHAR(32) NOT NULL PRIMARY KEY, synced_at BIGINT)`);
+    // product_id PHẢI cùng collation với sh_product_list.product_id để LEFT JOIN không lỗi "Illegal mix of
+    // collations" — DB migrate có bảng unicode_ci lẫn 0900_ai_ci (VPS). Lấy collation THẬT lúc chạy rồi khớp theo.
+    await this.ensureRevsyncTable(pool);
 
     // Proxy dùng chung cho crawler Shopify (quản lý qua web). UNIQUE(host,port) để dán trùng thì cập nhật.
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_proxy (
@@ -289,6 +290,29 @@ export class ShMysql implements OnModuleInit {
 
   private pk(table: Table) {
     return table === 'sh_shop' ? 'shop_id' : 'product_id';
+  }
+
+  // Collation của 1 cột (null nếu chưa có). Dùng để khớp collation bảng phụ với bảng gốc.
+  private async columnCollation(pool: mysql.Pool, table: string, column: string): Promise<string | null> {
+    const [rows] = await pool.query(
+      `SELECT COLLATION_NAME c FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, column],
+    );
+    const c = (rows as any[])[0]?.c;
+    return c && /^[a-z0-9_]+$/i.test(c) ? c : null; // chặn injection: chỉ nhận tên collation hợp lệ
+  }
+
+  // Bảng phụ mốc sync doanh thu ngày; product_id khớp collation với sh_product_list.product_id (tránh lỗi JOIN mixed collation).
+  private async ensureRevsyncTable(pool: mysql.Pool): Promise<void> {
+    const listColl = (await this.columnCollation(pool, 'sh_product_list', 'product_id')) || 'utf8mb4_0900_ai_ci';
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_revsync (
+      product_id VARCHAR(32) COLLATE ${listColl} NOT NULL PRIMARY KEY, synced_at BIGINT)`);
+    // Bảng tạo trước đó (collation DB-default) có thể lệch → sửa cho khớp (bảng phụ nhỏ, ALTER tức thì).
+    const curColl = await this.columnCollation(pool, 'sh_product_revsync', 'product_id');
+    if (curColl && curColl !== listColl) {
+      await pool.query(`ALTER TABLE sh_product_revsync MODIFY product_id VARCHAR(32) COLLATE ${listColl} NOT NULL`);
+    }
   }
 
   private async ensureColumn(pool: mysql.Pool, table: string, column: string, definition: string): Promise<void> {
