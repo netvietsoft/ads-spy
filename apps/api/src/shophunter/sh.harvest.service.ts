@@ -38,12 +38,14 @@ export class ShHarvestService {
   private revsyncRunning = false;
 
   // Tham số tốc độ chỉnh từ web (lưu DB job:harvest:cfg) — nạp lúc chạy, fallback env (tương thích cũ).
-  private hcfg = { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1 };
+  private hcfg = { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1, activeStart: 8, activeEnd: 23 };
   private async loadCfg(): Promise<void> {
-    const def = { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1 };
+    const def = { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1, activeStart: 8, activeEnd: 23 };
     const eDaily = Number(process.env.SH_HARVEST_DAILY); if (Number.isFinite(eDaily) && eDaily > 0) def.daily = eDaily;
     const eConc = Number(process.env.SH_HARVEST_CONCURRENCY); if (Number.isFinite(eConc) && eConc > 0) def.concurrency = eConc;
     const eSkip = Number(process.env.SH_HARVEST_SKIP_PCT); if (Number.isFinite(eSkip)) def.skipPct = eSkip;
+    const eAS = Number(process.env.SH_HARVEST_ACTIVE_START); if (Number.isFinite(eAS)) def.activeStart = eAS;
+    const eAE = Number(process.env.SH_HARVEST_ACTIVE_END); if (Number.isFinite(eAE)) def.activeEnd = eAE;
     const out = { ...def };
     const raw = await this.mysql.getSetting('job:harvest:cfg').catch(() => null);
     if (raw) { try { const o = JSON.parse(raw); for (const k of Object.keys(def) as (keyof typeof def)[]) if (typeof o[k] === 'number' && Number.isFinite(o[k])) out[k] = o[k]; } catch { /* giữ default */ } }
@@ -82,8 +84,8 @@ export class ShHarvestService {
     if (!(await this.harvestEnabled())) return { ran: false, reason: 'disabled' };
     await this.loadCfg();
     const cap = this.hcfg.daily;
-    const activeStart = Number(process.env.SH_HARVEST_ACTIVE_START) || 8;
-    const activeEnd = Number(process.env.SH_HARVEST_ACTIVE_END) || 23;
+    const activeStart = this.hcfg.activeStart;
+    const activeEnd = this.hcfg.activeEnd;
     const skipPct = this.hcfg.skipPct;
     const key = this.dailyKey();
     const used = await this.mysql.getDailyCount(key);

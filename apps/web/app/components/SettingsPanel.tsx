@@ -8,6 +8,7 @@ const STATUS_VI: Record<string, string> = { ok: 'OK', idle: 'Nghỉ (hết việ
 const CFG_LABEL: Record<string, string> = {
   daily: 'Trần/ngày', perTick: 'Mỗi lượt (cron)', skipPct: 'Bỏ lượt %', delayMs: 'Nghỉ/shop (ms)',
   concurrency: 'Số luồng', batch: 'Shop/lượt', paceMs: 'Nghỉ giữa lượt (ms)',
+  activeStart: 'Giờ bắt đầu (0-24)', activeEnd: 'Giờ kết thúc (0-24)',
 };
 const fmtTime = (ms: number | null) => (ms ? new Date(ms).toLocaleString() : '—');
 

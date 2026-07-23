@@ -21,14 +21,14 @@ const TICK_MS = 2000;    // nhịp kiểm cờ enabled (để tắt nhanh)
 
 // Tham số tốc độ chỉnh từ web (lưu DB job:<name>:cfg) — đọc lúc chạy → sửa sống, không cần restart.
 const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
-  harvest: { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1 },
+  harvest: { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1, activeStart: 8, activeEnd: 23 },
   enrich: { batch: 50, paceMs: 1500 },
   catalog: { batch: 25, paceMs: 1500, delayMs: 2000, concurrency: 1 },
 };
-// Kẹp an toàn khi chỉnh từ web (min,max).
+// Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
 const CFG_BOUNDS: Record<string, [number, number]> = {
   daily: [1, 100000], perTick: [1, 2000], skipPct: [0, 100], delayMs: [0, 60000],
-  concurrency: [1, 8], batch: [1, 1000], paceMs: [0, 600000],
+  concurrency: [1, 8], batch: [1, 1000], paceMs: [0, 600000], activeStart: [0, 24], activeEnd: [0, 24],
 };
 
 interface JobMem { running: boolean; lastRunAt: number | null; lastStatus: string | null; stats: Record<string, number>; }
