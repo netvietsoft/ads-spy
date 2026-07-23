@@ -4,7 +4,7 @@
 
 ## ⚡ TRẠNG THÁI PHIÊN 2026-07-23 (mới nhất — đọc trước): Auth 2 quyền + /home + tối ưu + đồng bộ chi tiết
 
-- **Git HEAD:** `b54d1bc` trên `main`, **ĐÃ PUSH origin/main**. Nối tiếp phiên job-monitor (2026-07-22 bên dưới). Chi tiết đầy đủ: CHANGELOG mục 2026-07-23 + 2026-07-22.
+- **Git HEAD:** `bbb4ae0` trên `main`, **ĐÃ PUSH origin/main**. Nối tiếp phiên job-monitor (2026-07-22 bên dưới). Chi tiết đầy đủ: CHANGELOG mục 2026-07-23 + 2026-07-22.
 - **Đăng nhập 2 QUYỀN** (mật khẩu ở ENV, repo public KHÔNG hardcode):
   - `SITE_PASSWORD` = **guest** (vd `Netviet@123`) → chỉ 7 mục (Google/FB/TikTok/Shopify/Local DB/Track/Báo cáo); **CHẶN CỨNG `/import` + `/settings`** (middleware redirect /home) + ẩn khỏi menu.
   - `ADMIN_PASSWORD` = **admin** → đủ 9 mục (có Import + Cài đặt). **Chưa đặt ADMIN_PASSWORD → Import/Cài đặt khoá với mọi người.**
