@@ -4,6 +4,17 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-23 — Chấm trạng thái Local DB trên card tìm kiếm Shopify
+
+- Mỗi card kết quả tìm (tab Shopify, `/shophuntershopify`) có **chấm tròn góc trên phải** so ID với Local DB:
+  - 🟢 **xanh**: đã có trong DB **và đã đồng bộ doanh thu ngày** (có dòng trong `sh_shop_revenue_daily`/`sh_product_revenue_daily`).
+  - ⚪ **xám**: đã có trong DB nhưng **chưa** có doanh thu ngày.
+  - 🔴 **đỏ**: **chưa có** trong DB — search vốn đã tự upsert (`upsertItem`) nên item được thêm luôn; chấm đỏ đánh dấu "mới phát hiện".
+- **"Đã đồng bộ DT ngày" tính theo CÓ DÒNG trong `*_revenue_daily`** (không dùng mốc `sh_shop.revenue_synced_at`: mốc chỉ set khi revsync tường minh → ~39k shop có dữ liệu daily mà mốc vẫn NULL, sẽ báo sai xám).
+- BE: `getIdsDbStatus(type, ids)` (2 truy vấn `IN (?)` — param vs cột, không JOIN chéo → không lỗi mixed-collation); `explore()` chấm trạng thái **TRƯỚC** khi upsert (để biết ID nào mới = đỏ) rồi gắn cờ `_db` mỗi item. FE: `StatusDot` trên `ShopCard`/`ProductCard`.
+
+---
+
 ## 2026-07-23 — Báo cáo Local DB: phân bố theo bậc doanh thu tháng
 
 ### Trang `/reportlocaldb` thêm tab "Phân bố doanh thu" (giữ nguyên tab "Tổng quan" cũ)

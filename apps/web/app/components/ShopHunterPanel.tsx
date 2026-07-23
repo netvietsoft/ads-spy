@@ -14,6 +14,19 @@ import { ShLogo } from './ShLogo';
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '');
 
+// Chấm trạng thái so với Local DB (góc trên phải card): xanh = đã có + đã đồng bộ DT ngày; xám = đã có, chưa đồng bộ;
+// đỏ = chưa có trong DB (search vừa tự động thêm vào). Cờ _db do API trả (sh.service.explore → annotateDb).
+const DB_DOT: Record<string, { c: string; t: string }> = {
+  green: { c: '#22c55e', t: 'Đã có trong DB · đã đồng bộ doanh thu ngày' },
+  gray: { c: '#9ca3af', t: 'Đã có trong DB · chưa đồng bộ doanh thu ngày' },
+  red: { c: '#ef4444', t: 'Chưa có trong DB · đã tự động thêm vào DB' },
+};
+function StatusDot({ db }: { db?: string }) {
+  const s = DB_DOT[db || ''];
+  if (!s) return null;
+  return <span title={s.t} style={{ position: 'absolute', top: 7, right: 7, width: 10, height: 10, borderRadius: '50%', background: s.c, boxShadow: '0 0 0 2px var(--panel)', zIndex: 2 }} />;
+}
+
 const SORT_VI: Record<string, string> = {
   day_current_period_revenue: 'Doanh thu Ngày',
   day_revenue_percent_change: 'Tăng trưởng Ngày',
@@ -35,7 +48,8 @@ const SORT_VI: Record<string, string> = {
 
 function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
   return (
-    <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
+    <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer', position: 'relative' }}>
+      <StatusDot db={s._db} />
       <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={24} />
         <span style={{ fontSize: 13 }}>{s.shop_title || s.url}</span>
@@ -58,7 +72,8 @@ function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
   const img = p.product_image_external || '';
   const site = shShopSite(p); const purl = shProductUrl(p);
   return (
-    <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer' }}>
+    <div className="fbcard" onClick={onOpen} style={{ cursor: 'pointer', position: 'relative' }}>
+      <StatusDot db={p._db} />
       {img ? <div className="fbmedia"><img src={shAssetProxy(img)} alt={p.product_title} loading="lazy" /><span className="countbadge">{money(p.price)}</span></div> : null}
       <div className="fbpage" style={{ fontSize: 13 }}>{p.product_title}</div>
       <div className="fbbody" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

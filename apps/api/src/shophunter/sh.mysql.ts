@@ -1077,6 +1077,25 @@ export class ShMysql implements OnModuleInit {
     return data;
   }
 
+  // Trạng thái từng ID so với Local DB (cho chấm màu ở tab tìm kiếm): map id → 'green'|'gray' cho ID ĐÃ có trong DB
+  // (green = đã đồng bộ doanh thu ngày). ID không nằm trong map = CHƯA có (caller đánh 'red'). Dùng IN (?) (param vs cột,
+  // KHÔNG join chéo bảng) nên không dính lỗi mixed-collation. "Đã đồng bộ DT ngày" = CÓ DÒNG trong *_revenue_daily —
+  // KHÔNG dùng mốc sh_shop.revenue_synced_at (chỉ set khi revsync tường minh; ~39k shop có dữ liệu daily mà mốc vẫn NULL).
+  async getIdsDbStatus(searchType: 'shops' | 'products', ids: string[]): Promise<Record<string, 'green' | 'gray'>> {
+    await this.ensureReady();
+    const out: Record<string, 'green' | 'gray'> = {};
+    const uniq = Array.from(new Set(ids.filter(Boolean)));
+    if (!uniq.length) return out;
+    const [existTable, existCol, dailyTable, dailyCol] = searchType === 'shops'
+      ? ['sh_shop', 'shop_id', 'sh_shop_revenue_daily', 'shop_id']
+      : ['sh_product_list', 'product_id', 'sh_product_revenue_daily', 'product_id'];
+    const [ex] = await this.pool!.query(`SELECT ${existCol} AS id FROM ${existTable} WHERE ${existCol} IN (?)`, [uniq]);
+    const [sy] = await this.pool!.query(`SELECT DISTINCT ${dailyCol} AS id FROM ${dailyTable} WHERE ${dailyCol} IN (?)`, [uniq]);
+    const synced = new Set((sy as any[]).map((r) => String(r.id)));
+    for (const r of ex as any[]) { const id = String(r.id); out[id] = synced.has(id) ? 'green' : 'gray'; }
+    return out;
+  }
+
   async addTrackHistory(domain: string, shopId: string, shopTitle: string, identifyType: string): Promise<void> {
     await this.ensureReady();
     await this.pool!.query(

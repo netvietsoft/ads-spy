@@ -65,7 +65,8 @@ export class ShService {
     const cached = await this.mysql.getSearchCache(hash, TTL_MS);
     if (cached) {
       const items = await this.mysql.getItemsByIds(table, cached.itemIds);
-      return { items, nextFromValue: cached.nextFromValue, totalHits: cached.totalHits, cached: true };
+      const status = await this.mysql.getIdsDbStatus(searchType, items.map((it: any) => String(it[pk])));
+      return { items: this.annotateDb(items, pk, status), nextFromValue: cached.nextFromValue, totalHits: cached.totalHits, cached: true };
     }
 
     const raw = await this.client.search(searchType, opts);
@@ -75,13 +76,24 @@ export class ShService {
       const id = String(it[pk]);
       if (!id || id === 'undefined') continue;
       itemIds.push(id);
+    }
+    // Chấm màu tính theo trạng thái TRƯỚC khi search này ghi vào DB → ID chưa từng có = 'red' (rồi upsertItem tự thêm).
+    const prior = await this.mysql.getIdsDbStatus(searchType, itemIds);
+    for (const it of parsed.items) {
+      const id = String(it[pk]);
+      if (!id || id === 'undefined') continue;
       await this.mysql.upsertItem(table, id, it);
     }
     await this.mysql.setSearchCache(hash, {
       searchType, sortBy: opts.sort, searchString: opts.q || '', filters: { categoryIds: opts.categoryIds || [] },
       fromCount: opts.from || 0, itemIds, nextFromValue: parsed.nextFromValue, totalHits: parsed.totalHits,
     });
-    return { items: parsed.items, nextFromValue: parsed.nextFromValue, totalHits: parsed.totalHits, cached: false };
+    return { items: this.annotateDb(parsed.items, pk, prior), nextFromValue: parsed.nextFromValue, totalHits: parsed.totalHits, cached: false };
+  }
+
+  // Gắn cờ _db ('green'|'gray'|'red') cho mỗi item để FE vẽ chấm màu. ID không có trong map trạng thái = 'red' (chưa có trong DB).
+  private annotateDb(items: any[], pk: string, status: Record<string, 'green' | 'gray'>): any[] {
+    return items.map((it) => ({ ...it, _db: status[String(it[pk])] || 'red' }));
   }
 
   async shopDetail(shopId: string) {
