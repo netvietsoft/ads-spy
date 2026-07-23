@@ -901,11 +901,11 @@ export class ShMysql implements OnModuleInit {
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
       // nếu để detail_raw trong SELECT, filesort (sort theo doanh thu/JSON) kéo cả blob vào bộ đệm sort → 27s.
       // detail_fetched_at luôn set cùng detail_raw (xem upsertShop) → tương đương, mà sort chỉ còn ~250ms.
-      `SELECT shop_id, raw, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path, affiliate_status, affiliate_link FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      `SELECT shop_id, raw, storefront_currency, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path, affiliate_status, affiliate_link FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, o.limit, o.offset],
     );
     const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_shop ${whereSql}`, params);
-    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at), _up_category: r.up_category ?? null, _up_category_path: r.up_category_path ?? null, _affiliate: r.affiliate_status ?? null, _affiliate_link: r.affiliate_link ?? null })); // eslint-disable-line
+    const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at), _up_category: r.up_category ?? null, _up_category_path: r.up_category_path ?? null, _affiliate: r.affiliate_status ?? null, _affiliate_link: r.affiliate_link ?? null, _storefront_currency: r.storefront_currency ?? null })); // eslint-disable-line
     return { items, total: Number((cnt as any[])[0].n) || 0 };
   }
 
@@ -965,6 +965,13 @@ export class ShMysql implements OnModuleInit {
     );
     const total = await this.cachedCount('sh_product_list', whereSql, params, 60000);
     const items = (rows as any[]).map((r) => ({ ...r, _fetched_at: r._fetched_at == null ? null : Number(r._fetched_at) }));
+    // Tiền tệ THẬT của shop (storefront) cho từng SP → quy đổi USD đúng cả khi ShopHunter gắn sai. IN(?) theo shop_id (param, không lỗi collation).
+    const shopIds = Array.from(new Set(items.map((it) => String(it.shop_id)).filter(Boolean)));
+    if (shopIds.length) {
+      const [scRows] = await this.pool!.query('SELECT shop_id, storefront_currency FROM sh_shop WHERE shop_id IN (?)', [shopIds]);
+      const scMap = new Map((scRows as any[]).map((r: any) => [String(r.shop_id), r.storefront_currency]));
+      for (const it of items) it._storefront_currency = scMap.get(String(it.shop_id)) || null;
+    }
     return { items, total };
   }
 
