@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { shReport, shReportTopShops, shReportTopProducts, shLocalFilters, ShReport, ShTopShops, ShTopProducts } from '../api';
 import { CategoryPicker } from './CategoryPicker';
 import { RevenueBucketReport } from './RevenueBucketReport';
+import { OrderRankReport } from './OrderRankReport';
 
 const money = (n: number) => '$' + Math.round(n).toLocaleString();
 const num = (n: number) => Number(n || 0).toLocaleString();
@@ -62,14 +63,15 @@ function ProductTop({ title, rows }: { title: string; rows: any[] }) {
 }
 
 export function ReportPanel() {
-  const [tab, setTab] = useState<'overview' | 'buckets'>('overview');
+  const [tab, setTab] = useState<'overview' | 'buckets' | 'orders'>('overview');
   return (
     <div style={{ marginTop: 8 }}>
       <div className="sources">
         <button className={`srcbtn ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>Tổng quan</button>
         <button className={`srcbtn ${tab === 'buckets' ? 'active' : ''}`} onClick={() => setTab('buckets')}>Phân bố doanh thu</button>
+        <button className={`srcbtn ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>Xếp hạng số đơn</button>
       </div>
-      {tab === 'overview' ? <OverviewReport /> : <RevenueBucketReport />}
+      {tab === 'overview' ? <OverviewReport /> : tab === 'buckets' ? <RevenueBucketReport /> : <OrderRankReport />}
     </div>
   );
 }

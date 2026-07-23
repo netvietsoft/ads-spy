@@ -107,6 +107,31 @@ export const REVENUE_BUCKETS: { key: string; lo: number | null; hi: number | nul
   { key: '10m+', lo: 10000000, hi: null },
 ];
 
+// Bậc SỐ ĐƠN (sale_count) cho bảng xếp hạng doanh số — độc lập tiền tệ. [lo, hi); hi=null = ">= lo".
+export const ORDER_BUCKETS: { key: string; lo: number; hi: number | null }[] = [
+  { key: '100-500', lo: 100, hi: 500 },
+  { key: '500-1k', lo: 500, hi: 1000 },
+  { key: '1k-2k', lo: 1000, hi: 2000 },
+  { key: '2k-3k', lo: 2000, hi: 3000 },
+  { key: '3k-4k', lo: 3000, hi: 4000 },
+  { key: '4k-5k', lo: 4000, hi: 5000 },
+  { key: '5k-6k', lo: 5000, hi: 6000 },
+  { key: '6k-7k', lo: 6000, hi: 7000 },
+  { key: '7k-8k', lo: 7000, hi: 8000 },
+  { key: '8k-9k', lo: 8000, hi: 9000 },
+  { key: '9k-10k', lo: 9000, hi: 10000 },
+  { key: '10k+', lo: 10000, hi: null },
+];
+const ORDER_FIELD: Record<string, string> = {
+  day: '$.day_current_period_sale_count', week: '$.week_current_period_sale_count', month: '$.month_current_period_sale_count',
+};
+
+export interface OrderBucketReport {
+  buckets: { key: string; lo: number; hi: number | null }[];
+  counts: number[]; // số shop theo từng bậc số đơn
+  total: number;
+}
+
 export interface RevenueBucketReport {
   buckets: { key: string; lo: number | null; hi: number | null }[];
   shops: number[];    // đếm shop theo từng bậc (cùng thứ tự REVENUE_BUCKETS)
@@ -895,9 +920,9 @@ export class ShMysql implements OnModuleInit {
     );
   }
 
-  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number }): Promise<{ items: any[]; total: number }> {
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month' }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
-    const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
+    let orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
@@ -908,6 +933,13 @@ export class ShMysql implements OnModuleInit {
     const revUsd = `(revenue * ${rateCaseSql(SHOP_CUR_EXPR)})`;
     if (o.revMin != null) { where.push(`${revUsd} >= ?`); params.push(o.revMin); }
     if (o.revMax != null) { where.push(`${revUsd} < ?`); params.push(o.revMax); }
+    // Lọc bậc SỐ ĐƠN theo kỳ (bảng xếp hạng doanh số) + sắp xếp theo số đơn giảm dần.
+    if (o.cntPeriod && (o.cntMin != null || o.cntMax != null)) {
+      const cntExpr = `CAST(JSON_EXTRACT(raw, '${ORDER_FIELD[o.cntPeriod] || ORDER_FIELD.month}') AS SIGNED)`;
+      if (o.cntMin != null) { where.push(`${cntExpr} >= ?`); params.push(o.cntMin); }
+      if (o.cntMax != null) { where.push(`${cntExpr} < ?`); params.push(o.cntMax); }
+      orderBy = `ORDER BY ${cntExpr} DESC`;
+    }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const [rows] = await this.pool!.query(
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
@@ -1147,6 +1179,25 @@ export class ShMysql implements OnModuleInit {
       total: { shops: shops.reduce((a, b) => a + b, 0), products: products.reduce((a, b) => a + b, 0) },
     };
     this.bucketCache = { t: Date.now(), data };
+    return data;
+  }
+
+  private orderBucketCache = new Map<string, { t: number; data: OrderBucketReport }>();
+  // Bảng xếp hạng SỐ ĐƠN của shop theo kỳ (day/week/month) — độc lập tiền tệ. Quét sh_shop raw JSON (46k). Cache 5'/kỳ.
+  async reportOrderBuckets(period: 'day' | 'week' | 'month'): Promise<OrderBucketReport> {
+    await this.ensureReady();
+    const hit = this.orderBucketCache.get(period);
+    if (hit && Date.now() - hit.t < 5 * 60000) return hit.data;
+    const cnt = `CAST(JSON_EXTRACT(raw, '${ORDER_FIELD[period] || ORDER_FIELD.month}') AS SIGNED)`;
+    const parts = ORDER_BUCKETS.map((b, i) => {
+      const cond = b.hi == null ? `${cnt} >= ${b.lo}` : `${cnt} >= ${b.lo} AND ${cnt} < ${b.hi}`;
+      return `SUM(CASE WHEN ${cond} THEN 1 ELSE 0 END) b${i}`;
+    });
+    const [r] = await this.pool!.query(`SELECT ${parts.join(', ')} FROM sh_shop`);
+    const row = (r as any[])[0] || {};
+    const counts = ORDER_BUCKETS.map((_, i) => Number(row['b' + i]) || 0);
+    const data: OrderBucketReport = { buckets: ORDER_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })), counts, total: counts.reduce((a, b) => a + b, 0) };
+    this.orderBucketCache.set(period, { t: Date.now(), data });
     return data;
   }
 

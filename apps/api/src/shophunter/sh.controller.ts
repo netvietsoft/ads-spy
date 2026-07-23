@@ -356,9 +356,10 @@ export class ShController {
   }
 
   @Get('sh/local/shops')
-  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string) {
+  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string, @Query('cntMin') cntMin: string, @Query('cntMax') cntMax: string, @Query('cntPeriod') cntPeriod: string) {
     const p = localParams(sort, dir, page, pageSize);
-    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true', revMin: parseRev(revMin), revMax: parseRev(revMax) });
+    const cp = cntPeriod === 'day' || cntPeriod === 'week' || cntPeriod === 'month' ? cntPeriod : undefined;
+    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true', revMin: parseRev(revMin), revMax: parseRev(revMax), cntMin: parseRev(cntMin), cntMax: parseRev(cntMax), cntPeriod: cp });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
 
@@ -418,6 +419,13 @@ export class ShController {
   @Get('sh/report/buckets')
   reportRevenueBuckets() {
     return this.svc.reportRevenueBuckets();
+  }
+
+  // Bảng xếp hạng SỐ ĐƠN của shop theo kỳ (day|week|month) — độc lập tiền tệ.
+  @Get('sh/report/order-buckets')
+  reportOrderBuckets(@Query('period') period: string) {
+    const p = period === 'day' || period === 'week' || period === 'month' ? period : 'month';
+    return this.svc.reportOrderBuckets(p);
   }
 
   // Sửa lệch cột revenue phẳng (báo cáo bậc dùng) khớp doanh thu tháng trong raw. Chạy 1 lần sau khi cập nhật code.

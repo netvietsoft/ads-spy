@@ -528,7 +528,7 @@ export class ShService {
     return { tested: list.length, live, die: list.length - live };
   }
 
-  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number }) { return this.mysql.queryLocalShops(o); }
+  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month' }) { return this.mysql.queryLocalShops(o); }
   localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number }) { return this.mysql.queryLocalProducts(o); }
   localSuggest(type: 'shops' | 'products', q: string) { return this.mysql.localSuggest(type, q); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
@@ -538,6 +538,7 @@ export class ShService {
   reportTopShops(o: { country?: string; category?: string }) { return this.mysql.reportTopShops(o); }
   reportTopProducts(o: { country?: string; category?: string }) { return this.mysql.reportTopProducts(o); }
   reportRevenueBuckets() { return this.mysql.reportRevenueBuckets(); }
+  reportOrderBuckets(period: 'day' | 'week' | 'month') { return this.mysql.reportOrderBuckets(period); }
   reconcileShopRevenue() { return this.mysql.reconcileShopRevenue(); }
 
   // --- Kho doanh thu theo ngày (tích luỹ dài hạn) ---
