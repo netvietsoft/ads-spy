@@ -280,9 +280,9 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
                   <td>{p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={52} height={52} style={{ borderRadius: 8, objectFit: 'cover', display: 'block' }} loading="lazy" /> : null}</td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
                   <td>{money(toUsd(p.price, p._storefront_currency || p.shop_currency))}</td>
-                  <td>{money(toUsd(p.day_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
-                  <td>{money(toUsd(p.week_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
-                  <td>{money(toUsd(p.month_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
+                  <td>{money(p._normalized ? p.day_current_period_revenue : toUsd(p.day_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
+                  <td>{money(p._normalized ? p.week_current_period_revenue : toUsd(p.week_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
+                  <td>{money(p._normalized ? p.month_current_period_revenue : toUsd(p.month_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
                   <td className="wrap">
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: '30ch' }}>
                       <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={20} />

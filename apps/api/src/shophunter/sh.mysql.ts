@@ -984,6 +984,13 @@ export class ShMysql implements OnModuleInit {
       const scMap = new Map((scRows as any[]).map((r: any) => [String(r.shop_id), r.storefront_currency]));
       for (const it of items) it._storefront_currency = scMap.get(String(it.shop_id)) || null;
     }
+    // SP đã chuẩn hoá (revenue_* trong lean ĐÃ là USD, do job productrev ghi) → FE KHÔNG quy đổi lại (tránh nhân đôi).
+    const pids = items.map((it) => String(it.product_id)).filter(Boolean);
+    if (pids.length) {
+      const [nRows] = await this.pool!.query('SELECT product_id FROM sh_product_revsync WHERE product_id IN (?)', [pids]);
+      const nset = new Set((nRows as any[]).map((r: any) => String(r.product_id)));
+      for (const it of items) it._normalized = nset.has(String(it.product_id));
+    }
     return { items, total };
   }
 
@@ -1001,6 +1008,14 @@ export class ShMysql implements OnModuleInit {
       [cutoff, limit],
     );
     return (rows as any[]).map((r) => ({ productId: r.product_id, shopId: r.shop_id }));
+  }
+  // Ghi doanh thu day/week/month (ĐÃ quy đổi USD) vào bảng lean → list/sort/report sản phẩm chuẩn hoá dần theo USD.
+  async setProductListRevenueUsd(productId: string, day: number, week: number, month: number): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query(
+      'UPDATE sh_product_list SET revenue_day = ?, revenue_week = ?, revenue_month = ? WHERE product_id = ?',
+      [day, week, month, productId],
+    );
   }
   async setProductRevDailySynced(productId: string): Promise<void> {
     await this.ensureReady();

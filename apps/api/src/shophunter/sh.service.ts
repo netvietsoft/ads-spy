@@ -586,11 +586,19 @@ export class ShService {
     if (priceLocal == null) return { status: 'no_price', currency };
     const priceUsd = toUsd(priceLocal, currency) ?? 0;
     const revR = await this.client.productChartRevenue(shopId, productId);
-    const src = Array.isArray((revR as any)?.items) ? (revR as any).items : [];
-    const items = src
+    const src = (Array.isArray((revR as any)?.items) ? (revR as any).items : [])
       .filter((x: any) => x && x.date_str)
-      .map((x: any) => ({ date_str: x.date_str, sale_count: x.sale_count ?? null, revenue: Math.round(priceUsd * (Number(x.sale_count) || 0) * 100) / 100 }));
+      .sort((a: any, b: any) => String(a.date_str).localeCompare(String(b.date_str))); // tăng dần theo ngày
+    const items = src.map((x: any) => ({ date_str: x.date_str, sale_count: x.sale_count ?? null, revenue: Math.round(priceUsd * (Number(x.sale_count) || 0) * 100) / 100 }));
     await this.mysql.appendProductRevenueDaily(productId, items); // ON DUPLICATE → ghi đè (không cộng dồn)
+    // Cột lean revenue_day/week/month (USD) = giá(USD) × số đơn kỳ tương ứng → list/sort/report sản phẩm chuẩn hoá USD dần.
+    if (items.length) {
+      const cnt = src.map((x: any) => Number(x.sale_count) || 0);
+      const n = cnt.length;
+      const sumLast = (k: number) => cnt.slice(Math.max(0, n - k)).reduce((a: number, b: number) => a + b, 0);
+      const r2 = (v: number) => Math.round(v * 100) / 100;
+      await this.mysql.setProductListRevenueUsd(productId, r2(priceUsd * (cnt[n - 1] || 0)), r2(priceUsd * sumLast(7)), r2(priceUsd * sumLast(30))).catch(() => {});
+    }
     return { status: items.length ? 'ok' : 'skip', priceLocal, priceUsd, currency, days: items.length };
   }
 
