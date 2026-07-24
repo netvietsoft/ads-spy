@@ -129,13 +129,17 @@ export class ShService {
       // Chart: ưu tiên chart 90 ngày live; live rỗng/lỗi → dùng chuỗi tích luỹ (revsync) trong DB.
       let revenueChart = Array.isArray(revV?.items) ? revV.items : [];
       if (!revenueChart.length) revenueChart = await this.mysql.getRevenueDaily(shopId).catch(() => []);
-      const out = {
+      const out: any = {
         detail,
         revenueChart,
         adsChart: adsV?.history ?? null,
         similar: Array.isArray(simV?.items) ? simV.items : [],
       };
-      await this.mysql.setDetail(key, out);
+      // Chống "shop mồ côi": ShopHunter trả detail nhưng THIẾU (mất url / similar / top-products vì rớt khỏi index) →
+      // bù từ dữ liệu ĐÃ LƯU (detail_raw) + sản phẩm local. KHÔNG cache bản mỏng (để lần sau còn thử lại / giữ bản đủ).
+      const thin = !out.similar.length || !(out.detail?.top_revenue_products?.length) || !out.detail?.url;
+      if (thin) await this.backfillOrphanShop(shopId, out);
+      if (out.similar.length || out.detail?.top_revenue_products?.length) await this.mysql.setDetail(key, out);
       return { ...out, ...cat, productCount, cached: false };
     } catch (e) {
       // ShopHunter lỗi (hết token 402/block) → dựng bundle từ DB local; KHÔNG setDetail (tránh cache bản thiếu).
@@ -162,7 +166,7 @@ export class ShService {
   async productDetail(shopId: string, productId: string) {
     const key = `product:${shopId}:${productId}`;
     const cached = await this.mysql.getDetail(key, TTL_MS);
-    if (cached?.detail) return { ...cached, cached: true }; // bỏ qua cache RỖNG (null cũ đã lỡ lưu) → dựng lại từ local
+    if (cached?.detail?.product_title != null) return { ...cached, cached: true }; // chỉ tin cache có đủ FE-shape (bỏ cache raw-shopify/null cũ)
     try {
       const [detailR, revR, simR] = await Promise.all([
         this.client.productDetail(shopId, productId),
@@ -170,22 +174,44 @@ export class ShService {
         this.client.productSimilar(shopId, productId),
       ]);
       const detail = detailR?.item?.item ?? null;
-      // ShopHunter trả RỖNG (200 nhưng không có item) → KHÔNG cache null; dựng từ dữ liệu local để đủ thông tin.
-      if (!detail) { const local = await this.buildLocalProductDetail(shopId, productId); if (local) return { ...local, cached: false, local: true }; }
+      // ShopHunter detail hay trả SAI shape (raw shopify: title/handle/images) hoặc RỖNG khi shop rớt khỏi index →
+      // LUÔN bù field FE-shape (product_title/shop_url/shop_title/price/revenue) từ local → không thành "sản phẩm thây ma".
+      const local = await this.buildLocalProductDetail(shopId, productId).catch(() => null);
+      if (!detail && !local) return { detail: null, revenueChart: Array.isArray(revR?.items) ? revR.items : [], similar: [], cached: false };
+      const overlay = local ? Object.fromEntries(Object.entries(local.detail).filter(([, v]) => v != null)) : {};
+      const mergedDetail = { ...(detail || {}), ...overlay }; // giữ field ShopHunter (ảnh/variants) + bù FE-shape từ local
       const out = {
-        detail,
-        revenueChart: Array.isArray(revR?.items) ? revR.items : [],
+        detail: mergedDetail,
+        revenueChart: local?.revenueChart?.length ? local.revenueChart : (Array.isArray(revR?.items) ? revR.items : []),
         similar: Array.isArray(simR?.items) ? simR.items : [],
       };
-      if (!detail) return { ...out, cached: false }; // không có local lẫn ShopHunter → trả rỗng, KHÔNG cache
-      await this.mysql.setDetail(key, out);
-      return { ...out, cached: false };
+      if (mergedDetail.product_title != null) await this.mysql.setDetail(key, out); // chỉ cache khi đủ FE-shape
+      return { ...out, cached: false, ...(detail ? {} : { local: true }) };
     } catch (e) {
       // ShopHunter lỗi (hết token 402/block) → dựng từ local; KHÔNG setDetail (để tự phục hồi sau).
       const local = await this.buildLocalProductDetail(shopId, productId);
       if (!local) throw e;
       return { ...local, cached: true, local: true };
     }
+  }
+
+  // Bù chi tiết shop "mồ côi" từ dữ liệu ĐÃ LƯU (detail_raw = bundle cũ) + sản phẩm local khi ShopHunter trả thiếu.
+  private async backfillOrphanShop(shopId: string, out: any): Promise<void> {
+    const local = await this.mysql.getShopLocalDetail(shopId).catch(() => null);
+    if (!local) return;
+    const pd = (local.detailRaw && local.detailRaw.detail) || local.raw || {}; // detail ShopHunter đã lưu (nested trong bundle)
+    out.detail = out.detail || {};
+    if (!out.detail.url) out.detail.url = pd.url || local.raw?.url || null;
+    if (!out.detail.shop_title) out.detail.shop_title = pd.shop_title || local.raw?.shop_title || null;
+    if (!(out.detail.top_revenue_products?.length)) {
+      if (pd.top_revenue_products?.length) out.detail.top_revenue_products = pd.top_revenue_products;
+      else {
+        const top = await this.mysql.queryLocalProducts({ sort: 'revenue_month', dir: 'desc', offset: 0, limit: 10, shop: shopId }).catch(() => ({ items: [] as any[] }));
+        if (top.items.length) out.detail.top_revenue_products = top.items;
+      }
+    }
+    if (!out.similar.length && Array.isArray(local.detailRaw?.similar)) out.similar = local.detailRaw.similar;
+    if (!out.revenueChart.length && local.revenueChart?.length) out.revenueChart = local.revenueChart;
   }
 
   // Dựng product detail từ DB local (sh_product.raw + dòng list + shop) khi ShopHunter không có data.

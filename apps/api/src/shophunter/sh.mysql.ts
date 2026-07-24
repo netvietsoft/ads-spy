@@ -758,7 +758,9 @@ export class ShMysql implements OnModuleInit {
 
   async setRevenueSynced(shopId: string): Promise<void> {
     await this.ensureReady();
-    await this.pool!.query('UPDATE sh_shop SET revenue_synced_at = ? WHERE shop_id = ?', [Date.now(), shopId]);
+    const now = Date.now();
+    // Bump cả fetched_at → cột "Update" ở Local DB phản ánh lần đồng bộ dữ liệu mới nhất (dùng làm mốc độ cũ).
+    await this.pool!.query('UPDATE sh_shop SET revenue_synced_at = ?, fetched_at = ? WHERE shop_id = ?', [now, now, shopId]);
   }
 
   // Upsert listing/search row NGAY khi cào breadth — KHÔNG đụng detail_raw/revenue_chart/
@@ -1071,8 +1073,9 @@ export class ShMysql implements OnModuleInit {
   async setProductListRevenueUsd(productId: string, day: number, week: number, month: number): Promise<void> {
     await this.ensureReady();
     await this.pool!.query(
-      'UPDATE sh_product_list SET revenue_day = ?, revenue_week = ?, revenue_month = ? WHERE product_id = ?',
-      [day, week, month, productId],
+      // Bump updated_at → cột "Update" sản phẩm phản ánh lần đồng bộ mới nhất (dùng làm mốc độ cũ cho enrich).
+      'UPDATE sh_product_list SET revenue_day = ?, revenue_week = ?, revenue_month = ?, updated_at = ? WHERE product_id = ?',
+      [day, week, month, Date.now(), productId],
     );
   }
   // Số đơn + doanh thu USD theo kỳ của 1 sản phẩm (job productrev ghi) → dùng cho bảng xếp hạng số đơn sản phẩm.
