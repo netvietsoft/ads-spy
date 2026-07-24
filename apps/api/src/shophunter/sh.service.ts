@@ -244,6 +244,8 @@ export class ShService {
       const bundle = await this.shopDetail(shopId).catch(() => null);
       item = bundle?.detail || null;
       if (item) {
+        // ShopHunter detail đôi khi THIẾU url (vd Pawarts) → điền domain đã track: Local DB tìm được theo domain + link shop đúng.
+        if (!item.url) item.url = domain;
         if (identifyType === 'storefront') identifyType = 'search'; // ShopHunter thực sự có dữ liệu
         try { await this.mysql.upsertShop(shopId, item, bundle!, parseShopColumns(item, bundle!)); } catch { /* bỏ qua */ }
       }

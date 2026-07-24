@@ -53,7 +53,7 @@ export function TrackPanel() {
           <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={26} />
             <span>{s.shop_title || res.domain}</span>
-            <span className="badge-harvest">✓ Shopify{res.identifyType === 'scrape' ? ' · quét mới' : res.identifyType === 'storefront' ? ' · chưa có ở ShopHunter' : ''}</span>
+            <span className="badge-harvest">✓ Shopify{res.identifyType === 'scrape' ? ' · quét mới' : res.identifyType === 'storefront' ? ' · chúng tôi chưa có dữ liệu shop này' : ''}</span>
           </div>
           {site && <a className="dl" href={site} target="_blank" rel="noreferrer">{s.url || res.domain} ↗</a>}
           <div className="fbplat" style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: 'var(--text)', marginTop: 4 }}>
@@ -66,7 +66,7 @@ export function TrackPanel() {
           </div>
           <div className="fbfoot">
             {res.identifyType === 'storefront'
-              ? <span className="hint" style={{ margin: 0 }}>Đã xác nhận Shopify qua storefront. ShopHunter chưa có dữ liệu doanh thu cho shop này.</span>
+              ? <span className="hint" style={{ margin: 0 }}>Doanh thu của shop sẽ sớm được cập nhật.</span>
               : res.shopId ? <a className="dl" style={{ cursor: 'pointer' }} onClick={() => setOpenShop(res.shopId!)}>Xem chi tiết ▸</a> : null}
           </div>
         </div>
