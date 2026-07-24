@@ -45,6 +45,18 @@ const TTL_MS = (Number(process.env.SH_CACHE_TTL_HOURS) || 6) * 3600 * 1000;
 const LAST_SNAPSHOT_KEY = 'shophunter_last_snapshot_imported';
 export const SH_SNAPSHOT_DEFAULT_DIR = 'D:\\SetupC\\Tools\\shophunter-crawler\\snapshots';
 
+// Tổng kỳ (ngày/tuần/tháng) doanh thu + số đơn từ chuỗi chart shop (native currency) — dùng khi ShopHunter
+// detail thiếu số tổng (shop track). Ngày = điểm cuối, tuần = 7 điểm cuối, tháng = 30 điểm cuối.
+function summarizeShopChart(chart: any[]): { dRev: number; wRev: number; mRev: number; dCnt: number; wCnt: number; mCnt: number } {
+  const src = chart.filter((p) => p && p.date_str).sort((a, b) => String(a.date_str).localeCompare(String(b.date_str)));
+  const rev = src.map((p) => Number(p.revenue) || 0);
+  const cnt = src.map((p) => Number(p.sale_count) || 0);
+  const n = rev.length;
+  const sumLast = (arr: number[], k: number) => arr.slice(Math.max(0, n - k)).reduce((a, b) => a + b, 0);
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  return { dRev: r2(rev[n - 1] || 0), wRev: r2(sumLast(rev, 7)), mRev: r2(sumLast(rev, 30)), dCnt: cnt[n - 1] || 0, wCnt: sumLast(cnt, 7), mCnt: sumLast(cnt, 30) };
+}
+
 @Injectable()
 export class ShService {
   private readonly logger = new Logger('ShService');
@@ -246,6 +258,18 @@ export class ShService {
       if (item) {
         // ShopHunter detail đôi khi THIẾU url (vd Pawarts) → điền domain đã track: Local DB tìm được theo domain + link shop đúng.
         if (!item.url) item.url = domain;
+        // Chuẩn hoá shop track NHƯ shop cào bình thường: lưu chuỗi doanh thu/đơn theo ngày vào DB (vẽ biểu đồ +
+        // revenue-daily) và tính số tổng kỳ từ chart nếu ShopHunter detail thiếu (để list/sort/lọc + index doanh thu).
+        const chart = Array.isArray(bundle?.revenueChart) ? bundle!.revenueChart : [];
+        if (chart.length) {
+          await this.mysql.appendRevenueDaily(shopId, chart).catch(() => {});
+          await this.mysql.setRevenueSynced(shopId).catch(() => {});
+          if (item.month_current_period_revenue == null) {
+            const s = summarizeShopChart(chart);
+            item.day_current_period_revenue = s.dRev; item.week_current_period_revenue = s.wRev; item.month_current_period_revenue = s.mRev;
+            item.day_current_period_sale_count = s.dCnt; item.week_current_period_sale_count = s.wCnt; item.month_current_period_sale_count = s.mCnt;
+          }
+        }
         if (identifyType === 'storefront') identifyType = 'search'; // ShopHunter thực sự có dữ liệu
         try { await this.mysql.upsertShop(shopId, item, bundle!, parseShopColumns(item, bundle!)); } catch { /* bỏ qua */ }
       }
