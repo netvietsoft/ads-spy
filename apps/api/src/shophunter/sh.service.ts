@@ -114,7 +114,8 @@ export class ShService {
     const cat = await this.mysql.getShopUpCategory(shopId); // danh mục user gắn (query tươi, không cache)
     const productCount = await this.mysql.countProductsByShop(shopId); // số sản phẩm của shop trong DB (query tươi)
     const cached = await this.mysql.getDetail(key, TTL_MS);
-    if (cached) return { ...cached, ...cat, productCount, cached: true };
+    // Bỏ qua cache MỎNG (mất similar & top-products — bản "mồ côi" lỡ lưu trước đây) → tính lại + bù từ dữ liệu đã lưu.
+    if (cached && (cached.similar?.length || cached.detail?.top_revenue_products?.length)) return { ...cached, ...cat, productCount, cached: true };
     try {
       // allSettled: 1 call phụ (ads/similar/chart) lỗi KHÔNG được vứt cả detail (trước dùng Promise.all → 1 lỗi → mất hết → fallback local rỗng chart).
       const [detailR, revR, adsR, simR] = await Promise.allSettled([
