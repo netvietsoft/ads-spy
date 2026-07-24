@@ -334,24 +334,40 @@ export class ShHarvestService {
 
   // Enrich shop import: track domain → detail → đẩy vào sh_shop, rải gentle như harvest.
   private importRunning = false;
-  async runImportEnrich(opts: { daily?: number }): Promise<HarvestSliceSummary> {
+  async runImportEnrich(opts: { daily?: number; concurrency?: number }): Promise<HarvestSliceSummary> {
     // Đã có mẻ enrich đang chạy (thường là job nền "importenrich") → KHÔNG lỗi 500, trả 'busy' để FE báo nhẹ nhàng.
     if (this.importRunning) return { processed: 0, ok: 0, skipped: 0, failed: 0, sliceKey: 'import', status: 'busy' };
     this.importRunning = true;
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 100);
+    // Đa luồng CÓ KIỂM SOÁT: trần 3 (ShopHunter giới hạn theo token, không phải IP → proxy không cứu, nhiều luồng dễ bị chặn).
+    const conc = Math.max(1, Math.min(3, Math.floor(opts.concurrency ?? 1)));
     let processed = 0, ok = 0, skipped = 0, status = 'ok';
-    let shopDone = false, prodDone = false;
+    let shopDone = false, prodDone = false, blocked = false;
     try {
-      while (processed < quota && !(shopDone && prodDone)) {
-        const doShop = !shopDone && (prodDone || processed % 2 === 0); // xen kẽ shop/product để cả 2 cùng tiến
-        let res: 'done' | 'ok' | 'skip';
-        try { res = doShop ? await this.svc.enrichNextImportedShop() : await this.svc.enrichNextImportedProduct(); }
-        catch (e) { this.logger.warn(`Import-enrich dừng do bị chặn: ${(e as Error).message}`); status = 'blocked'; break; }
-        if (res === 'done') { if (doShop) shopDone = true; else prodDone = true; continue; }
-        processed++; if (res === 'ok') ok++; else skipped++;
+      while (processed < quota && !blocked && !(shopDone && prodDone)) {
+        const need = Math.min(conc, quota - processed);
+        // Lấy 1 LÔ row RIÊNG BIỆT (LIMIT need) rồi chạy SONG SONG → không worker nào trùng row (shop cạn thì lấy product bù).
+        const tasks: Promise<'ok' | 'skip'>[] = [];
+        if (!shopDone) {
+          const shops = await this.mysql.getNextUnenriched(need);
+          if (!shops.length) shopDone = true;
+          for (const s of shops) tasks.push(this.svc.enrichImportedShop(s));
+        }
+        if (tasks.length < need && !prodDone) {
+          const prods = await this.mysql.getNextUnenrichedProduct(need - tasks.length);
+          if (!prods.length) prodDone = true;
+          for (const p of prods) tasks.push(this.svc.enrichImportedProduct(p));
+        }
+        if (!tasks.length) break;
+        const results = await Promise.allSettled(tasks);
+        for (const r of results) {
+          if (r.status === 'rejected') { blocked = true; this.logger.warn(`Import-enrich bị chặn: ${(r.reason as Error)?.message}`); continue; } // chỉ block toàn cục mới ném; row giữ 'chờ'
+          processed++; if (r.value === 'ok') ok++; else skipped++;
+        }
+        if (blocked) { status = 'blocked'; break; }
         await this.sleep(this.randDelayMs());
       }
-      if (shopDone && prodDone) status = 'all_done';
+      if (shopDone && prodDone && !blocked) status = 'all_done';
     } finally { this.importRunning = false; }
     return { processed, ok, skipped, failed: 0, sliceKey: 'import', status };
   }

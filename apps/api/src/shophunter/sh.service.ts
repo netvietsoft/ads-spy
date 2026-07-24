@@ -484,8 +484,14 @@ export class ShService {
 
   // Enrich 1 shop import kế tiếp: track→(nếu chưa harvest fresh thì)detail→sh_shop. Ném lỗi nếu bị chặn (để retry).
   async enrichNextImportedShop(): Promise<'done' | 'ok' | 'skip'> {
-    const shop = await this.mysql.getNextUnenriched();
-    if (!shop) return 'done';
+    const rows = await this.mysql.getNextUnenriched(1);
+    if (!rows.length) return 'done';
+    return this.enrichImportedShop(rows[0]);
+  }
+
+  // Enrich 1 shop CỤ THỂ (đã lấy khỏi hàng đợi) → dùng cho enrich đa luồng. Ném lỗi khi bị chặn TOÀN CỤC
+  // (caller dừng + backoff, GIỮ shop ở trạng thái chờ); lỗi riêng domain → đánh dấu 'error', trả 'skip'.
+  async enrichImportedShop(shop: { domain: string; shopId: string | null; category: string | null; categoryPath: string | null }): Promise<'ok' | 'skip'> {
     // Đã biết shop_id (từ file TSV) → BỎ track domain, lấy detail thẳng theo shop_id (nhanh, không poison-pill).
     if (shop.shopId) {
       try {
@@ -522,8 +528,12 @@ export class ShService {
 
   // Enrich 1 sản phẩm import: track domain→shop_id → duyệt sản phẩm của shop (must_include_shop_ids) → match title → product_id → lưu sh_product + detail.
   async enrichNextImportedProduct(): Promise<'done' | 'ok' | 'skip'> {
-    const next = await this.mysql.getNextUnenrichedProduct();
-    if (!next) return 'done';
+    const rows = await this.mysql.getNextUnenrichedProduct(1);
+    if (!rows.length) return 'done';
+    return this.enrichImportedProduct(rows[0]);
+  }
+
+  async enrichImportedProduct(next: { itemKey: string; domain: string; title: string }): Promise<'ok' | 'skip'> {
     try {
       const track = await this.client.trackShop(next.domain);
       if (!track.shopId) { await this.mysql.setImportedProductEnriched(next.itemKey, null, null, track.error || 'not_shopify'); return 'skip'; }

@@ -31,7 +31,7 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   catalog: { batch: 25, paceMs: 1500, delayMs: 2000, concurrency: 1 },
   productrev: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
   affiliate: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 2, activeStart: 8, activeEnd: 23 },
-  importenrich: { batch: 100, daily: 10000, paceMs: 1500, activeStart: 8, activeEnd: 23 },
+  importenrich: { batch: 100, daily: 10000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
 const CFG_BOUNDS: Record<string, [number, number]> = {
@@ -340,7 +340,7 @@ export class ShJobsService implements OnModuleInit {
     const dk = this.dayKey('importenrich');
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.importenrich.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
     let r: any;
-    try { r = await this.harvest.runImportEnrich({ daily: cfg.batch }); }
+    try { r = await this.harvest.runImportEnrich({ daily: cfg.batch, concurrency: cfg.concurrency }); }
     catch (e) { this.mem.importenrich.lastStatus = 'error'; await this.mysql.appendJobLog('importenrich', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     await this.mysql.addDailyCount(dk, Number(r?.processed) || 0).catch(() => {});
     this.mem.importenrich.lastRunAt = Date.now();

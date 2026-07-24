@@ -1693,10 +1693,12 @@ export class ShMysql implements OnModuleInit {
     return { total, enriched, pending: total - enriched };
   }
 
-  async getNextUnenriched(): Promise<{ domain: string; shopId: string | null; category: string | null; categoryPath: string | null } | null> {
+  // Lấy tối đa `limit` shop CHỜ enrich (RIÊNG BIỆT) — cho enrich đa luồng: mỗi worker 1 row, không trùng.
+  async getNextUnenriched(limit = 1): Promise<{ domain: string; shopId: string | null; category: string | null; categoryPath: string | null }[]> {
     await this.ensureReady();
-    const [r] = await this.pool!.query("SELECT domain, shop_id, category, category_path FROM sh_imported WHERE enriched=0 AND type='shop' ORDER BY imported_at LIMIT 1");
-    const row = (r as any[])[0]; return row ? { domain: row.domain, shopId: row.shop_id ?? null, category: row.category ?? null, categoryPath: row.category_path ?? null } : null;
+    const n = Math.max(1, Math.min(50, Math.floor(limit)));
+    const [r] = await this.pool!.query("SELECT domain, shop_id, category, category_path FROM sh_imported WHERE enriched=0 AND type='shop' ORDER BY imported_at LIMIT ?", [n]);
+    return (r as any[]).map((row) => ({ domain: row.domain, shopId: row.shop_id ?? null, category: row.category ?? null, categoryPath: row.category_path ?? null }));
   }
 
   async getShopUpCategory(shopId: string): Promise<{ upCategory: string | null; upCategoryPath: string | null }> {
@@ -1713,10 +1715,11 @@ export class ShMysql implements OnModuleInit {
     await this.pool!.query('UPDATE sh_shop SET up_category = ?, up_category_path = ? WHERE shop_id = ?', [category, categoryPath, shopId]);
   }
 
-  async getNextUnenrichedProduct(): Promise<{ itemKey: string; domain: string; title: string } | null> {
+  async getNextUnenrichedProduct(limit = 1): Promise<{ itemKey: string; domain: string; title: string }[]> {
     await this.ensureReady();
-    const [r] = await this.pool!.query('SELECT item_key, domain, product_title FROM sh_imported_product WHERE enriched=0 ORDER BY imported_at LIMIT 1');
-    const row = (r as any[])[0]; return row ? { itemKey: row.item_key, domain: row.domain, title: row.product_title } : null;
+    const n = Math.max(1, Math.min(50, Math.floor(limit)));
+    const [r] = await this.pool!.query('SELECT item_key, domain, product_title FROM sh_imported_product WHERE enriched=0 ORDER BY imported_at LIMIT ?', [n]);
+    return (r as any[]).map((row) => ({ itemKey: row.item_key, domain: row.domain, title: row.product_title }));
   }
 
   async setImportedProductEnriched(itemKey: string, shopId: string | null, productId: string | null, status: string): Promise<void> {
