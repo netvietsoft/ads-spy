@@ -335,7 +335,8 @@ export class ShHarvestService {
   // Enrich shop import: track domain → detail → đẩy vào sh_shop, rải gentle như harvest.
   private importRunning = false;
   async runImportEnrich(opts: { daily?: number }): Promise<HarvestSliceSummary> {
-    if (this.importRunning) throw new Error('Import-enrich đang chạy, bỏ qua yêu cầu chồng.');
+    // Đã có mẻ enrich đang chạy (thường là job nền "importenrich") → KHÔNG lỗi 500, trả 'busy' để FE báo nhẹ nhàng.
+    if (this.importRunning) return { processed: 0, ok: 0, skipped: 0, failed: 0, sliceKey: 'import', status: 'busy' };
     this.importRunning = true;
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 100);
     let processed = 0, ok = 0, skipped = 0, status = 'ok';

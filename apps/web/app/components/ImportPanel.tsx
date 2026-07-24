@@ -142,9 +142,11 @@ export function ImportPanel() {
   };
 
   const enrichNow = () => {
-    setBusy('Đang enrich (nền)…');
-    shImportEnrich(50).then((r) => { setBusy(`Enrich: ${r.ok} shop, ${r.skipped} bỏ qua (${r.status}).`); refresh(); })
-      .catch((e) => setErr((e as Error).message)).finally(() => setTimeout(() => setBusy(''), 4000));
+    setErr(null); setBusy('Đang enrich (nền)…');
+    shImportEnrich(50).then((r) => {
+      setBusy(r.status === 'busy' ? 'Enrich nền đang chạy sẵn — số liệu tự cập nhật, không cần bấm.' : `Enrich: ${r.ok} shop, ${r.skipped} bỏ qua (${r.status}).`);
+      refresh();
+    }).catch((e) => setErr((e as Error).message)).finally(() => setTimeout(() => setBusy(''), 4000));
   };
 
   const totalPages = Math.max(1, Math.ceil(list.total / 100));
