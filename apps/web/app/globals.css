@@ -286,6 +286,9 @@ button.ghost.danger { color: var(--danger); }
 /* ShopHunter: thu/mở cột lọc (nút ‹ ›) + lưới sản phẩm dày hơn (≈4/hàng khi mở lọc, nhiều hơn khi thu) */
 .layout.filters-collapsed { grid-template-columns: 1fr; }
 .fbgrid.shgrid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+/* Chừa sẵn khung ảnh vuông → ảnh lazy nạp vào KHÔNG đội layout (hết giật khi cuộn) */
+.fbgrid.shgrid .fbmedia { aspect-ratio: 1 / 1; }
+.fbgrid.shgrid .fbmedia img { height: 100%; max-height: none; }
 .filtertoggle { padding: 6px 11px; font-size: 16px; line-height: 1; font-weight: 700; }
 /* sort bar nhỏ lại */
 .shsortbar .srcbtn { font-size: 13px; padding: 6px 11px; }

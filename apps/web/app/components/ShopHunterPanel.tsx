@@ -4,7 +4,6 @@ import {
   ShExplore, ShSort, shExplore, shSorts, shAssetProxy, shShopSite, shProductUrl,
 } from '../api';
 import { toUsd } from '../currency';
-import { LazyGrid } from './LazyGrid';
 import { ShShopModal } from './ShShopModal';
 import { ShFilters } from './ShFilters';
 import { ShCategories } from './ShCategories';
@@ -124,21 +123,21 @@ export function ShopHunterPanel() {
       const nextFrom = reset ? 0 : from;
       const useSort = sortVal ?? sort;
       const r: ShExplore = await shExplore(tab, { sort: useSort || undefined, q: q || undefined, from: nextFrom, filters, categories: cats.join(','), lists });
-      setItems(reset ? r.items : [...items, ...r.items]);
+      setItems((prev) => (reset ? r.items : [...prev, ...r.items])); // nối tiếp (không đọc `items` cũ trong closure)
       setTotal(r.totalHits);
       setFrom(typeof r.nextFromValue === 'number' ? r.nextFromValue : nextFrom + r.items.length);
     } catch (e) { setErr((e as Error).message); }
     setLoading(false);
   }
 
-  // Lazy-load: cuộn tới nút "Tải thêm" (trong 400px) → tự tải trang kế, khỏi bấm.
-  const moreRef = useRef<HTMLButtonElement>(null);
+  // Tải NỀN: prefetch trang kế khi còn cách đáy 1200px → thẻ mới có sẵn trước khi cuộn tới, không giật.
+  const moreRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = moreRef.current;
     if (!el) return;
     const obs = new IntersectionObserver((e) => {
       if (e[0].isIntersecting && !loading && items.length < total) load(false);
-    }, { rootMargin: '400px' });
+    }, { rootMargin: '1200px' });
     obs.observe(el);
     return () => obs.disconnect();
   }, [items.length, total, loading, from]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -186,18 +185,19 @@ export function ShopHunterPanel() {
 
           {err && <div className="err">{err}</div>}
 
-          <LazyGrid
-            className="fbgrid shgrid"
-            items={items}
-            render={(it) => tab === 'shops'
+          <div className="fbgrid shgrid">
+            {items.map((it) => tab === 'shops'
               ? <ShopCard key={it.shop_id} s={it} onOpen={() => setOpenShop(it.shop_id)} />
-              : <ProductCard key={it.product_id} p={it} onOpen={() => window.open(`/product/${it.shop_id}/${it.product_id}`, '_blank')} />}
-          />
+              : <ProductCard key={it.product_id} p={it} onOpen={() => window.open(`/product/${it.shop_id}/${it.product_id}`, '_blank')} />)}
+          </div>
 
           {items.length > 0 && items.length < total && (
-            <div style={{ textAlign: 'center', margin: 16 }}>
-              <button ref={moreRef} className="srcbtn loadmore" onClick={() => load(false)} disabled={loading}>{loading ? 'Đang tải...' : 'Tải thêm'}</button>
-            </div>
+            <>
+              <div ref={moreRef} aria-hidden style={{ height: 1 }} />
+              <div style={{ textAlign: 'center', margin: 16 }}>
+                <button className="srcbtn loadmore" onClick={() => load(false)} disabled={loading}>{loading ? 'Đang tải nền…' : 'Tải thêm'}</button>
+              </div>
+            </>
           )}
         </div>
       </div>
