@@ -76,6 +76,39 @@ export async function fetchStorefrontCurrency(shopUrl: string): Promise<string |
   } catch { return null; }
 }
 
+export interface StorefrontMeta { id: number | null; name: string | null; currency: string | null; country: string | null; myshopifyDomain: string | null }
+
+// Phát hiện Shopify ĐỘC LẬP với ShopHunter (giống "view-source"): meta.json trước (JSON meta có id/currency/
+// myshopify_domain — id CHÍNH LÀ shop_id Shopify); nếu meta.json fail → bắt marker Shopify trong HTML trang chủ.
+export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShopify: boolean; meta: StorefrontMeta | null }> {
+  const domain = normalizeDomain(shopUrl);
+  try {
+    const res = await shopifyHttp.get(`https://${domain}/meta.json`, { 'user-agent': STOREFRONT_UA });
+    if (res.status === 200) {
+      const j = JSON.parse(res.body);
+      if (j && (j.id != null || j.myshopify_domain)) {
+        return {
+          isShopify: true,
+          meta: {
+            id: j.id != null && /^\d+$/.test(String(j.id)) ? Number(j.id) : null,
+            name: typeof j.name === 'string' ? j.name : null,
+            currency: typeof j.currency === 'string' && /^[A-Za-z]{3}$/.test(j.currency) ? j.currency.toUpperCase() : null,
+            country: typeof j.country === 'string' ? j.country : null,
+            myshopifyDomain: typeof j.myshopify_domain === 'string' ? j.myshopify_domain : null,
+          },
+        };
+      }
+    }
+  } catch { /* thử marker HTML */ }
+  try {
+    const res = await shopifyHttp.get(`https://${domain}/`, { 'user-agent': STOREFRONT_UA });
+    if (res.status === 200 && /cdn\.shopify\.com|cdn\.shopifycloud\.com|shopifycdn\.com|monorail-edge\.shopifysvc\.com|\/cdn\/shop\/|Shopify\.theme/i.test(res.body)) {
+      return { isShopify: true, meta: null };
+    }
+  } catch { /* bỏ qua */ }
+  return { isShopify: false, meta: null };
+}
+
 // Giá MIN (rẻ nhất) trong các variant của 1 sản phẩm — theo tiền tệ store — từ /products/{handle}.json.
 export async function fetchProductMinPrice(shopUrl: string, handle: string): Promise<number | null> {
   if (!handle) return null;

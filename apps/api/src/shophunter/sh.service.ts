@@ -8,7 +8,7 @@ import { parseSearch, parseShopColumns, productToShopRaw } from './sh.parser';
 import { shQueryHash } from './sh.hash';
 import { isGlobalBlock, randInt } from './sh.harvest.util';
 import { loadCatTree, resolveCategoryByNames, categoryPathFromIds } from './sh.categories';
-import { fetchShopifyCatalog, fetchStorefrontCurrency, fetchProductMinPrice } from './shopify.client';
+import { fetchShopifyCatalog, fetchStorefrontCurrency, fetchProductMinPrice, detectShopifyStorefront, StorefrontMeta } from './shopify.client';
 import { toUsd } from './sh.currency';
 import { checkShopAffiliate } from './affiliate.client';
 import { parseProxies, testProxy } from './sh.proxy';
@@ -181,33 +181,51 @@ export class ShService {
     const track = await this.client.trackShop(domain);
     let shopId = track.shopId ? String(track.shopId) : '';
     let identifyType = track.identifyType || '';
-    // ShopHunter /shops/track đôi khi trả "not_shopify_store" cho store bị Cloudflare chặn scraper của HỌ,
-    // dù store VẪN có trong index (explore ra bình thường). Thử tìm theo domain rồi khớp đúng → lấy shop_id.
+    // Fallback 1 — ShopHunter /shops/track đôi khi trả "not_shopify_store" cho store bị Cloudflare chặn scraper
+    // của HỌ, dù store VẪN có trong index. Thử tìm theo domain rồi khớp đúng → lấy shop_id.
     if (!shopId) {
       const viaSearch = await this.findShopIdByDomain(domain);
       if (viaSearch) { shopId = viaSearch; identifyType = 'search'; }
     }
-    if (!shopId) return { domain, isShopify: false, reason: track.error || 'not_shopify_store' };
-    if (opts.skipDetailIfFresh) {
+    // Fallback 2 — kiểm tra TRỰC TIẾP storefront (meta.json → marker HTML), độc lập ShopHunter. meta.json.id
+    // CHÍNH LÀ shop_id Shopify → nếu ShopHunter có dữ liệu thì vẫn ra doanh thu; nếu không, chỉ xác nhận Shopify.
+    let sfMeta: StorefrontMeta | null = null;
+    let detected = !!shopId;
+    if (!shopId) {
+      const sf = await detectShopifyStorefront(domain);
+      if (sf.isShopify) { detected = true; sfMeta = sf.meta; if (sf.meta?.id) shopId = String(sf.meta.id); identifyType = 'storefront'; }
+    }
+    if (!detected) return { domain, isShopify: false, reason: track.error || 'not_shopify_store' };
+
+    // Rút gọn: shop đã harvest gần đây → chỉ link (không áp dụng cho storefront vì có thể chưa có dữ liệu).
+    if (opts.skipDetailIfFresh && shopId && identifyType !== 'storefront') {
       const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
       if (await this.mysql.isShopFresh(shopId, freshMs)) {
         return { domain, isShopify: true, shopId, identifyType, detail: null as any, cached: true };
       }
     }
-    const bundle = await this.shopDetail(shopId);
-    const item = bundle.detail;
-    // Đẩy shop tìm thấy vào DB chung (sh_shop) → xuất hiện trong Local DB. Không chặn kết quả nếu lỗi.
-    if (item) {
-      // Có detail → upsert đầy đủ (raw + detail + chart).
-      try { await this.mysql.upsertShop(shopId, item, bundle, parseShopColumns(item, bundle)); } catch { /* bỏ qua */ }
-    } else {
-      // ShopHunter không trả detail nhưng vẫn là Shopify hợp lệ → tạo shop TỐI THIỂU nếu CHƯA có
-      // (INSERT IGNORE: không đè shop đã có data tốt). Đảm bảo mọi shop track được đều vào DB.
-      const raw = { shop_id: shopId, url: domain, shop_title: domain };
-      try { await this.mysql.bulkUpsertListingShops([{ shopId, raw: JSON.stringify(raw), cols: parseShopColumns(raw), upCategory: null, upCategoryPath: null }], { onlyMissing: true }); } catch { /* bỏ qua */ }
+
+    // Lấy detail ShopHunter theo shopId (kể cả storefront: meta.id == shop_id → ShopHunter có thì ra doanh thu).
+    let item: any = null;
+    if (shopId) {
+      const bundle = await this.shopDetail(shopId).catch(() => null);
+      item = bundle?.detail || null;
+      if (item) {
+        if (identifyType === 'storefront') identifyType = 'search'; // ShopHunter thực sự có dữ liệu
+        try { await this.mysql.upsertShop(shopId, item, bundle!, parseShopColumns(item, bundle!)); } catch { /* bỏ qua */ }
+      }
     }
-    await this.mysql.addTrackHistory(domain, shopId, item?.shop_title || domain, identifyType || '');
-    return { domain, isShopify: true, shopId, identifyType, detail: item };
+    if (!item) {
+      // Xác nhận Shopify nhưng ShopHunter CHƯA có dữ liệu → dựng detail TỐI THIỂU từ meta.json (FE vẫn hiện thẻ ✓).
+      const title = sfMeta?.name || domain;
+      item = { shop_id: shopId || domain, url: domain, shop_title: title, currency: sfMeta?.currency ?? null, country: sfMeta?.country ?? null };
+      if (shopId) { // chỉ ghi sh_shop khi có shop_id số thật (từ meta.json/ShopHunter)
+        const raw = { shop_id: shopId, url: domain, shop_title: title, currency: item.currency, country: item.country };
+        try { await this.mysql.bulkUpsertListingShops([{ shopId, raw: JSON.stringify(raw), cols: parseShopColumns(raw), upCategory: null, upCategoryPath: null }], { onlyMissing: true }); } catch { /* bỏ qua */ }
+      }
+    }
+    if (shopId) await this.mysql.addTrackHistory(domain, shopId, item.shop_title || domain, identifyType || '');
+    return { domain, isShopify: true, shopId: shopId || undefined, identifyType, detail: item };
   }
 
   // Tìm shop_id trong index ShopHunter theo domain (search q = domain đầy đủ) rồi KHỚP CHÍNH XÁC domain
