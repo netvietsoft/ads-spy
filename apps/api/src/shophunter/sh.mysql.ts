@@ -698,6 +698,22 @@ export class ShMysql implements OnModuleInit {
     try { return row.raw ? JSON.parse(row.raw) : null; } catch { return null; }
   }
 
+  // Dòng list nhẹ (+ thông tin shop từ sh_shop) — dựng product detail dự phòng khi ShopHunter trả rỗng.
+  async getProductLeanRow(productId: string): Promise<any | null> {
+    await this.ensureReady();
+    const [rows] = await this.pool!.query(
+      `SELECT l.product_id, l.shop_id, l.name AS product_title, l.thumbnail AS product_image_external, l.price,
+              l.revenue_day, l.revenue_week, l.revenue_month, l.shop_country,
+              JSON_UNQUOTE(JSON_EXTRACT(s.raw, '$.url')) AS shop_url,
+              s.shop_name AS shop_title,
+              COALESCE(s.storefront_currency, JSON_UNQUOTE(JSON_EXTRACT(s.raw, '$.currency'))) AS shop_currency
+       FROM sh_product_list l LEFT JOIN sh_shop s ON s.shop_id = l.shop_id
+       WHERE l.product_id = ?`,
+      [productId],
+    );
+    return (rows as any[])[0] || null;
+  }
+
   // Bulk piggyback nhiều sp × 1 điểm/ngày trong 1 INSERT nhiều dòng (import snapshot: tránh N INSERT lẻ).
   async bulkAppendProductRevenueDaily(points: { productId: string; date_str: string; revenue: number | null; sale_count: number | null }[]): Promise<void> {
     await this.ensureReady();
@@ -927,7 +943,7 @@ export class ShMysql implements OnModuleInit {
     );
   }
 
-  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month' }): Promise<{ items: any[]; total: number }> {
+  async queryLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month'; skuMin?: number; skuMax?: number }): Promise<{ items: any[]; total: number }> {
     await this.ensureReady();
     let orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
@@ -940,6 +956,9 @@ export class ShMysql implements OnModuleInit {
     const revUsd = `(revenue * ${rateCaseSql(SHOP_CUR_EXPR)})`;
     if (o.revMin != null) { where.push(`${revUsd} >= ?`); params.push(o.revMin); }
     if (o.revMax != null) { where.push(`${revUsd} < ?`); params.push(o.revMax); }
+    // Lọc theo số lượng SKU của shop (raw.$.sku_count — không có cột riêng).
+    if (o.skuMin != null) { where.push(`${numExpr('$.sku_count')} >= ?`); params.push(o.skuMin); }
+    if (o.skuMax != null) { where.push(`${numExpr('$.sku_count')} <= ?`); params.push(o.skuMax); }
     // Lọc bậc SỐ ĐƠN theo kỳ (bảng xếp hạng doanh số) + sắp xếp theo số đơn giảm dần.
     if (o.cntPeriod && (o.cntMin != null || o.cntMax != null)) {
       const cntExpr = `CAST(JSON_EXTRACT(raw, '${ORDER_FIELD[o.cntPeriod] || ORDER_FIELD.month}') AS SIGNED)`;

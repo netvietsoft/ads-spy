@@ -150,27 +150,60 @@ export class ShService {
   async productDetail(shopId: string, productId: string) {
     const key = `product:${shopId}:${productId}`;
     const cached = await this.mysql.getDetail(key, TTL_MS);
-    if (cached) return { ...cached, cached: true };
+    if (cached?.detail) return { ...cached, cached: true }; // bỏ qua cache RỖNG (null cũ đã lỡ lưu) → dựng lại từ local
     try {
       const [detailR, revR, simR] = await Promise.all([
         this.client.productDetail(shopId, productId),
         this.client.productChartRevenue(shopId, productId),
         this.client.productSimilar(shopId, productId),
       ]);
+      const detail = detailR?.item?.item ?? null;
+      // ShopHunter trả RỖNG (200 nhưng không có item) → KHÔNG cache null; dựng từ dữ liệu local để đủ thông tin.
+      if (!detail) { const local = await this.buildLocalProductDetail(shopId, productId); if (local) return { ...local, cached: false, local: true }; }
       const out = {
-        detail: detailR?.item?.item ?? null,
+        detail,
         revenueChart: Array.isArray(revR?.items) ? revR.items : [],
         similar: Array.isArray(simR?.items) ? simR.items : [],
       };
+      if (!detail) return { ...out, cached: false }; // không có local lẫn ShopHunter → trả rỗng, KHÔNG cache
       await this.mysql.setDetail(key, out);
       return { ...out, cached: false };
     } catch (e) {
-      // ShopHunter lỗi (hết token 402/block) → dựng từ sh_product.raw + chuỗi daily local; KHÔNG setDetail.
-      const raw = await this.mysql.getProductLocalRaw(productId);
-      if (!raw) throw e;
-      const revenueChart = await this.mysql.getProductRevenueDaily(productId).catch(() => []);
-      return { detail: raw, revenueChart, similar: [], cached: true, local: true };
+      // ShopHunter lỗi (hết token 402/block) → dựng từ local; KHÔNG setDetail (để tự phục hồi sau).
+      const local = await this.buildLocalProductDetail(shopId, productId);
+      if (!local) throw e;
+      return { ...local, cached: true, local: true };
     }
+  }
+
+  // Dựng product detail từ DB local (sh_product.raw + dòng list + shop) khi ShopHunter không có data.
+  // Gộp để đủ: tên sp, tên/link shop, giá, handle (link web sp), tiền tệ + chuỗi doanh thu ngày đã đồng bộ.
+  private async buildLocalProductDetail(shopId: string, productId: string) {
+    const [raw, lean] = await Promise.all([
+      this.mysql.getProductLocalRaw(productId).catch(() => null),
+      this.mysql.getProductLeanRow(productId).catch(() => null),
+    ]);
+    if (!raw && !lean) return null;
+    const base: any = raw ? { ...raw } : {};
+    const pick = (...vals: any[]) => vals.find((v) => v != null && v !== '');
+    const detail = {
+      ...base,
+      product_id: productId,
+      shop_id: pick(base.shop_id, lean?.shop_id, shopId),
+      product_title: pick(base.product_title, lean?.product_title),
+      product_image_external: pick(base.product_image_external, lean?.product_image_external),
+      product_handle: pick(base.product_handle, lean?.product_handle),
+      url: pick(base.url, base.shop_url, lean?.shop_url),
+      shop_url: pick(base.shop_url, lean?.shop_url),
+      shop_title: pick(base.shop_title, lean?.shop_title),
+      shop_currency: pick(base.shop_currency, lean?.shop_currency),
+      price: pick(base.price, lean?.price),
+      day_current_period_revenue: pick(base.day_current_period_revenue, lean?.revenue_day),
+      week_current_period_revenue: pick(base.week_current_period_revenue, lean?.revenue_week),
+      month_current_period_revenue: pick(base.month_current_period_revenue, lean?.revenue_month),
+    };
+    const revenueChart = await this.mysql.getProductRevenueDaily(productId).catch(() => []);
+    return { detail, revenueChart, similar: [] };
   }
 
   // Nhập domain → check có phải Shopify không (ShopHunter /shops/track); nếu có thì kèm data shop.
@@ -571,7 +604,7 @@ export class ShService {
     return { tested: list.length, live, die: list.length - live };
   }
 
-  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month' }) { return this.mysql.queryLocalShops(o); }
+  localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month'; skuMin?: number; skuMax?: number }) { return this.mysql.queryLocalShops(o); }
   localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number }) { return this.mysql.queryLocalProducts(o); }
   localSuggest(type: 'shops' | 'products', q: string) { return this.mysql.localSuggest(type, q); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
@@ -646,6 +679,7 @@ export class ShService {
       const dR = r2(priceUsd * dC), wR = r2(priceUsd * wC), mR = r2(priceUsd * mC);
       await this.mysql.setProductListRevenueUsd(productId, dR, wR, mR).catch(() => {});
       await this.mysql.setProductSales(productId, dC, wC, mC, dR, wR, mR).catch(() => {}); // xếp hạng số đơn sản phẩm
+      await this.mysql.setProductRevDailySynced(productId).catch(() => {}); // đánh dấu đã chuẩn hoá USD → list KHÔNG quy đổi lại (đồng bộ tay cũng vào bảng revsync)
     }
     return { status: items.length ? 'ok' : 'skip', priceLocal, priceUsd, currency, days: items.length };
   }

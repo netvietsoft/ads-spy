@@ -356,10 +356,10 @@ export class ShController {
   }
 
   @Get('sh/local/shops')
-  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string, @Query('cntMin') cntMin: string, @Query('cntMax') cntMax: string, @Query('cntPeriod') cntPeriod: string) {
+  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string, @Query('cntMin') cntMin: string, @Query('cntMax') cntMax: string, @Query('cntPeriod') cntPeriod: string, @Query('skuMin') skuMin: string, @Query('skuMax') skuMax: string) {
     const p = localParams(sort, dir, page, pageSize);
     const cp = cntPeriod === 'day' || cntPeriod === 'week' || cntPeriod === 'month' ? cntPeriod : undefined;
-    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true', revMin: parseRev(revMin), revMax: parseRev(revMax), cntMin: parseRev(cntMin), cntMax: parseRev(cntMax), cntPeriod: cp });
+    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true', revMin: parseRev(revMin), revMax: parseRev(revMax), cntMin: parseRev(cntMin), cntMax: parseRev(cntMax), cntPeriod: cp, skuMin: parseRev(skuMin), skuMax: parseRev(skuMax) });
     return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
   }
 

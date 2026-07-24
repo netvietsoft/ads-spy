@@ -497,7 +497,7 @@ export function shLocalExportUrl(type: 'shops' | 'products', p: { sort?: string;
   return `${API}/api/sh/local/export?${qs.toString()}`;
 }
 export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
-export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month' } = {}): Promise<ShLocalResult> {
+export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month'; skuMin?: number; skuMax?: number } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
@@ -513,6 +513,8 @@ export async function shLocalShops(p: { sort?: string; dir?: string; page?: numb
   if (p.cntMin != null) qs.set('cntMin', String(p.cntMin));
   if (p.cntMax != null) qs.set('cntMax', String(p.cntMax));
   if (p.cntPeriod) qs.set('cntPeriod', p.cntPeriod);
+  if (p.skuMin != null) qs.set('skuMin', String(p.skuMin));
+  if (p.skuMax != null) qs.set('skuMax', String(p.skuMax));
   return jsonOrThrow(await fetch(`${API}/api/sh/local/shops?${qs.toString()}`));
 }
 export async function shLocalProducts(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number } = {}): Promise<ShLocalResult> {

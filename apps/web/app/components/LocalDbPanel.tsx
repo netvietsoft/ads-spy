@@ -7,6 +7,9 @@ import { ShLogo } from './ShLogo';
 import { CategoryPicker } from './CategoryPicker';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
+// Chặn số rác: doanh thu 1 sản phẩm ≥ 100 triệu USD/kỳ là phi lý (dữ liệu ShopHunter thô chưa đồng bộ) → hiện "—".
+const REV_GARBAGE = 1e8;
+const moneyCap = (n: any) => (typeof n === 'number' && Math.abs(n) >= REV_GARBAGE ? '—' : money(n));
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 // Rút gọn đường dẫn danh mục sâu: chỉ hiện "gốc › lá" (giữ full ở tooltip).
 const shortCat = (path: string) => {
@@ -70,6 +73,8 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   const [favOnly, setFavOnly] = useState(false); // chỉ hiện shop đã thả tim
   const [revMin, setRevMin] = useState<number | null>(null); // lọc theo bậc doanh thu tháng (mở từ báo cáo phân bố)
   const [revMax, setRevMax] = useState<number | null>(null);
+  const [skuMin, setSkuMin] = useState<number | null>(null); // lọc theo số lượng SKU của shop (X→Y)
+  const [skuMax, setSkuMax] = useState<number | null>(null);
 
   useEffect(() => { shFavShops().then((r) => setFavIds(new Set(r.ids))).catch(() => {}); }, []);
 
@@ -86,10 +91,10 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   useEffect(() => {
     setLoading(true); setErr(null);
     const req = tab === 'shops'
-      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined })
+      ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined, skuMin: skuMin ?? undefined, skuMax: skuMax ?? undefined })
       : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined });
     req.then((r) => setData(r)).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
-  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly, revMin, revMax]);
+  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly, revMin, revMax, skuMin, skuMax]);
 
   // Gợi ý tên (debounce 250ms, tối thiểu 2 ký tự).
   useEffect(() => {
@@ -213,6 +218,25 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
             </div>
           )}
         </div>
+        {tab === 'products' && (
+          <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>Shop ID:&nbsp;
+            <input className="fbselect" style={{ width: 130 }} inputMode="numeric" placeholder="vd 68686217283"
+              defaultValue={shopFilter}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setShopFilter((e.target as HTMLInputElement).value.trim()); setPage(1); } }}
+              onBlur={(e) => { const v = e.target.value.trim(); if (v !== shopFilter) { setShopFilter(v); setPage(1); } }} />
+          </label>
+        )}
+        {tab === 'shops' && (
+          <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>SKU:&nbsp;
+            <input className="fbselect" style={{ width: 72 }} inputMode="numeric" placeholder="từ"
+              defaultValue={skuMin ?? ''} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v.replace(/[^\d]/g, '')); if (n !== skuMin) { setSkuMin(Number.isFinite(n as number) ? n : null); setPage(1); } }} />
+            <span>→</span>
+            <input className="fbselect" style={{ width: 72 }} inputMode="numeric" placeholder="đến"
+              defaultValue={skuMax ?? ''} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v.replace(/[^\d]/g, '')); if (n !== skuMax) { setSkuMax(Number.isFinite(n as number) ? n : null); setPage(1); } }} />
+          </label>
+        )}
         {tab === 'shops' && (
           <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
             <input type="checkbox" checked={affOnly} onChange={(e) => { setAffOnly(e.target.checked); setPage(1); }} />
@@ -280,9 +304,9 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
                   <td>{p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={52} height={52} style={{ borderRadius: 8, objectFit: 'cover', display: 'block' }} loading="lazy" /> : null}</td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{p.product_title}{purl && <a href={purl} target="_blank" rel="noreferrer" title="Xem sản phẩm trên web" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, opacity: 0.75 }}>↗</a>}</td>
                   <td>{money(toUsd(p.price, p._storefront_currency || p.shop_currency))}</td>
-                  <td>{money(p._normalized ? p.day_current_period_revenue : toUsd(p.day_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
-                  <td>{money(p._normalized ? p.week_current_period_revenue : toUsd(p.week_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
-                  <td>{money(p._normalized ? p.month_current_period_revenue : toUsd(p.month_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
+                  <td>{moneyCap(p._normalized ? p.day_current_period_revenue : toUsd(p.day_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
+                  <td>{moneyCap(p._normalized ? p.week_current_period_revenue : toUsd(p.week_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
+                  <td>{moneyCap(p._normalized ? p.month_current_period_revenue : toUsd(p.month_current_period_revenue, p._storefront_currency || p.shop_currency))}</td>
                   <td className="wrap">
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', maxWidth: '30ch' }}>
                       <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={20} />
