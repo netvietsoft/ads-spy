@@ -179,12 +179,19 @@ export class ShService {
     const domain = String(domainRaw || '').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
     if (!domain) return { domain: '', isShopify: false, reason: 'empty' };
     const track = await this.client.trackShop(domain);
-    if (!track.shopId) return { domain, isShopify: false, reason: track.error || 'not_shopify_store' };
-    const shopId = String(track.shopId);
+    let shopId = track.shopId ? String(track.shopId) : '';
+    let identifyType = track.identifyType || '';
+    // ShopHunter /shops/track đôi khi trả "not_shopify_store" cho store bị Cloudflare chặn scraper của HỌ,
+    // dù store VẪN có trong index (explore ra bình thường). Thử tìm theo domain rồi khớp đúng → lấy shop_id.
+    if (!shopId) {
+      const viaSearch = await this.findShopIdByDomain(domain);
+      if (viaSearch) { shopId = viaSearch; identifyType = 'search'; }
+    }
+    if (!shopId) return { domain, isShopify: false, reason: track.error || 'not_shopify_store' };
     if (opts.skipDetailIfFresh) {
       const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
       if (await this.mysql.isShopFresh(shopId, freshMs)) {
-        return { domain, isShopify: true, shopId, identifyType: track.identifyType, detail: null as any, cached: true };
+        return { domain, isShopify: true, shopId, identifyType, detail: null as any, cached: true };
       }
     }
     const bundle = await this.shopDetail(shopId);
@@ -199,8 +206,26 @@ export class ShService {
       const raw = { shop_id: shopId, url: domain, shop_title: domain };
       try { await this.mysql.bulkUpsertListingShops([{ shopId, raw: JSON.stringify(raw), cols: parseShopColumns(raw), upCategory: null, upCategoryPath: null }], { onlyMissing: true }); } catch { /* bỏ qua */ }
     }
-    await this.mysql.addTrackHistory(domain, shopId, item?.shop_title || domain, track.identifyType || '');
-    return { domain, isShopify: true, shopId, identifyType: track.identifyType, detail: item };
+    await this.mysql.addTrackHistory(domain, shopId, item?.shop_title || domain, identifyType || '');
+    return { domain, isShopify: true, shopId, identifyType, detail: item };
+  }
+
+  // Tìm shop_id trong index ShopHunter theo domain (search q = domain đầy đủ) rồi KHỚP CHÍNH XÁC domain
+  // (url / myshopify_url / domain). Fallback khi /shops/track không nhận diện được. Không khớp → null.
+  private async findShopIdByDomain(domain: string): Promise<string | null> {
+    const norm = (u: any) => String(u || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    const target = norm(domain);
+    if (!target) return null;
+    try {
+      const res = await this.client.search('shops', { sort: 'week_current_period_revenue', q: target, categoryIds: [], from: 0 });
+      const items = parseSearch<any>(res).items || [];
+      for (const it of items) {
+        if (norm(it.url) === target || norm(it.myshopify_url) === target || norm(it.domain) === target) {
+          return it.shop_id != null ? String(it.shop_id) : null;
+        }
+      }
+    } catch { /* lỗi search → coi như không tìm thấy */ }
+    return null;
   }
 
   trackHistory() { return this.mysql.getTrackHistory(50); }
