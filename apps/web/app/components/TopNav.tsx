@@ -27,8 +27,11 @@ export function TopNav() {
   const router = useRouter();
   const active = activeHref(pathname);
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
+  const [menuOpen, setMenuOpen] = useState(false); // menu xổ ra trên mobile
   // Quyền để hiện menu: guest ẩn Import + Cài đặt (chặn thật ở middleware, đây chỉ hiển thị). '' = mở/dev → hiện đủ.
   const [role, setRole] = useState('');
+
+  useEffect(() => { setMenuOpen(false); }, [pathname]); // điều hướng xong → đóng menu mobile
 
   useEffect(() => { setTheme(((localStorage.getItem('theme') as 'dark' | 'light') || 'light')); }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('theme', theme); }, [theme]);
@@ -43,18 +46,27 @@ export function TopNav() {
   const nav = (e: ReactMouseEvent, href: string) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
     e.preventDefault();
+    setMenuOpen(false);
     router.push(href);
   };
+
+  const activeLabel = items.find(([href]) => href === active)?.[1] || '';
 
   return (
     <header className="topbar">
       <div className="topbar-inner">
         <h1 className="brand-h">Ads <span className="dot">Spy</span></h1>
-        <button className="ghost" type="button" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} title="Đổi giao diện sáng/tối">
-          {theme === 'dark' ? '☀️ Sáng' : '🌙 Tối'}
-        </button>
+        <div className="topbar-actions">
+          <button className="ghost navtoggle" type="button" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen} aria-label="Menu">
+            <span className="navtoggle-ic">{menuOpen ? '✕' : '☰'}</span>
+            <span className="navtoggle-lb">{menuOpen ? 'Đóng' : activeLabel || 'Menu'}</span>
+          </button>
+          <button className="ghost" type="button" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} title="Đổi giao diện sáng/tối">
+            {theme === 'dark' ? '☀️ Sáng' : '🌙 Tối'}
+          </button>
+        </div>
       </div>
-      <nav className="topnav">
+      <nav className={`topnav ${menuOpen ? 'open' : ''}`}>
         {items.map(([href, label]) => (
           <a key={href} href={href} className={`srcbtn ${active === href ? 'active' : ''}`} onClick={(e) => nav(e, href)}>{label}</a>
         ))}
