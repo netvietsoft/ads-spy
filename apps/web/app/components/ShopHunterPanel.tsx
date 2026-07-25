@@ -86,14 +86,15 @@ function ProductCard({ p, onOpen }: { p: any; onOpen?: () => void }) {
         <span>{p.shop_title || p.product_vendor || p.shop_id}</span>
       </div>
       {p.shop_url ? <div className="fbbody" style={{ opacity: 0.6, fontSize: 11 }}>{p.shop_url}</div> : null}
-      <div className="fbplat">
-        <b>Day</b> <b className="rev">{money(toUsd(p.day_current_period_revenue, p.shop_currency))}</b>{' '}
-        <b style={{ color: (p.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(p.day_revenue_percent_change)}</b>
-        {' · '}<b>Week</b> <b className="rev">{money(toUsd(p.week_current_period_revenue, p.shop_currency))}</b>
+      {/* Day / Week / Month cùng 1 hàng (tự xuống dòng nếu chật) */}
+      <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span><b>Day</b> <b className="rev">{money(toUsd(p.day_current_period_revenue, p.shop_currency))}</b> <b style={{ color: (p.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(p.day_revenue_percent_change)}</b></span>
+        <span><b>Week</b> <b className="rev">{money(toUsd(p.week_current_period_revenue, p.shop_currency))}</b></span>
+        <span><b>Month</b> <b className="rev">{money(toUsd(p.month_current_period_revenue, p.shop_currency))}</b></span>
       </div>
-      <div className="fbplat" style={{ textAlign: 'left' }}><b>Month</b> <b className="rev">{money(toUsd(p.month_current_period_revenue, p.shop_currency))}</b>{' · '}Ads {p.product_active_ad_count ?? 0}</div>
-      <div className="fbfoot">
-        {purl && <a className="dl" href={purl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Xem sản phẩm</a>}
+      <div className="fbfoot" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span className="fbplat">Ads {p.product_active_ad_count ?? 0}</span>
+        {purl && <a className="dl" style={{ marginLeft: 'auto' }} href={purl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Xem sản phẩm</a>}
         {site && <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Shop</a>}
       </div>
     </div>
