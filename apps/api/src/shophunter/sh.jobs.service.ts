@@ -7,7 +7,7 @@ import { shopifyHttp } from './shopify.client';
 import { makeProxiedGet, ProxyForGet } from './shopify.proxy-get';
 import { isGlobalBlock } from './sh.harvest.util';
 
-const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh'] as const;
+export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh'] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 const DESC: Record<JobName, string> = {

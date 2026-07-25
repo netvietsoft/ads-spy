@@ -5,7 +5,7 @@ import { ShService, SH_SNAPSHOT_DEFAULT_DIR } from './sh.service';
 import { ShClient, SH_SORTS_SHOPS, SH_SORTS_PRODUCTS } from './sh.client';
 import { ShBlockedFilter } from './sh.blocked.filter';
 import { ShHarvestService } from './sh.harvest.service';
-import { ShJobsService } from './sh.jobs.service';
+import { ShJobsService, JOB_NAMES } from './sh.jobs.service';
 
 const ALLOWED_ASSET = /(^|\.)(shopify\.com|shopifycdn\.com|myshopify\.com|shophunter\.io|cloudfront\.net)$/i;
 const REVENUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -331,22 +331,19 @@ export class ShController {
 
   @Post('sh/jobs/:name/toggle')
   toggleJob(@Param('name') name: string, @Body('on') on: any) {
-    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'];
-    if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
+    if (!(JOB_NAMES as readonly string[]).includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.toggle(name, !!on);
   }
 
   @Post('sh/jobs/:name/run-now')
   runJobOnce(@Param('name') name: string) {
-    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'];
-    if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
+    if (!(JOB_NAMES as readonly string[]).includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.runOnce(name);
   }
 
   @Post('sh/jobs/:name/config')
   setJobConfig(@Param('name') name: string, @Body() body: any) {
-    const valid = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'];
-    if (!valid.includes(name)) throw new BadRequestException('Job không hợp lệ.');
+    if (!(JOB_NAMES as readonly string[]).includes(name)) throw new BadRequestException('Job không hợp lệ.');
     return this.jobsSvc.setJobCfg(name, body || {});
   }
 
