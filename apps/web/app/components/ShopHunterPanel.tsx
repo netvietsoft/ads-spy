@@ -58,15 +58,16 @@ function ShopCard({ s, onOpen }: { s: any; onOpen?: () => void }) {
         <span style={{ fontSize: 13 }}>{s.shop_title || s.url}</span>
       </div>
       <div className="fbbody">{s.url}</div>
-      <div className="fbplat">
-        <b>Day</b> <b className="rev">{money(toUsd(s.day_current_period_revenue, s.currency))}</b>{' '}
-        <b style={{ color: (s.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(s.day_revenue_percent_change)}</b>
-        {' · '}<b>Week</b> <b className="rev">{money(toUsd(s.week_current_period_revenue, s.currency))}</b>
+      {/* Day / Week / Month cùng 1 hàng (tự xuống dòng nếu chật) */}
+      <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span><b>Day</b> <b className="rev">{money(toUsd(s.day_current_period_revenue, s.currency))}</b> <b style={{ color: (s.day_revenue_percent_change ?? 0) >= 0 ? '#41d18a' : '#e46' }}>{pct(s.day_revenue_percent_change)}</b></span>
+        <span><b>Week</b> <b className="rev">{money(toUsd(s.week_current_period_revenue, s.currency))}</b></span>
+        <span><b>Month</b> <b className="rev">{money(toUsd(s.month_current_period_revenue, s.currency))}</b></span>
       </div>
-      <div className="fbplat" style={{ textAlign: 'left' }}><b>Month</b> <b className="rev">{money(toUsd(s.month_current_period_revenue, s.currency))}</b></div>
-      <div className="fbplat">Ads {s.active_ad_count ?? 0} · SKU {s.sku_count ?? 0} · {s.country} · {s.currency}</div>
-      <div className="fbfoot">
-        <a className="dl" style={{ marginLeft: 'auto' }} href={`https://${s.url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Mở store</a>
+      {/* Ads · SKU · nước · tiền tệ cùng hàng với "Mở store" */}
+      <div className="fbfoot" style={{ alignItems: 'center', gap: 8 }}>
+        <span className="fbplat">Ads {s.active_ad_count ?? 0} · SKU {s.sku_count ?? 0} · {s.country} · {s.currency}</span>
+        <a className="dl" style={{ marginLeft: 'auto', flex: '0 0 auto' }} href={`https://${s.url}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Mở store</a>
       </div>
     </div>
   );
