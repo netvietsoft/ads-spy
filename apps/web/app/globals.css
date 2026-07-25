@@ -331,7 +331,6 @@ button.ghost.danger { color: var(--danger); }
   .searchbar input, .searchbar select, .searchbar .chips { flex: 1 1 100% !important; }
   /* Lưới thẻ quảng cáo/sản phẩm về 1 cột (bỏ track tối thiểu 300px gây tràn) */
   .fbgrid { grid-template-columns: 1fr !important; }
-  /* Bảng report đứng lẻ (không nằm trong khung .localtbl-scroll) → cuộn ngang TRONG khối, không đẩy cả trang */
-  .localtbl { display: block; overflow-x: auto; }
-  .localtbl-scroll .localtbl { display: table; overflow-x: visible; }
+  /* Bảng đứng lẻ (report/modal) giữ full-width; nếu quá rộng thì khung cha (overflow:auto) tự cuộn */
+  .localtbl { width: 100%; }
 }

@@ -34,13 +34,16 @@ export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string;
             <ShLogo internal={s?.shop_favicon_internal} external={s?.shop_favicon_external} title={s?.shop_title} size={28} />
             <span>{s?.shop_title || s?.url || 'Shop'}</span>
           </div>
-          <button className="ghost" onClick={onClose}>Đóng ✕</button>
+          <button className="ghost" onClick={onClose} aria-label="Đóng" title="Đóng" style={{ fontSize: 18, lineHeight: 1, padding: '6px 12px' }}>✕</button>
         </div>
         {err && <div className="err">{err}</div>}
         {!d && !err && <p className="hint"><span className="spinner" /> Đang tải…</p>}
         {s && (
           <>
-            <a className="dl" href={`https://${s.url}`} target="_blank" rel="noreferrer">{s.url} ↗</a>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <a className="dl" href={`https://${s.url}`} target="_blank" rel="noreferrer">{s.url} ↗</a>
+              <a className="srcbtn" href={`/shop/${shopId}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, textDecoration: 'none', padding: '5px 12px' }}>📊 Tổng quan shop ↗</a>
+            </div>
             {categoryPath && <div style={{ margin: '6px 0', fontSize: 13 }}>🏷️ Danh mục: <b>{categoryPath}</b></div>}
             <div style={{ display: 'flex', gap: 16, margin: '12px 0', flexWrap: 'wrap' }}>
               <span>Day <b style={GREEN}>{money(toUsd(s.day_current_period_revenue, scur))}</b></span>
