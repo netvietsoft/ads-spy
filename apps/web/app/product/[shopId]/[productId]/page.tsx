@@ -56,7 +56,6 @@ export default function ProductDetailPage() {
 
   return (
     <div style={{ maxWidth: 880, margin: '0 auto', padding: '22px 18px' }}>
-      <a href={`/shop/${shopId}`} className="dl" style={{ fontSize: 13 }}>← Quay lại chi tiết shop</a>
       {err && <div className="err" style={{ marginTop: 12 }}>{err}</div>}
       {!d && !err && <p className="hint" style={{ marginTop: 16 }}><span className="spinner" /> Đang tải…</p>}
       {p && (
@@ -70,6 +69,7 @@ export default function ProductDetailPage() {
             </div>
           )}
           <div style={{ display: 'flex', gap: 8, margin: '10px 0 14px', flexWrap: 'wrap' }}>
+            <a className="dl" href={`/shop/${shopId}`}>🏬 Chi tiết shop</a>
             {purl && <a className="dl" href={purl} target="_blank" rel="noreferrer">↗ Xem sản phẩm trên web</a>}
             {site && <a className="dl" href={site} target="_blank" rel="noreferrer">🏪 Xem shop</a>}
           </div>
