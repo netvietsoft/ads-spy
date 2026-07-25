@@ -278,6 +278,14 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
             {opts.countries.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
+        {tab === 'products' && (
+          <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>Shop ID:&nbsp;
+            <input className="fbselect" style={{ width: 130 }} inputMode="numeric" placeholder="vd 68686217283"
+              defaultValue={shopFilter}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setShopFilter((e.target as HTMLInputElement).value.trim()); setPage(1); } }}
+              onBlur={(e) => { const v = e.target.value.trim(); if (v !== shopFilter) { setShopFilter(v); setPage(1); } }} />
+          </label>
+        )}
         {/* Danh mục + Tên (bỏ nhãn) — chung 1 hàng */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', flex: '1 1 260px', minWidth: 0 }}>
           {tab === 'shops' ? (
@@ -308,14 +316,6 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
             )}
           </div>
         </div>
-        {tab === 'products' && (
-          <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>Shop ID:&nbsp;
-            <input className="fbselect" style={{ width: 130 }} inputMode="numeric" placeholder="vd 68686217283"
-              defaultValue={shopFilter}
-              onKeyDown={(e) => { if (e.key === 'Enter') { setShopFilter((e.target as HTMLInputElement).value.trim()); setPage(1); } }}
-              onBlur={(e) => { const v = e.target.value.trim(); if (v !== shopFilter) { setShopFilter(v); setPage(1); } }} />
-          </label>
-        )}
         {tab === 'shops' && (
           <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>SKU:&nbsp;
             <input className="fbselect" style={{ width: 72 }} inputMode="numeric" placeholder="từ"
