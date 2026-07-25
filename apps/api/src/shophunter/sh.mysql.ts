@@ -929,6 +929,21 @@ export class ShMysql implements OnModuleInit {
     return Date.now() - Number(r.harvested_at) < ttlMs;
   }
 
+  // Shop CŨ cần làm mới (job "refresh"): đã harvest detail (detail_raw NOT NULL) nhưng harvested_at quá staleMs.
+  // Ưu tiên DOANH THU cao→thấp (cột revenue). Trả kèm raw để giữ shape listing khi upsert lại.
+  async getShopsNeedingDetailRefresh(limit: number, staleMs: number): Promise<{ shopId: string; raw: any }[]> {
+    await this.ensureReady();
+    const n = Math.max(1, Math.min(200, Math.floor(limit)));
+    const cutoff = Date.now() - staleMs;
+    const [rows] = await this.pool!.query(
+      `SELECT shop_id, raw FROM sh_shop
+        WHERE detail_raw IS NOT NULL AND (harvested_at IS NULL OR harvested_at < ?)
+        ORDER BY revenue DESC LIMIT ?`,
+      [cutoff, n],
+    );
+    return (rows as any[]).map((r) => { let raw: any = null; try { raw = r.raw ? JSON.parse(r.raw) : null; } catch { raw = null; } return { shopId: String(r.shop_id), raw }; });
+  }
+
   async getDailyCount(day: string): Promise<number> {
     await this.ensureReady();
     const [rows] = await this.pool!.query('SELECT count FROM sh_harvest_daily WHERE day = ?', [day]);

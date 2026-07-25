@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ShClient, ShBlockedError } from './sh.client';
-import { ShService, SH_SNAPSHOT_DEFAULT_DIR } from './sh.service';
+import { ShService, SH_SNAPSHOT_DEFAULT_DIR, summarizeShopChart } from './sh.service';
 import { ShMysql, HarvestState, SliceState } from './sh.mysql';
 import { parseSearch, parseShopColumns } from './sh.parser';
 import { shouldRunNow, randInt, isGlobalBlock } from './sh.harvest.util';
@@ -370,6 +370,48 @@ export class ShHarvestService {
       if (shopDone && prodDone && !blocked) status = 'all_done';
     } finally { this.importRunning = false; }
     return { processed, ok, skipped, failed: 0, sliceKey: 'import', status };
+  }
+
+  private refreshRunning = false;
+  // Job "refresh": làm mới shop CŨ (detail harvest quá staleDays), ưu tiên doanh thu cao→thấp → lấy lại detail
+  // (similar/top-products/chart) + doanh thu tổng kỳ từ chart tươi. Đa luồng có kiểm soát (trần 3, ShopHunter theo token).
+  async refreshStaleShops(opts: { daily?: number; concurrency?: number; staleDays?: number }): Promise<HarvestSliceSummary> {
+    if (this.refreshRunning) return { processed: 0, ok: 0, skipped: 0, failed: 0, sliceKey: 'refresh', status: 'busy' };
+    this.refreshRunning = true;
+    const quota = opts.daily ?? 200;
+    const conc = Math.max(1, Math.min(3, Math.floor(opts.concurrency ?? 1)));
+    const staleMs = Math.max(1, Math.floor(opts.staleDays ?? 7)) * 86400000;
+    let processed = 0, ok = 0, failed = 0, status = 'ok', blocked = false, done = false;
+    try {
+      while (processed < quota && !blocked && !done) {
+        const need = Math.min(conc, quota - processed);
+        const shops = await this.mysql.getShopsNeedingDetailRefresh(need, staleMs);
+        if (!shops.length) { done = true; break; }
+        const results = await Promise.allSettled(shops.map((s) => this.refreshOneShop(s.shopId, s.raw)));
+        for (const rr of results) {
+          processed++;
+          if (rr.status === 'rejected') { if (isGlobalBlock(rr.reason)) blocked = true; failed++; }
+          else ok++;
+        }
+        if (blocked) { status = 'blocked'; break; }
+        await this.sleep(this.randDelayMs());
+      }
+      if (done) status = 'all_done';
+    } finally { this.refreshRunning = false; }
+    return { processed, ok, skipped: 0, failed, sliceKey: 'refresh', status };
+  }
+
+  private async refreshOneShop(shopId: string, raw: any): Promise<void> {
+    const bundle = await this.detailWithBackoff(shopId); // tươi từ ShopHunter (cache detail của shop cũ đã hết hạn); ném khi block toàn cục
+    const item: any = raw || (bundle as any).detail || { shop_id: shopId };
+    // Cập nhật doanh thu tổng kỳ từ chart TƯƠI (list/sort mới nhất) — chỉ khi chart có doanh thu thật (tránh zero-out shop mồ côi).
+    const chart = Array.isArray((bundle as any).revenueChart) ? (bundle as any).revenueChart : [];
+    if (chart.some((p: any) => p && p.revenue != null)) {
+      const s = summarizeShopChart(chart);
+      item.day_current_period_revenue = s.dRev; item.week_current_period_revenue = s.wRev; item.month_current_period_revenue = s.mRev;
+      item.day_current_period_sale_count = s.dCnt; item.week_current_period_sale_count = s.wCnt; item.month_current_period_sale_count = s.mCnt;
+    }
+    await this.mysql.upsertShop(shopId, item, bundle, parseShopColumns(item, bundle));
   }
 
   async runHarvestDeep(type: 'shops' | 'products', opts: { daily?: number }): Promise<HarvestSliceSummary> {

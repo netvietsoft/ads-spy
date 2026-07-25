@@ -47,7 +47,7 @@ export const SH_SNAPSHOT_DEFAULT_DIR = 'D:\\SetupC\\Tools\\shophunter-crawler\\s
 
 // Tổng kỳ (ngày/tuần/tháng) doanh thu + số đơn từ chuỗi chart shop (native currency) — dùng khi ShopHunter
 // detail thiếu số tổng (shop track). Ngày = điểm cuối, tuần = 7 điểm cuối, tháng = 30 điểm cuối.
-function summarizeShopChart(chart: any[]): { dRev: number; wRev: number; mRev: number; dCnt: number; wCnt: number; mCnt: number } {
+export function summarizeShopChart(chart: any[]): { dRev: number; wRev: number; mRev: number; dCnt: number; wCnt: number; mCnt: number } {
   const src = chart.filter((p) => p && p.date_str).sort((a, b) => String(a.date_str).localeCompare(String(b.date_str)));
   const rev = src.map((p) => Number(p.revenue) || 0);
   const cnt = src.map((p) => Number(p.sale_count) || 0);

@@ -7,7 +7,7 @@ import { shopifyHttp } from './shopify.client';
 import { makeProxiedGet, ProxyForGet } from './shopify.proxy-get';
 import { isGlobalBlock } from './sh.harvest.util';
 
-const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'] as const;
+const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh'] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 const DESC: Record<JobName, string> = {
@@ -17,6 +17,7 @@ const DESC: Record<JobName, string> = {
   productrev: 'Đồng bộ GIÁ (storefront, tiền tệ thật) + doanh thu NGÀY = giá(USD)×số đơn từng sản phẩm (doanh thu cao→thấp). Cần token + proxy.',
   affiliate: 'Quét affiliate cho shop mới/chưa quét (qua proxy Shopify) → sh_shop.affiliate_*. Shop mới tự vào hàng đợi.',
   importenrich: 'Enrich item đã import (mục Import): lấy detail/doanh thu → sh_shop/sh_product. Chạy liên tục cho hết hàng chờ. Cần token.',
+  refresh: 'Làm mới shop CŨ (detail harvest quá "Cũ hơn" ngày), ưu tiên DOANH THU cao→thấp → lấy lại detail/similar/top-products/chart + doanh thu. Cần token.',
 };
 
 const IDLE_MS = 120000;  // 2' khi hết việc
@@ -32,11 +33,12 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   productrev: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
   affiliate: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 2, activeStart: 8, activeEnd: 23 },
   importenrich: { batch: 100, daily: 10000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
+  refresh: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, staleDays: 7, activeStart: 8, activeEnd: 23 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
 const CFG_BOUNDS: Record<string, [number, number]> = {
   daily: [1, 100000], perTick: [1, 2000], skipPct: [0, 100], delayMs: [0, 60000],
-  concurrency: [1, 8], batch: [1, 1000], paceMs: [0, 600000], activeStart: [0, 24], activeEnd: [0, 24],
+  concurrency: [1, 8], batch: [1, 1000], paceMs: [0, 600000], activeStart: [0, 24], activeEnd: [0, 24], staleDays: [1, 90],
 };
 
 interface JobMem { running: boolean; lastRunAt: number | null; lastStatus: string | null; stats: Record<string, number>; }
@@ -52,7 +54,7 @@ export interface JobView {
 @Injectable()
 export class ShJobsService implements OnModuleInit {
   private readonly logger = new Logger('ShJobs');
-  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank() };
+  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank() };
   private catalogProxies: ProxyForGet[] = [];
   private origShopifyGet: typeof shopifyHttp.get | null = null;
 
@@ -237,7 +239,28 @@ export class ShJobsService implements OnModuleInit {
     if (name === 'productrev') return this.stepProductrev(force);
     if (name === 'affiliate') return this.stepAffiliate(force);
     if (name === 'importenrich') return this.stepImportEnrich(force);
+    if (name === 'refresh') return this.stepRefresh(force);
     return this.stepEnrich();
+  }
+
+  // Làm mới shop CŨ theo doanh thu: detail harvest quá staleDays → lấy lại detail/similar/top/chart + doanh thu. Cần token.
+  private async stepRefresh(force = false): Promise<{ pace: number }> {
+    const cfg = await this.getJobCfg('refresh');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.refresh.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('refresh');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.refresh.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: any;
+    try { r = await this.harvest.refreshStaleShops({ daily: cfg.batch, concurrency: cfg.concurrency, staleDays: cfg.staleDays }); }
+    catch (e) { this.mem.refresh.lastStatus = 'error'; await this.mysql.appendJobLog('refresh', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, Number(r?.processed) || 0).catch(() => {});
+    this.mem.refresh.lastRunAt = Date.now();
+    this.mem.refresh.stats = { lam_moi: r?.ok || 0, loi: r?.failed || 0 };
+    if (r?.status === 'all_done') { this.mem.refresh.lastStatus = 'idle'; await this.mysql.appendJobLog('refresh', 'info', 'Không còn shop cũ cần làm mới; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    if (r?.status === 'blocked') { this.mem.refresh.lastStatus = 'blocked'; await this.mysql.appendJobLog('refresh', 'warn', `Bị chặn; nghỉ. đã làm mới ${r?.ok || 0}`).catch(() => {}); return { pace: BLOCK_MS }; }
+    if (!(Number(r?.processed) > 0)) { this.mem.refresh.lastStatus = 'idle'; return { pace: IDLE_MS }; }
+    this.mem.refresh.lastStatus = 'ok';
+    await this.mysql.appendJobLog('refresh', 'info', `Làm mới ${r?.ok || 0}/${r?.processed || 0} shop cũ (>${cfg.staleDays}d)`).catch(() => {});
+    return { pace: cfg.paceMs };
   }
 
   private async stepEnrich(): Promise<{ pace: number }> {
