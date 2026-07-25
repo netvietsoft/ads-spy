@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { shLocalShops, shLocalProducts, shLocalFilters, shLocalSuggest, ShLocalResult, shAssetProxy, shShopSite, shProductUrl, shFavShops, shLocalExportUrl } from '../api';
 import { toUsd } from '../currency';
@@ -76,6 +76,8 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   const [revMax, setRevMax] = useState<number | null>(null);
   const [skuMin, setSkuMin] = useState<number | null>(null); // lọc theo số lượng SKU của shop (X→Y)
   const [skuMax, setSkuMax] = useState<number | null>(null);
+  const [paramsReady, setParamsReady] = useState(false); // chờ đọc xong ?pshop/?revMin trước khi fetch (tránh fetch "tất cả" thừa)
+  const reqRef = useRef(0); // bỏ qua kết quả fetch cũ về trễ (đua) → luôn hiển thị đúng lần lọc mới nhất
 
   useEffect(() => { shFavShops().then((r) => setFavIds(new Set(r.ids))).catch(() => {}); }, []);
 
@@ -87,15 +89,20 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
     const rmin = sp.get('revMin'); const rmax = sp.get('revMax');
     if (rmin) setRevMin(Number(rmin));
     if (rmax) setRevMax(Number(rmax));
+    setParamsReady(true); // đọc URL xong → cho phép fetch (với filter đã set)
   }, []);
 
   useEffect(() => {
+    if (!paramsReady) return; // chưa đọc URL xong thì chưa fetch (khỏi fetch "tất cả sản phẩm" rồi bị đua ghi đè)
+    const myReq = ++reqRef.current;
     setLoading(true); setErr(null);
     const req = tab === 'shops'
       ? shLocalShops({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined, skuMin: skuMin ?? undefined, skuMax: skuMax ?? undefined })
       : shLocalProducts({ sort, dir, page, pageSize, country: country || undefined, category: category || undefined, q: q || undefined, shop: shopFilter || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined });
-    req.then((r) => setData(r)).catch((e) => setErr((e as Error).message)).finally(() => setLoading(false));
-  }, [tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly, revMin, revMax, skuMin, skuMax]);
+    req.then((r) => { if (myReq === reqRef.current) setData(r); })
+      .catch((e) => { if (myReq === reqRef.current) setErr((e as Error).message); })
+      .finally(() => { if (myReq === reqRef.current) setLoading(false); });
+  }, [paramsReady, tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly, revMin, revMax, skuMin, skuMax]);
 
   // Gợi ý tên (debounce 250ms, tối thiểu 2 ký tự).
   useEffect(() => {
