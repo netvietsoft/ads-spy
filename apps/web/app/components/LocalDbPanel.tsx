@@ -278,39 +278,35 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
             {opts.countries.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
-        {tab === 'shops' ? (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13 }}>Danh mục:</span>
+        {/* Danh mục + Tên (bỏ nhãn) — chung 1 hàng */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', flex: '1 1 260px', minWidth: 0 }}>
+          {tab === 'shops' ? (
             <CategoryPicker key={tab} onChange={(id) => { setCategory(id || ''); setPage(1); }} />
-          </div>
-        ) : opts.categories.length > 0 ? (
-          <label>Danh mục:&nbsp;
-            <select className="fbselect" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
-              <option value="">Tất cả</option>
+          ) : opts.categories.length > 0 ? (
+            <select className="fbselect" style={{ flex: '1 1 40%', minWidth: 0 }} value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }} title="Danh mục">
+              <option value="">Tất cả danh mục</option>
               {opts.categories.map((c) => <option key={c} value={c}>{catNames[c] || c}</option>)}
             </select>
-          </label>
-        ) : null}
-        <div style={{ position: 'relative' }}>
-          <label>Tên {tab === 'products' ? 'sản phẩm' : 'shop'}:&nbsp;
+          ) : null}
+          <div style={{ position: 'relative', flex: '1 1 40%', minWidth: 0, display: 'flex', gap: 4, alignItems: 'center' }}>
             <input
-              className="fbselect" style={{ minWidth: 240 }} value={qInput}
+              className="fbselect" style={{ flex: 1, minWidth: 0 }} value={qInput} title={tab === 'products' ? 'Tên sản phẩm' : 'Tên shop'}
               placeholder={tab === 'products' ? 'Gõ tên sản phẩm…' : 'Gõ tên shop…'}
               onChange={(e) => { setQInput(e.target.value); setShowSug(true); }}
               onKeyDown={(e) => { if (e.key === 'Enter') applyQ(qInput); if (e.key === 'Escape') setShowSug(false); }}
               onFocus={() => { if (sugs.length) setShowSug(true); }}
               onBlur={() => setTimeout(() => setShowSug(false), 150)}
             />
-          </label>
-          {(q || qInput) && <button className="srcbtn" style={{ marginLeft: 4 }} onClick={() => applyQ('')}>✕</button>}
-          {showSug && sugs.length > 0 && (
-            <div style={{ position: 'absolute', zIndex: 60, top: '100%', left: 44, minWidth: 260, maxWidth: 440, maxHeight: 320, overflow: 'auto', background: 'var(--panel)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.35)', marginTop: 4 }}>
-              {sugs.map((s) => (
-                <div key={s} onMouseDown={(e) => { e.preventDefault(); applyQ(s); }} title={s}
-                  style={{ padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13 }}>{s}</div>
-              ))}
-            </div>
-          )}
+            {(q || qInput) && <button className="srcbtn" onClick={() => applyQ('')}>✕</button>}
+            {showSug && sugs.length > 0 && (
+              <div style={{ position: 'absolute', zIndex: 60, top: '100%', left: 0, minWidth: 200, maxWidth: '90vw', maxHeight: 320, overflow: 'auto', background: 'var(--panel)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 10px 30px rgba(0,0,0,0.35)', marginTop: 4 }}>
+                {sugs.map((s) => (
+                  <div key={s} onMouseDown={(e) => { e.preventDefault(); applyQ(s); }} title={s}
+                    style={{ padding: '6px 10px', cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13 }}>{s}</div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         {tab === 'products' && (
           <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>Shop ID:&nbsp;
