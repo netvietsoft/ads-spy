@@ -16,9 +16,6 @@ import {
   fbPagePostsStart,
   fbReport,
   fbSearch,
-  fbSessionStatus,
-  fbSetSession,
-  fbVerifySession,
 } from '../api';
 import { FbModal } from './FbModal';
 import { Favorites } from './Favorites';
@@ -97,8 +94,6 @@ export function FacebookPanel() {
   const [scanHistory, setScanHistory] = useState<FbScanHistory[]>([]);
   const [postsSaved, setPostsSaved] = useState(false);
   const [scanPhase, setScanPhase] = useState<string>('');
-  const [verifying, setVerifying] = useState(false);
-  const [cookieValid, setCookieValid] = useState<boolean | null>(null);
   // phân trang: ads 100/trang, bài viết 50/trang, report 100/trang
   const [adsPage, setAdsPage] = useState(1);
   const [adsSize, setAdsSize] = useState(100);
@@ -110,15 +105,9 @@ export function FacebookPanel() {
   useEffect(() => setAdsPage(1), [res]);
   useEffect(() => setPpPage(1), [posts]);
   useEffect(() => setRepPage(1), [report]);
-  const [fbLoggedIn, setFbLoggedIn] = useState<boolean | null>(null);
-  const [showAuth, setShowAuth] = useState(false);
-  const [cookie, setCookie] = useState('');
 
   const refreshScans = () => fbPagePostsHistory().then(setScanHistory).catch(() => {});
-  useEffect(() => {
-    fbSessionStatus().then((s) => setFbLoggedIn(s.loggedIn)).catch(() => {});
-    refreshScans();
-  }, []);
+  useEffect(() => { refreshScans(); }, []);
 
   async function openScan(id: number, page: string) {
     setPostsPage(page);
@@ -132,22 +121,6 @@ export function FacebookPanel() {
       setErr(e.message || 'Không mở được lượt quét đã lưu');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function saveCookie() {
-    if (!cookie.trim()) return;
-    try {
-      const s = await fbSetSession(cookie.trim());
-      setFbLoggedIn(s.loggedIn);
-      if (s.loggedIn) {
-        setShowAuth(false);
-        setCookie('');
-      } else {
-        setErr('Cookie chưa có c_user — dán thiếu, cần cả c_user và xs.');
-      }
-    } catch (e: any) {
-      setErr(e.message || 'Lỗi lưu cookie');
     }
   }
 
@@ -186,18 +159,6 @@ export function FacebookPanel() {
     }
   }
 
-  async function verifyCookie() {
-    setVerifying(true);
-    try {
-      const v = await fbVerifySession();
-      setFbLoggedIn(v.loggedIn);
-      setCookieValid(v.valid);
-    } catch {
-      setCookieValid(false);
-    } finally {
-      setVerifying(false);
-    }
-  }
 
   async function runReport(r = range) {
     setLoading(true);
@@ -308,46 +269,6 @@ export function FacebookPanel() {
 
   return (
     <>
-      <div className="fbauth">
-        <span className="authstatus">
-          {fbLoggedIn === null ? (
-            <span className="pill">…</span>
-          ) : fbLoggedIn ? (
-            <span className="pill ok">🔒 Đã đăng nhập{cookieValid === false ? ' (cookie hết hạn?)' : ''}</span>
-          ) : (
-            <span className="pill off">🔓 Chưa đăng nhập FB</span>
-          )}
-          {cookieValid === true && <span className="pill ok">✔ Cookie còn hiệu lực</span>}
-        </span>
-        <span className="fav-btns">
-          <button className="ghost" type="button" onClick={verifyCookie} disabled={verifying}>
-            {verifying ? <span className="spinner" /> : 'Kiểm tra cookie'}
-          </button>
-          <button className="ghost" type="button" onClick={() => setShowAuth((v) => !v)}>
-            {fbLoggedIn ? 'Đổi cookie' : 'Đăng nhập bằng cookie'}
-          </button>
-        </span>
-      </div>
-      {showAuth && (
-        <div className="fbauth-box">
-          <p className="hint" style={{ marginTop: 0 }}>
-            Dán 1 trong 2: (a) chuỗi <code>document.cookie</code> (F12 → Console), hoặc (b) nội dung file{' '}
-            <code>cookies.txt</code> (extension export — định dạng Netscape). Tự nhận, chỉ cần có <code>c_user</code> và{' '}
-            <code>xs</code>. Nên dùng <b>nick phụ</b>.
-          </p>
-          <textarea
-            className="fbauth-ta"
-            value={cookie}
-            onChange={(e) => setCookie(e.target.value)}
-            placeholder="datr=...; sb=...; c_user=100...; xs=...; fr=..."
-            rows={3}
-          />
-          <button className="primary" type="button" onClick={saveCookie}>
-            Lưu cookie
-          </button>
-        </div>
-      )}
-
       <div className="modes" style={{ marginTop: 14 }}>
         <button className={`ghost ${tab === 'search' ? 'active' : ''}`} type="button" onClick={() => setTab('search')}>
           🔎 Tìm quảng cáo
