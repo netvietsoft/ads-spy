@@ -329,8 +329,9 @@ button.ghost.danger { color: var(--danger); }
   .sources, .modes, .searchbar, .daterow, .fbfoot { flex-wrap: wrap; }
   /* Ô nhập/select: bỏ min-width cứng + không rộng quá màn hình (đè inline style bằng !important) */
   input:not([type='checkbox']):not([type='radio']), select, textarea { min-width: 0 !important; max-width: 100% !important; }
-  /* Thanh tìm: input/select/chips chiếm cả dòng (xếp dọc gọn, không tràn) */
-  .searchbar input, .searchbar select, .searchbar .chips { flex: 1 1 100% !important; }
+  /* Thanh tìm: input/chips chiếm cả dòng; các SELECT (quốc gia, trạng thái…) chung 1 hàng (2+/hàng) */
+  .searchbar input, .searchbar .chips { flex: 1 1 100% !important; }
+  .searchbar select { flex: 1 1 40% !important; min-width: 0 !important; }
   /* Lưới thẻ quảng cáo/sản phẩm về 1 cột co được — Google (.grid) + FB/Shopify (.fbgrid).
      minmax(0,1fr) thay 1fr: track co xuống 0 để nội dung xuống dòng, KHÔNG bị content đẩy tràn ngang. */
   .fbgrid, .grid { grid-template-columns: minmax(0, 1fr) !important; }

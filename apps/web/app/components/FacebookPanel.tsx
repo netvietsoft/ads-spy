@@ -79,7 +79,7 @@ function FbCard({ ad, onOpen }: { ad: FbAd; onOpen: () => void }) {
 export function FacebookPanel() {
   const [tab, setTab] = useState<'search' | 'report' | 'posts'>('search');
   const [q, setQ] = useState('');
-  const [country, setCountry] = useState('VN');
+  const [country, setCountry] = useState('ALL'); // mặc định: tất cả quốc gia
   const [status, setStatus] = useState('all');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
