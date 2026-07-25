@@ -57,6 +57,7 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
+  const [gotoInput, setGotoInput] = useState(''); // ô "Tới trang" — nhảy thẳng tới trang bất kỳ
   const [country, setCountry] = useState('');
   const [category, setCategory] = useState('');
   const [q, setQ] = useState('');           // từ khoá đã áp dụng (lọc bảng)
@@ -134,6 +135,7 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   };
   const arrow = (k: string) => (sort === k ? (dir === 'desc' ? ' ↓' : ' ↑') : '');
   const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
+  const goToPage = () => { const n = Math.floor(Number(gotoInput) || 0); if (n >= 1) { setPage(Math.min(totalPages, n)); setGotoInput(''); } };
   const from = data.total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, data.total);
 
@@ -148,6 +150,15 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
       <button className="srcbtn" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹ Trước</button>
       <span>Trang {page}/{totalPages}</span>
       <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        Tới trang
+        <input type="number" min={1} max={totalPages} value={gotoInput} placeholder={String(page)} inputMode="numeric"
+          className="fbselect" style={{ width: 78 }}
+          onChange={(e) => setGotoInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') goToPage(); }}
+          title={`Nhập số trang (1–${totalPages.toLocaleString()}) rồi Enter`} />
+        <button className="srcbtn" disabled={loading || !gotoInput} onClick={goToPage}>Đi</button>
+      </span>
       <button className="srcbtn" title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel (CSV)`}
         onClick={() => window.open(tab === 'shops'
           ? shLocalExportUrl('shops', { sort, dir, country: country || undefined, category: category || undefined, q: q || undefined, aff: affOnly || undefined, fav: favOnly || undefined, revMin: revMin ?? undefined, revMax: revMax ?? undefined })
