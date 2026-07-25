@@ -178,7 +178,7 @@ export function ShopHunterPanel() {
             })}
           </div>
           <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Tìm ${tab}...`} style={{ width: 340, maxWidth: '100%' }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') load(true); }} placeholder={`Tìm ${tab}...`} className="shsearch" />
             <button className="srcbtn findbtn" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
             {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}
           </div>

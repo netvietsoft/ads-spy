@@ -86,6 +86,8 @@ body {
 .detail-title { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
 
 .fbselect { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 14px; cursor: pointer; }
+/* Ô tìm ShopHunter (Tìm shops/products) */
+.shsearch { width: 340px; max-width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 15px; outline: none; }
 .daterow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; font-size: 13px; color: var(--muted); }
 
 .fbgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 18px; }
@@ -331,6 +333,8 @@ button.ghost.danger { color: var(--danger); }
   .searchbar input, .searchbar select, .searchbar .chips { flex: 1 1 100% !important; }
   /* Lưới thẻ quảng cáo/sản phẩm về 1 cột (bỏ track tối thiểu 300px gây tràn) */
   .fbgrid { grid-template-columns: 1fr !important; }
+  /* Ô tìm ShopHunter: full-width + cao hơn cho dễ chạm trên mobile */
+  .shsearch { width: 100%; flex: 1 1 100%; padding: 13px 14px; font-size: 16px; }
   /* Bảng đứng lẻ (report/modal) giữ full-width; nếu quá rộng thì khung cha (overflow:auto) tự cuộn */
   .localtbl { width: 100%; }
 }
