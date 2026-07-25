@@ -47,6 +47,81 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_badge', label: '' },
 ];
 
+// Mobile: dưới 760px hiện dạng THẺ (khỏi vỡ bảng nhiều cột). matchMedia (SSR-safe: false lúc đầu).
+function useIsMobile(bp = 760) {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${bp}px)`);
+    const on = () => setM(mq.matches); on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, [bp]);
+  return m;
+}
+
+// Thẻ 1 shop (mobile) — mirror hàng bảng: logo/tên/url + DT ngày/tuần/tháng + FB/Ads/SKU/nước + badge + update.
+function ShopRowCard({ s, fav, catNames }: { s: any; fav: boolean; catNames: Record<string, string> }) {
+  const cur = s._storefront_currency || s.currency;
+  return (
+    <div className="fbcard localcard" onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer', position: 'relative' }}>
+      <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={24} />
+        <span style={{ fontSize: 14 }}>{fav && <span style={{ color: '#e0384f', marginRight: 4 }}>♥</span>}{s.shop_title || s.url}</span>
+      </div>
+      {s.url ? <div className="fbbody" style={{ fontSize: 12, opacity: 0.7 }}>{s.url}</div> : null}
+      <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span><b>Day</b> <b className="rev">{money(toUsd(s.day_current_period_revenue, cur))}</b></span>
+        <span><b>Week</b> <b className="rev">{money(toUsd(s.week_current_period_revenue, cur))}</b></span>
+        <span><b>Month</b> <b className="rev">{money(toUsd(s.month_current_period_revenue, cur))}</b> <b className={(s.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.month_revenue_percent_change)}</b></span>
+      </div>
+      <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span>FB {s.fb_followers ?? '—'}</span><span>Ads {s.active_ad_count ?? 0}</span><span>SKU {s.sku_count ?? '—'}</span>
+        {/^[A-Za-z]{2,3}$/.test(s.country || '') ? <span>{s.country}</span> : null}
+        {s._up_category_path || s._up_category ? <span style={{ opacity: 0.8 }}>🏷 {s._up_category_path ? shortCat(s._up_category_path) : (catNames[s._up_category] || s._up_category)}</span> : null}
+      </div>
+      <div className="fbfoot" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          {s._harvested ? <span className="badge-harvest">✓ harvest</span> : <span className="badge-local">local</span>}
+          {s._affiliate === 'yes' && s._affiliate_link ? <a href={s._affiliate_link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-2)', fontWeight: 700, fontSize: 12 }}>aff ✓</a> : s._affiliate === 'app' ? <span style={{ color: '#e0a800', fontSize: 11 }}>aff app</span> : null}
+        </span>
+        <span className="fbplat" style={{ marginLeft: 'auto', textAlign: 'right' }}><Upd ms={s._fetched_at ?? s._harvested_at} /></span>
+      </div>
+    </div>
+  );
+}
+
+// Thẻ 1 sản phẩm (mobile).
+function ProductRowCard({ p }: { p: any }) {
+  const cur = p._storefront_currency || p.shop_currency;
+  const purl = shProductUrl(p); const site = shShopSite(p);
+  const rev = (raw: any) => moneyCap(p._normalized ? raw : toUsd(raw, cur));
+  return (
+    <div className="fbcard localcard" onClick={() => window.open(`/product/${p.shop_id}/${p.product_id}`, '_blank')} style={{ cursor: 'pointer' }}>
+      <div style={{ display: 'flex', gap: 10 }}>
+        {p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={56} height={56} style={{ borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} loading="lazy" /> : null}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="fbpage" style={{ fontSize: 13 }}>{p.product_title}</div>
+          <div className="fbbody" style={{ fontSize: 12, opacity: 0.7, display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+            <ShLogo internal={p.shop_favicon_internal} external={p.shop_favicon_external} title={p.shop_title} size={16} />
+            <span>{p.shop_title || '—'}</span>
+          </div>
+        </div>
+      </div>
+      <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span>Giá <b className="rev">{money(toUsd(p.price, cur))}</b></span>
+        <span><b>Day</b> <b className="rev">{rev(p.day_current_period_revenue)}</b></span>
+        <span><b>Week</b> <b className="rev">{rev(p.week_current_period_revenue)}</b></span>
+        <span><b>Month</b> <b className="rev">{rev(p.month_current_period_revenue)}</b></span>
+      </div>
+      <div className="fbfoot" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {purl ? <a className="dl" href={purl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Sản phẩm</a> : null}
+        {site ? <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Shop</a> : null}
+        <span className="fbplat" style={{ marginLeft: 'auto', textAlign: 'right' }}><Upd ms={p._fetched_at} /></span>
+      </div>
+    </div>
+  );
+}
+
 export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {}) {
   const router = useRouter();
   const [tab, setTab] = useState<'shops' | 'products'>(subTab ?? 'shops');
@@ -78,6 +153,7 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   const [skuMax, setSkuMax] = useState<number | null>(null);
   const [paramsReady, setParamsReady] = useState(false); // chờ đọc xong ?pshop/?revMin trước khi fetch (tránh fetch "tất cả" thừa)
   const reqRef = useRef(0); // bỏ qua kết quả fetch cũ về trễ (đua) → luôn hiển thị đúng lần lọc mới nhất
+  const isMobile = useIsMobile(); // ≤760px → hiện thẻ thay bảng
 
   useEffect(() => { shFavShops().then((r) => setFavIds(new Set(r.ids))).catch(() => {}); }, []);
 
@@ -271,6 +347,14 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
       </div>
       {err && <div className="err">{err}</div>}
 
+      {isMobile ? (
+        <div className="localcards">
+          {data.items.length === 0 && !loading ? <p className="hint">Không có dữ liệu.</p>
+            : tab === 'shops'
+              ? data.items.map((s) => <ShopRowCard key={s.shop_id} s={s} fav={favIds.has(String(s.shop_id))} catNames={catNames} />)
+              : data.items.map((p) => <ProductRowCard key={p.product_id} p={p} />)}
+        </div>
+      ) : (
       <div className="localtbl-scroll">
         {tab === 'shops' ? (
           <table className="localtbl">
@@ -339,6 +423,7 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
           </table>
         )}
       </div>
+      )}
 
       {pager}
 
