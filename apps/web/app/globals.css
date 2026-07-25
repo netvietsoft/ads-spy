@@ -333,8 +333,8 @@ button.ghost.danger { color: var(--danger); }
   .searchbar input, .searchbar select, .searchbar .chips { flex: 1 1 100% !important; }
   /* Lưới thẻ quảng cáo/sản phẩm về 1 cột (bỏ track tối thiểu 300px gây tràn) */
   .fbgrid { grid-template-columns: 1fr !important; }
-  /* Ô tìm ShopHunter: full-width + cao hơn cho dễ chạm trên mobile */
-  .shsearch { width: 100%; flex: 1 1 100%; padding: 13px 14px; font-size: 16px; }
+  /* Ô tìm ShopHunter: giãn lấp đầy nhưng CÙNG HÀNG với nút Tìm; cao hơn cho dễ chạm */
+  .shsearch { flex: 1 1 auto; width: auto; min-width: 0; padding: 13px 14px; font-size: 16px; }
   /* Bảng đứng lẻ (report/modal) giữ full-width; nếu quá rộng thì khung cha (overflow:auto) tự cuộn */
   .localtbl { width: 100%; }
 }
