@@ -1251,6 +1251,29 @@ export class ShMysql implements OnModuleInit {
     for (const p of ['day', 'week', 'month'] as const) await this.reportOrderBuckets('shops', p, true).catch(() => {});
   }
 
+  // Tìm shop theo SỐ ĐƠN trong KHOẢNG NGÀY [from,to] (cộng sale_count từ sh_shop_revenue_daily) + lọc khoảng đơn.
+  async reportShopOrdersByRange(from: string, to: string, min: number, max: number | null, limit = 500): Promise<{ shopId: string; shopTitle: string | null; url: string | null; orders: number }[]> {
+    await this.ensureReady();
+    const n = Math.max(1, Math.min(2000, Math.floor(limit)));
+    const having = max != null ? 'HAVING orders >= ? AND orders <= ?' : 'HAVING orders >= ?';
+    const hparams = max != null ? [min, max] : [min];
+    // Gom số đơn theo shop trong khoảng ngày (không JOIN để tránh lệch collation), rồi tra tên/url shop riêng.
+    const [rows] = await this.pool!.query(
+      `SELECT shop_id, SUM(sale_count) AS orders FROM sh_shop_revenue_daily
+        WHERE d BETWEEN ? AND ? AND sale_count IS NOT NULL
+        GROUP BY shop_id ${having} ORDER BY orders DESC LIMIT ?`,
+      [from, to, ...hparams, n],
+    );
+    const agg = (rows as any[]).map((r) => ({ shopId: String(r.shop_id), orders: Number(r.orders) || 0 }));
+    if (!agg.length) return [];
+    const [srows] = await this.pool!.query(
+      "SELECT shop_id, shop_name, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) AS url FROM sh_shop WHERE shop_id IN (?)",
+      [agg.map((a) => a.shopId)],
+    );
+    const info = new Map((srows as any[]).map((r: any) => [String(r.shop_id), { shopTitle: r.shop_name ?? null, url: r.url ?? null }]));
+    return agg.map((a) => ({ shopId: a.shopId, orders: a.orders, shopTitle: info.get(a.shopId)?.shopTitle ?? null, url: info.get(a.shopId)?.url ?? null }));
+  }
+
   private orderBucketCache = new Map<string, { t: number; data: OrderBucketReport }>();
   // Bảng xếp hạng SỐ ĐƠN theo kỳ (day/week/month): số lượng + trung bình đơn + tổng doanh thu (USD) mỗi bậc.
   // shop: quét sh_shop raw JSON (46k, DT×tỉ giá tiền tệ thật). sản phẩm: bảng phụ sh_product_sales (job productrev ghi dần). Cache 5'.

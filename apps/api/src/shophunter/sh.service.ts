@@ -678,6 +678,7 @@ export class ShService {
   reportTopProducts(o: { country?: string; category?: string }) { return this.mysql.reportTopProducts(o); }
   reportRevenueBuckets() { return this.mysql.reportRevenueBuckets(); }
   reportOrderBuckets(type: 'shops' | 'products', period: 'day' | 'week' | 'month') { return this.mysql.reportOrderBuckets(type, period); }
+  reportShopOrdersByRange(from: string, to: string, min: number, max: number | null, limit: number) { return this.mysql.reportShopOrdersByRange(from, to, min, max, limit); }
   productsByOrders(period: 'day' | 'week' | 'month', lo: number, hi: number | null, limit: number) { return this.mysql.queryProductsByOrders(period, lo, hi, limit); }
   reconcileShopRevenue() { return this.mysql.reconcileShopRevenue(); }
 

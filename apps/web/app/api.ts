@@ -573,6 +573,10 @@ export interface ShOrderBucketReport { buckets: { key: string; lo: number; hi: n
 export async function shReportOrderBuckets(type: 'shops' | 'products', period: 'day' | 'week' | 'month'): Promise<ShOrderBucketReport> {
   return jsonOrThrow(await fetch(`${API}/api/sh/report/order-buckets?type=${type}&period=${period}`));
 }
+export interface ShOrderShop { shopId: string; shopTitle: string | null; url: string | null; orders: number }
+export async function shShopOrdersByRange(from: string, to: string, min: number, max: number | null, limit = 500): Promise<ShOrderShop[]> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/report/shop-orders?from=${from}&to=${to}&min=${min}&max=${max ?? ''}&limit=${limit}`));
+}
 export async function shOrderProducts(period: 'day' | 'week' | 'month', lo: number, hi: number | null, limit = 50): Promise<any[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/report/order-products?period=${period}&lo=${lo}&hi=${hi ?? ''}&limit=${limit}`));
 }

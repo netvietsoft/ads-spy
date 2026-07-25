@@ -426,6 +426,18 @@ export class ShController {
     return this.svc.reportOrderBuckets(t, p);
   }
 
+  // Tìm shop theo số đơn trong KHOẢNG NGÀY (from,to = YYYY-MM-DD) + lọc khoảng đơn min..max.
+  @Get('sh/report/shop-orders')
+  shopOrdersByRange(@Query('from') from: string, @Query('to') to: string, @Query('min') min: string, @Query('max') max: string, @Query('limit') limit: string) {
+    const d = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? s : null);
+    const f = d(from); const t = d(to);
+    if (!f || !t) throw new BadRequestException('Ngày không hợp lệ (cần YYYY-MM-DD).');
+    const mn = Math.max(0, Number(min) || 0);
+    const mx = max === '' || max == null ? null : (Number.isFinite(Number(max)) ? Number(max) : null);
+    const lim = Math.min(2000, Math.max(1, Number(limit) || 500));
+    return this.svc.reportShopOrdersByRange(f, t, mn, mx, lim);
+  }
+
   // Danh sách sản phẩm trong 1 bậc số đơn (kỳ) — cho expand ở báo cáo xếp hạng.
   @Get('sh/report/order-products')
   orderProducts(@Query('period') period: string, @Query('lo') lo: string, @Query('hi') hi: string, @Query('limit') limit: string) {
