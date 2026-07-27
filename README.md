@@ -1,56 +1,65 @@
 # Google Ads Spy
 
-Nhập một **domain** → xem tất cả quảng cáo trên **Google Ads Transparency Center** cho domain đó: nhà quảng cáo nào đang chạy, các creative, và xem/tải asset (ảnh/embed). Self-hosted, lấy dữ liệu trực tiếp từ API công khai của Google.
+Công cụ self-hosted "spy" quảng cáo & dữ liệu shop của đối thủ, gồm 4 nguồn:
 
-## Kiến trúc
+- **Google Ads Transparency Center** — nhập 1 domain → xem nhà quảng cáo + creative đang chạy, tải asset (ảnh/embed).
+- **Facebook Ad Library** — scrape (Playwright, vì FB chặn request thuần) quảng cáo theo từ khoá/Page.
+- **TikTok Creative Center (Top Ads)** — scrape (Playwright bắt XHR) top ads theo ngành.
+- **ShopHunter** — clone dữ liệu shop/sản phẩm Shopify (doanh thu, sản phẩm bán chạy…) từ tài khoản ShopHunter trả phí, cache về MySQL riêng để duyệt/phân tích không giới hạn quota.
 
-Monorepo (npm workspaces):
+Dự án đang trong giai đoạn **chuyển từ công cụ nội bộ (1 người dùng) sang phần mềm SaaS cho thuê bao**.
 
-- `apps/api` — **NestJS**: port API nội bộ `adstransparency.google.com` sang TypeScript, lưu lịch sử vào **SQLite** (Prisma), proxy asset.
-- `apps/web` — **Next.js**: ô nhập domain, danh sách nhà quảng cáo, grid creative, modal chi tiết + tải asset.
+## Tài liệu
+
+- [docs/kien-truc.md](docs/kien-truc.md) — kiến trúc tổng thể: hệ thống **hiện tại** + kiến trúc **mục tiêu SaaS**.
+- [docs/roadmap.md](docs/roadmap.md) — lộ trình 6 tiểu dự án SaaS (User & Auth, Subscription, Payment, Dashboard admin, API mobile, FE khách + i18n).
+- [docs/backend-modules.md](docs/backend-modules.md) — chi tiết từng module `apps/api` (endpoint, jobs nền).
+- [docs/frontend.md](docs/frontend.md) — chi tiết cấu trúc `apps/web`.
+- [docs/database.md](docs/database.md) — Prisma/SQLite + MySQL `sh_*`.
+- [docs/integrations-webhooks.md](docs/integrations-webhooks.md) — tích hợp Google/Facebook/TikTok/ShopHunter.
+- [docs/deployment.md](docs/deployment.md) — VPS/PM2/nginx, quy trình deploy.
+- [apps/api/README.md](apps/api/README.md), [apps/web/README.md](apps/web/README.md) — README riêng từng app.
+
+## Cấu trúc
+
+Monorepo **npm workspaces** (`package.json` gốc: `"workspaces": ["apps/*"]`):
+
+- `apps/api` — **NestJS** (BE): tra cứu/scrape Google Ads Transparency, Facebook Ad Library, TikTok Creative Center, ShopHunter; lưu Prisma/SQLite (Google/FB/TikTok) + MySQL riêng (ShopHunter). Xem [apps/api/README.md](apps/api/README.md).
+- `apps/web` — **Next.js** (Admin FE hiện tại — theo kế hoạch SaaS sẽ đổi vai trò sang `admin.dpboss.pet`, xem [docs/kien-truc.md](docs/kien-truc.md) mục 3). Xem [apps/web/README.md](apps/web/README.md).
+- `docs/` — tài liệu kiến trúc/roadmap/module/DB/deploy.
 
 ## Yêu cầu
 
-- Node >= 20 (khuyến nghị 24)
+- Node.js >= 20 (khuyến nghị 22/24)
 
 ## Cài đặt
 
 ```bash
 npm install
-# tạo DB SQLite lần đầu
+# Cài Chromium cho Playwright (bắt buộc cho scrape Facebook/TikTok)
+npx playwright install --with-deps chromium
+# Tạo DB SQLite lần đầu (Prisma — Google/FB/TikTok; KHÔNG phải MySQL của ShopHunter)
 npm --workspace @gas/api run prisma:migrate
 ```
 
-## Chạy
+## Chạy (dev)
 
-Mở 2 terminal (hoặc dùng `npm run dev` ở gốc để chạy song song):
+Cổng dev: API **3100**, Web **3101**. Root có script `npm run dev` (`npm run dev --workspaces --if-present`),
+nhưng vì cả 2 script `dev` (`nest start --watch`, `next dev -p 3101`) đều là tiến trình chạy mãi (watch),
+cách chắc ăn nhất là mở **2 terminal riêng**:
 
 ```bash
-# API — cổng 3100
-npm --workspace @gas/api run dev
-
-# Web — cổng 3101 (proxy /api sang 3100)
-npm --workspace @gas/web run dev
+npm --workspace @gas/api run dev   # http://localhost:3100/api
+npm --workspace @gas/web run dev   # http://localhost:3101
 ```
 
-Mở http://localhost:3101, nhập `nike.com` → Tra cứu.
+Mở http://localhost:3101, nhập domain (vd `nike.com`) ở tab Google Ads → Tra cứu.
 
-Đổi backend origin cho web: đặt biến `API_ORIGIN` khi chạy web (mặc định `http://localhost:3100`).
+## Build
 
-## API
-
-| Method | Endpoint | Mô tả |
-|---|---|---|
-| POST | `/api/search` body `{domain}` | Tra cứu domain → `{advertisers[], creatives[], totalMin/Max}` |
-| GET | `/api/creative/:advertiserId/:creativeId` | Chi tiết 1 creative (các biến thể asset + vùng) |
-| GET | `/api/asset?url=...&download=1` | Proxy/tải asset (chỉ cho host Google) |
-| GET | `/api/history` | 20 lượt tra cứu gần nhất |
-
-## Giới hạn (MVP)
-
-- Mỗi lần tra cứu lấy tối đa **5 trang** (~200 creative). Một trang bị Google throttle giữa chừng → trả phần đã lấy; trang đầu lỗi → báo 503 kèm thông báo.
-- Chưa có: targeting, impressions theo vùng, chi tiết YouTube, chọn region, chuyển sang MySQL.
-- Dữ liệu phụ thuộc API nội bộ của Google (không chính thức) — có thể đổi bất kỳ lúc nào.
+```bash
+npm run build   # build cả apps/api (nest build) và apps/web (next build)
+```
 
 ## Test
 
@@ -58,4 +67,7 @@ Mở http://localhost:3101, nhập `nike.com` → Tra cứu.
 npm --workspace @gas/api test
 ```
 
-Parser được test bằng response thật lưu trong `fixtures/`.
+## Deploy
+
+Xem [docs/deployment.md](docs/deployment.md) (VPS/PM2/nginx, biến môi trường cần set) và
+[DEPLOY.md](DEPLOY.md) (hướng dẫn nhanh).
