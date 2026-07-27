@@ -115,3 +115,43 @@ model FbAd {
   fbSearch      FbSearch @relation(fields: [fbSearchId], references: [id], onDelete: Cascade)
   fbSearchId    Int
 }
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String?
+  name         String?
+  role         String    @default("user")   // 'admin' | 'manager' | 'user'
+  status       String    @default("active") // 'active' | 'banned' | 'disabled'
+  googleId     String?   @unique
+  avatarUrl    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  resetTokens  PasswordResetToken[]
+}
+
+model Session {
+  id         Int       @id @default(autoincrement())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id         Int       @id @default(autoincrement())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
