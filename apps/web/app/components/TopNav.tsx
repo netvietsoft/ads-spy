@@ -28,7 +28,8 @@ export function TopNav() {
   const active = activeHref(pathname);
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [menuOpen, setMenuOpen] = useState(false); // menu xổ ra trên mobile
-  // Quyền để hiện menu: guest ẩn Import + Cài đặt (chặn thật ở middleware, đây chỉ hiển thị). '' = mở/dev → hiện đủ.
+  // Role lấy từ /api/auth/me: chỉ admin mới thấy Import + Cài đặt. Middleware chỉ chặn thô (có cookie hay không);
+  // authorization thật (theo role) do BE enforce ở API. '' (chưa load xong / không phải admin) → ẩn 2 mục trên.
   const [role, setRole] = useState('');
 
   useEffect(() => { setMenuOpen(false); }, [pathname]); // điều hướng xong → đóng menu mobile

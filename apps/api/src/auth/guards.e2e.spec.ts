@@ -12,6 +12,7 @@ class DummyController {
   @Public() @Get('open') open() { return { ok: true }; }
   @Get('staff') staff() { return { ok: 'staff' }; }
   @Roles('user') @Get('cust') cust() { return { ok: 'cust' }; }
+  @Roles('admin', 'manager', 'user') @Get('any') any() { return { ok: 'any' }; }
 }
 
 describe('Global guards (e2e)', () => {
@@ -46,5 +47,9 @@ describe('Global guards (e2e)', () => {
   it('cust: 200 với role user', async () => {
     sessions.validate.mockResolvedValue({ user: { id: 1, email: 'u@x.com', role: 'user' } });
     await request(app.getHttpServer()).get('/t/cust').set('Authorization', 'Bearer t').expect(200);
+  });
+  it('any: 200 với role user (mọi role đã đăng nhập)', async () => {
+    sessions.validate.mockResolvedValue({ user: { id: 1, email: 'u@x.com', role: 'user' } });
+    await request(app.getHttpServer()).get('/t/any').set('Authorization', 'Bearer t').expect(200);
   });
 });

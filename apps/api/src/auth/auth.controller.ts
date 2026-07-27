@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { randomBytes } from 'crypto';
 import { AuthService } from './auth.service';
 import { GoogleOAuthService } from './google-oauth.service';
-import { Public } from './roles.decorator';
+import { Public, Roles } from './roles.decorator';
 import { CurrentUser } from './current-user.decorator';
 import { authConfig } from './auth.config';
 import { cookieOptions, parseCookies } from './cookie.util';
@@ -33,11 +33,13 @@ export class AuthController {
     return { user, token };
   }
 
+  @Roles('admin', 'manager', 'user')
   @Get('me')
   async me(@CurrentUser() u: any) {
     return { user: await this.auth.me(u.id) };
   }
 
+  @Roles('admin', 'manager', 'user')
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout((req as any).sessionToken || extractToken(req) || '');
@@ -45,6 +47,7 @@ export class AuthController {
     return { ok: true };
   }
 
+  @Roles('admin', 'manager', 'user')
   @Post('refresh')
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = (req as any).sessionToken || extractToken(req) || '';

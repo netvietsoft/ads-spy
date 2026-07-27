@@ -23,6 +23,9 @@ describe('SessionService', () => {
     expect(arg.tokenHash).not.toBe(token);
     expect(arg.userId).toBe(7);
   });
+  it('validate: null khi không tìm thấy session', async () => {
+    expect(await new SessionService(makePrisma({ session: { findUnique: jest.fn().mockResolvedValue(null) } })).validate('nope')).toBeNull();
+  });
   it('validate: null khi hết hạn', async () => {
     const prisma = makePrisma({ session: { findUnique: jest.fn().mockResolvedValue({ id: 1, revokedAt: null, expiresAt: new Date(Date.now() - 1000), user: { status: 'active' } }) } });
     expect(await new SessionService(prisma).validate('x')).toBeNull();
