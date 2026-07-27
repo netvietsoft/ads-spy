@@ -12,7 +12,8 @@ export default function LoginPage() {
   const nextUrl = () => {
     if (typeof window === 'undefined') return '/home';
     const n = new URLSearchParams(window.location.search).get('next');
-    return n && n.startsWith('/') ? n : '/home';
+    // Chỉ nhận đường dẫn nội bộ; chặn '//host' (protocol-relative → open redirect).
+    return n && n.startsWith('/') && !n.startsWith('//') ? n : '/home';
   };
 
   const login = async (e: React.FormEvent) => {
