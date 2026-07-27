@@ -143,7 +143,8 @@ nginx (DNS proxy) — mỗi lần đổi FE nhớ purge cache (mục 4.3).
 Hệ thống có **2 kho dữ liệu tách biệt**, quy trình migrate khác nhau — xem chi tiết đầy đủ ở
 [docs/database.md](./database.md):
 
-- **Prisma + SQLite** (`apps/api/prisma/dev.db`, model Google/FB/TikTok/Favorite/FbSetting) — **cần**
+- **Prisma + SQLite** (`apps/api/prisma/dev.db`, model Google/FB/Favorite/FbSetting — TikTok là live
+  Playwright scrape, KHÔNG lưu Prisma) — **cần**
   `prisma migrate deploy` + `prisma generate` khi deploy lần đầu hoặc khi có migration mới (đã có
   trong `deploy.sh` bước [4/6]).
 - **MySQL `shophunter`** (bảng `sh_*`, biến `SH_MYSQL_URL`) — **KHÔNG dùng Prisma/migration.** Toàn

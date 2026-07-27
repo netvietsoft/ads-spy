@@ -35,7 +35,7 @@ Toàn bộ dữ liệu (shop, product, cache, proxy, cấu hình job, log...) đ
 | `sh.blocked.filter.ts` | NestJS `ExceptionFilter`: bắt `ShBlockedError`/`ShAuthError` → trả HTTP 503/401 gọn cho client. |
 | `sh.types.ts` | Kiểu dữ liệu chia sẻ (`ShShop`, `ShProduct`, `ShSearchResult<T>`). |
 
-Mỗi file trên (trừ `sh-categories.json`) có 1 file `*.spec.ts` test đi kèm cùng thư mục (không liệt kê riêng ở trên vì chỉ là test, không phải logic).
+Phần lớn file có ≥1 file `*.spec.ts` đi kèm cùng thư mục (file lớn như `sh.mysql.ts`/`sh.service.ts` có nhiều spec theo chủ đề; vài file nhỏ/type/filter không có spec riêng).
 
 ## Luồng dữ liệu chính
 

@@ -145,7 +145,7 @@ mới, không đi qua tương tác trước đó với `TopNav`).
 ## 5. Vai trò mới — Admin FE
 
 Theo quyết định kiến trúc đã chốt ở spec Phase 0
-([`docs/superpowers/specs/2026-07-27-saas-refactor-phase0-design.md`](../superpowers/specs/2026-07-27-saas-refactor-phase0-design.md)):
+([`docs/superpowers/specs/2026-07-27-saas-refactor-phase0-design.md`](./superpowers/specs/2026-07-27-saas-refactor-phase0-design.md)):
 
 - `apps/web` (mô tả ở mục 1–4 phía trên) **giữ nguyên toàn bộ code/đường dẫn vật lý** — chỉ đổi **vai
   trò** thành **Admin FE**, chuyển sang phục vụ ở subdomain **`admin.dpboss.pet`** (thay vì

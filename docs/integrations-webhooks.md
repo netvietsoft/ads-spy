@@ -63,7 +63,7 @@ Client: `apps/api/src/facebook/fb.playwright.service.ts` (+ `fb.service.ts` lưu
 ## 2. Chống chặn (Anti-blocking)
 
 - **Proxy xoay dùng chung — bảng MySQL `sh_proxy`:**
-  - Quản lý qua UI `/settings` (thêm/sửa/xoá/bật-tắt/test từng proxy — `sh.mysql.ts` các hàm `listProxies*`, `insertProxy`, `updateProxyStatus`; test bằng HTTP CONNECT hoặc TCP connect thẳng tới proxy — `sh.proxy.ts:testProxy()`).
+  - Quản lý qua UI `/settings` (thêm/sửa/xoá/bật-tắt/test từng proxy — `sh.mysql.ts` các hàm `listProxies*`, `addProxies()`, `updateProxy()`, `setProxyStatus()`; test bằng HTTP CONNECT hoặc TCP connect thẳng tới proxy — `sh.proxy.ts:testProxy()`).
   - Dùng chung cho: `GoogleClient` (round-robin + retry khi bị `/sorry/`), job catalog-sync Shopify (`sh.jobs.service.ts` — hàm `wireProxy()`/`unwireProxy()` tráo seam `shopifyHttp.get` bằng `makeProxiedGet()` **chỉ trong lúc** job `catalog`/`affiliate`/`productrev` đang chạy, vì storefront Shopify chặn theo dải IP datacenter), và đồng bộ giá 1 sản phẩm thủ công (`syncProductPriceRevenueViaProxy`).
   - Cơ chế proxy cho Shopify (`shopify.proxy-get.ts`): tự làm HTTP `CONNECT` + bắt tay TLS thủ công (không qua thư viện proxy agent), chọn ngẫu nhiên 1 proxy mỗi request, tự follow redirect.
 - **Backoff khi bị chặn:**
@@ -90,7 +90,7 @@ Client: `apps/api/src/facebook/fb.playwright.service.ts` (+ `fb.service.ts` lưu
   1. Người dùng chọn gói (tháng/năm) → FE gọi BE tạo phiên thanh toán tương ứng provider (Stripe Checkout Session / Paypal Order / mã QR chuyển khoản).
   2. Provider xử lý thanh toán, sau đó gọi **webhook** về BE để báo kết quả — endpoint dự kiến theo dạng `/api/webhooks/{provider}` (ví dụ `/api/webhooks/stripe`, `/api/webhooks/paypal`; QR nội địa có thể là polling/webhook riêng của cổng thanh toán QR).
   3. BE xác thực chữ ký webhook (theo cơ chế riêng của từng provider, ví dụ Stripe signing secret) rồi cập nhật bảng `subscriptions`/`payments` (bảng SaaS mới, chưa tồn tại — kế hoạch nằm ở `database.md`) → kích hoạt hoặc gia hạn gói của user.
-- Cần bảng mới `users` / `subscriptions` / `payments` (chưa có trong schema hiện tại — Prisma hiện chỉ có `fbSetting` và các bảng lịch sử FB; MySQL `sh_*` không có bảng SaaS nào).
+- Cần bảng mới `users` / `subscriptions` / `payments` (chưa có trong schema hiện tại — Prisma/SQLite hiện có `FbSetting`, các bảng lịch sử FB (FbSearch/FbAd/FbPagePostsScan/FbPostRow), các bảng lịch sử Google Ads (Search/Advertiser/Creative) và Favorite — nhưng CHƯA có bảng SaaS (users/subscriptions/payments); MySQL `sh_*` không có bảng SaaS nào).
 
 ### 3.3 Việc còn thiếu trước khi code Phase 1/3
 - Chưa chọn provider thanh toán cụ thể cho QR (ngân hàng nào / cổng nào).

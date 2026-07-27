@@ -6,7 +6,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 ## 0. Project-Specific (Google Ads Spy)
 
-**Đọc [`docs/README.md`](docs/README.md) trước khi sửa.** Tin code hơn doc — doc lệch thì sửa code trước rồi cập nhật doc.
+**Đọc [`docs/kien-truc.md`](docs/kien-truc.md) trước khi sửa.** Tin code hơn doc — doc lệch thì sửa code trước rồi cập nhật doc.
 
 - Dự án standalone: `apps/api` (NestJS 3100, Prisma+SQLite) + `apps/web` (Next.js 3101). Lấy dữ liệu bằng cách port API nội bộ `adstransparency.google.com` sang TS.
 - **Bẫy nhớ đời**: `SearchCreatives` phải có field `"7":{"1":1,"2":30,"3":"1"}`, thiếu là trả `{}`. Loại asset suy từ preview, KHÔNG tin format code. Chi tiết: [`docs/03`](docs/03-api-noi-bo-google.md).

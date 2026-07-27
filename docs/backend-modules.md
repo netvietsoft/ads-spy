@@ -68,7 +68,8 @@ bỏ sót): `sh.auth.ts` (đăng nhập Cognito, tự refresh token), `sh.parser
 + hash cache key), `sh.currency.ts` (bảng quy đổi tiền tệ→USD), `sh.categories.ts` (cây danh mục
 import), `sh.proxy.ts`/`shopify.proxy-get.ts` (proxy HTTP xoay vòng cho catalog/affiliate/productrev),
 `sh.product-list.ts`/`sh.slices.ts` (kiểu dữ liệu danh sách/slice), `sh.blocked.filter.ts` (exception
-filter trả 503 khi bị chặn), `affiliate.client.ts` (kiểm tra app affiliate của shop).
+filter trả 503 khi bị chặn), `affiliate.client.ts` (kiểm tra app affiliate của shop),
+`sh.harvest.util.ts` (tiện ích dùng chung cho harvest), `sh.types.ts` (khai báo kiểu dùng chung).
 
 ### 2.2 `facebook/` — playwright scraper + cookie
 
