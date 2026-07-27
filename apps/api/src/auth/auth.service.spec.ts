@@ -7,6 +7,8 @@ function build(over: any = {}) {
     findById: jest.fn(),
     create: jest.fn().mockResolvedValue({ id: 1, email: 'a@x.com', role: 'user', status: 'active' }),
     setPassword: jest.fn().mockResolvedValue(undefined),
+    findByGoogleId: jest.fn(),
+    linkGoogle: jest.fn(),
     ...over.users,
   };
   const sessions = { create: jest.fn().mockResolvedValue('TOKEN'), revokeAllForUser: jest.fn(), ...over.sessions };
@@ -73,5 +75,22 @@ describe('AuthService', () => {
     expect(users.setPassword).toHaveBeenCalledWith(3, 'longenough');
     expect(prisma.passwordResetToken.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 1 } }));
     expect(sessions.revokeAllForUser).toHaveBeenCalledWith(3);
+  });
+  it('loginWithGoogle: googleId đã có → tạo phiên', async () => {
+    const { svc, sessions } = build({ users: { findByGoogleId: jest.fn().mockResolvedValue({ id: 4, status: 'active' }) } });
+    expect(await svc.loginWithGoogle({ googleId: 'g', email: 'g@x.com' })).toBe('TOKEN');
+    expect(sessions.create).toHaveBeenCalledWith(4, undefined);
+  });
+  it('loginWithGoogle: chưa có googleId nhưng trùng email → liên kết', async () => {
+    const linkGoogle = jest.fn().mockResolvedValue({ id: 5, status: 'active' });
+    const { svc } = build({ users: { findByGoogleId: jest.fn().mockResolvedValue(null), findByEmail: jest.fn().mockResolvedValue({ id: 5 }), linkGoogle } });
+    await svc.loginWithGoogle({ googleId: 'g', email: 'a@x.com' });
+    expect(linkGoogle).toHaveBeenCalledWith(5, 'g', undefined);
+  });
+  it('loginWithGoogle: user mới → tạo user role user', async () => {
+    const create = jest.fn().mockResolvedValue({ id: 6, status: 'active' });
+    const { svc } = build({ users: { findByGoogleId: jest.fn().mockResolvedValue(null), findByEmail: jest.fn().mockResolvedValue(null), create } });
+    await svc.loginWithGoogle({ googleId: 'g', email: 'new@x.com', name: 'N' });
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ googleId: 'g', role: 'user' }));
   });
 });

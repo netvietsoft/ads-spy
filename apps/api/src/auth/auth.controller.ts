@@ -1,15 +1,17 @@
-import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { randomBytes } from 'crypto';
 import { AuthService } from './auth.service';
+import { GoogleOAuthService } from './google-oauth.service';
 import { Public } from './roles.decorator';
 import { CurrentUser } from './current-user.decorator';
 import { authConfig } from './auth.config';
-import { cookieOptions } from './cookie.util';
+import { cookieOptions, parseCookies } from './cookie.util';
 import { extractToken } from './auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService) {}
+  constructor(private auth: AuthService, private googleAuth: GoogleOAuthService) {}
 
   private setSession(res: Response, token: string) {
     res.cookie(authConfig.cookieName, token, cookieOptions(authConfig.sessionTtlDays * 86_400_000));
@@ -63,5 +65,30 @@ export class AuthController {
   async reset(@Body() body: any) {
     await this.auth.reset(body || {});
     return { ok: true };
+  }
+
+  @Public()
+  @Get('google')
+  google(@Query('next') next: string | undefined, @Res() res: Response) {
+    const state = randomBytes(16).toString('hex') + '|' + encodeURIComponent(next && next.startsWith('/') ? next : '/home');
+    res.cookie('g_state', state, { httpOnly: true, secure: authConfig.secureCookie, sameSite: 'lax', path: '/', maxAge: 600_000 });
+    res.redirect(this.googleAuth.buildAuthUrl(state));
+  }
+
+  @Public()
+  @Get('google/callback')
+  async googleCallback(@Query('code') code: string, @Query('state') state: string, @Req() req: Request, @Res() res: Response) {
+    const saved = parseCookies(req.headers.cookie)['g_state'];
+    if (!code || !state || state !== saved) return res.redirect(`${authConfig.appBaseUrl}/login?err=oauth`);
+    const next = decodeURIComponent(state.split('|')[1] || '/home');
+    try {
+      const profile = await this.googleAuth.exchangeCode(code);
+      const token = await this.auth.loginWithGoogle(profile, req.headers['user-agent']);
+      this.setSession(res, token);
+      res.clearCookie('g_state', { path: '/' });
+      res.redirect(`${authConfig.appBaseUrl}${next.startsWith('/') ? next : '/home'}`);
+    } catch {
+      res.redirect(`${authConfig.appBaseUrl}/login?err=oauth`);
+    }
   }
 }

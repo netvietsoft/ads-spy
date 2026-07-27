@@ -5,6 +5,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { SessionService } from './session.service';
 import { MailerService } from './mailer.service';
+import { GoogleOAuthService } from './google-oauth.service';
 import { AuthGuard } from './auth.guard';
 import { RolesGuard } from './roles.guard';
 
@@ -15,6 +16,7 @@ import { RolesGuard } from './roles.guard';
     AuthService,
     SessionService,
     MailerService,
+    GoogleOAuthService,
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

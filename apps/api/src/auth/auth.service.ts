@@ -77,4 +77,16 @@ export class AuthService {
   refresh(token: string) {
     return this.sessions.refresh(token);
   }
+
+  async loginWithGoogle(profile: { googleId: string; email: string; name?: string; picture?: string }, userAgent?: string): Promise<string> {
+    let user = await this.users.findByGoogleId(profile.googleId);
+    if (!user) {
+      const byEmail = await this.users.findByEmail(profile.email);
+      user = byEmail
+        ? await this.users.linkGoogle(byEmail.id, profile.googleId, profile.picture)
+        : await this.users.create({ email: profile.email, name: profile.name, googleId: profile.googleId, avatarUrl: profile.picture, role: 'user' });
+    }
+    if (user.status !== 'active') throw new ForbiddenException('Tài khoản bị khóa');
+    return this.sessions.create(user.id, userAgent);
+  }
 }
