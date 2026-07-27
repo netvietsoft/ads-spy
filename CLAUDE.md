@@ -9,7 +9,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 **Đọc [`docs/kien-truc.md`](docs/kien-truc.md) trước khi sửa.** Tin code hơn doc — doc lệch thì sửa code trước rồi cập nhật doc.
 
 - Dự án standalone: `apps/api` (NestJS 3100, Prisma+SQLite) + `apps/web` (Next.js 3101). Lấy dữ liệu bằng cách port API nội bộ `adstransparency.google.com` sang TS.
-- **Bẫy nhớ đời**: `SearchCreatives` phải có field `"7":{"1":1,"2":30,"3":"1"}`, thiếu là trả `{}`. Loại asset suy từ preview, KHÔNG tin format code. Chi tiết: [`docs/03`](docs/03-api-noi-bo-google.md).
+- **Bẫy nhớ đời**: `SearchCreatives` phải có field `"7":{"1":1,"2":30,"3":"1"}`, thiếu là trả `{}`. Loại asset suy từ preview, KHÔNG tin format code. Chi tiết: [`docs/archive/03`](docs/archive/03-api-noi-bo-google.md).
 - Parser là phần dễ vỡ nhất → test bằng fixtures thật trong `fixtures/`. Đổi mapping phải giữ test xanh.
 - Bị 503 "đang giới hạn" = Google throttle IP do gọi nhiều, không phải bug — đợi vài phút.
 
