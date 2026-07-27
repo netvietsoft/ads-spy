@@ -36,11 +36,15 @@ export function TopNav() {
   useEffect(() => { setTheme(((localStorage.getItem('theme') as 'dark' | 'light') || 'light')); }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('theme', theme); }, [theme]);
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|; )site_role=([^;]+)/);
-    setRole(m ? decodeURIComponent(m[1]) : '');
+    let alive = true;
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive) setRole(d?.user?.role || ''); })
+      .catch(() => { if (alive) setRole(''); });
+    return () => { alive = false; };
   }, [pathname]);
 
-  const items = role === 'guest' ? NAV.filter(([href]) => href !== '/import' && href !== '/settings') : NAV;
+  const items = role === 'admin' ? NAV : NAV.filter(([href]) => href !== '/import' && href !== '/settings');
 
   // Chuột trái thường → điều hướng SPA (không reload); Ctrl/Cmd/Shift/chuột-giữa → để browser mở tab mới.
   const nav = (e: ReactMouseEvent, href: string) => {
@@ -51,6 +55,11 @@ export function TopNav() {
   };
 
   const activeLabel = items.find(([href]) => href === active)?.[1] || '';
+
+  const logout = async () => {
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+    window.location.href = '/login';
+  };
 
   return (
     <header className="topbar">
@@ -64,6 +73,7 @@ export function TopNav() {
           <button className="ghost" type="button" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} title="Đổi giao diện sáng/tối">
             {theme === 'dark' ? '☀️ Sáng' : '🌙 Tối'}
           </button>
+          <button className="ghost" type="button" onClick={logout} title="Đăng xuất">Đăng xuất</button>
         </div>
       </div>
       <nav className={`topnav ${menuOpen ? 'open' : ''}`}>
