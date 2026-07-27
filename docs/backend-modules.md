@@ -103,6 +103,10 @@ xem mục 4). `search.service.ts` gọi `GoogleClient`, lưu lịch sử tra c�
 `Advertiser`/`Creative`), giới hạn host asset được phép proxy (`ALLOWED_ASSET_HOSTS`: CDN Google/FB/
 TikTok) để tránh proxy mở (open proxy).
 
+**Giới hạn quan trọng:** tra cứu Google Ads Transparency bị chặn cứng ở `MAX_PAGES = 5`
+(`search.service.ts`, dùng trong hàm `paginate()`) — mỗi lượt tra cứu lấy tối đa 5 trang (~200 creative),
+domain có nhiều quảng cáo hơn sẽ không lấy hết.
+
 ### 2.5 `tiktok/`
 
 Scrape TikTok Creative Center Top Ads bằng Playwright, bắt XHR nội bộ `top_ads/v2/list` (không dùng API
