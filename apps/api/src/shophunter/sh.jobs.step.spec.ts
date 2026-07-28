@@ -4,7 +4,8 @@ function make() {
   const mysql: any = { getSetting: jest.fn(async () => null), appendJobLog: jest.fn(async () => {}), listProxiesFull: jest.fn(async () => []) };
   const svc: any = {};
   const harvest: any = {};
-  return { s: new ShJobsService(svc, mysql, harvest), mysql, svc };
+  const affnet: any = {};
+  return { s: new ShJobsService(svc, mysql, harvest, affnet), mysql, svc };
 }
 const PACE = 1500, IDLE = 120000, BLOCK = 300000;
 

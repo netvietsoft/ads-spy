@@ -14,7 +14,8 @@ function make() {
     getStatus: jest.fn(async () => ({ lastRunAt: 111, lastStatus: 'ok', totalSeen: 5 })),
     getDaily: jest.fn(async () => ({ day: '2026-07-22', used: 3, cap: 500 })),
   };
-  const s = new ShJobsService(svc, mysql, harvest);
+  const affnet: any = {};
+  const s = new ShJobsService(svc, mysql, harvest, affnet);
   // Chặn loop thật chạy trong unit test.
   jest.spyOn(s as any, 'start').mockImplementation(() => {});
   jest.spyOn(s as any, 'stop').mockImplementation(() => {});

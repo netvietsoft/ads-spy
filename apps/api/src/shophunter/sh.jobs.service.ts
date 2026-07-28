@@ -6,8 +6,9 @@ import { ShHarvestService } from './sh.harvest.service';
 import { shopifyHttp } from './shopify.client';
 import { makeProxiedGet, ProxyForGet } from './shopify.proxy-get';
 import { isGlobalBlock } from './sh.harvest.util';
+import { AffnetService } from '../affnet/affnet.service';
 
-export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh'] as const;
+export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh', 'affdiscover', 'afffetch'] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 const DESC: Record<JobName, string> = {
@@ -18,6 +19,8 @@ const DESC: Record<JobName, string> = {
   affiliate: 'Quét affiliate cho shop mới/chưa quét (qua proxy Shopify) → sh_shop.affiliate_*. Shop mới tự vào hàng đợi.',
   importenrich: 'Enrich item đã import (mục Import): lấy detail/doanh thu → sh_shop/sh_product. Chạy liên tục cho hết hàng chờ. Cần token.',
   refresh: 'Làm mới shop CŨ (detail harvest quá "Cũ hơn" ngày), ưu tiên DOANH THU cao→thấp → lấy lại detail/similar/top-products/chart + doanh thu. Cần token.',
+  affdiscover: 'Phát hiện dự án (subdomain) của các net affiliate qua 4 nguồn passive-DNS miễn phí. Poll LẶP để tích luỹ — nguồn chính trả mẫu ngẫu nhiên mỗi lần.',
+  afffetch: 'Mở từng trang campaign bằng Chromium (chờ Cloudflare) → lấy %hoa hồng/web/điều khoản. Xoay proxy dùng chung (Cài đặt → Proxy): mỗi proxy 1 làn IP, giãn 10s/làn. Không proxy → 1 làn trực tiếp (chậm hơn).',
 };
 
 const IDLE_MS = 120000;  // 2' khi hết việc
@@ -34,6 +37,8 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   affiliate: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 2, activeStart: 8, activeEnd: 23 },
   importenrich: { batch: 100, daily: 10000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
   refresh: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, staleDays: 7, activeStart: 8, activeEnd: 23 },
+  affdiscover: { batch: 1, paceMs: 8000, daily: 200, activeStart: 0, activeEnd: 24 },
+  afffetch: { batch: 30, paceMs: 10000, daily: 3000, concurrency: 3, activeStart: 0, activeEnd: 24 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
 const CFG_BOUNDS: Record<string, [number, number]> = {
@@ -54,7 +59,7 @@ export interface JobView {
 @Injectable()
 export class ShJobsService implements OnModuleInit {
   private readonly logger = new Logger('ShJobs');
-  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank() };
+  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank(), affdiscover: this.blank(), afffetch: this.blank() };
   private catalogProxies: ProxyForGet[] = [];
   private origShopifyGet: typeof shopifyHttp.get | null = null;
 
@@ -62,6 +67,7 @@ export class ShJobsService implements OnModuleInit {
     private readonly svc: ShService,
     private readonly mysql: ShMysql,
     private readonly harvest: ShHarvestService,
+    private readonly affnet: AffnetService,
   ) {}
 
   private blank(): JobMem { return { running: false, lastRunAt: null, lastStatus: null, stats: {} }; }
@@ -69,7 +75,7 @@ export class ShJobsService implements OnModuleInit {
   private sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
   async onModuleInit(): Promise<void> {
-    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich'] as JobName[]) {
+    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'affdiscover', 'afffetch'] as JobName[]) {
       try { if (await this.isEnabled(name)) this.start(name); } catch { /* MySQL/Prisma chưa sẵn sàng — bỏ qua, bật lại từ web */ }
     }
   }
@@ -240,6 +246,8 @@ export class ShJobsService implements OnModuleInit {
     if (name === 'affiliate') return this.stepAffiliate(force);
     if (name === 'importenrich') return this.stepImportEnrich(force);
     if (name === 'refresh') return this.stepRefresh(force);
+    if (name === 'affdiscover') return this.stepAffDiscover(force);
+    if (name === 'afffetch') return this.stepAffFetch(force);
     return this.stepEnrich();
   }
 
@@ -260,6 +268,44 @@ export class ShJobsService implements OnModuleInit {
     if (!(Number(r?.processed) > 0)) { this.mem.refresh.lastStatus = 'idle'; return { pace: IDLE_MS }; }
     this.mem.refresh.lastStatus = 'ok';
     await this.mysql.appendJobLog('refresh', 'info', `Làm mới ${r?.ok || 0}/${r?.processed || 0} shop cũ (>${cfg.staleDays}d)`).catch(() => {});
+    return { pace: cfg.paceMs };
+  }
+
+  // Phát hiện dự án của net (nguồn free). KHÔNG cần token/proxy.
+  private async stepAffDiscover(force = false): Promise<{ pace: number }> {
+    const cfg = await this.getJobCfg('affdiscover');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.affdiscover.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('affdiscover');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.affdiscover.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: any;
+    try { r = await this.affnet.discoverStep({ paceMs: cfg.paceMs }); }
+    catch (e) { this.mem.affdiscover.lastStatus = 'error'; await this.mysql.appendJobLog('affdiscover', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    this.mem.affdiscover.lastRunAt = Date.now();
+    if (!r?.net) { this.mem.affdiscover.lastStatus = 'idle'; await this.mysql.appendJobLog('affdiscover', 'info', 'Chưa có net nào để quét; thêm net ở tab Affiliate Nets.').catch(() => {}); return { pace: IDLE_MS }; }
+    await this.mysql.addDailyCount(dk, 1).catch(() => {});
+    this.mem.affdiscover.stats = { thay: r.found || 0, moi: r.added || 0 };
+    this.mem.affdiscover.lastStatus = 'ok';
+    await this.mysql.appendJobLog('affdiscover', 'info', `${r.net}: thấy ${r.found}, +${r.added} mới`).catch(() => {});
+    return { pace: cfg.paceMs };
+  }
+
+  // Cào từng trang campaign. Giãn 10s/trang (đo thật), concurrency 1 — Cloudflare chặn theo nhịp burst.
+  private async stepAffFetch(force = false): Promise<{ pace: number }> {
+    const cfg = await this.getJobCfg('afffetch');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.afffetch.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('afffetch');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.afffetch.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: any;
+    try { r = await this.affnet.fetchStep({ batch: cfg.batch, paceMs: cfg.paceMs, concurrency: cfg.concurrency }); }
+    catch (e) { this.mem.afffetch.lastStatus = 'error'; await this.mysql.appendJobLog('afffetch', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    this.mem.afffetch.lastRunAt = Date.now();
+    this.mem.afffetch.stats = { quet: r?.checked || 0, song: r?.active || 0, chet: r?.inactive || 0, khong_co: r?.notfound || 0, chan: r?.blocked || 0, loi_proxy: r?.laneErrors || 0, lan: r?.lanes || 1 };
+    if (r?.laneErrors) await this.mysql.appendJobLog('afffetch', 'warn', `${r.laneErrors} làn proxy lỗi (proxy chết?) — kiểm ở Cài đặt → Proxy, bấm Test.`).catch(() => {});
+    if (!r?.net || !r.checked) { this.mem.afffetch.lastStatus = 'idle'; await this.mysql.appendJobLog('afffetch', 'info', 'Hết dự án cần quét; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    await this.mysql.addDailyCount(dk, r.checked).catch(() => {});
+    if (r.blocked >= r.checked) { this.mem.afffetch.lastStatus = 'blocked'; await this.mysql.appendJobLog('afffetch', 'warn', `Bị chặn cả lượt (${r.blocked}/${r.checked}) trên ${r.lanes} làn; nghỉ rồi thử lại. Thêm proxy ở Cài đặt → Proxy để đỡ bị chặn.`).catch(() => {}); return { pace: BLOCK_MS }; }
+    this.mem.afffetch.lastStatus = 'ok';
+    await this.mysql.appendJobLog('afffetch', 'info', `${r.net}: ${r.checked} quét · ${r.active} sống · ${r.inactive} chết · ${r.blocked} chặn · ${r.lanes} làn proxy`).catch(() => {});
     return { pace: cfg.paceMs };
   }
 
