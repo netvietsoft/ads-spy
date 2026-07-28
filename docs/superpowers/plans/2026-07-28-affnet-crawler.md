@@ -300,6 +300,20 @@ export interface AffHostRow {
   checkTries: number;
 }
 
+// Kết quả discovery 1 slug + những nguồn nào đã thấy nó (dùng ở affnet.discovery.ts và affnet.mysql.ts).
+export interface DiscoveredHost {
+  slug: string;
+  sources: string[];
+}
+
+// 1 proxy trong pool xoay dùng chung (sh_proxy). Chỉ HTTP — Playwright newContext({proxy}) nhận http.
+export interface ProxyOpt {
+  host: string;
+  port: number;
+  username?: string | null;
+  password?: string | null;
+}
+
 export interface AffProgram extends ParsedProgram {
   net: string;
   slug: string;
@@ -620,10 +634,9 @@ git commit -m "feat(affnet): phân loại trang (chặn/không tồn tại/chế
 - Test: `apps/api/src/affnet/affnet.discovery.spec.ts`
 
 **Interfaces:**
-- Consumes: (không)
+- Consumes: `DiscoveredHost` từ `affnet.types.ts` (Task 1) — **không** khai lại type ở file này
 - Produces:
   ```ts
-  export interface DiscoveredHost { slug: string; sources: string[] }
   export const DISCOVERY_SOURCES: { key: string; fetch: (net: string) => Promise<string[]> }[];
   export function isInfraHost(slug: string): boolean;
   export function hostsToSlugs(hosts: string[], net: string): string[];
@@ -905,7 +918,7 @@ const prog = (slug: string, pct: number | null, flat: number | null = null) => (
   programName: 'P ' + slug, brand: slug, web: slug + '.app',
   commissionPct: pct, commissionFlat: flat, commissionCurrency: flat ? 'USD' : null,
   commissionScope: 'on all payments', commissionRaw: 'receive a ... commission',
-  cookieDays: null, payoutThreshold: null, notes: null,
+  cookieDays: null, payoutThreshold: null, notes: null, termsText: null,
   status: 'active' as const, fetchedAt: Date.now(),
 });
 
@@ -1135,7 +1148,7 @@ git commit -m "feat(affnet): 3 bảng aff_net/aff_host/aff_program + query bucke
 - Produces (class `AffnetFetch`, `@Injectable()`, `implements OnModuleDestroy`):
   ```ts
   export const CF_WAIT_TRIES = 20;   // chờ tối đa ~20s cho challenge tự giải
-  export interface ProxyOpt { host: string; port: number; username?: string | null; password?: string | null }
+  // ProxyOpt lấy từ affnet.types.ts (Task 1) — KHÔNG khai lại
   export function rootUrlOf(net: string, slug: string): string;   // https://<slug>.<net>/     ← MỞ CÁI NÀY
   export function joinUrlOf(net: string, slug: string): string;   // https://<slug>.<net>/signup ← LƯU DB cho user bấm
 
@@ -1320,7 +1333,7 @@ Expected: FAIL — `Cannot find module './affnet.fetch'`
 // giãn 20s → 3/3 ok; giãn 10s → 0/8 ok (~1,5-2,8s/trang). Giãn cách do JOB điều khiển (paceMs), KHÔNG phải ở đây.
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import type { Browser, BrowserContext } from 'playwright';
-import { FetchOutcome, ParsedProgram } from './affnet.types';
+import { FetchOutcome, ParsedProgram, ProxyOpt } from './affnet.types';
 import { classifyPage, textHash, PageSnapshot, FakeBaseline } from './affnet.classify';
 import { parseRewardful } from './affnet.parser';
 
@@ -1336,8 +1349,6 @@ export function rootUrlOf(net: string, slug: string): string {
 export function joinUrlOf(net: string, slug: string): string {
   return `https://${slug}.${net}/signup`;
 }
-
-export interface ProxyOpt { host: string; port: number; username?: string | null; password?: string | null }
 
 @Injectable()
 export class AffnetFetch implements OnModuleDestroy {
