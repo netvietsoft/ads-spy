@@ -2,6 +2,16 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { AffnetService } from './affnet.service';
 
+// FIX 11: minPct/maxPct trước đây chỉ chặn chuỗi RỖNG — ?minPct=abc lọt qua thành Number('abc')=NaN, rơi
+// xuống SQL (BETWEEN NaN AND NaN) và NÉM lỗi 500 ở tầng dưới. Coi giá trị không phải số hữu hạn như KHÔNG
+// LỌC (thay vì 400): endpoint này vốn đã permissive với các filter khác (status/q rỗng cũng chỉ bỏ qua,
+// không NÉM lỗi) — 1 tham số rác không nên làm hỏng cả trang danh sách.
+function numOrUndef(s: string): number | undefined {
+  if (s === undefined || s === '') return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 @Controller()
 export class AffnetController {
   constructor(private readonly svc: AffnetService) {}
@@ -30,8 +40,8 @@ export class AffnetController {
     const p = Math.max(1, Number(page) || 1);
     return this.svc.programList({
       net,
-      minPct: minPct === undefined || minPct === '' ? undefined : Number(minPct),
-      maxPct: maxPct === undefined || maxPct === '' ? undefined : Number(maxPct),
+      minPct: numOrUndef(minPct),
+      maxPct: numOrUndef(maxPct),
       status: status || undefined, q: q || undefined,
       offset: (p - 1) * size, limit: size, sort, dir,
     });
