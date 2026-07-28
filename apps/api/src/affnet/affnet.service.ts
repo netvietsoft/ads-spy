@@ -35,13 +35,21 @@ export class AffnetService {
   }
 
   // 1 net/lượt, net có discover_polled_at cũ nhất (NULL trước).
-  async discoverStep(cfg: { paceMs: number }): Promise<{ net: string | null; found: number; added: number }> {
+  async discoverStep(cfg: { paceMs: number }, onLog?: (m: string) => void): Promise<{ net: string | null; found: number; added: number }> {
     await this.db.ensureTables();
     const net = await this.db.pickNetToPoll();
     if (!net) return { net: null, found: 0, added: 0 };
-    const hosts = await discoverNet(net.net, cfg.paceMs);
+    const { hosts, failed } = await discoverNet(net.net, cfg.paceMs, onLog);
     const added = await this.db.upsertHosts(net.net, hosts);
-    await this.db.markPolled(net.net, added);
+    // FIX 4: 1+ nguồn lỗi lượt này → KHÔNG PHẢI bằng chứng "hồ đã cạn" (subdomain.center là nguồn CHÍNH,
+    // 429 làm added tụt hẳn dù pool thật chưa cạn) — giữ nguyên dry_rounds thay vì để markPolled tính
+    // như bình thường (added thấp bất thường sẽ bị hiểu nhầm là "no hoà").
+    if (failed.length > 0) {
+      await this.db.markPolled(net.net, added, true);
+      onLog?.(`${net.net}: ${failed.length} nguồn lỗi (${failed.join(', ')}) — KHÔNG tính vào bộ đếm "no hoà"`);
+    } else {
+      await this.db.markPolled(net.net, added);
+    }
     return { net: net.net, found: hosts.length, added };
   }
 
@@ -59,13 +67,12 @@ export class AffnetService {
 
     for (const n of await this.db.listNets()) {
       if (n.enabled === false) continue;
-      // Fingerprint trang giả: 1 lần/net, TRƯỚC khi quét (net catch-all trả 200 cho mọi host).
-      let fake = { len: n.fakeLen, hash: n.fakeHash };
-      if (!n.fakeCheckedAt) {
-        const f = await this.fetch.probeFake(n.net);
-        await this.db.setFakeBaseline(n.net, f.len, f.hash);
-        fake = { len: f.len, hash: f.hash };
-      }
+      // FIX 2: probe LẠI MỖI LƯỢT (bỏ guard "1 lần/net" cũ) — trang catch-all có thể tự đổi theo thời
+      // gian (bộ đếm động, VD "69.500+ khách hàng" tăng dần) VÀ lượt quét fan-out nhiều làn IP khác nhau,
+      // baseline đo 1 lần ở làn #0 không chắc còn khớp làn khác đang chạy lượt này.
+      const f = await this.fetch.probeFake(n.net);
+      await this.db.setFakeBaseline(n.net, f.len, f.hash);
+      const fake = { len: f.len, hash: f.hash };
       const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
       if (!hosts.length) continue;
       out.net = n.net;

@@ -1,5 +1,10 @@
 // affnet.service.spec.ts — nghiệp vụ. Mock hoàn toàn AffnetMysql + AffnetFetch (không DB, không mạng).
 import { AffnetService } from './affnet.service';
+import { discoverNet } from './affnet.discovery';
+
+// FIX 4: mock discoverNet để test discoverStep phản ứng đúng khi có nguồn discovery lỗi, không phụ thuộc mạng thật.
+jest.mock('./affnet.discovery', () => ({ discoverNet: jest.fn() }));
+const mockedDiscoverNet = discoverNet as jest.MockedFunction<typeof discoverNet>;
 
 const mkDb = () => ({
   ensureTables: jest.fn().mockResolvedValue(undefined),
@@ -17,7 +22,7 @@ const mkDb = () => ({
   listHttpProxies: jest.fn().mockResolvedValue([]),
 });
 const mkFetch = (lanes = 1) => ({
-  fetchCampaign: jest.fn(), probeFake: jest.fn(),
+  fetchCampaign: jest.fn(), probeFake: jest.fn().mockResolvedValue({ len: 1, hash: 'h' }),
   setProxies: jest.fn().mockResolvedValue(undefined),
   laneCount: jest.fn().mockReturnValue(lanes),
 });
@@ -48,6 +53,30 @@ describe('importNets', () => {
     ]);
     expect(r.imported).toBe(2);
     expect(r.skipped).toBe(2); // 1 trùng + 1 rác
+  });
+});
+
+describe('discoverStep — FIX 4: 1 nguồn discovery lỗi KHÔNG được tính như "hồ đã cạn"', () => {
+  beforeEach(() => mockedDiscoverNet.mockReset());
+
+  it('mọi nguồn OK (failed rỗng) → markPolled gọi BÌNH THƯỜNG (không skip dry counter, đúng hành vi cũ)', async () => {
+    const db = mkDb();
+    db.pickNetToPoll.mockResolvedValue({ net: 'getrewardful.com' });
+    db.upsertHosts.mockResolvedValue(3);
+    mockedDiscoverNet.mockResolvedValue({ hosts: [{ slug: 'a', sources: ['x'] }], failed: [] });
+    const s = new AffnetService(db as any, mkFetch() as any);
+    await s.discoverStep({ paceMs: 0 });
+    expect(db.markPolled).toHaveBeenCalledWith('getrewardful.com', 3);
+  });
+
+  it('1 nguồn lỗi (VD subdomain.center 429) → markPolled gọi với skipDryCounter=true (KHÔNG đụng dry_rounds)', async () => {
+    const db = mkDb();
+    db.pickNetToPoll.mockResolvedValue({ net: 'getrewardful.com' });
+    db.upsertHosts.mockResolvedValue(0);
+    mockedDiscoverNet.mockResolvedValue({ hosts: [], failed: ['subdomain.center'] });
+    const s = new AffnetService(db as any, mkFetch() as any);
+    await s.discoverStep({ paceMs: 0 });
+    expect(db.markPolled).toHaveBeenCalledWith('getrewardful.com', 0, true);
   });
 });
 
@@ -88,6 +117,18 @@ describe('fetchStep', () => {
     await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(f.probeFake).toHaveBeenCalledWith('getrewardful.com');
     expect(db.setFakeBaseline).toHaveBeenCalledWith('getrewardful.com', 5, 'abc');
+  });
+
+  it('FIX 2: net ĐÃ có fingerprint từ trước (fakeCheckedAt cũ) vẫn probeFake LẠI mỗi lượt — không dùng baseline cached', async () => {
+    const db = mkDb(); const f = mkFetch();
+    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: Date.now() - 999999, fakeLen: 10, fakeHash: 'old-hash' }]);
+    db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
+    f.probeFake.mockResolvedValue({ len: 20, hash: 'new-hash' });
+    f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
+    const s = new AffnetService(db as any, f as any);
+    await s.fetchStep({ batch: 5, paceMs: 0 });
+    expect(f.probeFake).toHaveBeenCalledWith('getrewardful.com');
+    expect(db.setFakeBaseline).toHaveBeenCalledWith('getrewardful.com', 20, 'new-hash');
   });
 
   it('không còn host chờ ở mọi net → trả net=null (job sẽ nghỉ)', async () => {
