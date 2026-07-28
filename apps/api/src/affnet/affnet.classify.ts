@@ -15,6 +15,11 @@ import { isInactiveText } from './affnet.parser';
 export interface PageSnapshot { status: number; finalUrl: string; title: string; text: string }
 export interface FakeBaseline { len: number | null; hash: string | null }
 
+// Soi CẢ title lẫn body — dùng để KẾT LUẬN outcome 'blocked'. Phạm vi RỘNG hơn CÓ CHỦ Ý so với `CF_TITLE`
+// trong affnet.fetch.ts (chỉ soi <title>, dùng để biết khi nào ngừng poll chờ challenge tự giải, không
+// dùng để kết luận outcome) — 2 hằng số này lệch nhau là có ý, KHÔNG phải bug; đừng "gộp cho gọn" mà
+// không đọc comment ở affnet.fetch.ts trước (2 hàm phục vụ 2 mục đích khác nhau, gộp sai sẽ làm 1 trong
+// 2 chỗ mất tín hiệu nó cần).
 const CF = /just a moment|security verification|attention required|checking your browser/i;
 
 // Hash text đã chuẩn hoá khoảng trắng → so được trang catch-all dù render lệch space.

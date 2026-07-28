@@ -139,4 +139,69 @@ describe('AffnetFetch — pool làn proxy', () => {
     const lane = await (f as any).getLane(5);
     expect(lane).toBe(fb.created[2]);
   });
+
+  it('cùng TẬP proxy nhưng ĐẢO THỨ TỰ → key không đổi, KHÔNG dựng lại pool (Vòng sửa 1 — việc 2)', async () => {
+    const f = new AffnetFetch();
+    const fb = fakeBrowser();
+    (f as any).getBrowser = jest.fn().mockResolvedValue(fb.browser);
+    await f.setProxies([{ host: '1.1.1.1', port: 8000 }, { host: '2.2.2.2', port: 8001 }]);
+    await f.setProxies([{ host: '2.2.2.2', port: 8001 }, { host: '1.1.1.1', port: 8000 }]); // đảo thứ tự
+    expect(fb.created).toHaveLength(2); // đúng 1 đợt dựng (2 context của lần gọi đầu), không rebuild
+  });
+});
+
+// Vòng sửa 1 — việc 1: page.goto lỗi thì retry đúng 1 lần trên CÙNG làn với page mới; nếu vẫn lỗi thì NÉM
+// LỖI ra ngoài (không trả snapshot rỗng) — vì Task 6 coi 'error' là ĐÃ QUÉT XONG và không quét lại, nên
+// snapshot rỗng do proxy chết sẽ đầu độc dữ liệu cả hàng đợi đi qua làn đó.
+describe('AffnetFetch.loadSnapshot — retry khi goto lỗi', () => {
+  function fakePage(gotoImpl: () => Promise<any>) {
+    return {
+      goto: jest.fn(gotoImpl),
+      title: jest.fn().mockResolvedValue('OK'),
+      url: jest.fn().mockReturnValue('https://abc.getrewardful.com/signup'),
+      evaluate: jest.fn().mockResolvedValue('nội dung trang'),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  function fakeCtx(pages: any[]) {
+    let i = 0;
+    return { newPage: jest.fn(async () => pages[i++]) };
+  }
+
+  it('goto lỗi lần 1, thành công lần 2 → trả snapshot bình thường, newPage được gọi 2 lần', async () => {
+    const f = new AffnetFetch();
+    const p1 = fakePage(() => Promise.reject(new Error('net::ERR_TIMED_OUT')));
+    const p2 = fakePage(() => Promise.resolve({ status: () => 200 }));
+    const ctx = fakeCtx([p1, p2]);
+    (f as any).getLane = jest.fn().mockResolvedValue(ctx);
+
+    const snap = await f.loadSnapshot('https://abc.getrewardful.com/');
+
+    expect(ctx.newPage).toHaveBeenCalledTimes(2);
+    expect(snap.status).toBe(200);
+    expect(p1.close).toHaveBeenCalledTimes(1);
+    expect(p2.close).toHaveBeenCalledTimes(1);
+  }, 10000);
+
+  it('goto lỗi cả 2 lần → loadSnapshot NÉM LỖI, mọi page đã mở đều được đóng', async () => {
+    const f = new AffnetFetch();
+    const p1 = fakePage(() => Promise.reject(new Error('net::ERR_TIMED_OUT')));
+    const p2 = fakePage(() => Promise.reject(new Error('net::ERR_CONNECTION_RESET')));
+    const ctx = fakeCtx([p1, p2]);
+    (f as any).getLane = jest.fn().mockResolvedValue(ctx);
+
+    await expect(f.loadSnapshot('https://abc.getrewardful.com/')).rejects.toThrow();
+
+    expect(ctx.newPage).toHaveBeenCalledTimes(2);
+    expect(p1.close).toHaveBeenCalledTimes(1);
+    expect(p2.close).toHaveBeenCalledTimes(1);
+  }, 10000);
+
+  it('fetchCampaign KHÔNG nuốt lỗi điều hướng — vẫn reject (chốt hợp đồng với Task 6)', async () => {
+    const f = new AffnetFetch();
+    (f as any).loadSnapshot = jest.fn().mockRejectedValue(new Error('Điều hướng thất bại tới https://x.getrewardful.com/ (đã thử lại 1 lần): net::ERR_CONNECTION_RESET'));
+    await expect(f.fetchCampaign('getrewardful.com', 'x', NO_FAKE)).rejects.toThrow();
+  });
 });

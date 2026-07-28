@@ -10,6 +10,10 @@ import { classifyPage, textHash, PageSnapshot, FakeBaseline } from './affnet.cla
 import { parseRewardful } from './affnet.parser';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
+// CHỈ soi <title> — dùng để biết KHI NÀO NGỪNG POLL (challenge tự giải xong chưa), không dùng để KẾT LUẬN
+// outcome. Phạm vi hẹp hơn CÓ CHỦ Ý so với `CF` trong affnet.classify.ts (soi cả title lẫn body để phân
+// loại 'blocked') — 2 hằng số này lệch nhau là có ý, KHÔNG phải bug; đừng "gộp cho gọn" mà không đọc
+// comment ở affnet.classify.ts trước.
 const CF_TITLE = /just a moment|verifying|attention required/i;
 export const CF_WAIT_TRIES = 20; // × 1s — challenge tự giải thường xong trong ~2-6s
 
@@ -41,7 +45,11 @@ export class AffnetFetch implements OnModuleDestroy {
   // Dựng lại pool làn theo danh sách proxy hiện tại (đọc từ sh_proxy mỗi lượt job).
   // Danh sách không đổi → giữ nguyên pool (khỏi mất cookie cf_clearance đã có).
   async setProxies(list: ProxyOpt[]): Promise<void> {
-    const key = (list || []).map((p) => `${p.host}:${p.port}`).join('|');
+    // SORT trước khi ghép key: cùng 1 TẬP proxy nhưng đảo THỨ TỰ (ví dụ DB trả về khác thứ tự giữa 2 lượt
+    // job) không được coi là "đã đổi" — nếu không sort, key lệch theo thứ tự sẽ ép dựng lại pool oan,
+    // làm mất cookie cf_clearance mà thiết kế per-context này sinh ra để giữ. Thứ tự THẬT của `list` vẫn
+    // được dùng nguyên vẹn bên dưới khi tạo `this.lanes` (lane index phải khớp thứ tự proxy được truyền).
+    const key = (list || []).map((p) => `${p.host}:${p.port}`).sort().join('|');
     if (key === this.laneKey && this.lanes.length) return;
     for (const c of this.lanes) await c.close().catch(() => undefined);
     this.lanes = [];
@@ -75,9 +83,32 @@ export class AffnetFetch implements OnModuleDestroy {
   // Mở 1 trang trên LÀN chỉ định, chờ challenge Cloudflare tự giải, trả snapshot. Luôn đóng page (tránh rò RAM).
   async loadSnapshot(url: string, lane = 0): Promise<PageSnapshot> {
     const ctx = await this.getLane(lane);
-    const page = await ctx.newPage();
+    let page = await ctx.newPage();
     try {
-      const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
+      let resp;
+      try {
+        resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
+      } catch (e1) {
+        // Lỗi điều hướng lần 1 (timeout/DNS/connection reset...) thường chỉ là trục trặc TẠM THỜI của
+        // đúng 1 request (proxy khựng 1 nhịp) — KHÔNG hẳn cả proxy đã chết. Đóng page cũ, chờ ngắn rồi
+        // mở page MỚI, thử lại ĐÚNG 1 LẦN trên CÙNG làn trước khi kết luận.
+        await page.close().catch(() => undefined);
+        await new Promise((r) => setTimeout(r, 2000));
+        page = await ctx.newPage();
+        try {
+          resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
+        } catch (e2) {
+          // CỐ Ý NÉM LỖI, KHÔNG trả snapshot rỗng ({status:0,...}) ở đây. Trả snapshot rỗng sẽ khiến
+          // classifyPage/luồng gọi hiểu lầm là đã tải trang xong (chỉ nội dung rỗng) → rơi vào outcome
+          // 'error'. Task 6 xử lý 'error' bằng markHostChecked(net, slug, 'error') = đánh dấu host ĐÃ
+          // QUÉT XONG, KHÔNG BAO GIỜ quét lại. Một proxy chết giữa lượt sẽ khiến MỌI host đi qua làn đó
+          // bị đánh dấu 'error' VĨNH VIỄN — đầu độc dữ liệu, mất hàng trăm dự án thật mà không cách nào
+          // biết. Ném lỗi ra ngoài mới đúng ngữ nghĩa: "chưa biết gì về host này" (cùng nguyên tắc với
+          // 'blocked') — Task 6 bắt lỗi này, gọi bumpHostTries (KHÔNG set checked_at/check_status) để
+          // host được quét lại ở lượt sau. ĐỪNG "sửa lại cho gọn" bằng cách trả snapshot rỗng ở đây.
+          throw new Error(`Điều hướng thất bại tới ${url} (đã thử lại 1 lần): ${(e2 as Error)?.message || e2}`);
+        }
+      }
       for (let i = 0; i < CF_WAIT_TRIES; i++) {
         const t = await page.title().catch(() => '');
         if (!CF_TITLE.test(t)) break;
