@@ -56,15 +56,26 @@ khớp đúng đường cong đã đo lúc thiết kế (subdomain.center riêng
   `last_seen` + merge `sources` (hàm thuần `mergeHosts`, test không cần mạng).
 - `isInfraHost` lọc host hạ tầng (`www|api|app|cdn|ns*|docs|help|status|…`) trước khi lưu.
 
-⚠️ **Lệch giữa spec thiết kế và code thật, ghi lại để khỏi tưởng nhầm là bug:** spec đề xuất cơ chế
-"bão hoà" tự động — 3 lượt liên tiếp `discover_last_new < 5` thì giãn poll net đó xuống 1 lần/ngày.
-**Cơ chế tự động này KHÔNG có trong code hiện tại.** `markPolled` chỉ GHI lại `discover_last_new` như
-một con số quan sát (hiện ở cột "Lượt poll" / field `lastNew` trong bảng Net trên web); `pickNetToPoll`
-luôn chọn net có `discover_polled_at` **cũ nhất** (round-robin thuần, không xét đã bão hoà hay chưa).
-Tần suất poll thực tế của mỗi net do (a) quota `daily` của job (mặc định 200 lượt/ngày, dùng chung cho
-mọi net) và (b) số net đang `enabled` chia nhau vòng xoay quyết định. Muốn có backoff tự động thật thì
-phải thêm logic đọc `discoverLastNew` trong `pickNetToPoll`/`discoverStep` — hiện chưa làm (YAGNI, vài
-net thì round-robin đã đủ).
+**Cơ chế "bão hoà" tự động (đã implement, `affnet.mysql.ts`):** cột `aff_net.dry_rounds` đếm số lượt
+poll "no hoà" LIÊN TIẾP của 1 net, dùng 3 hằng số export từ `affnet.mysql.ts`:
+
+| Hằng số | Giá trị | Ý nghĩa |
+|---|---|---|
+| `DRY_THRESHOLD` | 5 | 1 lượt có `< 5` host mới bị coi là "no hoà" |
+| `DRY_ROUNDS_TO_SATURATE` | 3 | số lượt "no hoà" LIÊN TIẾP để coi net đã **bão hoà** |
+| `SATURATED_COOLDOWN_MS` | 24 giờ | net bão hoà phải chờ ~1 ngày mới được poll lại |
+
+- `markPolled(net, newCount)`: mỗi lượt, nếu `newCount < DRY_THRESHOLD` thì `dry_rounds += 1`, ngược
+  lại reset `dry_rounds = 0` (cùng 1 câu `UPDATE`, dùng `CASE` trong SQL). `newCount` đúng bằng
+  `DRY_THRESHOLD` (5) KHÔNG tính là no hoà — reset chứ không tăng.
+- `pickNetToPoll()`: bỏ qua net nào **vừa bão hoà** (`dry_rounds >= DRY_ROUNDS_TO_SATURATE`) **VÀ**
+  vừa poll trong vòng `SATURATED_COOLDOWN_MS` (24h) gần đây. Net **chưa poll lần nào**
+  (`discover_polled_at IS NULL`) luôn được ưu tiên chọn trước, bất kể `dry_rounds`. Với các net còn lại
+  (chưa bão hoà, hoặc bão hoà nhưng đã hết cooldown), thứ tự chọn vẫn là `discover_polled_at` cũ nhất
+  (round-robin) như trước.
+- Cùng với quota `daily` của job (mặc định 200 lượt/ngày) và số net đang `enabled`, cơ chế này tránh
+  tình trạng 1 net cấu hình bị poll lại mỗi ~8s liên tục cho tới khi chạm quota (rồi im suốt phần ngày
+  còn lại) — vốn là lỗi thật đã xảy ra trước khi có `dry_rounds` (xem CHANGELOG).
 
 ## 3. Fetch + phân loại trang (`affnet.fetch.ts`, `affnet.classify.ts`)
 
@@ -252,8 +263,9 @@ thay vì âm thầm xuất thiếu. Không thêm endpoint export riêng ở back
 ## 12. Test
 
 7 file spec (`affnet.discovery/classify/parser/mysql/fetch/service.spec.ts` + `sh.jobs.affnet.spec.ts`
-kiểm việc gắn 2 job vào `ShJobsService`) — **115 test xanh** (đo lúc viết tài liệu này,
-`npm --workspace @gas/api test -- affnet`). Fixtures thật trong `fixtures/affnet/` (12 file: 10 trang
+kiểm việc gắn 2 job vào `ShJobsService`) — **121 test xanh** (`npx jest affnet` — đo lúc viết bản cập
+nhật này; riêng `src/affnet/*.spec.ts`, không tính `sh.jobs.affnet.spec.ts`, là **114 test / 6 suite**,
+`npx jest src/affnet`). Fixtures thật trong `fixtures/affnet/` (12 file: 10 trang
 Rewardful active/inactive + 1 trang catch-all tapfiliate) — đổi mapping ở `affnet.parser.ts` phải giữ
 test xanh, đúng quy ước dự án ([CLAUDE.md §0](../CLAUDE.md)).
 

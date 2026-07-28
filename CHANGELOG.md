@@ -30,7 +30,13 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
   7 sống/19 chết/3 không tồn tại/1 lỗi) → ~1.400 host phát hiện ≈ **~320 dự án sống**, đừng hứa theo số host.
 - `commission_pct/commission_flat/payout_threshold` dùng **`DOUBLE`** (không `DECIMAL`) vì driver `mysql2` trả
   `DECIMAL` thành string, phá hợp đồng kiểu dữ liệu của web.
-- Test: 7 spec (`affnet.discovery/classify/parser/mysql/fetch/service` + `sh.jobs.affnet`) — **115 test xanh**.
+- **Vá throttle (cùng ngày)**: cơ chế "bão hoà" mô tả ở trên **ban đầu chưa được cài đặt thật**
+  (`markPolled` chỉ ghi `discover_last_new`, không có logic nào đọc lại để giãn poll) → 1 net cấu hình
+  sẽ bị poll lại mỗi ~8s liên tục tới khi chạm quota ngày, có nguy cơ 429 mất `subdomain.center` (nguồn
+  discovery chính). Đã thêm cột `aff_net.dry_rounds` + điều kiện lọc trong `pickNetToPoll()` để net
+  bão hoà (≥3 lượt no hoà liên tiếp) mà vừa poll thì giãn xuống ~1 lần/ngày (xem docs/12 §2).
+- Test: 7 spec (`affnet.discovery/classify/parser/mysql/fetch/service` + `sh.jobs.affnet`) —
+  **121 test xanh** (`npx jest affnet`; riêng `src/affnet/*.spec.ts` là 114 test/6 suite).
   Chỉ có adapter Rewardful v1; thứ tự mở rộng đã có bằng chứng: PartnerStack (1 request ra ~420 công ty/4.643
   offer có cấu trúc) → FirstPromoter (JSON công khai, 429 sau ~34 call) → Everflow/Tune → Tapfiliate/PromoteKit.
 

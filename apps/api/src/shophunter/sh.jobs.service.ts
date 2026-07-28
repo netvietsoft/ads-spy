@@ -291,7 +291,8 @@ export class ShJobsService implements OnModuleInit {
     return { pace: cfg.paceMs };
   }
 
-  // Cào từng trang campaign. Giãn 10s/trang (đo thật), concurrency 1 — Cloudflare chặn theo nhịp burst.
+  // Cào từng trang campaign. Giãn 10s/trang MỖI LÀN IP (đo thật, Cloudflare chặn theo nhịp burst) —
+  // concurrency mặc định 3 (trần trên; runtime tự kẹp theo số làn proxy thật, xem AffnetService.fetchStep).
   private async stepAffFetch(force = false): Promise<{ pace: number }> {
     const cfg = await this.getJobCfg('afffetch');
     if (!force && !this.withinActiveHours(cfg)) { this.mem.afffetch.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
