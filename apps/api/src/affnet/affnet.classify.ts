@@ -28,6 +28,20 @@ export function textHash(text: string): string {
   return createHash('sha256').update(norm).digest('hex');
 }
 
+// Dung sai TƯƠNG ĐỐI cho độ dài trang catch-all (FIX 2): trang catch-all có thể nhúng 1 con số ĐỘNG (VD
+// bộ đếm "69.500+ khách hàng" tự tăng theo thời gian) — hash tuyệt đối lệch dù nội dung thực chất KHÔNG
+// đổi. 3% đủ hấp thụ vài chữ số đổi trong 1 câu ngắn, nhưng đủ hẹp để KHÔNG lẫn với 1 trang chương trình
+// thật có độ dài tình cờ gần bằng (đã kiểm bằng fixture thật, xem affnet.classify.spec.ts).
+const FAKE_LEN_TOLERANCE = 0.03;
+
+// Tín hiệu ĐẶC TRƯNG cho 1 trang chương trình THẬT — số/％/$ đứng NGAY SÁT chữ "commission", hoặc "you
+// refer to <domain>". Chỉ chứa từ "commission" một mình KHÔNG đủ: trang catch-all Tapfiliate mô tả tính
+// năng sản phẩm bằng câu kiểu "Total margin control: set percentage, fixed, or tiered commissions" — có
+// chữ "commission" nhưng không phải trang chương trình thật. Dùng regex lỏng /commission|you refer to/i
+// (như dòng fallback bên dưới) làm tín hiệu loại trừ dung sai từng khiến trang catch-all đó lọt qua dung
+// sai vẫn bị coi là "trang thật" (xem FIX 2 report — lỗi đã đo trên fixture thật).
+const PROGRAM_SIGNAL = /(?:\d+(?:\.\d+)?%|\$\s?[\d,.]+)\s*commission|you refer to\s+[a-z0-9.-]+\.[a-z]{2,}/i;
+
 export function classifyPage(p: PageSnapshot, fake: FakeBaseline): FetchOutcome {
   const title = p.title || '';
   const text = p.text || '';
@@ -42,8 +56,18 @@ export function classifyPage(p: PageSnapshot, fake: FakeBaseline): FetchOutcome 
 
   if (p.status === 404) return 'notfound';
 
-  // 3. Trang catch-all của net (giống trang host-giả) → host không tồn tại.
-  if (fake.hash && textHash(text) === fake.hash) return 'notfound';
+  // FIX 1: 429 (rate-limit)/403/5xx là lỗi TẠM THỜI của LƯỢT GỌI này (IP bị giới hạn, server đang lỗi…),
+  // KHÔNG PHẢI bằng chứng host không tồn tại/đã chết. markHostChecked là VĨNH VIỄN (không có cơ chế
+  // requeue) nên tuyệt đối không được kết luận verdict ở đây — phải trả 'blocked' để đi qua bumpHostTries
+  // (quay lại hàng đợi thử lại), giống hệt cách bot-challenge và lỗi điều hướng đã được xử lý.
+  if (p.status === 429 || p.status === 403 || p.status >= 500) return 'blocked';
+
+  // 3. Trang catch-all của net (giống trang host-giả) → host không tồn tại. Khớp CHÍNH XÁC (hash) HOẶC
+  // độ dài lệch nhỏ trong dung sai (bộ đếm động, xem FAKE_LEN_TOLERANCE) VÀ trang không mang tín hiệu
+  // chương trình thật (PROGRAM_SIGNAL) — thiếu vế sau thì 1 trang chương trình thật tình cờ dài gần bằng
+  // fake.len sẽ bị nuốt oan thành notfound.
+  const lenClose = fake.len != null && fake.len > 0 && Math.abs(text.length - fake.len) <= fake.len * FAKE_LEN_TOLERANCE;
+  if ((fake.hash && textHash(text) === fake.hash) || (lenClose && !PROGRAM_SIGNAL.test(text))) return 'notfound';
 
   // 4. Fallback theo chữ (net không redirect rõ ràng).
   if (isInactiveText(text)) return 'inactive';

@@ -1,7 +1,12 @@
 // affnet.classify.spec.ts — phân loại 1 trang campaign. HÀM THUẦN.
 // Vì sao cần "fingerprint trang giả": tapfiliate/partnerstack trả HTTP 200 + trang catch-all cho MỌI host,
 // kể cả host không tồn tại → chỉ dựa status code là SAI.
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { classifyPage, textHash } from './affnet.classify';
+
+const FIX = join(__dirname, '../../../../fixtures/affnet');
+const fx = (name: string) => readFileSync(join(FIX, name), 'utf8');
 
 const NO_FAKE = { len: null, hash: null };
 const ROOT = 'https://x.getrewardful.com/';
@@ -24,8 +29,11 @@ describe('classifyPage — ưu tiên URL sau redirect (tín hiệu đã đo 3/3 
 });
 
 describe('classifyPage — chặn phải được kiểm TRƯỚC mọi thứ', () => {
-  it('trang challenge Cloudflare → blocked (KHÔNG phải notfound)', () => {
-    const p = { status: 403, finalUrl: ROOT, title: 'Just a moment...', text: 'Performing security verification' };
+  // FIX 9(b): status CỐ Ý là 200 (không phải 403) — sau FIX 1, status 403/429/5xx TỰ nó cũng ra 'blocked',
+  // nên nếu dùng 403 ở đây thì test này vẫn xanh dù ai đó lỡ xoá regex CF (không còn chứng minh được regex
+  // CF thật sự cần thiết). Dùng status 200 để cô lập ĐÚNG cơ chế đang kiểm: nhận diện qua title/text.
+  it('trang challenge Cloudflare (title/text) → blocked (KHÔNG phải notfound), cô lập khỏi status code', () => {
+    const p = { status: 200, finalUrl: ROOT, title: 'Just a moment...', text: 'Performing security verification' };
     expect(classifyPage(p, NO_FAKE)).toBe('blocked');
   });
 
@@ -34,9 +42,29 @@ describe('classifyPage — chặn phải được kiểm TRƯỚC mọi thứ', 
     expect(classifyPage(p, NO_FAKE)).toBe('blocked');
   });
 
-  it('403 kèm challenge KHÔNG bị nhầm thành notfound dù không có redirect', () => {
+  // FIX 9(b): trước đây `.not.toBe('notfound')` — PASS ngay cả khi đổi thành 'error'/'active'/bất cứ gì
+  // khác 'notfound', kể cả khi ai đó lỡ xoá regex CF ở classify.ts:36 (đã tái hiện: xoá `CF.test(title) ||`
+  // thì cả 121 test vẫn xanh). Assert ĐÚNG giá trị kỳ vọng.
+  it('403 kèm challenge → blocked chính xác (không phải notfound, không phải error)', () => {
     const p = { status: 403, finalUrl: ROOT, title: 'Just a moment...', text: '' };
-    expect(classifyPage(p, NO_FAKE)).not.toBe('notfound');
+    expect(classifyPage(p, NO_FAKE)).toBe('blocked');
+  });
+});
+
+describe('classifyPage — FIX 1: 429/403/5xx là TẠM THỜI, không được kết luận verdict', () => {
+  it('429 (rate-limit) + trang lỗi thường (không có marker challenge) → blocked, KHÔNG phải error', () => {
+    const p = { status: 429, finalUrl: ROOT, title: 'Too Many Requests', text: 'Rate limit exceeded. Please try again later.' };
+    expect(classifyPage(p, NO_FAKE)).toBe('blocked');
+  });
+
+  it('503 (server lỗi) + trang lỗi thường → blocked, KHÔNG phải error', () => {
+    const p = { status: 503, finalUrl: ROOT, title: 'Service Unavailable', text: 'The server is temporarily unable to service your request.' };
+    expect(classifyPage(p, NO_FAKE)).toBe('blocked');
+  });
+
+  it('403 thường (không phải challenge Cloudflare, không redirect) → blocked qua nhánh status, không rơi xuống notfound/error', () => {
+    const p = { status: 403, finalUrl: ROOT, title: 'Forbidden', text: 'You do not have permission to access this resource.' };
+    expect(classifyPage(p, NO_FAKE)).toBe('blocked');
   });
 });
 
@@ -82,5 +110,36 @@ describe('classifyPage — fingerprint trang giả (BẮT BUỘC cho net catch-a
 
   it('textHash bỏ qua khác biệt khoảng trắng (trang catch-all render lệch space vẫn khớp)', () => {
     expect(textHash('a  b\n c')).toBe(textHash('a b c'));
+  });
+});
+
+// FIX 2: fingerprint chỉ so hash TUYỆT ĐỐI là "1 byte lệch là bịa dự án" — trang catch-all Tapfiliate có
+// bộ đếm động ("Trusted by Over 69,500+ Customers") khiến hash lệch dù nội dung thực chất không đổi. Dùng
+// fixture THẬT (tapfiliate_com__zzz-not-real-987654.txt, trước đây không có test nào đọc — FIX 12) làm
+// baseline, giống hệt trang catch-all thật đo được.
+describe('classifyPage — FIX 2: dung sai độ dài cho fingerprint trang giả (fixture thật tapfiliate)', () => {
+  it('KHỚP HASH TUYỆT ĐỐI (baseline y hệt trang) → notfound', () => {
+    const fakeText = fx('tapfiliate_com__zzz-not-real-987654.txt');
+    const fake = { len: fakeText.length, hash: textHash(fakeText) };
+    const p = { status: 200, finalUrl: 'https://ghost.tapfiliate.com/', title: 'Tapfiliate', text: fakeText };
+    expect(classifyPage(p, fake)).toBe('notfound');
+  });
+
+  it('đổi 1 con số trong bộ đếm động (69,500+ → 69,512+) — hash LỆCH nhưng độ dài gần như không đổi → vẫn notfound nhờ dung sai', () => {
+    const fakeText = fx('tapfiliate_com__zzz-not-real-987654.txt');
+    const fake = { len: fakeText.length, hash: textHash(fakeText) };
+    const changed = fakeText.replace('69,500+', '69,512+');
+    expect(textHash(changed)).not.toBe(fake.hash); // xác nhận hash thật sự lệch (không phải test giả)
+    const p = { status: 200, finalUrl: 'https://ghost2.tapfiliate.com/', title: 'Tapfiliate', text: changed };
+    expect(classifyPage(p, fake)).toBe('notfound');
+  });
+
+  it('trang chương trình THẬT có độ dài tình cờ đúng bằng fake.len (nhưng hash khác hẳn) → vẫn active, KHÔNG bị dung sai nuốt oan', () => {
+    const editgptText = fx('getrewardful_com__editgpt.txt');
+    // fake baseline có ĐỘ DÀI khớp editgpt tuyệt đối (diff=0, chắc chắn trong dung sai) nhưng hash của 1
+    // trang catch-all hoàn toàn khác — mô phỏng ca "trùng độ dài ngẫu nhiên" mà PROGRAM_SIGNAL phải chặn.
+    const fake = { len: editgptText.length, hash: textHash('một trang catch-all hoàn toàn không liên quan') };
+    const p = { status: 200, finalUrl: 'https://editgpt.getrewardful.com/', title: 'editGPT | Sign up', text: editgptText };
+    expect(classifyPage(p, fake)).toBe('active');
   });
 });
