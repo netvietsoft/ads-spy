@@ -12,9 +12,11 @@ describe('ModuleGuard', () => {
     const { reflector, ctx } = ctxOf({ role: 'user' }, undefined);
     expect(await new ModuleGuard(reflector, {} as any).canActivate(ctx)).toBe(true);
   });
-  it('staff bypass', async () => {
+  it('staff bypass (không gọi hasModule)', async () => {
     const { reflector, ctx } = ctxOf({ role: 'admin' }, 'shophunter');
-    expect(await new ModuleGuard(reflector, { hasModule: jest.fn() } as any).canActivate(ctx)).toBe(true);
+    const hasModule = jest.fn();
+    expect(await new ModuleGuard(reflector, { hasModule } as any).canActivate(ctx)).toBe(true);
+    expect(hasModule).not.toHaveBeenCalled();
   });
   it('user có module → qua', async () => {
     const { reflector, ctx } = ctxOf({ id: 1, role: 'user' }, 'shophunter');

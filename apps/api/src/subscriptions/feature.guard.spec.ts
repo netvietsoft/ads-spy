@@ -12,9 +12,11 @@ describe('FeatureGuard', () => {
     const { reflector, ctx } = ctxOf({ role: 'user' }, undefined);
     expect(await new FeatureGuard(reflector, {} as any).canActivate(ctx)).toBe(true);
   });
-  it('staff bypass', async () => {
+  it('staff bypass (không gọi hasFeature)', async () => {
     const { reflector, ctx } = ctxOf({ role: 'manager' }, { moduleKey: 'shophunter', feature: 'ai' });
-    expect(await new FeatureGuard(reflector, { hasFeature: jest.fn() } as any).canActivate(ctx)).toBe(true);
+    const hasFeature = jest.fn();
+    expect(await new FeatureGuard(reflector, { hasFeature } as any).canActivate(ctx)).toBe(true);
+    expect(hasFeature).not.toHaveBeenCalled();
   });
   it('user có feature → qua; không → Forbidden', async () => {
     const ok = ctxOf({ id: 1, role: 'user' }, { moduleKey: 'shophunter', feature: 'ai' });
