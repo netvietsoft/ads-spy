@@ -22,11 +22,6 @@ function pctOrFlat(p: AffProgramRow): string {
   if (typeof p.commission_flat === 'number') return p.commission_flat.toLocaleString() + (p.commission_currency ? ' ' + p.commission_currency : '') + ' (cố định)';
   return '—';
 }
-function statusLabel(s: string): string {
-  if (s === 'active') return 'Sống';
-  if (s === 'inactive' || s === 'dead' || s === 'notfound') return 'Chết';
-  return s;
-}
 function siteUrl(web: string | null): string | null {
   if (!web) return null;
   return /^https?:\/\//i.test(web) ? web : 'https://' + web;
@@ -74,7 +69,6 @@ function ProgramRowCard({ p }: { p: AffProgramRow }) {
         <span><b className="rev">{pctOrFlat(p)}</b></span>
         <span>Cookie {p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</span>
         <span>Payout {orDash(p.payout_threshold)}</span>
-        <span className="badge-local">{statusLabel(p.status)}</span>
       </div>
       {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8 }}>{p.notes}</div>}
       <div className="fbfoot" style={{ gap: 10, flexWrap: 'wrap' }}>
@@ -101,7 +95,6 @@ export function AffnetPanel() {
   const [err, setErr] = useState<string | null>(null);
   const [minPct, setMinPct] = useState<number | null>(null);
   const [maxPct, setMaxPct] = useState<number | null>(null);
-  const [status, setStatus] = useState(''); // '' | 'active' | 'dead'
   const [q, setQ] = useState('');
   const [qInput, setQInput] = useState('');
   const [sort, setSort] = useState('fetched');
@@ -122,15 +115,17 @@ export function AffnetPanel() {
     if (!activeNet) { setData({ rows: [], total: 0 }); return; }
     const myReq = ++reqRef.current;
     setLoading(true); setErr(null);
-    affPrograms({ net: activeNet, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, status: status || undefined, q: q || undefined, page, pageSize, sort, dir })
+    affPrograms({ net: activeNet, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page, pageSize, sort, dir })
       .then((r) => { if (myReq === reqRef.current) setData(r); })
       .catch((e) => { if (myReq === reqRef.current) setErr((e as Error).message); })
       .finally(() => { if (myReq === reqRef.current) setLoading(false); });
-  }, [activeNet, minPct, maxPct, status, q, page, pageSize, sort, dir]);
+  }, [activeNet, minPct, maxPct, q, page, pageSize, sort, dir]);
 
+  // Đổi net → xoá ngay dữ liệu net cũ (đừng để bảng hiện "Dự án của X" nhưng vẫn còn dòng của net trước, dù chỉ trong lúc chờ fetch mới).
   const selectNet = (net: string) => {
     setActiveNet(net); setPage(1);
-    setMinPct(null); setMaxPct(null); setStatus(''); setQ(''); setQInput('');
+    setMinPct(null); setMaxPct(null); setQ(''); setQInput('');
+    setData({ rows: [], total: 0 });
   };
 
   const doImport = async () => {
@@ -157,7 +152,11 @@ export function AffnetPanel() {
 
   const exportExcel = async () => {
     if (!activeNet) return;
-    const r = await affPrograms({ net: activeNet, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, status: status || undefined, q: q || undefined, page: 1, pageSize: 5000, sort, dir });
+    const r = await affPrograms({ net: activeNet, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page: 1, pageSize: 5000, sort, dir });
+    // Giới hạn 1 lượt lấy tối đa 5000 dòng — net nào có hơn 5000 dự án sống thì file bị cắt, phải báo rõ (không âm thầm xuất thiếu).
+    if (r.rows.length < r.total) {
+      alert(`Chỉ xuất được ${r.rows.length.toLocaleString()} / ${r.total.toLocaleString()} dòng (giới hạn 5000 dòng/lần) — file KHÔNG có đủ toàn bộ dữ liệu đã lọc.`);
+    }
     const sheetRows = r.rows.map((p) => ({
       'Tên dự án': p.program_name || p.slug,
       'Link tham gia': p.join_url,
@@ -166,7 +165,6 @@ export function AffnetPanel() {
       Note: p.notes || '',
       Cookie: p.cookie_days ?? '',
       Payout: p.payout_threshold ?? '',
-      'Trạng thái': statusLabel(p.status),
     }));
     const ws = XLSX.utils.json_to_sheet(sheetRows);
     const wb = XLSX.utils.book_new();
@@ -251,13 +249,6 @@ export function AffnetPanel() {
                 defaultValue={maxPct ?? ''} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                 onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v); if (n !== maxPct) { setMaxPct(Number.isFinite(n as number) ? n : null); setPage(1); } }} />
             </label>
-            <label style={{ fontSize: 13 }}>Trạng thái:&nbsp;
-              <select className="fbselect" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-                <option value="">Tất cả</option>
-                <option value="active">Sống</option>
-                <option value="dead">Chết</option>
-              </select>
-            </label>
             <span style={{ display: 'inline-flex', gap: 4 }}>
               <input className="fbselect" placeholder="Tìm tên dự án…" value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
@@ -288,7 +279,6 @@ export function AffnetPanel() {
                   <th>Note</th>
                   <th>Cookie</th>
                   <th>Payout</th>
-                  <th>Trạng thái</th>
                 </tr></thead>
                 <tbody>
                   {data.rows.map((p) => {
@@ -302,12 +292,11 @@ export function AffnetPanel() {
                         <td className="wrap" style={{ maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
                         <td>{p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</td>
                         <td>{orDash(p.payout_threshold)}</td>
-                        <td>{statusLabel(p.status)}</td>
                       </tr>
                     );
                   })}
                   {data.rows.length === 0 && !loading && (
-                    <tr><td colSpan={8} className="hint">Không có dự án khớp bộ lọc.</td></tr>
+                    <tr><td colSpan={7} className="hint">Không có dự án khớp bộ lọc.</td></tr>
                   )}
                 </tbody>
               </table>
