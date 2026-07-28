@@ -67,15 +67,24 @@ export class AffnetService {
 
     for (const n of await this.db.listNets()) {
       if (n.enabled === false) continue;
+      // Việc A (Vòng sửa 2, từ re-review): kiểm hosts.length TRƯỚC — net không có host chờ thì khỏi trả
+      // giá 1 lượt probeFake vô ích. Trước đây probe nằm TRƯỚC guard này nên chạy vô điều kiện mỗi lượt
+      // cho MỌI net, kể cả net rỗng.
+      const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
+      if (!hosts.length) continue;
+      out.net = n.net;
+
       // FIX 2: probe LẠI MỖI LƯỢT (bỏ guard "1 lần/net" cũ) — trang catch-all có thể tự đổi theo thời
       // gian (bộ đếm động, VD "69.500+ khách hàng" tăng dần) VÀ lượt quét fan-out nhiều làn IP khác nhau,
       // baseline đo 1 lần ở làn #0 không chắc còn khớp làn khác đang chạy lượt này.
       const f = await this.fetch.probeFake(n.net);
       await this.db.setFakeBaseline(n.net, f.len, f.hash);
       const fake = { len: f.len, hash: f.hash };
-      const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
-      if (!hosts.length) continue;
-      out.net = n.net;
+      // Việc A: probeFake bắn trên LÀN 0 (mặc định của probeFake) — nếu không giãn cách, fetch THẬT đầu
+      // tiên của worker làn 0 bắn NGAY SAU đó, tạo 1 burst 2 request không giãn trên CÙNG 1 IP (đo thật:
+      // không giãn → 9/9 bị chặn — đây chính là tham số chống-chặn duy nhất cả thiết kế dựa vào). Chèn
+      // đúng 1 khoảng nghỉ paceMs ở đây trước khi mở vòng worker.
+      if (cfg.paceMs > 0) await new Promise((res) => setTimeout(res, cfg.paceMs));
 
       let idx = 0;
       // 1 worker = 1 LÀN = 1 IP. Giãn paceMs nằm TRONG worker → giãn theo từng IP, không phải toàn cục.

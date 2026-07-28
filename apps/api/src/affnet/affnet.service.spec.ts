@@ -108,16 +108,43 @@ describe('fetchStep', () => {
     expect(db.upsertProgram).not.toHaveBeenCalled();
   });
 
-  it('net chưa có fingerprint trang giả → probeFake TRƯỚC khi quét', async () => {
+  it('net chưa có fingerprint trang giả (có host chờ) → probeFake TRƯỚC khi quét', async () => {
     const db = mkDb(); const f = mkFetch();
     db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null }]);
-    db.takeHostsToCheck.mockResolvedValue([]);
+    db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
     f.probeFake.mockResolvedValue({ len: 5, hash: 'abc' });
+    f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
     const s = new AffnetService(db as any, f as any);
     await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(f.probeFake).toHaveBeenCalledWith('getrewardful.com');
     expect(db.setFakeBaseline).toHaveBeenCalledWith('getrewardful.com', 5, 'abc');
   });
+
+  // Việc A (Vòng sửa 2, từ re-review): probeFake trước đây chạy VÔ ĐIỀU KIỆN cho mọi net mỗi lượt, kể cả
+  // net không còn host chờ — vừa tốn 1 fetch vô ích, vừa (khi net CÓ host) bắn liền sát fetch thật đầu
+  // tiên trên CÙNG làn 0 không giãn cách, tạo burst phá tham số chống-chặn. Nay probeFake chỉ chạy SAU
+  // khi đã biết net có host chờ.
+  it('Việc A: net KHÔNG có host chờ → probeFake KHÔNG được gọi (khỏi trả giá 1 fetch vô ích mỗi lượt)', async () => {
+    const db = mkDb(); const f = mkFetch();
+    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null }]);
+    db.takeHostsToCheck.mockResolvedValue([]);
+    const s = new AffnetService(db as any, f as any);
+    await s.fetchStep({ batch: 5, paceMs: 0 });
+    expect(f.probeFake).not.toHaveBeenCalled();
+    expect(db.setFakeBaseline).not.toHaveBeenCalled();
+  });
+
+  it('Việc A: paceMs > 0 → giãn cách TRƯỚC fetch thật đầu tiên (không burst 2 request liền nhau với probeFake trên cùng làn 0)', async () => {
+    const db = mkDb(); const f = mkFetch();
+    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null }]);
+    db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
+    let probeAt = 0, fetchAt = 0;
+    f.probeFake.mockImplementation(async () => { probeAt = Date.now(); return { len: 5, hash: 'abc' }; });
+    f.fetchCampaign.mockImplementation(async () => { fetchAt = Date.now(); return { outcome: 'notfound', parsed: null, termsText: null }; });
+    const s = new AffnetService(db as any, f as any);
+    await s.fetchStep({ batch: 5, paceMs: 200 });
+    expect(fetchAt - probeAt).toBeGreaterThanOrEqual(190); // dung sai nhỏ cho jitter đồng hồ hệ thống
+  }, 10000);
 
   it('FIX 2: net ĐÃ có fingerprint từ trước (fakeCheckedAt cũ) vẫn probeFake LẠI mỗi lượt — không dùng baseline cached', async () => {
     const db = mkDb(); const f = mkFetch();

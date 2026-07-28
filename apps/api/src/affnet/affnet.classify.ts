@@ -1,8 +1,18 @@
 // Phân loại 1 trang campaign đã fetch. HÀM THUẦN (không mạng/DB) để test được mọi ca biên.
 //
 // Thứ tự kiểm CÓ CHỦ Ý — đảo thứ tự là lưu kết luận oan:
-//   1. chặn (chưa biết gì)  2. URL sau redirect (tín hiệu mạnh nhất)  3. 404
-//   4. fingerprint trang giả  5. chữ trên trang (fallback)
+//   1. chặn (chưa biết gì)  2. URL sau redirect (tín hiệu mạnh nhất)  3. 404  4. 429/403/5xx (tạm thời)
+//   5. fingerprint trang giả KHỚP HASH TUYỆT ĐỐI  6. "no longer active"/"program inactive" (chữ trên
+//   trang, chết THẬT)  7. fingerprint trang giả DUNG SAI ĐỘ DÀI  8. chữ "commission" chung (fallback active)
+//
+// (Vòng sửa 2, re-review — B2) Bước 6 PHẢI đứng TRƯỚC bước 7: 1 trang inactive THẬT (VD "Sorry, this
+// affiliate program is no longer active.") không hề nhắc "commission" nên không có PROGRAM_SIGNAL bảo vệ
+// — nếu để dung sai độ dài (bước 7) kiểm trước, và độ dài trang đó tình cờ rơi vào dải dung sai của MỘT
+// NET KHÁC (net catch-all), nó sẽ bị kết luận nhầm thành notfound — VĨNH VIỄN, xoá sổ oan 1 dự án có
+// thật chỉ vì đã ngừng hoạt động. "no longer active" là tín hiệu THẬT về NỘI DUNG nên đúng bất kể độ dài
+// trùng hợp thế nào; trang catch-all của net thì không chứa cụm này nên đổi thứ tự không ảnh hưởng nó.
+// Bước 5 (khớp hash TUYỆT ĐỐI) vẫn đứng TRƯỚC bước 6 vì khớp hash tuyệt đối với 1 trang inactive thật là
+// gần như không thể (nội dung hoàn toàn khác trang catch-all marketing) — an toàn để giữ nguyên vị trí.
 //
 // ĐO THẬT: mở trang GỐC https://<slug>.getrewardful.com/ →
 //   editgpt → …/signup (sống) · hostgpo → …/inactive (chết) · slug giả → HTTP 404.
@@ -32,7 +42,7 @@ export function textHash(text: string): string {
 // bộ đếm "69.500+ khách hàng" tự tăng theo thời gian) — hash tuyệt đối lệch dù nội dung thực chất KHÔNG
 // đổi. 3% đủ hấp thụ vài chữ số đổi trong 1 câu ngắn, nhưng đủ hẹp để KHÔNG lẫn với 1 trang chương trình
 // thật có độ dài tình cờ gần bằng (đã kiểm bằng fixture thật, xem affnet.classify.spec.ts).
-const FAKE_LEN_TOLERANCE = 0.03;
+export const FAKE_LEN_TOLERANCE = 0.03;
 
 // Tín hiệu ĐẶC TRƯNG cho 1 trang chương trình THẬT — số/％/$ đứng NGAY SÁT chữ "commission", hoặc "you
 // refer to <domain>". Chỉ chứa từ "commission" một mình KHÔNG đủ: trang catch-all Tapfiliate mô tả tính
@@ -62,15 +72,22 @@ export function classifyPage(p: PageSnapshot, fake: FakeBaseline): FetchOutcome 
   // (quay lại hàng đợi thử lại), giống hệt cách bot-challenge và lỗi điều hướng đã được xử lý.
   if (p.status === 429 || p.status === 403 || p.status >= 500) return 'blocked';
 
-  // 3. Trang catch-all của net (giống trang host-giả) → host không tồn tại. Khớp CHÍNH XÁC (hash) HOẶC
-  // độ dài lệch nhỏ trong dung sai (bộ đếm động, xem FAKE_LEN_TOLERANCE) VÀ trang không mang tín hiệu
-  // chương trình thật (PROGRAM_SIGNAL) — thiếu vế sau thì 1 trang chương trình thật tình cờ dài gần bằng
-  // fake.len sẽ bị nuốt oan thành notfound.
-  const lenClose = fake.len != null && fake.len > 0 && Math.abs(text.length - fake.len) <= fake.len * FAKE_LEN_TOLERANCE;
-  if ((fake.hash && textHash(text) === fake.hash) || (lenClose && !PROGRAM_SIGNAL.test(text))) return 'notfound';
+  // 3a. Trang catch-all của net (giống trang host-giả) → host không tồn tại. Khớp CHÍNH XÁC (hash tuyệt
+  // đối) — xem comment đầu file vì sao bước này đứng TRƯỚC isInactiveText.
+  if (fake.hash && textHash(text) === fake.hash) return 'notfound';
 
-  // 4. Fallback theo chữ (net không redirect rõ ràng).
+  // 3b. "no longer active"/"program inactive" — PHẢI đứng TRƯỚC dung sai độ dài bên dưới (xem comment
+  // đầu file, B2 Vòng sửa 2): tránh xoá sổ oan 1 trang inactive THẬT chỉ vì độ dài tình cờ giống 1 net
+  // catch-all khác.
   if (isInactiveText(text)) return 'inactive';
+
+  // 3c. Dung sai ĐỘ DÀI cho fingerprint trang giả (bộ đếm động, xem FAKE_LEN_TOLERANCE) VÀ trang không
+  // mang tín hiệu chương trình thật (PROGRAM_SIGNAL) — thiếu vế sau thì 1 trang chương trình thật tình cờ
+  // dài gần bằng fake.len sẽ bị nuốt oan thành notfound.
+  const lenClose = fake.len != null && fake.len > 0 && Math.abs(text.length - fake.len) <= fake.len * FAKE_LEN_TOLERANCE;
+  if (lenClose && !PROGRAM_SIGNAL.test(text)) return 'notfound';
+
+  // 4. Fallback theo chữ (net không redirect rõ ràng, không khớp fingerprint).
   if (/commission|you refer to/i.test(text)) return 'active';
 
   return 'error';
