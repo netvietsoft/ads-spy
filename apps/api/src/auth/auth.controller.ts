@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { randomBytes } from 'crypto';
 import { AuthService } from './auth.service';
 import { GoogleOAuthService } from './google-oauth.service';
+import { EntitlementService } from '../subscriptions/entitlement.service';
 import { Public, Roles } from './roles.decorator';
 import { CurrentUser } from './current-user.decorator';
 import { authConfig } from './auth.config';
@@ -11,7 +12,7 @@ import { extractToken } from './auth.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService, private googleAuth: GoogleOAuthService) {}
+  constructor(private auth: AuthService, private googleAuth: GoogleOAuthService, private ent: EntitlementService) {}
 
   private setSession(res: Response, token: string) {
     res.cookie(authConfig.cookieName, token, cookieOptions(authConfig.sessionTtlDays * 86_400_000));
@@ -36,7 +37,7 @@ export class AuthController {
   @Roles('admin', 'manager', 'user')
   @Get('me')
   async me(@CurrentUser() u: any) {
-    return { user: await this.auth.me(u.id) };
+    return { user: await this.auth.me(u.id), entitlements: await this.ent.summary(u.id, u.role) };
   }
 
   @Roles('admin', 'manager', 'user')
