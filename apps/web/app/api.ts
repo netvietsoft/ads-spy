@@ -690,3 +690,39 @@ export async function adminUserAction(id: number, action: 'ban' | 'disable' | 'a
   if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi thao tác');
   return r.json();
 }
+
+// ---- Admin catalog (Gói) + grant ----
+async function jok(r: Response, msg: string) {
+  if (!r.ok) throw new Error((await r.json().catch(() => ({} as any)))?.message || msg);
+  return r.json();
+}
+export async function adminModules() {
+  return jok(await fetch('/api/admin/modules'), 'Không tải được modules');
+}
+export async function adminSaveModule(body: any, key?: string) {
+  return jok(await fetch(`/api/admin/modules${key ? '/' + encodeURIComponent(key) : ''}`, { method: key ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), 'Lỗi lưu module');
+}
+export async function adminDeleteModule(key: string) {
+  return jok(await fetch(`/api/admin/modules/${encodeURIComponent(key)}`, { method: 'DELETE' }), 'Lỗi xóa module');
+}
+export async function adminPlans(moduleKey?: string) {
+  return jok(await fetch(`/api/admin/plans${moduleKey ? '?module=' + encodeURIComponent(moduleKey) : ''}`), 'Không tải được plans');
+}
+export async function adminCreatePlan(body: any) {
+  return jok(await fetch('/api/admin/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), 'Lỗi tạo plan');
+}
+export async function adminUpdatePlan(id: number, body: any) {
+  return jok(await fetch(`/api/admin/plans/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), 'Lỗi sửa plan');
+}
+export async function adminDeletePlan(id: number) {
+  return jok(await fetch(`/api/admin/plans/${id}`, { method: 'DELETE' }), 'Lỗi xóa plan');
+}
+export async function adminGrantPlan(body: any) {
+  return jok(await fetch('/api/admin/subscriptions/grant-plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), 'Lỗi cấp gói');
+}
+export async function adminUserSubs(userId: number) {
+  return jok(await fetch(`/api/admin/subscriptions/user/${userId}`), 'Không tải được gói của user');
+}
+export async function adminRevokeSub(id: number) {
+  return jok(await fetch(`/api/admin/subscriptions/${id}/revoke`, { method: 'POST' }), 'Lỗi thu hồi');
+}
