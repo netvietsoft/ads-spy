@@ -37,7 +37,7 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   affiliate: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 2, activeStart: 8, activeEnd: 23 },
   importenrich: { batch: 100, daily: 10000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
   refresh: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, staleDays: 7, activeStart: 8, activeEnd: 23 },
-  affdiscover: { batch: 1, paceMs: 8000, daily: 200, activeStart: 0, activeEnd: 24 },
+  affdiscover: { paceMs: 8000, daily: 200, activeStart: 0, activeEnd: 24 },
   afffetch: { batch: 30, paceMs: 10000, daily: 3000, concurrency: 3, activeStart: 0, activeEnd: 24 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).

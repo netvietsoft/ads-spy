@@ -48,6 +48,9 @@ describe('2 job affnet', () => {
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, aff as any);
     const r = await (svc as any).step('afffetch', true);
     expect(r.pace).toBe(120000);   // IDLE_MS
+    // Ghim thứ tự gán: stats phải được set TRƯỚC nhánh return idle — đừng xoá 2 dòng dưới vì tưởng trùng với test "stats có số LÀN" (test đó dùng lượt CÓ việc, không phải idle).
+    expect((svc as any).mem.afffetch.stats.lan).toBe(1);
+    expect((svc as any).mem.afffetch.stats.quet).toBe(0);
   });
 
   it('afffetch: stats có số LÀN proxy đang dùng (user cần thấy proxy có tác dụng)', async () => {

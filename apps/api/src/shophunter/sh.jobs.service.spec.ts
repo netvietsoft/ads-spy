@@ -1,4 +1,4 @@
-import { ShJobsService } from './sh.jobs.service';
+import { ShJobsService, JOB_NAMES } from './sh.jobs.service';
 import { shopifyHttp } from './shopify.client';
 
 function make() {
@@ -46,7 +46,8 @@ describe('ShJobsService toggle/getJobs', () => {
     expect(h.enabled).toBe(false);            // cờ null + env unset
     expect(h.stats.used).toBe(3);
     expect(h.stats.cap).toBe(500);
-    expect(jobs.map((j) => j.name).sort()).toEqual(['catalog', 'enrich', 'harvest']);
+    // Lấy danh sách kỳ vọng từ JOB_NAMES (nguồn chân lý) thay vì viết cứng, để thêm job mới không làm test lạc hậu.
+    expect(jobs.map((j) => j.name).sort()).toEqual([...JOB_NAMES].sort());
   });
 });
 
