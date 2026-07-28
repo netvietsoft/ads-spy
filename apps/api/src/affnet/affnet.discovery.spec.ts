@@ -1,7 +1,7 @@
 // affnet.discovery.spec.ts — phần GỘP của discovery là hàm thuần nên test offline.
 // Bối cảnh đã ĐO THẬT: api.subdomain.center trả ~500 mẫu NGẪU NHIÊN mỗi call (overlap 4 call chỉ 122-140),
 // nên discovery là "poll lặp + tích luỹ", không phải "gọi 1 lần là đủ".
-import { isInfraHost, hostsToSlugs, mergeHosts } from './affnet.discovery';
+import { isInfraHost, hostsToSlugs, mergeHosts, discoverNet } from './affnet.discovery';
 
 describe('isInfraHost — loại host hạ tầng, giữ host campaign', () => {
   it.each(['www', 'api', 'app', 'cdn', 'mail', 'ns1', 'dns1i', 'consul', 'docs', 'help', 'status', 'staging'])(
@@ -56,5 +56,32 @@ describe('mergeHosts — gộp nhiều nguồn, ghi nhận nguồn nào thấy',
     ], 'getrewardful.com');
     expect(out.map((h) => h.slug)).toEqual(['editgpt']);
     expect(out[0].sources).toEqual(['urlscan']);
+  });
+});
+
+// FIX 4: discoverNet phải trả THÊM danh sách nguồn lỗi (failed) — trước đây nuốt luôn lỗi, khiến discoverStep
+// không phân biệt được "quét ra ít host vì hồ đã cạn" với "quét ra ít host vì nguồn CHÍNH bị 429".
+describe('discoverNet — trả về cả hosts lẫn danh sách NGUỒN LỖI', () => {
+  const realFetch = global.fetch;
+  afterEach(() => { global.fetch = realFetch; });
+
+  it('1 nguồn lỗi (subdomain.center 429), 3 nguồn còn lại OK → failed chỉ chứa đúng nguồn lỗi, hosts vẫn gộp được từ nguồn OK', async () => {
+    global.fetch = jest.fn(async (url: any) => {
+      const u = String(url);
+      if (u.includes('subdomain.center')) return { ok: false, status: 429, text: async () => 'rate limited' } as any;
+      if (u.includes('urlscan')) return { ok: true, text: async () => JSON.stringify({ results: [] }) } as any;
+      if (u.includes('rapiddns')) return { ok: true, text: async () => '' } as any;
+      if (u.includes('hackertarget')) return { ok: true, text: async () => 'editgpt.getrewardful.com' } as any;
+      return { ok: true, text: async () => '' } as any;
+    }) as any;
+    const r = await discoverNet('getrewardful.com', 0);
+    expect(r.failed).toEqual(['subdomain.center']);
+    expect(r.hosts.map((h) => h.slug)).toContain('editgpt');
+  });
+
+  it('mọi nguồn OK → failed rỗng', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, text: async () => '[]' }) as any) as any;
+    const r = await discoverNet('getrewardful.com', 0);
+    expect(r.failed).toEqual([]);
   });
 });

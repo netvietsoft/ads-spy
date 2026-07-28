@@ -97,8 +97,11 @@ export const DISCOVERY_SOURCES: { key: string; fetch: (net: string) => Promise<s
 ];
 
 // Gọi lần lượt mọi nguồn, giãn paceMs giữa các call (subdomain.center 429 nếu dồn). Nguồn lỗi → bỏ qua, ghi log.
-export async function discoverNet(net: string, paceMs: number, onLog?: (m: string) => void): Promise<DiscoveredHost[]> {
+// FIX 4: trả THÊM danh sách nguồn lỗi (failed) — trước đây nuốt luôn, khiến 1 lượt nguồn CHÍNH bị 429 (chỉ
+// còn 3 nguồn phụ, vốn cho ra ít host hơn hẳn) bị hiểu lầm thành "hồ đã cạn" (xem discoverStep/markPolled).
+export async function discoverNet(net: string, paceMs: number, onLog?: (m: string) => void): Promise<{ hosts: DiscoveredHost[]; failed: string[] }> {
   const batches: { key: string; hosts: string[] }[] = [];
+  const failed: string[] = [];
   for (let i = 0; i < DISCOVERY_SOURCES.length; i++) {
     const s = DISCOVERY_SOURCES[i];
     try {
@@ -106,9 +109,10 @@ export async function discoverNet(net: string, paceMs: number, onLog?: (m: strin
       batches.push({ key: s.key, hosts });
       onLog?.(`${s.key}: ${hosts.length} host`);
     } catch (e) {
+      failed.push(s.key);
       onLog?.(`${s.key}: lỗi (bỏ qua) — ${(e as Error).message}`);
     }
     if (i < DISCOVERY_SOURCES.length - 1 && paceMs > 0) await sleep(paceMs);
   }
-  return mergeHosts(batches, net);
+  return { hosts: mergeHosts(batches, net), failed };
 }
