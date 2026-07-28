@@ -4,6 +4,38 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-28 — Affiliate Nets: dò subdomain net affiliate → cào bảng dự án/%hoa hồng — [docs/12](docs/12-affiliate-nets.md)
+
+### Module mới `apps/api/src/affnet/` (tách riêng, dùng chung MySQL `shophunter` + job framework + pool proxy `sh_proxy`)
+- Import domain net (vd `getrewardful.com`) → dò **mọi subdomain campaign** qua **4 nguồn miễn phí** (`api.subdomain.center`,
+  `urlscan.io`, `rapiddns.io`, `api.hackertarget.com`) → cào từng trang bằng Playwright (chờ Cloudflare) → parse
+  %hoa hồng/web/điều khoản (Rewardful). 3 bảng MySQL `aff_net`/`aff_host`/`aff_program`, 2 job nền
+  `affdiscover`/`afffetch` (đăng ký vào `ShJobsService` sẵn có), REST `/api/aff/*`, tab web `/affnet`.
+- **CT logs vô dụng**: net phát cert wildcard `*.getrewardful.com` → 0/495 campaign lộ diện trong CT (8/8 net kiểm).
+  SERP miễn phí cũng chết (Bing captcha, DDG 202, Google JS-shell; Bing Search API đã ngừng 2025-08-11, Google CSE
+  đóng khách mới, tắt 2027-01-01) → phải tự dò qua 4 nguồn passive-DNS free.
+- **`subdomain.center` trả ~500 host NGẪU NHIÊN mỗi lần gọi** (overlap 4 lần chỉ 122-140 host) → phải **poll lặp +
+  tích luỹ**, không bao giờ dùng để tra "subdomain X có tồn tại". Chạy thật qua job, 5 lượt: 589 → 889 → 1092 →
+  1272 → **1401** host tích luỹ (số mới/lượt giảm dần 589→300→203→180→129, ước pool thật ~1.850).
+- **Oracle phân loại qua URL sau redirect**: mở trang GỐC (không mở thẳng `/signup`) — redirect `/signup` = sống,
+  `/inactive` = chết, HTTP 404 = không tồn tại (đo 3/3 đúng). Thứ tự kiểm bắt buộc: bot-block trước tiên (không
+  bao giờ ghi verdict) → URL path → 404 → fingerprint trang giả (bắt buộc cho net catch-all kiểu tapfiliate/
+  partnerstack trả 200 cho mọi host) → chữ trên trang (fallback).
+- **Cloudflare chặn theo nhịp burst, không theo identity**: không giãn → 9/9 bị chặn; giãn 10s → 0/8 bị chặn →
+  pace mặc định **10s/trang**. Chạy thật 30 trang, 1 làn trực tiếp không proxy → **0 bị chặn**. Proxy xoay theo
+  **làn** (1 context/proxy, `newContext({proxy})`, KHÔNG launch kèm proxy) dùng chung pool `sh_proxy` (Cài đặt →
+  Proxy) — bẫy đã gặp: `enabled=1` không có nghĩa còn sống, đo được **10/10 proxy đang `enabled=1` nhưng
+  `status='die'`**, phải lọc theo `status`.
+- **Yield thật cần nhớ khi báo cho user**: chỉ **~23% subdomain phát hiện được là dự án còn sống** (đo 30 host:
+  7 sống/19 chết/3 không tồn tại/1 lỗi) → ~1.400 host phát hiện ≈ **~320 dự án sống**, đừng hứa theo số host.
+- `commission_pct/commission_flat/payout_threshold` dùng **`DOUBLE`** (không `DECIMAL`) vì driver `mysql2` trả
+  `DECIMAL` thành string, phá hợp đồng kiểu dữ liệu của web.
+- Test: 7 spec (`affnet.discovery/classify/parser/mysql/fetch/service` + `sh.jobs.affnet`) — **115 test xanh**.
+  Chỉ có adapter Rewardful v1; thứ tự mở rộng đã có bằng chứng: PartnerStack (1 request ra ~420 công ty/4.643
+  offer có cấu trúc) → FirstPromoter (JSON công khai, 429 sau ~34 call) → Everflow/Tune → Tapfiliate/PromoteKit.
+
+---
+
 ## 2026-07-23 — Đồng bộ giá + doanh thu từ STOREFRONT (tiền tệ thật), DT = giá(USD)×số đơn, Δ từ DB
 
 - **Phát hiện gốc:** ShopHunter gắn SAI tiền tệ 1 số shop (vd `suta.in` là **INR** nhưng ShopHunter ghi `currency=USD/country=US`; storefront meta.json xác nhận INR, giá ₹1.680). Không field nào (currency/country/locale) lộ tiền tệ thật → **nguồn tin cậy duy nhất là storefront**.

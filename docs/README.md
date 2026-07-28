@@ -26,6 +26,8 @@
 | [08-facebook.md](08-facebook.md) | **Nguồn Facebook Ad Library**: vì sao dùng Playwright (FB 403 request thuần), luồng scrape headless, parser đệ quy, endpoint `/api/fb/search`, UI thẻ ad, giới hạn. |
 | [09-tiktok.md](09-tiktok.md) | **Nguồn TikTok Creative Center Top Ads**: Playwright chặn bắt `top_ads/v2/list`, "View More" + gộp 21 ngành để lấy tới 1000, endpoint `/api/tiktok/topads(+start/job)`, giới hạn. |
 | [10-shophunter.md](10-shophunter.md) | **Nguồn ShopHunter (shop/sản phẩm Shopify)**: 4 instance harvest/import/revsync, bảng MySQL, import xlsx/csv/txt + danh mục, enrich chống poison-pill, **kho doanh thu ngày dài hạn** (`sh_shop_revenue_daily`), ghi chú hiệu năng bảng 130MB. |
+| [11-restart-stack.md](11-restart-stack.md) | Log dựng lại stack sau reboot + deploy VPS dpboss.pet (PM2), bẫy `.next`/Cloudflare, vận hành job từ `/settings`. |
+| [12-affiliate-nets.md](12-affiliate-nets.md) | **Nguồn Affiliate Nets**: import domain net → phát hiện dự án theo subdomain (4 nguồn passive-DNS free, poll tích luỹ) → cào %hoa hồng/web/điều khoản bằng Playwright (pace 10s vì Cloudflare), 3 bảng `aff_*`, 2 job nền, tab `/affnet`. |
 | [../CHANGELOG.md](../CHANGELOG.md) | Nhật ký thay đổi (theo ngày). |
 | [../README.md](../README.md) | Hướng dẫn cài đặt & chạy nhanh. |
 | [superpowers/specs/2026-07-02-google-ads-spy-design.md](superpowers/specs/2026-07-02-google-ads-spy-design.md) | Spec thiết kế gốc (brainstorming). |
