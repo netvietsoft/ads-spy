@@ -75,7 +75,7 @@ export const DISCOVERY_SOURCES: { key: string; fetch: (net: string) => Promise<s
         const m = String(r?.task?.url || '').match(/^https?:\/\/([^/:]+)/i);
         if (m) out.push(m[1]);
       }
-      return out;
+      return [...new Set(out)]; // page.domain và host từ task.url thường trùng nhau → dedupe
     },
   },
   {
@@ -83,7 +83,7 @@ export const DISCOVERY_SOURCES: { key: string; fetch: (net: string) => Promise<s
     fetch: async (net) => {
       const html = await getText(`https://rapiddns.io/subdomain/${encodeURIComponent(net)}?full=1`);
       const re = new RegExp(`[a-z0-9_-]+\\.${net.replace(/\./g, '\\.')}`, 'gi');
-      return html.match(re) || [];
+      return [...new Set(html.match(re) || [])]; // mỗi dòng render subdomain 2 lần (text + href) → dedupe
     },
   },
   {

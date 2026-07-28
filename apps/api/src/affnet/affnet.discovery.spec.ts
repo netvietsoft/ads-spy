@@ -49,4 +49,12 @@ describe('mergeHosts — gộp nhiều nguồn, ghi nhận nguồn nào thấy',
     ], 'getrewardful.com');
     expect(out.map((h) => h.slug)).toEqual(['editgpt']);
   });
+
+  it('1 nguồn tự trả trùng lặp (bug fetcher kiểu urlscan/rapiddns) vẫn chỉ ra 1 slug với 1 source', () => {
+    const out = mergeHosts([
+      { key: 'urlscan', hosts: ['editgpt.getrewardful.com', 'editgpt.getrewardful.com', 'editgpt.getrewardful.com'] },
+    ], 'getrewardful.com');
+    expect(out.map((h) => h.slug)).toEqual(['editgpt']);
+    expect(out[0].sources).toEqual(['urlscan']);
+  });
 });
