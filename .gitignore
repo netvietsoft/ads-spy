@@ -13,3 +13,6 @@ Screen shoot/
 # proxy credentials — KHONG commit
 scripts/proxies.txt
 logs/
+
+# Dump DB tải về (884MB+) — repo PUBLIC, tuyệt đối không commit. Xem docs/11-restart-stack.md.
+downloads/
