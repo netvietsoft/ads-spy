@@ -77,13 +77,55 @@ describe('parseRewardful — dạng $ CỐ ĐỊNH (bug dễ mắc nhất)', () 
   });
 });
 
-describe('isInactiveText — nhận ĐỦ HAI wording dự án chết', () => {
-  it('wording 1: "no longer active"', () => {
+describe('parseRewardful — \\b quanh VERB (chống bắt nhầm chuỗi con)', () => {
+  it('"Learn more" gần "commission" KHÔNG bị hiểu nhầm thành "earn" (thiếu \\b sẽ khớp)', () => {
+    const r = parseRewardful('X\nLearn more about how our commission works.');
+    expect(r.commissionPct).toBeNull();
+    expect(r.commissionFlat).toBeNull();
+    // Đây mới là chỗ \b thực sự phát huy tác dụng: thiếu \b, sentM từng bắt nhầm
+    // thành "earn more about how our commission works" (khớp chuỗi con trong "Learn").
+    expect(r.commissionRaw).toBeNull();
+  });
+
+  it('"budget" chứa chuỗi con "get" nhưng KHÔNG được coi là động từ (thiếu \\b sẽ khớp)', () => {
+    const r = parseRewardful('X\nSet your budget and commission targets here.');
+    expect(r.commissionFlat).toBeNull();
+    expect(r.commissionPct).toBeNull();
+    // Thiếu \b, sentM từng bắt nhầm thành "get and commission targets here"
+    // (khớp chuỗi con "get" trong "budget").
+    expect(r.commissionRaw).toBeNull();
+  });
+
+  it('chống hồi quy: "earn 50% commission" (fixture thật sammywrites) vẫn đúng sau khi thêm \\b', () => {
+    const r = parseRewardful(fx('getrewardful_com__sammywrites.txt'));
+    expect(r.commissionPct).toBe(50);
+    expect(r.commissionRaw).toContain('50% commission');
+  });
+});
+
+describe('isInactiveText — nhận wording dự án chết', () => {
+  it('wording "no longer active" (fixture thật privacy-toll-free-llc)', () => {
     expect(isInactiveText(fx('getrewardful_com__privacy-toll-free-llc.txt'))).toBe(true);
   });
-  it('wording 2: "Affiliate Program Inactive"', () => {
+
+  // CHÚ Ý: body innerText của hostgpo TRÙNG TỪNG BYTE với privacy-toll-free-llc — cả hai đều là
+  // "Sorry, this affiliate program is no longer active.". Đã verify thật bằng cách chụp cả trang
+  // gốc hostgpo.getrewardful.com (không phải /signup) và để nó tự redirect sang /inactive: title
+  // HTML đúng là "Affiliate Program Inactive", nhưng NỘI DUNG BODY (innerText) thì giống hệt —
+  // cụm "Affiliate Program Inactive" chỉ nằm ở thẻ <title>, không có trong innerText. Vì parser
+  // CHỈ nhận innerText (đúng ràng buộc "hàm thuần"), không có fixture thật nào minh hoạ được
+  // wording này qua innerText — test dưới đây đổi tên cho đúng sự thật, không gộp chung với
+  // "wording 2" nữa.
+  it('wording "no longer active" (fixture thật hostgpo — trùng nội dung với privacy-toll-free-llc)', () => {
     expect(isInactiveText(fx('getrewardful_com__hostgpo.txt'))).toBe(true);
   });
+
+  // Chuỗi viết tay vì KHÔNG có fixture thật nào chứa đúng cụm "Affiliate Program Inactive" trong
+  // innerText (xem comment ở trên) — nhánh regex `program inactive` vẫn cần 1 test thật kiểm nó.
+  it('wording "Affiliate Program Inactive" (chuỗi viết tay — xem comment trên vì sao không có fixture thật)', () => {
+    expect(isInactiveText('Affiliate Program Inactive')).toBe(true);
+  });
+
   it('trang active KHÔNG bị coi là chết', () => {
     expect(isInactiveText(fx('getrewardful_com__editgpt.txt'))).toBe(false);
   });

@@ -27,6 +27,8 @@ const num = (s: string): number | null => {
 // Động từ câu hoa hồng KHÔNG cố định là "receive" — trang thật sammywrites dùng "earn"
 // ("... and earn 50% commission ..."), có thể còn gặp "get" ở trang khác. Gộp 1 chỗ dùng
 // chung cho cả 3 regex bên dưới (câu gốc/$ cố định/%) để không phải sửa 3 nơi mỗi lần thêm động từ mới.
+// PHẢI neo \b hai đầu — thiếu \b thì "get"/"earn" khớp cả chuỗi con trong "budget"/"target"/"forget"/
+// "learn more" (cụm cực phổ biến trong copy marketing), gây bắt nhầm trên các trang không phải campaign thật.
 const VERB = 'receive|earn|get';
 
 export function isInactiveText(text: string): boolean {
@@ -47,11 +49,11 @@ export function parseRewardful(text: string): ParsedProgram {
   out.programName = nameM ? nameM[1].trim() : lines[1] || null;
 
   // Câu hoa hồng. % và $ là HAI dạng khác nhau — thử $ TRƯỚC để "$25" không bị regex số đọc thành 25%.
-  const sentM = flat.match(new RegExp(`(?:${VERB})\\s+(?:a\\s+)?[^.!]{0,200}?commission[^.!]{0,200}`, 'i'));
+  const sentM = flat.match(new RegExp(`\\b(?:${VERB})\\b\\s+(?:a\\s+)?[^.!]{0,200}?commission[^.!]{0,200}`, 'i'));
   if (sentM) out.commissionRaw = sentM[0].slice(0, 500);
 
-  const flatM = flat.match(new RegExp(`(?:${VERB})\\s+(?:a\\s+)?\\$\\s?([\\d,.]+)\\s*commission`, 'i'));
-  const pctM = flat.match(new RegExp(`(?:${VERB})\\s+(?:a\\s+)?([\\d.]+)\\s*%\\s*commission`, 'i'));
+  const flatM = flat.match(new RegExp(`\\b(?:${VERB})\\b\\s+(?:a\\s+)?\\$\\s?([\\d,.]+)\\s*commission`, 'i'));
+  const pctM = flat.match(new RegExp(`\\b(?:${VERB})\\b\\s+(?:a\\s+)?([\\d.]+)\\s*%\\s*commission`, 'i'));
   if (flatM) {
     out.commissionFlat = num(flatM[1]);
     out.commissionCurrency = 'USD';
