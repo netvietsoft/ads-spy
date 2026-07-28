@@ -670,3 +670,23 @@ export async function adminRevenue(from?: string, to?: string) {
   if (!r.ok) throw new Error('Không tải được doanh thu');
   return r.json();
 }
+
+export async function adminUsers(params: { search?: string; status?: string; page?: number } = {}) {
+  const p = new URLSearchParams();
+  if (params.search) p.set('search', params.search);
+  if (params.status) p.set('status', params.status);
+  if (params.page) p.set('page', String(params.page));
+  const r = await fetch(`/api/admin/users?${p.toString()}`);
+  if (!r.ok) throw new Error('Không tải được danh sách user');
+  return r.json();
+}
+export async function adminUpdateUser(id: number, body: any) {
+  const r = await fetch(`/api/admin/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi cập nhật');
+  return r.json();
+}
+export async function adminUserAction(id: number, action: 'ban' | 'disable' | 'activate') {
+  const r = await fetch(`/api/admin/users/${id}/${action}`, { method: 'POST' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi thao tác');
+  return r.json();
+}

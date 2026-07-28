@@ -27,6 +27,7 @@ import { ImportPanel } from './components/ImportPanel';
 import { ReportPanel } from './components/ReportPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { DashboardPanel } from './components/DashboardPanel';
+import { UsersAdminPanel } from './components/UsersAdminPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
 import { LazyGrid } from './components/LazyGrid';
@@ -46,12 +47,12 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
-type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'settings' | 'dashboard';
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'settings' | 'dashboard' | 'users';
 // Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
 const SOURCE_TO_PATH: Record<Source, string> = {
   google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
   localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', settings: '/settings',
-  dashboard: '/admin/dashboard',
+  dashboard: '/admin/dashboard', users: '/admin/users',
 };
 function pathToSource(p: string): Source {
   if (p.startsWith('/facebookads')) return 'facebook';
@@ -62,6 +63,7 @@ function pathToSource(p: string): Source {
   if (p.startsWith('/reportlocaldb')) return 'report';
   if (p.startsWith('/import')) return 'import';
   if (p.startsWith('/settings')) return 'settings';
+  if (p.startsWith('/admin/users')) return 'users';
   if (p.startsWith('/admin/dashboard')) return 'dashboard';
   return 'google'; // '/', '/googleads', và fallback
 }
@@ -259,6 +261,7 @@ export default function Home() {
       {source === 'report' && <ReportPanel />}
       {source === 'settings' && <SettingsPanel />}
       {source === 'dashboard' && <DashboardPanel />}
+      {source === 'users' && <UsersAdminPanel />}
 
       {source === 'google' && (
       <>

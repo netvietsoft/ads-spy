@@ -7,7 +7,7 @@ const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
   ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/settings', 'Cài đặt'],
-  ['/admin/dashboard', 'Doanh thu'],
+  ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'],
 ];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
@@ -20,6 +20,7 @@ function activeHref(p: string): string {
   if (p.startsWith('/reportlocaldb')) return '/reportlocaldb';
   if (p.startsWith('/import')) return '/import';
   if (p.startsWith('/settings')) return '/settings';
+  if (p.startsWith('/admin/users')) return '/admin/users';
   if (p.startsWith('/admin/dashboard')) return '/admin/dashboard';
   return '/googleads'; // '/' và '/googleads'
 }
