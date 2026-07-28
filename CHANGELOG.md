@@ -4,6 +4,19 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-28 — SaaS refactor P0→P4 (nhánh `saas`, BE-only trừ FE admin) — chưa deploy
+
+> Toàn bộ trên nhánh dev **`saas`** (worktree `google-ads-spy-saas`); **`main`/prod KHÔNG đổi**. Làm theo brainstorm→spec→plan→subagent-driven; docs ở `docs/superpowers/{specs,plans}/`. Test BE xanh; chỉ `shophunter/*` spec đỏ có sẵn (cần MySQL, ngoài phạm vi).
+
+- **P0 — Chuẩn hóa repo & docs:** bộ `docs/` tiếng Việt (kien-truc, backend-modules, frontend, database, integrations-webhooks, deployment, changelog, roadmap, i18n, api-reference), README theo khu, per-module README, cập nhật CLAUDE.md; docs cũ 01-11 → `docs/archive/`.
+- **P1 — User & Auth:** Prisma `User/Session/PasswordResetToken`; module `auth` (đăng ký/đăng nhập/quên-reset/Google OAuth/me/refresh/logout), token phiên opaque (hash trong DB, cookie httpOnly + bearer), guard toàn cục `AuthGuard→RolesGuard` (bảo vệ mọi `/api` trừ `/api/auth/*`+`/api/health`), role admin/manager/user. Admin FE đổi sang đăng nhập tài khoản thật + seed admin (`npm run seed:admin`). `bcryptjs`.
+- **P2 — Subscription & gating:** Prisma `Module/Plan/Subscription/Usage/GrantLog`; EntitlementService (access staff/free/tier/free-limited/none), MeteringService (quota/tháng), CatalogService (CRUD), SubscriptionsService (grantPlan/grantModule/extend/revoke + audit + trial); guard `@RequiresModule/@RequiresFeature` (áp theo route, staff bypass); admin `/api/admin/plans|modules|subscriptions`; `/me` trả entitlements. Seed danh mục ShopHunter (Basic $19/$199, Pro $29/$299, Premium $39/$399; free view 5 record; module ads free) — `npm run seed:catalog`.
+- **P3 — Payment:** Prisma `Payment/ProcessedEvent` (+Plan.stripePrice*, Subscription.stripeSubscriptionId); **Stripe** (subscription tự động gia hạn: checkout + webhook `invoice.paid`→grantPlan, verify chữ ký + idempotent) + **QR VietQR** (một lần/kỳ, admin xác nhận → grantPlan; VND = USD×tỷ giá cấu hình). Endpoints `/api/checkout/stripe|qr`, `/api/webhooks/stripe` (raw body), admin payments list/confirm-qr/cancel-stripe. `stripe` SDK. Secrets chỉ ENV.
+- **P4 — Admin Dashboard:** `RevenueService` (doanh thu quy USD, breakdown provider/module, series theo ngày, mặc định tháng này), `UsersAdminService` (list phân trang/tìm + gói/giá/hết hạn; ban/xóa-mềm/kích hoạt/sửa — chặn tự-khóa, revoke session); 2 panel FE admin (Doanh thu + Người dùng); thêm `User.phone`. Tất cả admin-only.
+- **Còn lại:** P5 (API mobile versioned `/api/v1` + token) · P6 (FE khách re-skin + i18n). **Go-live cần:** đặt ENV (Stripe/Google/SMTP/QR bank/tỷ giá — xem `.env.example`), tạo Stripe Price cho từng plan×kỳ rồi dán ID, chạy migrate + `seed:admin` + `seed:catalog`. Chi tiết task/hardening: `docs/saas-tasks.md`.
+
+---
+
 ## 2026-07-23 — Đồng bộ giá + doanh thu từ STOREFRONT (tiền tệ thật), DT = giá(USD)×số đơn, Δ từ DB
 
 - **Phát hiện gốc:** ShopHunter gắn SAI tiền tệ 1 số shop (vd `suta.in` là **INR** nhưng ShopHunter ghi `currency=USD/country=US`; storefront meta.json xác nhận INR, giá ₹1.680). Không field nào (currency/country/locale) lộ tiền tệ thật → **nguồn tin cậy duy nhất là storefront**.
