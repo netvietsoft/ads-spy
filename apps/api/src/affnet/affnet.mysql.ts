@@ -19,6 +19,15 @@ export const DRY_ROUNDS_TO_SATURATE = 3;
 // Net đã bão hoà → giãn poll xuống ~1 lần/ngày (thay vì mỗi vài giây) để đỡ đốt quota + tránh 429 subdomain.center.
 export const SATURATED_COOLDOWN_MS = 24 * 3600 * 1000;
 
+// Điều kiện net ĐỦ ĐIỀU KIỆN được poll — MỘT NGUỒN CHÂN LÝ DUY NHẤT, dùng ở CẢ pickNetToPoll() lẫn
+// affnet.mysql.spec.ts (test đọc trực tiếp hằng số này, không copy tay). Tham số bind theo đúng thứ tự
+// xuất hiện: [DRY_ROUNDS_TO_SATURATE, cutoff]. Là hằng số CODE (không phải input người dùng) nên nội suy
+// thẳng vào chuỗi SQL là an toàn — 2 tham số `?` vẫn bind bình thường.
+// ⚠️ Tách thành 2 bản sao (1 trong pickNetToPoll, 1 viết tay trong test) từng là lỗi thật: đảo logic ở
+// đây thì bản sao trong test không hay biết → test vẫn xanh dù cơ chế giãn poll đã hỏng (xem Task 11
+// report, Vòng sửa 2). Sửa/đảo logic ở ĐÚNG 1 chỗ này thì cả code lẫn test đổi theo, test sẽ đỏ.
+export const NET_ELIGIBLE_SQL = '(discover_polled_at IS NULL OR dry_rounds < ? OR discover_polled_at <= ?)';
+
 function rowToAffNet(r: any): AffNet {
   return {
     net: r.net,
@@ -182,7 +191,7 @@ export class AffnetMysql {
       `SELECT net, platform, enabled, note, discover_polled_at, discover_polls, discover_last_new,
               fake_len, fake_hash, fake_checked_at
        FROM aff_net WHERE enabled = 1
-         AND (discover_polled_at IS NULL OR dry_rounds < ? OR discover_polled_at <= ?)
+         AND ${NET_ELIGIBLE_SQL}
        ORDER BY discover_polled_at IS NOT NULL, discover_polled_at LIMIT 1`,
       [DRY_ROUNDS_TO_SATURATE, cutoff],
     );

@@ -1,7 +1,7 @@
 // affnet.mysql.spec.ts — 3 bảng aff_* trên MySQL local. Chạy: npx jest src/affnet/affnet.mysql --runInBand --forceExit
 import { ShMysql } from '../shophunter/sh.mysql';
 import { PrismaService } from '../prisma.service';
-import { AffnetMysql, DRY_THRESHOLD, DRY_ROUNDS_TO_SATURATE, SATURATED_COOLDOWN_MS } from './affnet.mysql';
+import { AffnetMysql, DRY_THRESHOLD, DRY_ROUNDS_TO_SATURATE, SATURATED_COOLDOWN_MS, NET_ELIGIBLE_SQL } from './affnet.mysql';
 
 const NET = 'zz-test-net.example';   // net giả, dọn sạch sau mỗi lần chạy
 let sh: ShMysql;
@@ -91,19 +91,19 @@ describe('AffnetMysql', () => {
     expect((rows as any[])[0].dry_rounds).toBe(0);
   });
 
-  it('predicate loại net bão hoà + vừa poll (đọc trực tiếp trên dòng NET, không phụ thuộc net khác)', async () => {
-    // KHÔNG dùng pickNetToPoll() ở đây: bảng CHUNG với net thật getrewardful.com (discover_polled_at CŨ
+  it('predicate loại net bão hoà + vừa poll (dùng CHUNG NET_ELIGIBLE_SQL với pickNetToPoll, đọc trực tiếp trên dòng NET)', async () => {
+    // KHÔNG gọi pickNetToPoll() ở đây: bảng CHUNG với net thật getrewardful.com (discover_polled_at CŨ
     // hơn, dry_rounds=0 → luôn eligible) nên pickNetToPoll() sẽ LUÔN trả getrewardful.com (ORDER BY
     // discover_polled_at ASC) bất kể predicate loại trừ của NET đúng hay sai — assert theo kiểu
-    // "không trả về NET" từng bị reviewer chỉ ra là PASS một cách vô nghĩa (không bắt được bug gì).
-    // Ở đây đánh giá TRỰC TIẾP đúng biểu thức eligibility (copy nguyên từ pickNetToPoll) scoped WHERE net
-    // = NET — không đọc/ghi dòng nào khác, và ĐỎ ngay nếu ai xoá/đảo điều kiện loại trừ (xem report Vòng sửa 2).
+    // "không trả về NET" từng PASS một cách vô nghĩa, đã bỏ (xem report Vòng sửa 2).
+    // Dùng ĐÚNG hằng số NET_ELIGIBLE_SQL mà pickNetToPoll() dùng (1 nguồn chân lý, không copy tay) —
+    // đảo/xoá logic ở hằng số đó thì CẢ pickNetToPoll lẫn test này đổi theo, test sẽ ĐỎ (xem report Vòng sửa 3).
     for (let i = 0; i < DRY_ROUNDS_TO_SATURATE; i++) await db.markPolled(NET, DRY_THRESHOLD - 1);
     const pool = await sh.getPool();
     const cutoff = Date.now() - SATURATED_COOLDOWN_MS;
     const [rows] = await pool.query(
-      `SELECT (discover_polled_at IS NULL OR dry_rounds < ? OR discover_polled_at <= ?) AS eligible
-       FROM aff_net WHERE net = ?`, [DRY_ROUNDS_TO_SATURATE, cutoff, NET]);
+      `SELECT ${NET_ELIGIBLE_SQL} AS eligible FROM aff_net WHERE net = ?`,
+      [DRY_ROUNDS_TO_SATURATE, cutoff, NET]);
     expect(Number((rows as any[])[0].eligible)).toBe(0);
   });
 
