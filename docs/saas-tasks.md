@@ -11,8 +11,16 @@ Spec/plan chi tiết: `docs/superpowers/specs/` + `docs/superpowers/plans/`. Nh�
 - [x] **P4** Admin Dashboard (doanh thu USD + user mgmt admin-only + FE 2 panel).
 
 ## Còn lại
-- [ ] **P5 — API mobile:** đóng gói `/api/v1` versioned + auth token cho app; áp `@RequiresModule/@RequiresFeature` + recordCap/checkQuota lên endpoint tool thật (giới hạn 5 record cho free, đếm export/tháng).
-- [ ] **P6 — FE khách + i18n:** app Next mới tại `dpboss.pet` (re-skin), admin dời sang `admin.dpboss.pet`; i18n vi/en.
+
+### Customer access (P5+P6 tách nhỏ) — spec/plan: `2026-07-28-ca*`
+Khối "cho khách (role `user`) đăng nhập + dùng công cụ gated" chia 3 tiểu dự án (mỗi cái spec→plan→build):
+- [x] **CA-2 — App khách + auth + giá + i18n:** app Next mới `apps/customer` (dev :3102, proxy `/api`→BE), đăng nhập/đăng ký(self-signup, role user)/quên-reset, Home (entitlements của tôi từ `/me`), Bảng giá (`/api/plans`+`/api/modules`), i18n vi/en (`t()` + toggle). Middleware gate cookie (mọi role authed vào được). Build xanh; smoke test :3102 OK (register→me role user + ents free-limited/free; proxy plans/modules). **Không đụng** apps/web/apps/api.
+- [ ] **CA-1 — BE Customer API:** `/api/customer/*` tra cứu ShopHunter (gate `@RequiresModule('shophunter')` + cap 5 record free) + xem ads Google/FB/TikTok (module free) + `/api/customer/me`. Dùng lại ShService/SearchService; giữ nguyên endpoint staff.
+- [ ] **CA-3 — Trang tính năng khách:** trong `apps/customer` — ShopHunter (tra cứu gated + nút mua) + ads. Cần CA-1.
+
+### Gốc P5/P6 (bao trùm bởi CA-*)
+- [ ] **P5 — API mobile:** đóng gói `/api/v1` versioned + auth token cho app; áp `@RequiresModule/@RequiresFeature` + recordCap/checkQuota lên endpoint tool thật (giới hạn 5 record cho free, đếm export/tháng). (CA-1 là bước đầu.)
+- [ ] **P6 — FE khách + i18n:** app khách tại `dpboss.pet`, admin dời `admin.dpboss.pet`. (CA-2 đã dựng app khách + i18n; còn deploy/tách domain.)
 
 ## Hardening / nợ kỹ thuật (hoãn có chủ đích — ghi từ review các phase)
 **Chặn trước khi mở cho khách thật (P5/P6):**
