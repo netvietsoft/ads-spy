@@ -20,7 +20,7 @@ Thay thế việc user đang làm tay: search Google `site:*.getrewardful.com` r
 
 | Câu hỏi | Kết quả đo | Kết luận thiết kế |
 |---|---|---|
-| Certificate Transparency (crt.sh / certspotter) có liệt kê subdomain campaign? | Cert là **wildcard** `*.getrewardful.com` → 1 cert phủ mọi campaign → **0/495** campaign xuất hiện trong CT. Đúng với **8/8** net đã thử (getrewardful, tapfiliate, firstpromoter, refersion, affiliatly, postaffiliatepro, partnerstack, leaddyno) | **Bỏ hẳn CT.** Không phải lỗi tinh chỉnh — bản chất wildcard là vậy |
+| Certificate Transparency (crt.sh / certspotter) có liệt kê subdomain campaign? | Cert là **wildcard** `*.getrewardful.com` → 1 cert phủ mọi campaign → **0/495** campaign xuất hiện trong CT. Đúng với 8/8 net khi kiểm host campaign thật. **NGOẠI LỆ: FirstPromoter CT liệt kê được** ~48-50 tenant thật | **Bỏ CT cho Rewardful.** Giữ CT (qua **certspotter**, KHÔNG dùng crt.sh — 502 liên tục) cho adapter FirstPromoter sau này |
 | `api.subdomain.center` | Mỗi lần gọi trả **~500 host NGẪU NHIÊN KHÁC NHAU**. Overlap 4 lần gọi chỉ 122–140. Tích luỹ: 500 → 865 → 1.140 → **1.340** host. Lincoln-Petersen ước pool thật **≈1.850** | **Kênh chính.** Poll lặp + tích luỹ append-only, KHÔNG dùng để tra "campaign X có tồn tại không" |
 | `api.hackertarget.com/hostsearch` | HTTP 200 nhưng **cap đúng 50 dòng**, xếp theo alphabet (cắt ở `adspert`) | Nguồn phụ, gần như vô dụng cho net lớn |
 | `urlscan.io/api/v1/search` | 97 kết quả → **81 host** distinct, free không cần key | Nguồn phụ có giá trị (73/81 host là **duy nhất**, không nguồn khác có) |
@@ -35,6 +35,8 @@ Thay thế việc user đang làm tay: search Google `site:*.getrewardful.com` r
 | Proxy pool trong repo | **5/5 chết** (`scripts/proxies.txt` hết hạn) | Không thiết kế dựa vào proxy; proxy chỉ là tuỳ chọn tăng tốc |
 | Tỷ lệ dự án còn sống | Trên 16 host đã fetch: **~43% active**, ~50% inactive, ~7% khác | 1.850 host ≈ **700–800 dự án sống**. Phải nói rõ với user, đừng hứa 1.850 dự án |
 | Dữ liệu trên trang campaign | Server-rendered (Rails), **không có JSON endpoint công khai**. Template rất ổn định (§5) | Parse HTML/innerText |
+| **Oracle phân loại qua URL** (phát hiện muộn, tốt hơn cách so khớp chữ) | GET **trang gốc** `https://<slug>.getrewardful.com/` → redirect tới **`/signup`** = dự án SỐNG · **`/inactive`** = dự án CHẾT · **HTTP 404** = slug KHÔNG tồn tại. Đo 3/3 đúng (`editgpt`→/signup, `hostgpo`→/inactive, slug giả→404) | **Phân loại theo URL TRƯỚC**, text chỉ là fallback. Bền với mọi wording, khỏi cần fingerprint trang giả cho Rewardful |
+| Triage rẻ bằng HTTP thuần (không browser) | Research agent đo được **302/404 + 13,6 req/s, 120 request conc 20 không hề 429/403**. Nhưng từ IP máy này (đã gọi ~40 lần trong phiên) **curl trả 403 cho MỌI host** | Làm **fast-path TÙY CHỌN**: thử HTTP thuần trước, gặp 403 thì bỏ qua triage, đi Playwright. Không phụ thuộc vào nó |
 
 ### Mẫu câu thật đã thu được (làm fixtures cho parser)
 
@@ -232,7 +234,8 @@ Tên net | Đã phát hiện | Đã quét | Dự án sống | Còn chờ | Số 
 | DELETE | `/api/aff/nets/:net` | xoá net + host + program của nó |
 | GET | `/api/aff/programs` | query `net,minPct,maxPct,status,q,page,pageSize,sort` → bảng dự án (KHÔNG kèm `terms_text`) |
 | GET | `/api/aff/programs/:net/:slug` | 1 dự án + `terms_text` đầy đủ |
-| GET | `/api/aff/programs/export` | cùng filter → xlsx |
+
+**Xuất Excel làm ở CLIENT** (thư viện `xlsx` đã dùng trong `LocalDbPanel.tsx`) — gọi `/programs` với `pageSize` lớn rồi xuất, KHÔNG thêm endpoint export riêng ở backend (YAGNI, đỡ trùng logic filter ở 2 nơi).
 
 2 job mới đăng ký trong `ShJobsService.JOB_NAMES`: `affdiscover`, `afffetch` → dùng luôn `/api/sh/jobs`, `/toggle`, `/run-now`, `/cfg`.
 
@@ -297,7 +300,14 @@ Tiêu chí hoàn thành: `npm --workspace @gas/api test` xanh + chạy thật 1 
 - **Không** cào thêm web merchant để lấp `payout_threshold` (gấp đôi lượng cào, nhiều web chặn).
 - **Không** re-check định kỳ toàn bộ dự án — chỉ quét host chưa quét; muốn làm mới thì thêm sau khi thấy dữ liệu thật.
 - **Không** bảng tổng hợp/materialized view — vài nghìn dòng, tính lúc đọc là đủ.
-- **Không** adapter cho net thứ 2 trong v1 — chỉ để sẵn chỗ cắm. Ứng viên tốt nhất khi mở rộng: **FirstPromoter v2** (có JSON endpoint công khai), rồi Tapfiliate / PromoteKit / Tolt.
+- **Không** adapter cho net thứ 2 trong v1 — chỉ để sẵn chỗ cắm.
+
+### Thứ tự mở rộng đã có bằng chứng (làm sau v1, xếp theo giá trị/công sức)
+
+1. **PartnerStack — giá trị cao nhất, công sức thấp nhất.** Không cần subdomain: **1 request** tới `market.partnerstack.com` (UA browser, **bỏ giới hạn 10MB** vì body ~10,6MB) → blob `window.__INITIAL_STATE__` chứa **420 công ty + 4.643 offer** với `value` + `type_` (percent/flat) + `currency` + `cycle` **có cấu trúc 100%**. 17 trang category là **trùng byte** — chỉ cần 1 request. Đây là net duy nhất cho dữ liệu hoa hồng dạng số thật.
+2. **FirstPromoter — có API công khai.** `certspotter?domain=firstpromoter.com&include_subdomains=true` → ~48-50 tenant, rồi `GET https://api.fprom.io/api/affiliate/v1/configs/signup_page` với header `company_host: <slug>.firstpromoter.com` → JSON có `company.domain` (chính là cột "Web" mà Rewardful phải regex mới ra). ⚠️ **429 sau ~34 request tuần tự** → phải giãn + backoff. ⚠️ Root trả **200 cho cả host giả** (đã đo) → bắt buộc dùng fingerprint trang giả.
+3. Everflow (`<net>.everflowclient.io`, host giả → DNS fail) và Tune/HasOffers (`<id>.hasoffers.com/signup`, host giả → 404).
+4. Tapfiliate / PromoteKit / Tolt — đều catch-all 200, cần fingerprint trang giả.
 
 ## 12. Ghi chú pháp lý
 
