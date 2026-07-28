@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useI18n } from '../i18n/I18nProvider';
 import { plans, modules } from '../api';
 
-const dollars = (cents?: number) => (typeof cents === 'number' ? `$${(cents / 100).toFixed(0)}` : '');
+const dollars = (cents?: number) => (typeof cents === 'number' ? `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}` : '');
 function parseObj(s: any): Record<string, any> {
   if (!s) return {};
   if (typeof s === 'object') return s;
@@ -20,7 +20,7 @@ export default function PricingPage() {
   }, []);
   const byModule = mods.map((m: any) => ({ mod: m, plans: ps.filter((p: any) => p.moduleKey === m.key) }));
   const orphan = ps.filter((p: any) => !mods.some((m: any) => m.key === p.moduleKey));
-  if (orphan.length) byModule.push({ mod: { key: '_', name: 'Khác', isFree: false }, plans: orphan });
+  if (orphan.length) byModule.push({ mod: { key: '_', name: t('pricing.other'), isFree: false }, plans: orphan });
   return (
     <main className="wrap">
       <h1>{t('pricing.title')}</h1>
