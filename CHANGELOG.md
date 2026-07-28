@@ -4,6 +4,19 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-28 — CA-2: App khách (customer app) — scaffold + auth + giá + i18n (nhánh `saas`) — chưa deploy
+
+> Tiểu dự án đầu của khối "Customer access" (P5+P6 tách nhỏ thành **CA-1** BE gated API / **CA-2** app khách+auth / **CA-3** trang tính năng). Brainstorm→spec→plan→build; spec `docs/superpowers/specs/2026-07-28-ca2-customer-app-design.md`, plan `.../plans/2026-07-28-ca2-customer-app.md`. **`main`/prod + apps/web (admin) + apps/api (BE) KHÔNG đổi** — chỉ thêm app mới.
+
+- **App mới `apps/customer`** (`@gas/customer`, Next 15 App Router, dev :3102) — app RIÊNG cho khách (role `user`), tách khỏi admin FE (:3101). Proxy `/api/*`→BE (rewrite theo `API_ORIGIN`), fetch tương đối same-origin (cookie `gas_session` tự gửi).
+- **Auth (dùng lại BE `/api/auth/*`):** trang đăng nhập / **đăng ký tự phục vụ** (tạo role `user`, auto login) / quên MK / reset. `middleware.ts` gate theo cookie (public: `/login,/register,/forgot,/reset-password,/pricing`; `/api/*` không gate); **mọi role authed vào được** (không chặn `user` như admin FE).
+- **Home:** hiện *quyền hiện có của tôi* từ `/api/auth/me` (entitlements object theo module — khách mới: ads free + shophunter free-limited). **Bảng giá** `/pricing` từ `/api/plans`+`/api/modules` (công khai): giá USD (cents→$), features/quotas, module free = "Miễn phí".
+- **i18n vi/en:** `I18nProvider` (context `t()` + `setLang`, cookie/localStorage `lang`, fallback vi), 34 key trong cả `vi.json`+`en.json`, nút VI/EN ở header (kể cả thông báo lỗi theo ngôn ngữ).
+- **Kiểm:** `next build` xanh (9 route + middleware); smoke test :3102 xanh (`/login`,`/pricing` 200 · `/` chưa login→307 · register→201 role `user` · `/api/plans`+`/api/modules` xuyên proxy). Fresh-eyes review: **0 Critical**; sửa 1 Important (chuỗi lỗi fallback hardcode VN → qua `t()`) + 2 Minor (giá không cắt cents; nhãn 'Khác'→`pricing.other`); hoãn `<html lang>` tĩnh + `useT.ts` (ghi rõ lý do).
+- **Còn lại của khối:** CA-1 (BE `/api/customer/*` tra cứu ShopHunter gate + cap 5 record free) → CA-3 (trang tra cứu + nút mua trong app khách). Chi tiết: `docs/saas-tasks.md`.
+
+---
+
 ## 2026-07-28 — SaaS refactor P0→P4 (nhánh `saas`, BE-only trừ FE admin) — chưa deploy
 
 > Toàn bộ trên nhánh dev **`saas`** (worktree `google-ads-spy-saas`); **`main`/prod KHÔNG đổi**. Làm theo brainstorm→spec→plan→subagent-driven; docs ở `docs/superpowers/{specs,plans}/`. Test BE xanh; chỉ `shophunter/*` spec đỏ có sẵn (cần MySQL, ngoài phạm vi).
