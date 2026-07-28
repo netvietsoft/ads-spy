@@ -29,4 +29,34 @@ export class StripeService {
     await getStripe().subscriptions.cancel(stripeSubscriptionId);
     return { ok: true };
   }
+
+  async handleWebhookEvent(rawBody: Buffer, signature: string): Promise<{ received: boolean }> {
+    let event: any;
+    try {
+      event = getStripe().webhooks.constructEvent(rawBody, signature, paymentConfig.stripeWebhookSecret);
+    } catch {
+      throw new BadRequestException('Chữ ký webhook không hợp lệ');
+    }
+    const fresh = await this.payments.markEventProcessed('stripe', event.id);
+    if (!fresh) return { received: true }; // đã xử lý (Stripe retry)
+
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object;
+      const subId: string | undefined = invoice.subscription;
+      if (subId) {
+        const sub: any = await getStripe().subscriptions.retrieve(subId);
+        const m = sub.metadata || {};
+        if (m.userId && m.moduleKey && m.tier && m.cycle) {
+          await this.subs.grantPlan({ userId: Number(m.userId), moduleKey: m.moduleKey, tier: m.tier, cycle: m.cycle });
+          await this.payments.linkStripeSubscription(Number(m.userId), m.moduleKey, subId);
+          await this.payments.recordPaid({
+            userId: Number(m.userId), provider: 'stripe',
+            amount: invoice.amount_paid ?? 0, currency: String(invoice.currency || 'usd').toUpperCase(),
+            providerRef: invoice.id, moduleKey: m.moduleKey, tier: m.tier, cycle: m.cycle,
+          });
+        }
+      }
+    }
+    return { received: true };
+  }
 }

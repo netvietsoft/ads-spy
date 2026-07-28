@@ -35,3 +35,31 @@ describe('StripeService.createCheckoutSession', () => {
     await expect(svc.createCheckoutSession(7, 'a@x.com', { moduleKey: 'x', tier: 'pro', cycle: 'monthly' })).rejects.toBeInstanceOf(BadRequestException);
   });
 });
+
+describe('StripeService.handleWebhookEvent', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const evt = (type: string, obj: any, id = 'evt_1') => ({ id, type, data: { object: obj } });
+
+  it('chữ ký sai → BadRequest', async () => {
+    mockStripe.webhooks.constructEvent.mockImplementation(() => { throw new Error('bad sig'); });
+    const { svc } = build(null);
+    await expect(svc.handleWebhookEvent(Buffer.from('x'), 'sig')).rejects.toBeInstanceOf(BadRequestException);
+  });
+  it('invoice.paid → grantPlan + recordPaid + link', async () => {
+    mockStripe.webhooks.constructEvent.mockReturnValue(evt('invoice.paid', { subscription: 'sub_1', id: 'in_1', amount_paid: 1900, currency: 'usd' }));
+    mockStripe.subscriptions.retrieve.mockResolvedValue({ metadata: { userId: '7', moduleKey: 'shophunter', tier: 'pro', cycle: 'monthly' } });
+    const { svc, subs, payments } = build(null);
+    payments.markEventProcessed.mockResolvedValue(true);
+    await svc.handleWebhookEvent(Buffer.from('x'), 'sig');
+    expect(subs.grantPlan).toHaveBeenCalledWith({ userId: 7, moduleKey: 'shophunter', tier: 'pro', cycle: 'monthly' });
+    expect(payments.linkStripeSubscription).toHaveBeenCalledWith(7, 'shophunter', 'sub_1');
+    expect(payments.recordPaid).toHaveBeenCalledWith(expect.objectContaining({ provider: 'stripe', providerRef: 'in_1', amount: 1900, currency: 'USD' }));
+  });
+  it('event trùng (đã xử lý) → KHÔNG grant', async () => {
+    mockStripe.webhooks.constructEvent.mockReturnValue(evt('invoice.paid', { subscription: 'sub_1', id: 'in_1' }));
+    const { svc, subs, payments } = build(null);
+    payments.markEventProcessed.mockResolvedValue(false);
+    await svc.handleWebhookEvent(Buffer.from('x'), 'sig');
+    expect(subs.grantPlan).not.toHaveBeenCalled();
+  });
+});
