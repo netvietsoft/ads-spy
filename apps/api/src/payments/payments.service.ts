@@ -44,8 +44,9 @@ export class PaymentsService {
     try {
       await this.prisma.processedEvent.create({ data: { provider, eventId } });
       return true;
-    } catch {
-      return false; // vi phạm @@unique → đã xử lý
+    } catch (e: any) {
+      if (e?.code === 'P2002') return false; // đã xử lý (vi phạm @@unique)
+      throw e; // lỗi khác (DB…) → để webhook trả lỗi cho Stripe retry, KHÔNG bỏ sót event
     }
   }
 }

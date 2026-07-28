@@ -33,10 +33,15 @@ describe('PaymentsService', () => {
     expect(prisma.payment.create).not.toHaveBeenCalled();
     expect(prisma.payment.update.mock.calls[0][0].data.status).toBe('paid');
   });
-  it('markEventProcessed: mới → true; trùng (create ném) → false', async () => {
+  it('markEventProcessed: mới → true; trùng (P2002) → false', async () => {
     const { svc, prisma } = build();
     expect(await svc.markEventProcessed('stripe', 'evt_1')).toBe(true);
-    prisma.processedEvent.create.mockRejectedValueOnce(new Error('unique'));
+    prisma.processedEvent.create.mockRejectedValueOnce({ code: 'P2002' });
     expect(await svc.markEventProcessed('stripe', 'evt_1')).toBe(false);
+  });
+  it('markEventProcessed: lỗi khác (không phải P2002) → rethrow, không nuốt', async () => {
+    const { svc, prisma } = build();
+    prisma.processedEvent.create.mockRejectedValueOnce({ code: 'P1001' });
+    await expect(svc.markEventProcessed('stripe', 'evt_2')).rejects.toBeTruthy();
   });
 });
