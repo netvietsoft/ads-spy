@@ -231,13 +231,19 @@ export class AffnetMysql {
   // KHÔNG phải mốc thời gian) → luôn 1 câu UPDATE vô điều kiện, không rẽ nhánh theo newCount.
   // dry_rounds: tăng 1 khi lượt này "no hoà" (newCount < DRY_THRESHOLD), ngược lại reset về 0 — cùng 1 câu UPDATE
   // (CASE trong SQL) để không có khoảng hở giữa 2 lệnh ghi.
-  async markPolled(net: string, newCount: number): Promise<void> {
+  // FIX 4: skipDryCounter=true (1+ nguồn discovery lỗi lượt này, xem discoverStep) → GIỮ NGUYÊN dry_rounds
+  // — KHÔNG tăng (added thấp lượt này không phải bằng chứng "hồ đã cạn", chỉ là 1 nguồn tạm lỗi) và KHÔNG
+  // reset về 0 (sẽ xoá mất tiến độ bão hoà THẬT đã tích luỹ). Vẫn ghi discover_polled_at/discover_polls/
+  // discover_last_new bình thường — lượt vẫn thực sự đã chạy.
+  async markPolled(net: string, newCount: number, skipDryCounter = false): Promise<void> {
     const pool = await this.sh.getPool();
+    const dryExpr = skipDryCounter ? 'dry_rounds' : 'CASE WHEN ? < ? THEN dry_rounds + 1 ELSE 0 END';
+    const params = skipDryCounter ? [Date.now(), newCount, net] : [Date.now(), newCount, newCount, DRY_THRESHOLD, net];
     await pool.query(
       `UPDATE aff_net SET discover_polled_at = ?, discover_polls = discover_polls + 1, discover_last_new = ?,
-              dry_rounds = CASE WHEN ? < ? THEN dry_rounds + 1 ELSE 0 END
+              dry_rounds = ${dryExpr}
        WHERE net = ?`,
-      [Date.now(), newCount, newCount, DRY_THRESHOLD, net],
+      params,
     );
   }
 
@@ -252,9 +258,14 @@ export class AffnetMysql {
 
   async takeHostsToCheck(net: string, limit: number): Promise<AffHostRow[]> {
     const pool = await this.sh.getPool();
+    // FIX 5: ORDER BY check_tries TRƯỚC first_seen — trước đây chỉ sort theo first_seen nên 1 host lỗi
+    // điều hướng dai dẳng (hoặc bị 'blocked' liên tục) đứng ĐẦU hàng đợi MÃI MÃI: check_tries được ghi
+    // (bumpHostTries) nhưng KHÔNG nơi nào đọc lại, và với 1 làn thì lỗi ở lane đó kết thúc round ngay
+    // (checked=0), khiến job tưởng "hết dự án" dù hàng nghìn host khác vẫn đang chờ phía sau. Sort theo
+    // check_tries trước để host lỗi lặp bị đẩy XUỐNG, nhường host mới/ít lỗi được thử trước.
     const [rows] = await pool.query(
       `SELECT net, slug, first_seen, last_seen, sources, checked_at, check_status, check_tries
-       FROM aff_host WHERE net = ? AND checked_at IS NULL ORDER BY first_seen LIMIT ?`,
+       FROM aff_host WHERE net = ? AND checked_at IS NULL ORDER BY check_tries, first_seen LIMIT ?`,
       [net, limit],
     );
     return (rows as any[]).map(rowToAffHost);
@@ -274,8 +285,20 @@ export class AffnetMysql {
     await pool.query('UPDATE aff_host SET check_tries = check_tries + 1 WHERE net = ? AND slug = ?', [net, slug]);
   }
 
+  // FIX 3: chặn ĐỘ DÀI phòng thủ TRƯỚC khi ghi — cột program_name/brand/web là VARCHAR(255), ghi quá dài
+  // khiến MySQL (STRICT_TRANS_TABLES) NÉM lỗi 1406 ở đúng dòng query bên dưới, NẰM NGOÀI try/catch của
+  // affnet.service.ts → host không được markHostChecked cũng không bumpHostTries, kẹt đầu hàng đợi mãi
+  // mãi. Parser đã cắt sẵn (xem affnet.parser.ts) nhưng clamp lại đây cho AN TOÀN vì upsertProgram nhận
+  // thẳng p: AffProgram, không ép phải đi qua parser.
+  private clampVarchar(s: string | null): string | null {
+    return s == null ? s : s.slice(0, 250);
+  }
+
   async upsertProgram(p: AffProgram): Promise<void> {
     const pool = await this.sh.getPool();
+    const programName = this.clampVarchar(p.programName);
+    const brand = this.clampVarchar(p.brand);
+    const web = this.clampVarchar(p.web);
     await pool.query(
       `INSERT INTO aff_program (net, slug, join_url, program_name, brand, web, commission_pct, commission_flat,
           commission_currency, commission_scope, commission_raw, cookie_days, payout_threshold, notes, terms_text, status, fetched_at)
@@ -285,7 +308,7 @@ export class AffnetMysql {
           commission_currency = VALUES(commission_currency), commission_scope = VALUES(commission_scope),
           commission_raw = VALUES(commission_raw), cookie_days = VALUES(cookie_days), payout_threshold = VALUES(payout_threshold),
           notes = VALUES(notes), terms_text = VALUES(terms_text), status = VALUES(status), fetched_at = VALUES(fetched_at)`,
-      [p.net, p.slug, p.joinUrl, p.programName, p.brand, p.web, p.commissionPct, p.commissionFlat,
+      [p.net, p.slug, p.joinUrl, programName, brand, web, p.commissionPct, p.commissionFlat,
         p.commissionCurrency, p.commissionScope, p.commissionRaw, p.cookieDays, p.payoutThreshold, p.notes, p.termsText, p.status, p.fetchedAt],
     );
   }

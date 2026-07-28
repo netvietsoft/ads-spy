@@ -107,19 +107,37 @@ describe('AffnetMysql', () => {
     expect(Number((rows as any[])[0].eligible)).toBe(0);
   });
 
-  it('net đã bão hoà nhưng discover_polled_at CŨ hơn cooldown → được chọn lại', async () => {
+  // FIX 9(a): 2 test dưới đây TRƯỚC ĐÂY gọi thẳng db.pickNetToPoll() (kén ORDER BY toàn bảng) rồi assert
+  // picked?.net === NET — chỉ đúng NHỜ MAY MẮN vì net thật getrewardful.com đang có discover_polled_at
+  // đóng băng cũ hơn NET; so sánh sẽ LẬT trong ~21h và test đỏ dù code đúng (đã đo, xem report). Sửa
+  // giống sibling test phía trên: đọc thẳng predicate NET_ELIGIBLE_SQL trên DÒNG CỦA NET, không cạnh
+  // tranh ORDER BY với dữ liệu production.
+  it('net đã bão hoà nhưng discover_polled_at CŨ hơn cooldown → predicate ELIGIBLE lại (đọc trực tiếp trên dòng NET)', async () => {
     const pool = await sh.getPool();
     const old = Date.now() - SATURATED_COOLDOWN_MS - 1000; // qua khỏi cooldown (giả lập bằng SQL, không sleep)
-    await pool.query('UPDATE aff_net SET discover_polled_at = ? WHERE net = ?', [old, NET]);
-    const picked = await db.pickNetToPoll();
-    expect(picked?.net).toBe(NET);
+    await pool.query('UPDATE aff_net SET discover_polled_at = ?, dry_rounds = ? WHERE net = ?', [old, DRY_ROUNDS_TO_SATURATE, NET]);
+    const cutoff = Date.now() - SATURATED_COOLDOWN_MS;
+    const [rows] = await pool.query(`SELECT ${NET_ELIGIBLE_SQL} AS eligible FROM aff_net WHERE net = ?`, [DRY_ROUNDS_TO_SATURATE, cutoff, NET]);
+    expect(Number((rows as any[])[0].eligible)).toBe(1);
   });
 
-  it('net CHƯA poll lần nào (discover_polled_at NULL) vẫn được chọn dù dry_rounds cao', async () => {
+  it('net CHƯA poll lần nào (discover_polled_at NULL) → predicate ELIGIBLE dù dry_rounds cao (đọc trực tiếp trên dòng NET)', async () => {
     const pool = await sh.getPool();
     await pool.query('UPDATE aff_net SET discover_polled_at = NULL, dry_rounds = 99 WHERE net = ?', [NET]);
-    const picked = await db.pickNetToPoll();
-    expect(picked?.net).toBe(NET);
+    const cutoff = Date.now() - SATURATED_COOLDOWN_MS;
+    const [rows] = await pool.query(`SELECT ${NET_ELIGIBLE_SQL} AS eligible FROM aff_net WHERE net = ?`, [DRY_ROUNDS_TO_SATURATE, cutoff, NET]);
+    expect(Number((rows as any[])[0].eligible)).toBe(1);
+  });
+
+  it('FIX 4: markPolled(skipDryCounter=true) GIỮ NGUYÊN dry_rounds dù newCount < DRY_THRESHOLD (mô phỏng 1 nguồn discovery lỗi lượt này)', async () => {
+    await db.markPolled(NET, 999); // reset baseline: dry_rounds về 0, không phụ thuộc test trước
+    const pool = await sh.getPool();
+    const [before] = await pool.query('SELECT dry_rounds, discover_polls FROM aff_net WHERE net = ?', [NET]);
+    await db.markPolled(NET, 0, true); // đáng lẽ tính "no hoà" (0 < ngưỡng) nhưng skip=true → GIỮ NGUYÊN dry_rounds
+    const [after] = await pool.query('SELECT dry_rounds, discover_polls FROM aff_net WHERE net = ?', [NET]);
+    expect((after as any[])[0].dry_rounds).toBe((before as any[])[0].dry_rounds);
+    // Vẫn ghi discover_polls bình thường — lượt vẫn thực sự đã chạy, chỉ bộ đếm "no hoà" là được giữ nguyên.
+    expect(Number((after as any[])[0].discover_polls)).toBe(Number((before as any[])[0].discover_polls) + 1);
   });
 
   it('upsertHosts trả SỐ HOST MỚI; lần 2 cùng host trả 0 nhưng gộp thêm source', async () => {
@@ -147,6 +165,22 @@ describe('AffnetMysql', () => {
     expect(r).toBeDefined();
     expect(r.checkStatus).toBeNull();
     expect(r.checkTries).toBe(1);
+  });
+
+  it('FIX 5: takeHostsToCheck ưu tiên check_tries THẤP trước — host lỗi lặp không được đứng đầu hàng đợi mãi mãi', async () => {
+    await db.upsertHosts(NET, [{ slug: 'nhieu-loi', sources: ['s'] }]); // thêm TRƯỚC → first_seen cũ hơn
+    await db.bumpHostTries(NET, 'nhieu-loi');
+    await db.bumpHostTries(NET, 'nhieu-loi');
+    await db.bumpHostTries(NET, 'nhieu-loi'); // check_tries=3
+    await db.upsertHosts(NET, [{ slug: 'moi-chua-loi', sources: ['s'] }]); // thêm SAU → first_seen mới hơn, check_tries=0
+    const rows = await db.takeHostsToCheck(NET, 50);
+    const idxNhieuLoi = rows.findIndex((r) => r.slug === 'nhieu-loi');
+    const idxMoi = rows.findIndex((r) => r.slug === 'moi-chua-loi');
+    expect(idxNhieuLoi).toBeGreaterThanOrEqual(0);
+    expect(idxMoi).toBeGreaterThanOrEqual(0);
+    // check_tries thấp hơn (0) phải đứng TRƯỚC dù first_seen MỚI hơn — trước FIX 5 (ORDER BY first_seen
+    // đơn thuần) host lỗi lặp sẽ đứng trước, ngược lại với assert này.
+    expect(idxMoi).toBeLessThan(idxNhieuLoi);
   });
 
   it('netSummaries đếm bucket %commit đúng, kể cả flat và unknown', async () => {
