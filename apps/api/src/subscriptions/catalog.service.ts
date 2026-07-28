@@ -43,7 +43,7 @@ export class CatalogService {
   getPlan(moduleKey: string, tier: string) {
     return this.prisma.plan.findUnique({ where: { moduleKey_tier: { moduleKey, tier } } });
   }
-  async createPlan(data: { moduleKey: string; tier: string; name: string; priceMonthly?: number; priceYearly?: number; currency?: string; features?: any; quotas?: any; sortOrder?: number }) {
+  async createPlan(data: { moduleKey: string; tier: string; name: string; priceMonthly?: number; priceYearly?: number; currency?: string; features?: any; quotas?: any; sortOrder?: number; stripePriceMonthly?: string; stripePriceYearly?: string }) {
     if (!data.moduleKey || !data.tier || !data.name) throw new BadRequestException('Thiếu moduleKey/tier/name');
     return this.prisma.plan.create({
       data: {
@@ -56,12 +56,14 @@ export class CatalogService {
         features: JSON.stringify(data.features ?? {}),
         quotas: JSON.stringify(data.quotas ?? {}),
         sortOrder: data.sortOrder ?? 0,
+        stripePriceMonthly: data.stripePriceMonthly ?? null,
+        stripePriceYearly: data.stripePriceYearly ?? null,
       },
     });
   }
   updatePlan(id: number, data: any) {
     const patch: any = {};
-    for (const f of ['name', 'tier', 'priceMonthly', 'priceYearly', 'currency', 'active', 'sortOrder']) if (f in data) patch[f] = data[f];
+    for (const f of ['name', 'tier', 'priceMonthly', 'priceYearly', 'currency', 'active', 'sortOrder', 'stripePriceMonthly', 'stripePriceYearly']) if (f in data) patch[f] = data[f];
     if ('features' in data) patch.features = JSON.stringify(data.features ?? {});
     if ('quotas' in data) patch.quotas = JSON.stringify(data.quotas ?? {});
     return this.prisma.plan.update({ where: { id }, data: patch });

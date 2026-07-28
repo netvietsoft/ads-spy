@@ -130,6 +130,7 @@ model User {
   sessions     Session[]
   resetTokens  PasswordResetToken[]
   subscriptions Subscription[]
+  payments     Payment[]
 }
 
 model Session {
@@ -181,6 +182,8 @@ model Plan {
   priceMonthly Int      @default(0) // cents
   priceYearly  Int      @default(0) // cents
   currency     String   @default("USD")
+  stripePriceMonthly String?
+  stripePriceYearly  String?
   features     String   @default("{}") // JSON
   quotas       String   @default("{}") // JSON
   active       Boolean  @default(true)
@@ -203,6 +206,7 @@ model Subscription {
   expiresAt        DateTime
   status           String   @default("active") // 'active'|'canceled'|'expired'
   note             String?
+  stripeSubscriptionId String?
   featuresSnapshot String   @default("{}")
   quotasSnapshot   String   @default("{}")
   createdAt        DateTime @default(now())
@@ -222,6 +226,34 @@ model Usage {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, moduleKey, metric, period])
+}
+
+model Payment {
+  id          Int       @id @default(autoincrement())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  provider    String    // 'stripe' | 'qr'
+  amount      Int       // minor-unit của currency
+  currency    String    // 'USD' | 'VND'
+  status      String    @default("pending") // 'pending' | 'paid' | 'failed'
+  providerRef String    @unique
+  moduleKey   String
+  tier        String
+  cycle       String
+  note        String?
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+
+  @@index([userId])
+}
+
+model ProcessedEvent {
+  id        Int      @id @default(autoincrement())
+  provider  String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  @@unique([provider, eventId])
 }
 
 model GrantLog {

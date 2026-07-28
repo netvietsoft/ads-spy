@@ -21,6 +21,11 @@ describe('CatalogService', () => {
     const d = p.plan.create.mock.calls[0][0].data;
     expect(d.features).toBe('{"reports":true}'); expect(d.quotas).toBe('{"exportShops":5000}'); expect(d.priceMonthly).toBe(0);
   });
+  it('createPlan: nhận stripePrice*', async () => {
+    const p = prisma(); await new CatalogService(p).createPlan({ moduleKey: 'shophunter', tier: 'pro', name: 'Pro', stripePriceMonthly: 'price_M', stripePriceYearly: 'price_Y' } as any);
+    const d = p.plan.create.mock.calls[0][0].data;
+    expect(d.stripePriceMonthly).toBe('price_M'); expect(d.stripePriceYearly).toBe('price_Y');
+  });
   it('getPlan dùng compound key moduleKey_tier', async () => {
     const p = prisma(); await new CatalogService(p).getPlan('shophunter', 'pro');
     expect(p.plan.findUnique).toHaveBeenCalledWith({ where: { moduleKey_tier: { moduleKey: 'shophunter', tier: 'pro' } } });

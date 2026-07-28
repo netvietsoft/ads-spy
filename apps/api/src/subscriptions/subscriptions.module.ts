@@ -11,6 +11,6 @@ import { CatalogController } from './catalog.controller';
 @Module({
   controllers: [AdminController, CatalogController],
   providers: [EntitlementService, MeteringService, CatalogService, SubscriptionsService, ModuleGuard, FeatureGuard],
-  exports: [EntitlementService, MeteringService],
+  exports: [EntitlementService, MeteringService, SubscriptionsService, CatalogService],
 })
 export class SubscriptionsModule {}
