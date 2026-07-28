@@ -103,6 +103,41 @@ describe('parseRewardful — \\b quanh VERB (chống bắt nhầm chuỗi con)',
   });
 });
 
+describe('parseRewardful — fallback không neo động từ (fixture thật a2b-labs, Task 8 chạy thật phát hiện)', () => {
+  it('a2b-labs: câu bắt đầu THẲNG bằng số "30% commission..." không có receive/earn/get đứng trước vẫn ra đúng pct + web', () => {
+    // Fixture thật: "30% commission on the first three payments (within the first three months)
+    // for every paying customer you refer to app.apob.ai."
+    const r = parseRewardful(fx('getrewardful_com__a2b-labs.txt'));
+    expect(r.commissionPct).toBe(30);
+    expect(r.web).toBe('app.apob.ai');
+  });
+
+  it('a2b-labs: commissionRaw chứa TRỌN domain "app.apob.ai" (KHÔNG bị cắt giữa domain)', () => {
+    const r = parseRewardful(fx('getrewardful_com__a2b-labs.txt'));
+    expect(r.commissionRaw).toContain('app.apob.ai');
+  });
+
+  it('a2b-labs: payoutThreshold=50 dù viết NGƯỢC thứ tự "$50 threshold" (không phải "threshold ... $50")', () => {
+    const r = parseRewardful(fx('getrewardful_com__a2b-labs.txt'));
+    expect(r.payoutThreshold).toBe(50);
+  });
+
+  it('a2b-labs: notes chứa nhãn "No search traffic" (điều khoản traffic từ Google/Bing/Baidu/Yandex không được tính hoa hồng)', () => {
+    const r = parseRewardful(fx('getrewardful_com__a2b-labs.txt'));
+    expect(r.notes).toContain('No search traffic');
+  });
+
+  it('1clickwebsite-ai: commissionRaw chứa TRỌN domain "1clickwebsite.ai", không bị cắt (ca thật Task 8 phát hiện)', () => {
+    const r = parseRewardful(fx('getrewardful_com__1clickwebsite-ai.txt'));
+    expect(r.commissionRaw).toContain('1clickwebsite.ai');
+  });
+
+  it('chống hồi quy: fallback không neo động từ vẫn KHÔNG được bắt "N% ở bất kỳ đâu" — câu có % nhưng không phải "...% commission" thì phải NULL', () => {
+    const r = parseRewardful('Trang gioi thieu: 30% off cho khach moi. Xem them.');
+    expect(r.commissionPct).toBeNull();
+  });
+});
+
 describe('isInactiveText — nhận wording dự án chết', () => {
   it('wording "no longer active" (fixture thật privacy-toll-free-llc)', () => {
     expect(isInactiveText(fx('getrewardful_com__privacy-toll-free-llc.txt'))).toBe(true);
