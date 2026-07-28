@@ -37,8 +37,7 @@ export class StripeService {
     } catch {
       throw new BadRequestException('Chữ ký webhook không hợp lệ');
     }
-    const fresh = await this.payments.markEventProcessed('stripe', event.id);
-    if (!fresh) return { received: true }; // đã xử lý (Stripe retry)
+    if (await this.payments.isEventProcessed('stripe', event.id)) return { received: true }; // đã xử lý → bỏ qua
 
     if (event.type === 'invoice.paid') {
       const invoice = event.data.object;
@@ -57,6 +56,8 @@ export class StripeService {
         }
       }
     }
+    // Đánh dấu đã xử lý SAU khi hoàn tất công việc — nếu công việc ném lỗi, event KHÔNG bị đánh dấu → Stripe retry sẽ làm lại.
+    await this.payments.markEventProcessed('stripe', event.id);
     return { received: true };
   }
 }

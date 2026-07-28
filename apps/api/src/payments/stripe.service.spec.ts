@@ -9,7 +9,12 @@ import { StripeService } from './stripe.service';
 
 function build(plan: any) {
   const catalog = { getPlan: jest.fn().mockResolvedValue(plan) } as any;
-  const payments = { recordPaid: jest.fn(), linkStripeSubscription: jest.fn(), markEventProcessed: jest.fn() } as any;
+  const payments = {
+    recordPaid: jest.fn(),
+    linkStripeSubscription: jest.fn(),
+    isEventProcessed: jest.fn().mockResolvedValue(false),
+    markEventProcessed: jest.fn().mockResolvedValue(true),
+  } as any;
   const subs = { grantPlan: jest.fn() } as any;
   return { svc: new StripeService(catalog, payments, subs), catalog, payments, subs };
 }
@@ -49,17 +54,19 @@ describe('StripeService.handleWebhookEvent', () => {
     mockStripe.webhooks.constructEvent.mockReturnValue(evt('invoice.paid', { subscription: 'sub_1', id: 'in_1', amount_paid: 1900, currency: 'usd' }));
     mockStripe.subscriptions.retrieve.mockResolvedValue({ metadata: { userId: '7', moduleKey: 'shophunter', tier: 'pro', cycle: 'monthly' } });
     const { svc, subs, payments } = build(null);
-    payments.markEventProcessed.mockResolvedValue(true);
+    payments.isEventProcessed.mockResolvedValue(false);
     await svc.handleWebhookEvent(Buffer.from('x'), 'sig');
     expect(subs.grantPlan).toHaveBeenCalledWith({ userId: 7, moduleKey: 'shophunter', tier: 'pro', cycle: 'monthly' });
     expect(payments.linkStripeSubscription).toHaveBeenCalledWith(7, 'shophunter', 'sub_1');
     expect(payments.recordPaid).toHaveBeenCalledWith(expect.objectContaining({ provider: 'stripe', providerRef: 'in_1', amount: 1900, currency: 'USD' }));
+    expect(payments.markEventProcessed).toHaveBeenCalledWith('stripe', 'evt_1');
   });
   it('event trùng (đã xử lý) → KHÔNG grant', async () => {
     mockStripe.webhooks.constructEvent.mockReturnValue(evt('invoice.paid', { subscription: 'sub_1', id: 'in_1' }));
     const { svc, subs, payments } = build(null);
-    payments.markEventProcessed.mockResolvedValue(false);
+    payments.isEventProcessed.mockResolvedValue(true);
     await svc.handleWebhookEvent(Buffer.from('x'), 'sig');
     expect(subs.grantPlan).not.toHaveBeenCalled();
+    expect(payments.markEventProcessed).not.toHaveBeenCalled();
   });
 });

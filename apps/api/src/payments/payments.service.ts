@@ -49,4 +49,8 @@ export class PaymentsService {
       throw e; // lỗi khác (DB…) → để webhook trả lỗi cho Stripe retry, KHÔNG bỏ sót event
     }
   }
+  async isEventProcessed(provider: string, eventId: string): Promise<boolean> {
+    const row = await this.prisma.processedEvent.findUnique({ where: { provider_eventId: { provider, eventId } } });
+    return !!row;
+  }
 }

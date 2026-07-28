@@ -8,7 +8,7 @@ function build() {
       findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
     },
-    processedEvent: { create: jest.fn().mockResolvedValue({}) },
+    processedEvent: { create: jest.fn().mockResolvedValue({}), findUnique: jest.fn() },
     subscription: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn() },
   } as any;
   return { svc: new PaymentsService(prisma), prisma };
@@ -43,5 +43,12 @@ describe('PaymentsService', () => {
     const { svc, prisma } = build();
     prisma.processedEvent.create.mockRejectedValueOnce({ code: 'P1001' });
     await expect(svc.markEventProcessed('stripe', 'evt_2')).rejects.toBeTruthy();
+  });
+  it('isEventProcessed: có row → true; không có → false', async () => {
+    const { svc, prisma } = build();
+    prisma.processedEvent.findUnique.mockResolvedValueOnce({ id: 1, provider: 'stripe', eventId: 'evt_1' });
+    expect(await svc.isEventProcessed('stripe', 'evt_1')).toBe(true);
+    prisma.processedEvent.findUnique.mockResolvedValueOnce(null);
+    expect(await svc.isEventProcessed('stripe', 'evt_2')).toBe(false);
   });
 });
