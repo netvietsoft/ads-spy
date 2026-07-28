@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { adminUsers, adminUpdateUser, adminUserAction } from '../api';
+import { adminUsers, adminUpdateUser, adminUserAction, adminModules, adminGrantPlan, adminUserSubs, adminRevokeSub } from '../api';
 
 const usd = (c?: number | null) => (c == null ? '—' : `$${(c / 100).toFixed(2)}`);
 const fmt = (d?: string) => (d ? new Date(d).toLocaleDateString('vi-VN') : '');
@@ -12,6 +12,10 @@ export function UsersAdminPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [edit, setEdit] = useState<any>(null);
+  const [grant, setGrant] = useState<any>(null);
+  const [subs, setSubs] = useState<any>(null);
+  const [mods, setMods] = useState<any[]>([]);
+  useEffect(() => { adminModules().then(setMods).catch(() => {}); }, []);
 
   const load = async () => {
     setLoading(true); setErr('');
@@ -25,6 +29,12 @@ export function UsersAdminPanel() {
   const saveEdit = async () => {
     try { await adminUpdateUser(edit.id, { name: edit.name, phone: edit.phone, role: edit.role, status: edit.status }); setEdit(null); load(); }
     catch (e: any) { alert(e.message); }
+  };
+  const doGrant = async () => {
+    try {
+      await adminGrantPlan({ userId: grant.userId, moduleKey: grant.moduleKey, tier: grant.tier, cycle: grant.cycle, trialDays: grant.trialDays ? Number(grant.trialDays) : undefined, note: grant.note || undefined });
+      setGrant(null); load();
+    } catch (e: any) { alert(e.message); }
   };
 
   return (
@@ -51,6 +61,8 @@ export function UsersAdminPanel() {
                       {u.status !== 'banned' && <button className="ghost" onClick={() => act(u.id, 'ban')}>Ban</button>}
                       {u.status !== 'disabled' && <button className="ghost" onClick={() => act(u.id, 'disable')}>Xóa</button>}
                       {u.status !== 'active' && <button className="ghost" onClick={() => act(u.id, 'activate')}>Kích hoạt</button>}
+                      <button className="ghost" onClick={() => setGrant({ userId: u.id, email: u.email, moduleKey: mods[0]?.key || '', tier: 'pro', cycle: 'monthly', trialDays: '', note: '' })}>Cấp gói</button>
+                      <button className="ghost" onClick={async () => { try { setSubs({ userId: u.id, email: u.email, items: await adminUserSubs(u.id) }); } catch (e: any) { alert(e.message); } }}>Gói</button>
                     </td>
                   </tr>
                 ))}
@@ -76,6 +88,34 @@ export function UsersAdminPanel() {
               <button className="ghost" onClick={() => setEdit(null)}>Hủy</button>
               <button className="primary" onClick={saveEdit}>Lưu</button>
             </div>
+          </div>
+        </div>
+      )}
+      {grant && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setGrant(null)}>
+          <div style={{ background: '#fff', padding: 20, borderRadius: 12, width: 320, display: 'flex', flexDirection: 'column', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+            <b>Cấp gói cho {grant.email}</b>
+            <select value={grant.moduleKey} onChange={(e) => setGrant({ ...grant, moduleKey: e.target.value })}>{mods.map((m) => <option key={m.key} value={m.key}>{m.key}</option>)}</select>
+            <input placeholder="tier (basic/pro/premium)" value={grant.tier} onChange={(e) => setGrant({ ...grant, tier: e.target.value })} />
+            <select value={grant.cycle} onChange={(e) => setGrant({ ...grant, cycle: e.target.value })}><option value="monthly">monthly</option><option value="yearly">yearly</option></select>
+            <input placeholder="trial (ngày, tùy chọn)" value={grant.trialDays} onChange={(e) => setGrant({ ...grant, trialDays: e.target.value })} />
+            <input placeholder="ghi chú" value={grant.note} onChange={(e) => setGrant({ ...grant, note: e.target.value })} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}><button className="ghost" onClick={() => setGrant(null)}>Hủy</button><button className="primary" onClick={doGrant}>Cấp</button></div>
+          </div>
+        </div>
+      )}
+      {subs && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setSubs(null)}>
+          <div style={{ background: '#fff', padding: 20, borderRadius: 12, width: 380, display: 'flex', flexDirection: 'column', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+            <b>Gói của {subs.email}</b>
+            {subs.items.length === 0 && <div>Chưa có gói.</div>}
+            {subs.items.map((s: any) => (
+              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span>{s.moduleKey}/{s.tier} · {s.cycle} · {s.status} · hết hạn {s.expiresAt ? new Date(s.expiresAt).toLocaleDateString('vi-VN') : ''}</span>
+                {s.status === 'active' && <button className="ghost" onClick={async () => { try { await adminRevokeSub(s.id); setSubs({ ...subs, items: await adminUserSubs(subs.userId) }); load(); } catch (e: any) { alert(e.message); } }}>Thu hồi</button>}
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button className="ghost" onClick={() => setSubs(null)}>Đóng</button></div>
           </div>
         </div>
       )}
