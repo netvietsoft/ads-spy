@@ -10,6 +10,7 @@ export class StripeService {
   constructor(private catalog: CatalogService, private payments: PaymentsService, private subs: SubscriptionsService) {}
 
   async createCheckoutSession(userId: number, email: string, input: { moduleKey: string; tier: string; cycle: string }) {
+    if (input.cycle !== 'monthly' && input.cycle !== 'yearly') throw new BadRequestException('cycle phải monthly|yearly');
     const plan = await this.catalog.getPlan(input.moduleKey, input.tier);
     if (!plan) throw new BadRequestException('Plan không tồn tại');
     const price = input.cycle === 'yearly' ? plan.stripePriceYearly : plan.stripePriceMonthly;
@@ -41,7 +42,7 @@ export class StripeService {
 
     if (event.type === 'invoice.paid') {
       const invoice = event.data.object;
-      const subId: string | undefined = invoice.subscription;
+      const subId: string | undefined = invoice.parent?.subscription_details?.subscription ?? invoice.subscription;
       if (subId) {
         const sub: any = await getStripe().subscriptions.retrieve(subId);
         const m = sub.metadata || {};

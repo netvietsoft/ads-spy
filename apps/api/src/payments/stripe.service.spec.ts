@@ -39,6 +39,10 @@ describe('StripeService.createCheckoutSession', () => {
     const { svc } = build(null);
     await expect(svc.createCheckoutSession(7, 'a@x.com', { moduleKey: 'x', tier: 'pro', cycle: 'monthly' })).rejects.toBeInstanceOf(BadRequestException);
   });
+  it('cycle không hợp lệ → BadRequest', async () => {
+    const { svc } = build({ stripePriceMonthly: 'price_M', stripePriceYearly: 'price_Y' });
+    await expect(svc.createCheckoutSession(7, 'a@x.com', { moduleKey: 'shophunter', tier: 'pro', cycle: 'weekly' })).rejects.toBeInstanceOf(BadRequestException);
+  });
 });
 
 describe('StripeService.handleWebhookEvent', () => {
@@ -60,6 +64,15 @@ describe('StripeService.handleWebhookEvent', () => {
     expect(payments.linkStripeSubscription).toHaveBeenCalledWith(7, 'shophunter', 'sub_1');
     expect(payments.recordPaid).toHaveBeenCalledWith(expect.objectContaining({ provider: 'stripe', providerRef: 'in_1', amount: 1900, currency: 'USD' }));
     expect(payments.markEventProcessed).toHaveBeenCalledWith('stripe', 'evt_1');
+  });
+  it('invoice.paid (Stripe basil: invoice.parent.subscription_details.subscription) → grantPlan + recordPaid', async () => {
+    mockStripe.webhooks.constructEvent.mockReturnValue(evt('invoice.paid', { parent: { subscription_details: { subscription: 'sub_1' } }, id: 'in_2', amount_paid: 2900, currency: 'usd' }));
+    mockStripe.subscriptions.retrieve.mockResolvedValue({ metadata: { userId: '7', moduleKey: 'shophunter', tier: 'pro', cycle: 'monthly' } });
+    const { svc, subs, payments } = build(null);
+    payments.isEventProcessed.mockResolvedValue(false);
+    await svc.handleWebhookEvent(Buffer.from('x'), 'sig');
+    expect(subs.grantPlan).toHaveBeenCalledWith({ userId: 7, moduleKey: 'shophunter', tier: 'pro', cycle: 'monthly' });
+    expect(payments.recordPaid).toHaveBeenCalledWith(expect.objectContaining({ provider: 'stripe', providerRef: 'in_2', amount: 2900, currency: 'USD' }));
   });
   it('event trùng (đã xử lý) → KHÔNG grant', async () => {
     mockStripe.webhooks.constructEvent.mockReturnValue(evt('invoice.paid', { subscription: 'sub_1', id: 'in_1' }));
