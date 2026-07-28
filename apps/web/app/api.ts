@@ -661,3 +661,12 @@ export async function shSetJobConfig(name: string, cfg: Record<string, number>):
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cfg),
   }));
 }
+
+export async function adminRevenue(from?: string, to?: string) {
+  const p = new URLSearchParams();
+  if (from) p.set('from', from);
+  if (to) p.set('to', to);
+  const r = await fetch(`/api/admin/dashboard/revenue?${p.toString()}`);
+  if (!r.ok) throw new Error('Không tải được doanh thu');
+  return r.json();
+}

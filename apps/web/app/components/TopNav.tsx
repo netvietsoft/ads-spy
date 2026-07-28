@@ -7,6 +7,7 @@ const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
   ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/settings', 'Cài đặt'],
+  ['/admin/dashboard', 'Doanh thu'],
 ];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
@@ -19,6 +20,7 @@ function activeHref(p: string): string {
   if (p.startsWith('/reportlocaldb')) return '/reportlocaldb';
   if (p.startsWith('/import')) return '/import';
   if (p.startsWith('/settings')) return '/settings';
+  if (p.startsWith('/admin/dashboard')) return '/admin/dashboard';
   return '/googleads'; // '/' và '/googleads'
 }
 
@@ -45,7 +47,7 @@ export function TopNav() {
     return () => { alive = false; };
   }, [pathname]);
 
-  const items = role === 'admin' ? NAV : NAV.filter(([href]) => href !== '/import' && href !== '/settings');
+  const items = role === 'admin' ? NAV : NAV.filter(([href]) => href !== '/import' && href !== '/settings' && !href.startsWith('/admin'));
 
   // Chuột trái thường → điều hướng SPA (không reload); Ctrl/Cmd/Shift/chuột-giữa → để browser mở tab mới.
   const nav = (e: ReactMouseEvent, href: string) => {
