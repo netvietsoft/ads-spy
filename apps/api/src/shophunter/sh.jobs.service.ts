@@ -155,13 +155,33 @@ export class ShJobsService implements OnModuleInit {
         await this.mysql.appendJobLog('harvest', 'info', `Chạy ngay xong: processed=${r?.processed ?? 0} status=${r?.status ?? '-'}`).catch(() => {});
       } else if (this.needsProxy(name)) {
         this.wireProxy();
-        try { await this.step(name, true); } // force=true: bỏ qua giới hạn giờ + trần ngày khi bấm tay
+        try { await this.runStepGuarded(name, true); } // force=true: bỏ qua giới hạn giờ + trần ngày khi bấm tay
         finally { if (!this.anyProxyJobRunning()) this.unwireProxy(); }
       } else {
-        await this.step(name, true);
+        await this.runStepGuarded(name, true);
       }
     } catch (e) {
       await this.mysql.appendJobLog(name, 'error', 'Chạy ngay lỗi: ' + (e as Error).message).catch(() => {});
+    }
+  }
+
+  // FIX 8: cờ "đang chạy 1 lượt step" theo TỪNG JOB — KHÁC với mem[name].running (nghĩa là "vòng lặp
+  // loop() còn sống", không phải "đang có step thực thi"). "Chạy ngay" là fire-and-forget (runOnce) nên
+  // bấm 2 lần liên tiếp, hoặc bấm trong lúc loop() đang tự động chạy step, sẽ khiến 2 step CÙNG job chạy
+  // song song — cùng giẫm lên 1 hàng đợi DB chưa "giữ chỗ" và (với afffetch) cùng 1 browser context/lane,
+  // phá nhịp giãn 10s/IP — tham số DUY NHẤT đo được đang giữ crawler không bị Cloudflare chặn.
+  private stepInFlight: Partial<Record<JobName, boolean>> = {};
+
+  private async runStepGuarded(name: JobName, force = false): Promise<{ pace: number }> {
+    if (this.stepInFlight[name]) {
+      await this.mysql.appendJobLog(name, 'warn', 'Đang có 1 lượt chạy khác cho job này — bỏ qua lượt này, đợi lượt đang chạy xong.').catch(() => {});
+      return { pace: BLOCK_MS };
+    }
+    this.stepInFlight[name] = true;
+    try {
+      return await this.step(name, force);
+    } finally {
+      this.stepInFlight[name] = false;
     }
   }
 
@@ -180,7 +200,7 @@ export class ShJobsService implements OnModuleInit {
       while (await this.stillEnabled(name)) {
         let pace = BLOCK_MS;
         try {
-          pace = (await this.step(name)).pace;
+          pace = (await this.runStepGuarded(name)).pace;
         } catch (e) {
           await this.mysql.appendJobLog(name, 'error', 'Step lỗi (nghỉ rồi thử lại): ' + (e as Error).message).catch(() => {});
         }
@@ -278,7 +298,10 @@ export class ShJobsService implements OnModuleInit {
     const dk = this.dayKey('affdiscover');
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.affdiscover.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
     let r: any;
-    try { r = await this.affnet.discoverStep({ paceMs: cfg.paceMs }); }
+    // FIX 4: wire onLog thật vào log job — trước đây discoverStep không nhận onLog nào nên 1 nguồn discovery
+    // lỗi (429 subdomain.center...) không hiện ở đâu cả, không cách nào chẩn đoán từ web.
+    const onDiscoverLog = (m: string) => { void this.mysql.appendJobLog('affdiscover', 'info', m).catch(() => {}); };
+    try { r = await this.affnet.discoverStep({ paceMs: cfg.paceMs }, onDiscoverLog); }
     catch (e) { this.mem.affdiscover.lastStatus = 'error'; await this.mysql.appendJobLog('affdiscover', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.affdiscover.lastRunAt = Date.now();
     // net=null: hoặc chưa thêm net nào, hoặc mọi net đã bão hoà và đang trong cooldown ~24h (xem pickNetToPoll) —
@@ -303,6 +326,18 @@ export class ShJobsService implements OnModuleInit {
     catch (e) { this.mem.afffetch.lastStatus = 'error'; await this.mysql.appendJobLog('afffetch', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.afffetch.lastRunAt = Date.now();
     this.mem.afffetch.stats = { quet: r?.checked || 0, song: r?.active || 0, chet: r?.inactive || 0, khong_co: r?.notfound || 0, chan: r?.blocked || 0, loi_proxy: r?.laneErrors || 0, lan: r?.lanes || 1 };
+    // FIX 10: laneErrors/blocked PHẢI được xét TRƯỚC thông báo "hết dự án" — 1 lượt mà mọi làn đều lỗi
+    // (checked=0 vì worker "return" ngay khi lỗi, xem FIX 5) khác HẲN "hàng đợi đã cạn"; log nhầm thành
+    // "Hết dự án cần quét" khiến operator tưởng đã quét xong hết trong khi hàng nghìn host vẫn đang chờ.
+    if (r?.net && !r.checked && (r?.laneErrors || r?.blocked)) {
+      this.mem.afffetch.lastStatus = 'blocked';
+      const proxyCount = (await this.mysql.listProxiesFull(true).catch(() => [])).length;
+      const why = proxyCount === 0
+        ? 'chưa cấu hình proxy nào (đang chạy 1 làn trực tiếp) — thêm proxy ở Cài đặt → Proxy để đỡ bị chặn.'
+        : `${r.laneErrors} làn proxy lỗi (proxy chết?) — kiểm ở Cài đặt → Proxy, bấm Test.`;
+      await this.mysql.appendJobLog('afffetch', 'warn', `Mọi làn đều lỗi/bị chặn lượt này (KHÔNG PHẢI đã hết dự án cần quét) — ${why}`).catch(() => {});
+      return { pace: BLOCK_MS };
+    }
     if (r?.laneErrors) await this.mysql.appendJobLog('afffetch', 'warn', `${r.laneErrors} làn proxy lỗi (proxy chết?) — kiểm ở Cài đặt → Proxy, bấm Test.`).catch(() => {});
     if (!r?.net || !r.checked) { this.mem.afffetch.lastStatus = 'idle'; await this.mysql.appendJobLog('afffetch', 'info', 'Hết dự án cần quét; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
     await this.mysql.addDailyCount(dk, r.checked).catch(() => {});

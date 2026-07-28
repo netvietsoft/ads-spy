@@ -59,4 +59,31 @@ describe('2 job affnet', () => {
     await (svc as any).step('afffetch', true);
     expect((svc as any).mem.afffetch.stats.lan).toBe(3);
   });
+
+  // FIX 10: mọi làn lỗi (checked=0) nhưng net vẫn CÒN dự án chờ — trước đây log "Hết dự án cần quét"
+  // (idle) đồng thời với cảnh báo proxy lỗi, đọc như hàng đợi rỗng dù ~1370 host vẫn đang chờ.
+  it('afffetch: mọi làn lỗi (checked=0, laneErrors>0) + CÓ proxy cấu hình → KHÔNG log "Hết dự án", cảnh báo "proxy lỗi", pace BLOCK', async () => {
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'getrewardful.com', checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 2, lanes: 2 }), discoverStep: jest.fn() };
+    const mysql = mkMysql();
+    mysql.listProxiesFull.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+    const svc = new ShJobsService({} as any, mysql as any, {} as any, aff as any);
+    const r = await (svc as any).step('afffetch', true);
+    expect(r.pace).toBeGreaterThanOrEqual(300000); // BLOCK_MS, không phải IDLE_MS
+    const logs = mysql.appendJobLog.mock.calls.map((c: any[]) => c[2]);
+    expect(logs.some((m: string) => m.includes('Hết dự án'))).toBe(false);
+    expect(logs.some((m: string) => m.includes('proxy lỗi'))).toBe(true);
+    expect(logs.some((m: string) => m.includes('chưa cấu hình proxy'))).toBe(false);
+  });
+
+  it('afffetch: mọi làn lỗi + KHÔNG proxy nào cấu hình → cảnh báo phân biệt rõ "chưa cấu hình proxy" (khác thông điệp "proxy lỗi")', async () => {
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'getrewardful.com', checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 1, lanes: 1 }), discoverStep: jest.fn() };
+    const mysql = mkMysql();
+    mysql.listProxiesFull.mockResolvedValue([]);
+    const svc = new ShJobsService({} as any, mysql as any, {} as any, aff as any);
+    const r = await (svc as any).step('afffetch', true);
+    expect(r.pace).toBeGreaterThanOrEqual(300000);
+    const logs = mysql.appendJobLog.mock.calls.map((c: any[]) => c[2]);
+    expect(logs.some((m: string) => m.includes('Hết dự án'))).toBe(false);
+    expect(logs.some((m: string) => m.includes('chưa cấu hình proxy'))).toBe(true);
+  });
 });
