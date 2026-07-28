@@ -136,6 +136,13 @@ CREATE TABLE IF NOT EXISTS aff_program (       -- bảng DỰ ÁN (đầu ra ch�
 );
 ```
 
+> ⚠️ **Đã sửa khi triển khai (2026-07-28): dùng `DOUBLE` chứ KHÔNG dùng `DECIMAL`** cho `commission_pct`,
+> `commission_flat`, `payout_threshold`. Lý do: `mysql2` trả cột `DECIMAL` thành **string** (pool không bật
+> `decimalNumbers`), sẽ phá hợp đồng `AffProgram.commissionPct: number | null` mà web dựa vào; muốn bật cờ đó
+> phải sửa pool dùng chung với 5 job nền khác. Các biên bucket (10/15/20/30) đều là số nguyên → biểu diễn chính
+> xác trong IEEE-754, không có rủi ro lệch bucket. **Đừng "sửa cho khớp DECIMAL"** — sẽ làm hỏng kiểu dữ liệu ở web.
+> Tương tự `commission_raw`/`notes` dùng `TEXT` thay `VARCHAR(500)`: parser đã cắt 500 ký tự trước khi ghi.
+
 **Ba quyết định lưu trữ có chủ ý:**
 1. `commission_raw` + `terms_text` lưu nguyên văn → sau này sửa parser thì **re-parse offline**, KHÔNG phải cào lại ~1.850 trang. Đây là bài học từ pattern `raw`/`detail_raw` của ShopHunter.
 2. `aff_host` **append-only**, `first_seen` không bao giờ đổi → chuỗi tích luỹ chỉ tăng, giống `sh_shop_revenue_daily`.
