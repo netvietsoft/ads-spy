@@ -35,6 +35,14 @@ describe('parseRewardful — dạng % (fixtures thật)', () => {
     expect(r.commissionPct).toBe(25);
     expect(r.web).toBe('feather.so');
   });
+
+  it('sammywrites: động từ "earn" (không phải "receive") vẫn ra đúng 50% + scope chứa "lifetime"', () => {
+    // Fixture thật: "Become a SammyWrites affiliate and earn 50% commission on all purchases for a lifetime!"
+    const r = parseRewardful(fx('getrewardful_com__sammywrites.txt'));
+    expect(r.commissionPct).toBe(50);
+    expect(r.commissionFlat).toBeNull();
+    expect(r.commissionScope).toContain('lifetime');
+  });
 });
 
 describe('parseRewardful — dạng $ CỐ ĐỊNH (bug dễ mắc nhất)', () => {
@@ -60,6 +68,12 @@ describe('parseRewardful — dạng $ CỐ ĐỊNH (bug dễ mắc nhất)', () 
   it('pct thập phân 7.5% parse đúng', () => {
     const r = parseRewardful('D\nJoin D and receive a 7.5% commission on all payments for paying customers you refer to d.io!');
     expect(r.commissionPct).toBe(7.5);
+  });
+
+  it('động từ "earn" cũng phải thử $ TRƯỚC % (earn a $50 commission → flat=50, KHÔNG phải 50%)', () => {
+    const r = parseRewardful('Y\nJoin Y and earn a $50 commission for every new paying member you refer to y.com!');
+    expect(r.commissionFlat).toBe(50);
+    expect(r.commissionPct).toBeNull();
   });
 });
 
