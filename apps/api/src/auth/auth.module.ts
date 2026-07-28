@@ -21,5 +21,6 @@ import { RolesGuard } from './roles.guard';
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
+  exports: [SessionService],
 })
 export class AuthModule {}
