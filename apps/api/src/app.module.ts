@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { GoogleClient } from './google/google.client';
 import { SearchService } from './search/search.service';
 import { SearchController } from './search/search.controller';
@@ -21,7 +22,7 @@ import { ShHarvestService } from './shophunter/sh.harvest.service';
 import { ShJobsService } from './shophunter/sh.jobs.service';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule],
+  imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule],
   controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController],
   providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService],
 })
