@@ -281,7 +281,9 @@ export class ShJobsService implements OnModuleInit {
     try { r = await this.affnet.discoverStep({ paceMs: cfg.paceMs }); }
     catch (e) { this.mem.affdiscover.lastStatus = 'error'; await this.mysql.appendJobLog('affdiscover', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.affdiscover.lastRunAt = Date.now();
-    if (!r?.net) { this.mem.affdiscover.lastStatus = 'idle'; await this.mysql.appendJobLog('affdiscover', 'info', 'Chưa có net nào để quét; thêm net ở tab Affiliate Nets.').catch(() => {}); return { pace: IDLE_MS }; }
+    // net=null: hoặc chưa thêm net nào, hoặc mọi net đã bão hoà và đang trong cooldown ~24h (xem pickNetToPoll) —
+    // KHÔNG được kết luận "chưa thêm net" (dễ khiến operator tưởng net đã thêm bị mất). Idle 2', vô hại (không gọi API ngoài).
+    if (!r?.net) { this.mem.affdiscover.lastStatus = 'idle'; await this.mysql.appendJobLog('affdiscover', 'info', 'Không có net nào cần poll lúc này (chưa thêm net ở tab Affiliate Nets, hoặc mọi net đã bão hoà và đang chờ ~24h).').catch(() => {}); return { pace: IDLE_MS }; }
     await this.mysql.addDailyCount(dk, 1).catch(() => {});
     this.mem.affdiscover.stats = { thay: r.found || 0, moi: r.added || 0 };
     this.mem.affdiscover.lastStatus = 'ok';

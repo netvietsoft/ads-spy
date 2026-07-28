@@ -1,7 +1,7 @@
 // affnet.mysql.spec.ts — 3 bảng aff_* trên MySQL local. Chạy: npx jest src/affnet/affnet.mysql --runInBand --forceExit
 import { ShMysql } from '../shophunter/sh.mysql';
 import { PrismaService } from '../prisma.service';
-import { AffnetMysql } from './affnet.mysql';
+import { AffnetMysql, DRY_THRESHOLD, DRY_ROUNDS_TO_SATURATE, SATURATED_COOLDOWN_MS } from './affnet.mysql';
 
 const NET = 'zz-test-net.example';   // net giả, dọn sạch sau mỗi lần chạy
 let sh: ShMysql;
@@ -65,6 +65,57 @@ describe('AffnetMysql', () => {
     after = (await db.listNets()).find((n) => n.net === NET)!;
     expect(after.discoverLastNew).toBe(3);
     expect(after.discoverLastNew as number).toBeLessThan(1000);
+  });
+
+  it('markPolled newCount < DRY_THRESHOLD 2 lượt liên tiếp → dry_rounds = 2 (cả 2 đều dưới ngưỡng no hoà)', async () => {
+    await db.markPolled(NET, 999); // reset baseline: newCount lớn (≥ DRY_THRESHOLD) → dry_rounds về 0, không phụ thuộc test trước
+    await db.markPolled(NET, 0);
+    await db.markPolled(NET, 2);
+    const pool = await sh.getPool();
+    const [rows] = await pool.query('SELECT dry_rounds FROM aff_net WHERE net = ?', [NET]);
+    expect((rows as any[])[0].dry_rounds).toBe(2);
+  });
+
+  it('markPolled newCount >= DRY_THRESHOLD (50) → dry_rounds reset về 0', async () => {
+    await db.markPolled(NET, 50);
+    const pool = await sh.getPool();
+    const [rows] = await pool.query('SELECT dry_rounds FROM aff_net WHERE net = ?', [NET]);
+    expect((rows as any[])[0].dry_rounds).toBe(0);
+  });
+
+  it('sau DRY_ROUNDS_TO_SATURATE lượt no hoà liên tiếp (bão hoà + vừa poll) → pickNetToPoll() bỏ qua (net DUY NHẤT → null)', async () => {
+    // DB này CHUNG với net thật getrewardful.com (1401 host thật, dry_rounds=0 nên luôn "đủ điều kiện") → để
+    // pickNetToPoll() trả null đúng nghĩa "net DUY NHẤT", phải tạm tắt các net KHÁC NET trong lúc assert.
+    // enabled là cột bật/tắt net theo thiết kế (§3 spec) — tắt/bật lại không đụng aff_host/aff_program.
+    // Khôi phục nguyên trạng trong finally (chạy cả khi assert lỗi) rồi xác nhận lại đã khôi phục đúng.
+    const pool = await sh.getPool();
+    const [others] = await pool.query('SELECT net, enabled FROM aff_net WHERE net <> ?', [NET]);
+    try {
+      if ((others as any[]).length) await pool.query('UPDATE aff_net SET enabled = 0 WHERE net <> ?', [NET]);
+      for (let i = 0; i < DRY_ROUNDS_TO_SATURATE; i++) await db.markPolled(NET, DRY_THRESHOLD - 1);
+      expect(await db.pickNetToPoll()).toBeNull();
+    } finally {
+      for (const o of others as any[]) {
+        await pool.query('UPDATE aff_net SET enabled = ? WHERE net = ?', [o.enabled, o.net]);
+      }
+    }
+    const [check] = await pool.query('SELECT net, enabled FROM aff_net WHERE net <> ?', [NET]);
+    expect(check).toEqual(others);   // net khác đã về ĐÚNG nguyên trạng enabled ban đầu
+  });
+
+  it('net đã bão hoà nhưng discover_polled_at CŨ hơn cooldown → được chọn lại', async () => {
+    const pool = await sh.getPool();
+    const old = Date.now() - SATURATED_COOLDOWN_MS - 1000; // qua khỏi cooldown (giả lập bằng SQL, không sleep)
+    await pool.query('UPDATE aff_net SET discover_polled_at = ? WHERE net = ?', [old, NET]);
+    const picked = await db.pickNetToPoll();
+    expect(picked?.net).toBe(NET);
+  });
+
+  it('net CHƯA poll lần nào (discover_polled_at NULL) vẫn được chọn dù dry_rounds cao', async () => {
+    const pool = await sh.getPool();
+    await pool.query('UPDATE aff_net SET discover_polled_at = NULL, dry_rounds = 99 WHERE net = ?', [NET]);
+    const picked = await db.pickNetToPoll();
+    expect(picked?.net).toBe(NET);
   });
 
   it('upsertHosts trả SỐ HOST MỚI; lần 2 cùng host trả 0 nhưng gộp thêm source', async () => {

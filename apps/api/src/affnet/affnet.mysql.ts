@@ -11,6 +11,14 @@ const PROGRAM_SORTS: Record<string, string> = {
   pct: 'commission_pct', name: 'program_name', web: 'web', fetched: 'fetched_at', slug: 'slug',
 };
 
+// Cơ chế "no hoà" (docs/superpowers/specs/2026-07-28-affiliate-net-crawler-design.md §"Cơ chế no hoà").
+// Ngưỡng 1 lượt poll bị coi là "gần như không tìm thấy gì thêm" (đo thật: +500 → +365 → +275 → +200, giảm dần rõ).
+export const DRY_THRESHOLD = 5;
+// Số lượt "no hoà" LIÊN TIẾP để coi net đã bão hoà.
+export const DRY_ROUNDS_TO_SATURATE = 3;
+// Net đã bão hoà → giãn poll xuống ~1 lần/ngày (thay vì mỗi vài giây) để đỡ đốt quota + tránh 429 subdomain.center.
+export const SATURATED_COOLDOWN_MS = 24 * 3600 * 1000;
+
 function rowToAffNet(r: any): AffNet {
   return {
     net: r.net,
@@ -82,6 +90,8 @@ export class AffnetMysql {
     try { await pool.query('ALTER TABLE aff_net MODIFY platform VARCHAR(40) NOT NULL'); } catch { /* đã đủ rộng */ }
     // created_at: mốc tạo net — set 1 lần trong upsertNets khi INSERT, KHÔNG đụng khi upsert lại (xem upsertNets).
     await this.ensureColumn(pool, 'aff_net', 'created_at', 'created_at BIGINT');
+    // dry_rounds: đếm lượt "no hoà" LIÊN TIẾP (xem markPolled/pickNetToPoll) — cơ chế giãn poll khi net đã bão hoà.
+    await this.ensureColumn(pool, 'aff_net', 'dry_rounds', 'dry_rounds INT NOT NULL DEFAULT 0');
 
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_host (
       net VARCHAR(255) NOT NULL,
@@ -163,13 +173,18 @@ export class AffnetMysql {
   }
 
   // Net để poll discovery kế tiếp: chưa poll lần nào (NULL) đứng trước, rồi tới poll cũ nhất.
+  // Bỏ qua net ĐÃ BÃO HOÀ (dry_rounds >= DRY_ROUNDS_TO_SATURATE) MÀ vừa poll gần đây (còn trong cooldown) —
+  // net chưa poll lần nào vẫn LUÔN được chọn dù dry_rounds cao (không lẽ xảy ra, nhưng không loại trừ).
   async pickNetToPoll(): Promise<AffNet | null> {
     const pool = await this.sh.getPool();
+    const cutoff = Date.now() - SATURATED_COOLDOWN_MS; // tính ở JS, bind vào query — không nội suy vào chuỗi SQL
     const [rows] = await pool.query(
       `SELECT net, platform, enabled, note, discover_polled_at, discover_polls, discover_last_new,
               fake_len, fake_hash, fake_checked_at
        FROM aff_net WHERE enabled = 1
+         AND (discover_polled_at IS NULL OR dry_rounds < ? OR discover_polled_at <= ?)
        ORDER BY discover_polled_at IS NOT NULL, discover_polled_at LIMIT 1`,
+      [DRY_ROUNDS_TO_SATURATE, cutoff],
     );
     const r = (rows as any[])[0];
     return r ? rowToAffNet(r) : null;
@@ -205,11 +220,15 @@ export class AffnetMysql {
 
   // Ghi nhận 1 lượt poll discovery: discover_last_new = SỐ HOST MỚI của lượt này (kể cả 0 — đây là tín hiệu "no hoà",
   // KHÔNG phải mốc thời gian) → luôn 1 câu UPDATE vô điều kiện, không rẽ nhánh theo newCount.
+  // dry_rounds: tăng 1 khi lượt này "no hoà" (newCount < DRY_THRESHOLD), ngược lại reset về 0 — cùng 1 câu UPDATE
+  // (CASE trong SQL) để không có khoảng hở giữa 2 lệnh ghi.
   async markPolled(net: string, newCount: number): Promise<void> {
     const pool = await this.sh.getPool();
     await pool.query(
-      'UPDATE aff_net SET discover_polled_at = ?, discover_polls = discover_polls + 1, discover_last_new = ? WHERE net = ?',
-      [Date.now(), newCount, net],
+      `UPDATE aff_net SET discover_polled_at = ?, discover_polls = discover_polls + 1, discover_last_new = ?,
+              dry_rounds = CASE WHEN ? < ? THEN dry_rounds + 1 ELSE 0 END
+       WHERE net = ?`,
+      [Date.now(), newCount, newCount, DRY_THRESHOLD, net],
     );
   }
 
