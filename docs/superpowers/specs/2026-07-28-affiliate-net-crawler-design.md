@@ -35,7 +35,7 @@ Thay thế việc user đang làm tay: search Google `site:*.getrewardful.com` r
 | Proxy pool trong repo | `scripts/proxies.txt`: **5/5 chết** (hết hạn) | Không đọc file này; đọc pool **`sh_proxy`** user quản ở Settings → Proxy |
 | Playwright xoay proxy theo context được không? | **Được**: launch KHÔNG proxy + `browser.newContext({ proxy })` → context dùng đúng proxy đó; context KHÔNG proxy trong cùng browser thì đi **trực tiếp**. (Sentinel `proxy:{server:'per-context'}` thì làm context-không-proxy lỗi `ERR_PROXY_CONNECTION_FAILED` → **đừng dùng sentinel**) | 1 browser + **1 context/proxy** = nhiều "làn" IP độc lập, xoay vòng. Pace tính **theo từng làn**, nên tốc độ tăng tỉ lệ số proxy |
 | Tỷ lệ dự án còn sống | Lần đo tay (16 host): ~43% active. **Chạy thật qua job (30 host, 2026-07-28): 7 sống / 19 chết / 3 không tồn tại / 1 lỗi = 23% sống** — mẫu lớn hơn, tin số này | 1.400 host ≈ **~320 dự án sống**. Nói đúng con số này với user, đừng hứa theo số host phát hiện được |
-| Tích luỹ discovery (chạy thật qua job, 5 lượt) | 589 → 889 → 1092 → 1272 → **1401** host; `lastNew` 589→300→203→180→129 | Khớp đường cong đã đo lúc thiết kế → cơ chế poll-tích-luỹ và tín hiệu "no hoà" hoạt động đúng trên dữ liệu thật |
+| Tích luỹ discovery (chạy thật qua job, 5 lượt) | 589 → 889 → 1092 → 1272 → **1401** host; `lastNew` 589→300→203→180→129 | Khớp đường cong đã đo lúc thiết kế → cơ chế poll-tích-luỹ chạy đúng, và `lastNew` được **ghi** đúng (là số đếm, không phải timestamp). ⚠️ Việc **hành động** theo tín hiệu này (giãn poll khi no hoà) lúc đầu bị thiếu — xem §4 |
 | Cloudflare khi chạy job thật | 30 trang, pace 10s, **1 làn trực tiếp, không proxy → 0 bị chặn** (dù IP máy đã gọi ~70 lần trong ngày) | Pace 10s là đủ an toàn ngay cả không có proxy |
 | Dữ liệu trên trang campaign | Server-rendered (Rails), **không có JSON endpoint công khai**. Template rất ổn định (§5) | Parse HTML/innerText |
 | **Oracle phân loại qua URL** (phát hiện muộn, tốt hơn cách so khớp chữ) | GET **trang gốc** `https://<slug>.getrewardful.com/` → redirect tới **`/signup`** = dự án SỐNG · **`/inactive`** = dự án CHẾT · **HTTP 404** = slug KHÔNG tồn tại. Đo 3/3 đúng (`editgpt`→/signup, `hostgpo`→/inactive, slug giả→404) | **Phân loại theo URL TRƯỚC**, text chỉ là fallback. Bền với mọi wording, khỏi cần fingerprint trang giả cho Rewardful |
@@ -273,12 +273,14 @@ Tên net | Đã phát hiện | Đã quét | Dự án sống | Còn chờ | Số 
 
 2 job mới đăng ký trong `ShJobsService.JOB_NAMES`: `affdiscover`, `afffetch` → dùng luôn `/api/sh/jobs`, `/toggle`, `/run-now`, `/cfg`.
 
-`DEFAULT_CFG`:
+`DEFAULT_CFG` (**giá trị đã ship trong `sh.jobs.service.ts` — đây là bản đúng**):
 ```
-affdiscover: { batch: 1,  paceMs: 8000,  daily: 200,  activeStart: 0, activeEnd: 24 }
-afffetch:    { batch: 30, paceMs: 10000, daily: 3000, concurrency: 1, activeStart: 0, activeEnd: 24 }
+affdiscover: { paceMs: 8000,  daily: 200,  activeStart: 0, activeEnd: 24 }
+afffetch:    { batch: 30, paceMs: 10000, daily: 3000, concurrency: 3, activeStart: 0, activeEnd: 24 }
 ```
-`concurrency: 1` là **có chủ ý** — đo thật cho thấy Cloudflare chặn theo nhịp burst, chạy song song sẽ tự bắn vào chân.
+`concurrency: 3` là **trần trên**, runtime tự kẹp theo số làn proxy thật (`Math.min(cfg.concurrency, laneCount())`). Pool proxy rỗng → 1 làn → chạy tuần tự đúng như mức đã đo an toàn. Song song **chỉ** an toàn khi mỗi luồng một IP riêng, vì Cloudflare chặn theo nhịp burst **trên từng IP**.
+
+> ⚠️ Bản spec trước ghi `concurrency: 1` và `affdiscover.batch: 1`. Cả hai đã lạc hậu: `concurrency` đổi thành trần-trên khi thêm proxy xoay (§ Proxy xoay), và `batch` của `affdiscover` bị **bỏ** vì `discoverStep` không nhận tham số đó — để lại sẽ thành ô chỉnh được trên trang Cài đặt mà bấm không có tác dụng.
 
 ## 8. Web UI — tab mới `/affnet`
 
@@ -320,12 +322,12 @@ Tiêu chí hoàn thành: `npm --workspace @gas/api test` xanh + chạy thật 1 
 
 | # | Rủi ro | Xử lý |
 |---|---|---|
-| 1 | **Cloudflare chặn** khi quét nhiều | Pace 10s (đo 0/8 chặn) + `concurrency: 1` + backoff `BLOCK_MS` khi cả batch bị chặn + `blocked` không ghi verdict → thử lại. Nếu user nạp proxy sống vào `sh_proxy` thì dùng để tăng tốc (tuỳ chọn, không bắt buộc) |
+| 1 | **Cloudflare chặn** khi quét nhiều | Pace 10s (đo 0/8 chặn, kể cả không proxy) + `concurrency` kẹp theo số làn IP thật + backoff `BLOCK_MS` khi cả batch bị chặn + `blocked` không ghi verdict → thử lại. Nếu user nạp proxy sống vào `sh_proxy` thì dùng để tăng tốc (tuỳ chọn, không bắt buộc) |
 | 2 | **Recall không bao giờ chắc 100%** (subdomain.center là sampler ngẫu nhiên) | Tích luỹ append-only qua nhiều lượt; UI hiện "đã phát hiện / đã quét / còn chờ" thay vì hứa "đủ"; thêm nguồn free mới chỉ là thêm 1 fetcher |
 | 3 | **%commit là text do merchant tự viết**, ~30% trang không có | Lưu `commission_raw` + `terms_text` → sửa parser rồi re-parse offline, không cào lại. Bậc "chưa rõ" là hạng mục chính thức trong bảng |
 | 4 | **Net khác trả catch-all 200 cho mọi host** (tapfiliate, partnerstack) | Fingerprint trang giả per-net, bắt buộc, trước khi quét net đó |
 | 5 | Google/Rewardful đổi giao diện | Parser là hàm thuần + fixtures → test đỏ là biết ngay; cập nhật fixtures rồi sửa parser (đúng quy trình [docs/03 §7]) |
-| 6 | Playwright tốn RAM (đã có FB + TikTok dùng) | 1 browser tái dùng cho cả job, đóng page sau mỗi host; `concurrency: 1` nên chỉ 1 page sống |
+| 6 | Playwright tốn RAM (đã có FB + TikTok dùng) | 1 browser tái dùng cho cả job, đóng page sau mỗi host; số page sống = số làn (pool rỗng → 1) |
 
 ## 11. Cố ý KHÔNG làm (YAGNI)
 
