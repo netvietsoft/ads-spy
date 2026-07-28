@@ -1,6 +1,8 @@
 // Lưu trữ MySQL cho affnet: 3 bảng aff_net/aff_host/aff_program + các query trên đó.
 // Dùng CHUNG pool với ShMysql (sh.getPool()) — không mở pool thứ 2 (pool giới hạn 25 kết nối).
+// Lược đồ theo docs/superpowers/specs/2026-07-28-affiliate-net-crawler-design.md §3 — đổi cột/index phải khớp doc đó.
 import { Injectable } from '@nestjs/common';
+import mysql from 'mysql2/promise';
 import { ShMysql, buildOrderBy } from '../shophunter/sh.mysql';
 import { AffNet, AffHostRow, AffProgram, NetSummary, DiscoveredHost, ProxyOpt } from './affnet.types';
 
@@ -41,11 +43,33 @@ function rowToAffHost(r: any): AffHostRow {
 export class AffnetMysql {
   constructor(private readonly sh: ShMysql) {}
 
+  // Cột chưa có thì ADD COLUMN, có rồi thì bỏ qua — an toàn gọi lại nhiều lần (vòng sửa 1, theo pattern ensureColumn của ShMysql).
+  private async ensureColumn(pool: mysql.Pool, table: string, column: string, definition: string): Promise<void> {
+    const [rows] = await pool.query(
+      `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, column],
+    );
+    if ((rows as any[]).length === 0) {
+      await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN ${definition}`);
+    }
+  }
+
+  // Index chưa có thì ADD INDEX, có rồi thì bỏ qua (vòng sửa 1, theo pattern ensureIndexMulti của ShMysql).
+  private async ensureIndexMulti(pool: mysql.Pool, table: string, indexName: string, colsSql: string): Promise<void> {
+    const [rows] = await pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`,
+      [table, indexName],
+    );
+    if ((rows as any[]).length === 0) {
+      await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${colsSql})`);
+    }
+  }
+
   async ensureTables(): Promise<void> {
     const pool = await this.sh.getPool();
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_net (
       net VARCHAR(255) PRIMARY KEY,
-      platform VARCHAR(32) NOT NULL,
+      platform VARCHAR(40) NOT NULL,
       enabled TINYINT(1) NOT NULL DEFAULT 1,
       note VARCHAR(512),
       discover_polled_at BIGINT,
@@ -54,6 +78,10 @@ export class AffnetMysql {
       fake_len INT,
       fake_hash VARCHAR(64),
       fake_checked_at BIGINT)`);
+    // platform hẹp hơn spec (VARCHAR(32)) ở bản tạo bảng lần đầu — nới cho DB cũ (idempotent, bảng đang rỗng nên rẻ).
+    try { await pool.query('ALTER TABLE aff_net MODIFY platform VARCHAR(40) NOT NULL'); } catch { /* đã đủ rộng */ }
+    // created_at: mốc tạo net — set 1 lần trong upsertNets khi INSERT, KHÔNG đụng khi upsert lại (xem upsertNets).
+    await this.ensureColumn(pool, 'aff_net', 'created_at', 'created_at BIGINT');
 
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_host (
       net VARCHAR(255) NOT NULL,
@@ -62,9 +90,13 @@ export class AffnetMysql {
       last_seen BIGINT NOT NULL,
       sources VARCHAR(191) NOT NULL DEFAULT '',
       checked_at BIGINT,
-      check_status VARCHAR(16),
+      check_status VARCHAR(20),
       check_tries INT NOT NULL DEFAULT 0,
       PRIMARY KEY (net, slug))`);
+    // check_status hẹp hơn spec (VARCHAR(16)) ở bản tạo bảng lần đầu — nới cho DB cũ.
+    try { await pool.query('ALTER TABLE aff_host MODIFY check_status VARCHAR(20)'); } catch { /* đã đủ rộng */ }
+    // Index cho hot-path takeHostsToCheck (WHERE net = ? AND checked_at IS NULL ORDER BY first_seen).
+    await this.ensureIndexMulti(pool, 'aff_host', 'idx_queue', 'net, checked_at');
 
     // terms_text để MEDIUMTEXT riêng, KHÔNG bao giờ SELECT * (list query phải liệt kê cột, tránh kéo cột nặng này).
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_program (
@@ -86,6 +118,9 @@ export class AffnetMysql {
       status VARCHAR(16) NOT NULL DEFAULT 'active',
       fetched_at BIGINT NOT NULL,
       PRIMARY KEY (net, slug))`);
+    // Index cho programList lọc theo khoảng %commit / theo status.
+    await this.ensureIndexMulti(pool, 'aff_program', 'idx_net_pct', 'net, commission_pct');
+    await this.ensureIndexMulti(pool, 'aff_program', 'idx_net_status', 'net, status');
   }
 
   // Thêm net mới; net đã có thì chỉ cập nhật platform (không nhân đôi). Trả SỐ NET MỚI thêm.
@@ -99,9 +134,10 @@ export class AffnetMysql {
     );
     const existing = new Set((rows as any[]).map((r) => r.net));
     const added = nets.filter((n) => !existing.has(n.net)).length;
-    const values = nets.map((n) => [n.net, n.platform]);
+    // created_at chỉ ghi lúc INSERT (KHÔNG có trong ON DUPLICATE KEY UPDATE) → upsert lại không ghi đè mốc tạo ban đầu.
+    const values = nets.map((n) => [n.net, n.platform, Date.now()]);
     await pool.query(
-      `INSERT INTO aff_net (net, platform) VALUES ${values.map(() => '(?,?)').join(',')}
+      `INSERT INTO aff_net (net, platform, created_at) VALUES ${values.map(() => '(?,?,?)').join(',')}
        ON DUPLICATE KEY UPDATE platform = VALUES(platform)`,
       values.flat(),
     );
@@ -167,21 +203,14 @@ export class AffnetMysql {
     return added;
   }
 
-  // Ghi nhận 1 lượt poll discovery: tăng discover_polls, cập nhật discover_polled_at; có host mới thì cập nhật discover_last_new.
+  // Ghi nhận 1 lượt poll discovery: discover_last_new = SỐ HOST MỚI của lượt này (kể cả 0 — đây là tín hiệu "no hoà",
+  // KHÔNG phải mốc thời gian) → luôn 1 câu UPDATE vô điều kiện, không rẽ nhánh theo newCount.
   async markPolled(net: string, newCount: number): Promise<void> {
     const pool = await this.sh.getPool();
-    const now = Date.now();
-    if (newCount > 0) {
-      await pool.query(
-        'UPDATE aff_net SET discover_polled_at = ?, discover_polls = discover_polls + 1, discover_last_new = ? WHERE net = ?',
-        [now, now, net],
-      );
-    } else {
-      await pool.query(
-        'UPDATE aff_net SET discover_polled_at = ?, discover_polls = discover_polls + 1 WHERE net = ?',
-        [now, net],
-      );
-    }
+    await pool.query(
+      'UPDATE aff_net SET discover_polled_at = ?, discover_polls = discover_polls + 1, discover_last_new = ? WHERE net = ?',
+      [Date.now(), newCount, net],
+    );
   }
 
   // Lưu fingerprint trang "giả" (fetch host không tồn tại) để nhận diện notfound — xem affnet.classify.ts.

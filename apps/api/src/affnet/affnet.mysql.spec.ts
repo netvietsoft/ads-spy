@@ -36,6 +36,37 @@ describe('AffnetMysql', () => {
     expect((await db.listNets()).filter((n) => n.net === NET)).toHaveLength(1);
   });
 
+  it('upsertNets ghi created_at lúc INSERT; upsert lại KHÔNG đổi created_at', async () => {
+    const pool = await sh.getPool();
+    const [r1] = await pool.query('SELECT created_at FROM aff_net WHERE net = ?', [NET]);
+    const createdAt = (r1 as any[])[0].created_at;
+    expect(createdAt).not.toBeNull();
+    await db.upsertNets([{ net: NET, platform: 'generic' }]); // upsert lại — created_at phải giữ nguyên
+    const [r2] = await pool.query('SELECT created_at FROM aff_net WHERE net = ?', [NET]);
+    expect(Number((r2 as any[])[0].created_at)).toBe(Number(createdAt));
+  });
+
+  it('markPolled ghi discover_last_new = SỐ HOST MỚI (không phải timestamp); polls tăng đúng 1 mỗi lần', async () => {
+    const before = (await db.listNets()).find((n) => n.net === NET)!;
+    await db.markPolled(NET, 7);
+    let after = (await db.listNets()).find((n) => n.net === NET)!;
+    expect(after.discoverLastNew).toBe(7);
+    expect(after.discoverPolls).toBe(before.discoverPolls + 1);
+    expect(after.discoverPolledAt).not.toBeNull();
+    expect(Math.abs(Date.now() - (after.discoverPolledAt as number))).toBeLessThan(5000);
+
+    // Lượt "không ra host mới nào" — tín hiệu quan trọng nhất để phát hiện "no hoà" — PHẢI ghi 0, không giữ giá trị cũ, không null.
+    await db.markPolled(NET, 0);
+    after = (await db.listNets()).find((n) => n.net === NET)!;
+    expect(after.discoverLastNew).toBe(0);
+
+    // Chống hồi quy: nếu lỡ bind Date.now() (mili-giây, luôn > 1000) thay vì newCount thì test này đỏ ngay.
+    await db.markPolled(NET, 3);
+    after = (await db.listNets()).find((n) => n.net === NET)!;
+    expect(after.discoverLastNew).toBe(3);
+    expect(after.discoverLastNew as number).toBeLessThan(1000);
+  });
+
   it('upsertHosts trả SỐ HOST MỚI; lần 2 cùng host trả 0 nhưng gộp thêm source', async () => {
     expect(await db.upsertHosts(NET, [
       { slug: 'a', sources: ['subdomain.center'] },
