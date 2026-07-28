@@ -83,24 +83,13 @@ describe('AffnetMysql', () => {
     expect((rows as any[])[0].dry_rounds).toBe(0);
   });
 
-  it('sau DRY_ROUNDS_TO_SATURATE lượt no hoà liên tiếp (bão hoà + vừa poll) → pickNetToPoll() bỏ qua (net DUY NHẤT → null)', async () => {
-    // DB này CHUNG với net thật getrewardful.com (1401 host thật, dry_rounds=0 nên luôn "đủ điều kiện") → để
-    // pickNetToPoll() trả null đúng nghĩa "net DUY NHẤT", phải tạm tắt các net KHÁC NET trong lúc assert.
-    // enabled là cột bật/tắt net theo thiết kế (§3 spec) — tắt/bật lại không đụng aff_host/aff_program.
-    // Khôi phục nguyên trạng trong finally (chạy cả khi assert lỗi) rồi xác nhận lại đã khôi phục đúng.
-    const pool = await sh.getPool();
-    const [others] = await pool.query('SELECT net, enabled FROM aff_net WHERE net <> ?', [NET]);
-    try {
-      if ((others as any[]).length) await pool.query('UPDATE aff_net SET enabled = 0 WHERE net <> ?', [NET]);
-      for (let i = 0; i < DRY_ROUNDS_TO_SATURATE; i++) await db.markPolled(NET, DRY_THRESHOLD - 1);
-      expect(await db.pickNetToPoll()).toBeNull();
-    } finally {
-      for (const o of others as any[]) {
-        await pool.query('UPDATE aff_net SET enabled = ? WHERE net = ?', [o.enabled, o.net]);
-      }
-    }
-    const [check] = await pool.query('SELECT net, enabled FROM aff_net WHERE net <> ?', [NET]);
-    expect(check).toEqual(others);   // net khác đã về ĐÚNG nguyên trạng enabled ban đầu
+  it('sau DRY_ROUNDS_TO_SATURATE lượt no hoà liên tiếp (bão hoà + vừa poll) → pickNetToPoll() KHÔNG chọn net này nữa', async () => {
+    // KHÔNG đụng tới net khác (DB này CHUNG với net thật getrewardful.com — 1401 host thật) — chỉ thao tác
+    // trên NET giả rồi assert pickNetToPoll() không trả về NÓ nữa, đúng dù DB có 1 hay nhiều net khác,
+    // và không ghi một byte nào vào dòng production (an toàn cả khi process bị kill cứng giữa chừng).
+    for (let i = 0; i < DRY_ROUNDS_TO_SATURATE; i++) await db.markPolled(NET, DRY_THRESHOLD - 1);
+    const picked = await db.pickNetToPoll();
+    expect(picked?.net).not.toBe(NET);
   });
 
   it('net đã bão hoà nhưng discover_polled_at CŨ hơn cooldown → được chọn lại', async () => {
