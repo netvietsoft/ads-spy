@@ -8,7 +8,7 @@ Chuyển `google-ads-spy` từ tool nội bộ → phần mềm SaaS cho thuê b
 |---|---|---|---|---|
 | 0 | Chuẩn hóa repo + docs | phase này | — | đang làm |
 | 1 | User & Auth | đăng ký/đăng nhập/quên-reset MK/Google OAuth + roles Admin/Manager/User | 0 | chưa bắt đầu |
-| 2 | Gói sub + gate theo module | tháng/năm | 1 | chưa bắt đầu |
+| 2 | Gói sub + gate theo module | tháng/năm | 1 | engine + admin xong (P2); enforcement endpoint để P5/P6; thanh toán P3 |
 | 3 | Thanh toán | Stripe / Paypal / QR + webhook kích hoạt-gia hạn | 2 | chưa bắt đầu |
 | 4 | Dashboard admin | doanh thu ngày X-Y mặc định tháng này; user list: tên/mail/đt/gói/giá/ngày ĐK/hết hạn; ban/sửa/xóa | 1-3 | chưa bắt đầu |
 | 5 | API mobile | đóng gói `/api` + auth token | 1 | chưa bắt đầu |
