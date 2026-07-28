@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
-  ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/settings', 'Cài đặt'],
+  ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/settings', 'Cài đặt'],
 ];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
@@ -17,6 +17,7 @@ function activeHref(p: string): string {
   if (p.startsWith('/localdb')) return '/localdb/shops';
   if (p.startsWith('/trackshopify')) return '/trackshopify';
   if (p.startsWith('/reportlocaldb')) return '/reportlocaldb';
+  if (p.startsWith('/affnet')) return '/affnet';
   if (p.startsWith('/import')) return '/import';
   if (p.startsWith('/settings')) return '/settings';
   return '/googleads'; // '/' và '/googleads'

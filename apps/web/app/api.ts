@@ -637,6 +637,51 @@ export async function shImportEnrich(daily = 50): Promise<{ processed: number; o
   return jsonOrThrow(await fetch(`${API}/api/sh/import/enrich`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ daily }) }));
 }
 
+// ---- Affiliate Nets (crawler affnet — /api/aff/*) ----
+export interface AffNetRow {
+  net: string; platform: string;
+  discovered: number; checked: number; active: number; pending: number; polls: number;
+  buckets: Record<string, number>; // key vắng mặt = 0 (xem docs task-9-brief)
+}
+export interface AffProgramRow {
+  net: string; slug: string; join_url: string; program_name: string | null; brand: string | null;
+  web: string | null; commission_pct: number | null; commission_flat: number | null;
+  commission_currency: string | null; commission_scope: string | null; commission_raw: string | null;
+  cookie_days: number | null; payout_threshold: number | null; notes: string | null;
+  status: string; fetched_at: number;
+}
+export async function affNets(): Promise<AffNetRow[]> {
+  return jsonOrThrow(await fetch(`${API}/api/aff/nets`));
+}
+export async function affAddNets(nets: string): Promise<{ imported: number; skipped: number }> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/aff/nets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nets }),
+    }),
+  );
+}
+export async function affDeleteNet(net: string): Promise<void> {
+  await fetch(`${API}/api/aff/nets/${encodeURIComponent(net)}`, { method: 'DELETE' });
+}
+export async function affPrograms(p: {
+  net: string; minPct?: number; maxPct?: number; status?: string; q?: string;
+  page?: number; pageSize?: number; sort?: string; dir?: string;
+}): Promise<{ rows: AffProgramRow[]; total: number }> {
+  const qs = new URLSearchParams();
+  qs.set('net', p.net);
+  if (p.minPct != null) qs.set('minPct', String(p.minPct));
+  if (p.maxPct != null) qs.set('maxPct', String(p.maxPct));
+  if (p.status) qs.set('status', p.status);
+  if (p.q) qs.set('q', p.q);
+  if (p.page) qs.set('page', String(p.page));
+  if (p.pageSize) qs.set('pageSize', String(p.pageSize));
+  if (p.sort) qs.set('sort', p.sort);
+  if (p.dir) qs.set('dir', p.dir);
+  return jsonOrThrow(await fetch(`${API}/api/aff/programs?${qs.toString()}`));
+}
+
 // ===== Job nền (Settings) =====
 export interface ShJobLog { ts: number; level: string; msg: string }
 export interface ShJob {
