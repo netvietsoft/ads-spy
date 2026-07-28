@@ -5,6 +5,7 @@ import { PrismaModule } from './prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { PaymentsModule } from './payments/payments.module';
+import { AdminModule } from './admin/admin.module';
 import { GoogleClient } from './google/google.client';
 import { SearchService } from './search/search.service';
 import { SearchController } from './search/search.controller';
@@ -23,7 +24,7 @@ import { ShHarvestService } from './shophunter/sh.harvest.service';
 import { ShJobsService } from './shophunter/sh.jobs.service';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule],
+  imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule, AdminModule],
   controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController],
   providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService],
 })
