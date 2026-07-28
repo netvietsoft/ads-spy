@@ -16,7 +16,10 @@
 - **Tên bảng bắt buộc tiền tố `aff_`**; KHÔNG thêm cột vào bảng `sh_*` nào (bài học: `ALTER` bảng lớn nóng làm MySQL rebuild ~20 phút, treo API + crawler).
 - **`check_status` KHÔNG BAO GIỜ nhận giá trị `'blocked'`** — bị Cloudflare chặn nghĩa là "chưa biết": giữ `checked_at = NULL`, tăng `check_tries`. (Quy ước `ratelimited` của `affiliate.client.ts`.)
 - **Query danh sách dự án KHÔNG được SELECT `terms_text`** (MEDIUMTEXT) — chỉ lấy ở endpoint chi tiết 1 dự án.
-- **Pace mặc định `afffetch` = 10000ms, `concurrency: 1`.** Đo thật: không giãn → 9/9 bị chặn; giãn 10s → 0/8 bị chặn. Chạy song song sẽ tự phá.
+- **Pace mặc định `afffetch` = 10000ms, giãn TÍNH THEO TỪNG LÀN IP** (không phải toàn cục). Đo thật trên 1 IP: không giãn → 9/9 bị chặn; giãn 10s → 0/8 bị chặn.
+- **Proxy xoay dùng chung pool `sh_proxy`** (user quản ở Settings → Proxy) — KHÔNG đọc `scripts/proxies.txt` (đã chết 5/5), KHÔNG thêm chỗ cấu hình mới. 1 browser + **1 context/proxy** = nhiều làn IP độc lập; `concurrency` = số làn (kẹp ≤6). Pool rỗng → **1 làn trực tiếp**, vẫn chạy được.
+- **Playwright: launch KHÔNG proxy, đặt proxy ở `newContext({ proxy })`.** Đã đo: xoay được, và context không-proxy trong cùng browser đi trực tiếp. **KHÔNG** dùng sentinel `proxy: { server: 'per-context' }` — đã đo là nó làm context-không-proxy lỗi `ERR_PROXY_CONNECTION_FAILED`.
+- **Song song CHỈ an toàn khi mỗi luồng một IP riêng.** Không bao giờ cho 2 luồng dùng chung 1 làn.
 - **Giãn giữa các call discovery ≥ 8000ms** — `api.subdomain.center` trả 429 sau ~5 call dồn.
 - Hàm thuần (`affnet.discovery.ts` phần merge, `affnet.parser.ts`) **không được import Nest/mysql/playwright** để test độc lập.
 - Test chạy bằng `npm --workspace @gas/api test`. Test cần MySQL local chạy tuần tự: `npx jest src/affnet --runInBand --forceExit`.
@@ -859,6 +862,7 @@ git commit -m "feat(affnet): discovery 4 nguồn free + gộp tích luỹ (subdo
   programList(q: { net: string; minPct?: number; maxPct?: number; status?: string; q?: string;
     offset: number; limit: number; sort?: string; dir?: string }): Promise<{ rows: any[]; total: number }>
   programDetail(net: string, slug: string): Promise<any | null>  // CÓ terms_text
+  listHttpProxies(): Promise<ProxyOpt[]>   // pool XOAY dùng chung, đọc từ sh_proxy (Settings → Proxy)
   ```
 
 **Bucket %commit** — dùng đúng biểu thức SQL này ở cả `netSummaries` (nhóm) và test:
@@ -1090,6 +1094,21 @@ Các hàm còn lại:
 - `takeHostsToCheck`: `SELECT ... WHERE net = ? AND checked_at IS NULL ORDER BY first_seen LIMIT ?`.
 - `pickNetToPoll`: `SELECT ... WHERE enabled = 1 ORDER BY discover_polled_at IS NOT NULL, discover_polled_at LIMIT 1`.
 - `deleteNet`: xoá theo thứ tự `aff_program` → `aff_host` → `aff_net`.
+- `listHttpProxies`: đọc **pool xoay dùng chung** mà user quản ở Settings → Proxy. Chỉ HTTP (Playwright `newContext({proxy})` nhận http; SOCKS5 để sau):
+  ```ts
+  // Pool XOAY dùng chung với job catalog/affiliate/productrev. KHÔNG đọc scripts/proxies.txt.
+  // ⚠️ enabled=1 KHÔNG có nghĩa là còn sống: nút Test ở Settings ghi status='die' cho proxy chết,
+  // và thực tế 10/10 proxy trong DB đang enabled=1 nhưng status='die' (test 2026-07-14). Phải lọc status.
+  // Bảng sh_proxy KHÔNG có cột `live` — cột trạng thái là `status` (giá trị đã thấy: 'die').
+  async listHttpProxies(): Promise<ProxyOpt[]> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      `SELECT host, port, username, password FROM sh_proxy
+        WHERE enabled = 1 AND (type = 'http' OR type IS NULL)
+          AND (status IS NULL OR status <> 'die') ORDER BY id`);
+    return (rows as any[]).map((r) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+  }
+  ```
 
 - [ ] **Step 4: Chạy test cho xanh**
 
@@ -1116,14 +1135,23 @@ git commit -m "feat(affnet): 3 bảng aff_net/aff_host/aff_program + query bucke
 - Produces (class `AffnetFetch`, `@Injectable()`, `implements OnModuleDestroy`):
   ```ts
   export const CF_WAIT_TRIES = 20;   // chờ tối đa ~20s cho challenge tự giải
+  export interface ProxyOpt { host: string; port: number; username?: string | null; password?: string | null }
   export function rootUrlOf(net: string, slug: string): string;   // https://<slug>.<net>/     ← MỞ CÁI NÀY
   export function joinUrlOf(net: string, slug: string): string;   // https://<slug>.<net>/signup ← LƯU DB cho user bấm
-  loadSnapshot(url: string): Promise<PageSnapshot>          // mở page, chờ hết challenge, trả snapshot (có finalUrl)
-  fetchCampaign(net: string, slug: string, fake: FakeBaseline):
+
+  setProxies(list: ProxyOpt[]): Promise<void>   // dựng lại pool LÀN; danh sách đổi → context cũ đóng hết
+  laneCount(): number                            // số làn hiện có (≥1: pool rỗng vẫn có 1 làn trực tiếp)
+  loadSnapshot(url: string, lane?: number): Promise<PageSnapshot>   // chạy trên làn chỉ định
+  fetchCampaign(net: string, slug: string, fake: FakeBaseline, lane?: number):
     Promise<{ outcome: FetchOutcome; parsed: ParsedProgram | null; termsText: string | null }>
-  probeFake(net: string): Promise<{ len: number; hash: string }>   // fetch slug giả → fingerprint
+  probeFake(net: string, lane?: number): Promise<{ len: number; hash: string }>
   onModuleDestroy(): Promise<void>
   ```
+
+> **Làn proxy.** Mỗi proxy = 1 `BrowserContext` riêng trong CÙNG 1 browser → mỗi làn là một IP độc lập, giãn `paceMs`
+> tính riêng từng làn. Đã đo: **launch KHÔNG proxy + `newContext({ proxy })` là cách đúng**; context không-proxy trong
+> cùng browser đi trực tiếp; sentinel `{server:'per-context'}` thì làm context-không-proxy lỗi `ERR_PROXY_CONNECTION_FAILED`
+> → đừng dùng. Pool `sh_proxy` rỗng → đúng 1 làn trực tiếp (vẫn chạy, chỉ chậm).
 
 > **Mở trang GỐC, không mở `/signup`.** Trang gốc redirect sang `/signup` (sống) hoặc `/inactive` (chết) hoặc trả 404
 > (không tồn tại) → 1 request vừa phân loại vừa lấy được nội dung trang signup. Mở thẳng `/signup` là **mất** tín hiệu này.
@@ -1203,6 +1231,78 @@ describe('rootUrlOf / joinUrlOf', () => {
     expect(joinUrlOf('getrewardful.com', 'abc')).toBe('https://abc.getrewardful.com/signup');
   });
 });
+
+// Làn proxy: KHÔNG mở Chromium thật — thay getBrowser bằng browser giả đếm số context được tạo.
+describe('AffnetFetch — pool làn proxy', () => {
+  function fakeBrowser() {
+    const created: any[] = [];
+    return {
+      created,
+      browser: {
+        isConnected: () => true,
+        newContext: jest.fn(async (opts: any) => {
+          const c = { opts, closed: false, close: async () => { c.closed = true; }, newPage: jest.fn() };
+          created.push(c);
+          return c;
+        }),
+      },
+    };
+  }
+
+  it('pool RỖNG → đúng 1 làn TRỰC TIẾP (không có option proxy)', async () => {
+    const f = new AffnetFetch();
+    const fb = fakeBrowser();
+    (f as any).getBrowser = jest.fn().mockResolvedValue(fb.browser);
+    await f.setProxies([]);
+    expect(f.laneCount()).toBe(1);
+    expect(fb.created[0].opts.proxy).toBeUndefined();
+  });
+
+  it('3 proxy → 3 làn, mỗi làn 1 server đúng định dạng http://host:port', async () => {
+    const f = new AffnetFetch();
+    const fb = fakeBrowser();
+    (f as any).getBrowser = jest.fn().mockResolvedValue(fb.browser);
+    await f.setProxies([
+      { host: '1.1.1.1', port: 8000, username: 'u1', password: 'p1' },
+      { host: '2.2.2.2', port: 8001, username: null, password: null },
+      { host: '3.3.3.3', port: 8002 },
+    ]);
+    expect(f.laneCount()).toBe(3);
+    expect(fb.created.map((c) => c.opts.proxy.server)).toEqual(['http://1.1.1.1:8000', 'http://2.2.2.2:8001', 'http://3.3.3.3:8002']);
+    expect(fb.created[0].opts.proxy.username).toBe('u1');
+    expect(fb.created[1].opts.proxy.username).toBeUndefined();  // null → undefined, không gửi rỗng
+  });
+
+  it('gọi setProxies lại với DANH SÁCH Y NGUYÊN → KHÔNG dựng lại (giữ cookie cf_clearance)', async () => {
+    const f = new AffnetFetch();
+    const fb = fakeBrowser();
+    (f as any).getBrowser = jest.fn().mockResolvedValue(fb.browser);
+    const list = [{ host: '1.1.1.1', port: 8000 }];
+    await f.setProxies(list);
+    await f.setProxies([{ host: '1.1.1.1', port: 8000 }]);
+    expect(fb.created).toHaveLength(1);
+  });
+
+  it('danh sách ĐỔI → đóng làn cũ rồi dựng lại', async () => {
+    const f = new AffnetFetch();
+    const fb = fakeBrowser();
+    (f as any).getBrowser = jest.fn().mockResolvedValue(fb.browser);
+    await f.setProxies([{ host: '1.1.1.1', port: 8000 }]);
+    await f.setProxies([{ host: '9.9.9.9', port: 9000 }]);
+    expect(fb.created[0].closed).toBe(true);
+    expect(fb.created).toHaveLength(2);
+    expect(f.laneCount()).toBe(1);
+  });
+
+  it('lane index xoay vòng (lane 5 với 3 làn → làn 2)', async () => {
+    const f = new AffnetFetch();
+    const fb = fakeBrowser();
+    (f as any).getBrowser = jest.fn().mockResolvedValue(fb.browser);
+    await f.setProxies([{ host: 'a', port: 1 }, { host: 'b', port: 2 }, { host: 'c', port: 3 }]);
+    const lane = await (f as any).getLane(5);
+    expect(lane).toBe(fb.created[2]);
+  });
+});
 ```
 
 - [ ] **Step 2: Chạy test để chắc chắn THẤT BẠI**
@@ -1237,27 +1337,59 @@ export function joinUrlOf(net: string, slug: string): string {
   return `https://${slug}.${net}/signup`;
 }
 
+export interface ProxyOpt { host: string; port: number; username?: string | null; password?: string | null }
+
 @Injectable()
 export class AffnetFetch implements OnModuleDestroy {
   private browser: Browser | null = null;
-  private ctx: BrowserContext | null = null;
+  private lanes: BrowserContext[] = [];   // mỗi làn = 1 IP (1 proxy), hoặc 1 làn trực tiếp khi pool rỗng
+  private laneKey = '';                   // vân tay danh sách proxy → biết khi nào phải dựng lại pool
 
-  private async getContext(): Promise<BrowserContext> {
-    if (this.ctx && this.browser?.isConnected()) return this.ctx;
+  private async getBrowser(): Promise<Browser> {
+    if (this.browser?.isConnected()) return this.browser;
     const { chromium } = await import('playwright');
+    // LAUNCH KHÔNG PROXY — proxy đặt ở newContext (đã đo là cách đúng để xoay theo làn).
     this.browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'] });
-    this.ctx = await this.browser.newContext({ userAgent: UA, locale: 'en-US', viewport: { width: 1366, height: 900 } });
-    return this.ctx;
+    return this.browser;
+  }
+
+  // Dựng lại pool làn theo danh sách proxy hiện tại (đọc từ sh_proxy mỗi lượt job).
+  // Danh sách không đổi → giữ nguyên pool (khỏi mất cookie cf_clearance đã có).
+  async setProxies(list: ProxyOpt[]): Promise<void> {
+    const key = (list || []).map((p) => `${p.host}:${p.port}`).join('|');
+    if (key === this.laneKey && this.lanes.length) return;
+    for (const c of this.lanes) await c.close().catch(() => undefined);
+    this.lanes = [];
+    const b = await this.getBrowser();
+    const base = { userAgent: UA, locale: 'en-US', viewport: { width: 1366, height: 900 } };
+    if (!list || !list.length) {
+      this.lanes.push(await b.newContext(base));   // pool rỗng → 1 làn TRỰC TIẾP
+    } else {
+      for (const p of list) {
+        this.lanes.push(await b.newContext({
+          ...base,
+          proxy: { server: `http://${p.host}:${p.port}`, username: p.username || undefined, password: p.password || undefined },
+        }));
+      }
+    }
+    this.laneKey = key;
+  }
+
+  laneCount(): number { return this.lanes.length || 1; }
+
+  private async getLane(lane = 0): Promise<BrowserContext> {
+    if (!this.lanes.length) await this.setProxies([]);   // chưa gọi setProxies → 1 làn trực tiếp
+    return this.lanes[lane % this.lanes.length];
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.browser?.close().catch(() => undefined);
-    this.browser = null; this.ctx = null;
+    this.browser = null; this.lanes = []; this.laneKey = '';
   }
 
-  // Mở 1 trang, chờ challenge Cloudflare tự giải, trả snapshot. Luôn đóng page (tránh rò RAM).
-  async loadSnapshot(url: string): Promise<PageSnapshot> {
-    const ctx = await this.getContext();
+  // Mở 1 trang trên LÀN chỉ định, chờ challenge Cloudflare tự giải, trả snapshot. Luôn đóng page (tránh rò RAM).
+  async loadSnapshot(url: string, lane = 0): Promise<PageSnapshot> {
+    const ctx = await this.getLane(lane);
     const page = await ctx.newPage();
     try {
       const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
@@ -1279,17 +1411,17 @@ export class AffnetFetch implements OnModuleDestroy {
 
   // Fingerprint TRANG GIẢ của net: bắt buộc vì firstpromoter/tapfiliate/partnerstack trả 200 + trang
   // catch-all cho MỌI host (đã đo). Rewardful trả 404 nên không cần, nhưng probe vẫn vô hại.
-  async probeFake(net: string): Promise<{ len: number; hash: string }> {
+  async probeFake(net: string, lane = 0): Promise<{ len: number; hash: string }> {
     const slug = 'zzz-not-real-' + Math.floor(Math.random() * 1e9).toString(36);
-    const snap = await this.loadSnapshot(rootUrlOf(net, slug));
+    const snap = await this.loadSnapshot(rootUrlOf(net, slug), lane);
     const text = snap.text || '';
     return { len: text.length, hash: textHash(text) };
   }
 
-  async fetchCampaign(net: string, slug: string, fake: FakeBaseline): Promise<{
+  async fetchCampaign(net: string, slug: string, fake: FakeBaseline, lane = 0): Promise<{
     outcome: FetchOutcome; parsed: ParsedProgram | null; termsText: string | null;
   }> {
-    const snap = await this.loadSnapshot(rootUrlOf(net, slug));
+    const snap = await this.loadSnapshot(rootUrlOf(net, slug), lane);
     const outcome = classifyPage(snap, fake);
     if (outcome !== 'active') return { outcome, parsed: null, termsText: null };
     return { outcome, parsed: parseRewardful(snap.text), termsText: snap.text.slice(0, 200000) };
@@ -1334,8 +1466,9 @@ git commit -m "feat(affnet): fetch trang campaign bằng Playwright, chờ chall
   platformOf(net: string): string                    // 'getrewardful.com' → 'rewardful', còn lại 'generic'
   importNets(text: string): Promise<{ imported: number; skipped: number }>
   discoverStep(cfg: { paceMs: number }): Promise<{ net: string | null; found: number; added: number }>
-  fetchStep(cfg: { batch: number; paceMs: number }): Promise<{ net: string | null; checked: number;
-    active: number; inactive: number; notfound: number; blocked: number }>
+  fetchStep(cfg: { batch: number; paceMs: number; concurrency?: number }): Promise<{ net: string | null;
+    checked: number; active: number; inactive: number; notfound: number;
+    blocked: number; laneErrors: number; lanes: number }>
   netSummaries(): Promise<NetSummary[]>                     // uỷ quyền xuống AffnetMysql.netSummaries
   deleteNet(net: string): Promise<void>
   programList(q: Parameters<AffnetMysql['programList']>[0]): Promise<{ rows: any[]; total: number }>
@@ -1365,8 +1498,13 @@ const mkDb = () => ({
   bumpHostTries: jest.fn().mockResolvedValue(undefined),
   upsertProgram: jest.fn().mockResolvedValue(undefined),
   netSummaries: jest.fn().mockResolvedValue([]),
+  listHttpProxies: jest.fn().mockResolvedValue([]),
 });
-const mkFetch = () => ({ fetchCampaign: jest.fn(), probeFake: jest.fn() });
+const mkFetch = (lanes = 1) => ({
+  fetchCampaign: jest.fn(), probeFake: jest.fn(),
+  setProxies: jest.fn().mockResolvedValue(undefined),
+  laneCount: jest.fn().mockReturnValue(lanes),
+});
 
 describe('normalizeNet + platformOf', () => {
   const s = new AffnetService(mkDb() as any, mkFetch() as any);
@@ -1444,6 +1582,71 @@ describe('fetchStep', () => {
     expect((await s.fetchStep({ batch: 5, paceMs: 0 })).net).toBeNull();
   });
 });
+
+describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
+  const host = (slug: string) => ({ net: 'getrewardful.com', slug, firstSeen: 1, lastSeen: 1, sources: 's', checkedAt: null, checkStatus: null, checkTries: 0 });
+  const net1 = [{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' }];
+
+  it('MỖI LƯỢT đọc lại pool proxy từ DB rồi nạp vào fetch (đổi proxy trên web → lượt sau có hiệu lực)', async () => {
+    const db = mkDb(); const f = mkFetch(2);
+    const pool = [{ host: '1.1.1.1', port: 80 }, { host: '2.2.2.2', port: 80 }];
+    db.listHttpProxies.mockResolvedValue(pool);
+    db.listNets.mockResolvedValue(net1);
+    db.takeHostsToCheck.mockResolvedValue([]);
+    const s = new AffnetService(db as any, f as any);
+    await s.fetchStep({ batch: 5, paceMs: 0 });
+    expect(db.listHttpProxies).toHaveBeenCalled();
+    expect(f.setProxies).toHaveBeenCalledWith(pool);
+  });
+
+  it('pool RỖNG (hoặc mọi proxy die) → vẫn chạy với 1 làn, KHÔNG ném lỗi', async () => {
+    const db = mkDb(); const f = mkFetch(1);
+    db.listHttpProxies.mockResolvedValue([]);
+    db.listNets.mockResolvedValue(net1);
+    db.takeHostsToCheck.mockResolvedValue([host('a')]);
+    f.fetchCampaign.mockResolvedValue({ outcome: 'active', parsed: { commissionPct: 10 }, termsText: 'T' });
+    const s = new AffnetService(db as any, f as any);
+    const r = await s.fetchStep({ batch: 5, paceMs: 0 });
+    expect(f.setProxies).toHaveBeenCalledWith([]);
+    expect(r.lanes).toBe(1);
+    expect(r.active).toBe(1);
+  });
+
+  it('concurrency bị KẸP theo số làn thật (cfg 5 nhưng chỉ 2 làn → 2)', async () => {
+    const db = mkDb(); const f = mkFetch(2);
+    db.listNets.mockResolvedValue(net1);
+    db.takeHostsToCheck.mockResolvedValue([]);
+    const s = new AffnetService(db as any, f as any);
+    expect((await s.fetchStep({ batch: 5, paceMs: 0, concurrency: 5 })).lanes).toBe(2);
+  });
+
+  it('proxy chết giữa lượt (fetchCampaign NÉM) → đếm laneErrors, bumpHostTries, KHÔNG markHostChecked', async () => {
+    const db = mkDb(); const f = mkFetch(1);
+    db.listNets.mockResolvedValue(net1);
+    db.takeHostsToCheck.mockResolvedValue([host('a')]);
+    f.fetchCampaign.mockRejectedValue(new Error('net::ERR_PROXY_CONNECTION_FAILED'));
+    const s = new AffnetService(db as any, f as any);
+    const r = await s.fetchStep({ batch: 5, paceMs: 0 });
+    expect(r.laneErrors).toBe(1);
+    expect(r.blocked).toBe(0);              // proxy hỏng ≠ Cloudflare chặn — đếm riêng để chẩn đoán đúng
+    expect(db.bumpHostTries).toHaveBeenCalledWith('getrewardful.com', 'a');
+    expect(db.markHostChecked).not.toHaveBeenCalled();
+  });
+
+  it('2 làn chia nhau danh sách host, mỗi host quét ĐÚNG 1 LẦN', async () => {
+    const db = mkDb(); const f = mkFetch(2);
+    db.listNets.mockResolvedValue(net1);
+    db.takeHostsToCheck.mockResolvedValue([host('a'), host('b'), host('c'), host('d')]);
+    f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
+    const s = new AffnetService(db as any, f as any);
+    const r = await s.fetchStep({ batch: 10, paceMs: 0, concurrency: 2 });
+    expect(r.checked).toBe(4);
+    const slugs = f.fetchCampaign.mock.calls.map((c: any[]) => c[1]).sort();
+    expect(slugs).toEqual(['a', 'b', 'c', 'd']);
+    const usedLanes = new Set(f.fetchCampaign.mock.calls.map((c: any[]) => c[3]));
+    expect(usedLanes.size).toBe(2);          // thật sự dùng 2 làn khác nhau
+  });
+});
 ```
 
 - [ ] **Step 2: Chạy test để chắc chắn THẤT BẠI**
@@ -1496,56 +1699,78 @@ async discoverStep(cfg: { paceMs: number }): Promise<{ net: string | null; found
 }
 ```
 
-`fetchStep` — mỗi lượt xử lý 1 net (tránh mở nhiều context Chromium):
+`fetchStep` — mỗi lượt 1 net, chia host cho các **làn IP** chạy song song (mỗi làn tự giãn `paceMs`):
 
 ```ts
-async fetchStep(cfg: { batch: number; paceMs: number }): Promise<{
-  net: string | null; checked: number; active: number; inactive: number; notfound: number; blocked: number;
+async fetchStep(cfg: { batch: number; paceMs: number; concurrency?: number }): Promise<{
+  net: string | null; checked: number; active: number; inactive: number; notfound: number;
+  blocked: number; laneErrors: number; lanes: number;
 }> {
   await this.db.ensureTables();
-  const out = { net: null as string | null, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0 };
+  // Proxy xoay: đọc pool sh_proxy (Settings → Proxy) MỖI LƯỢT → đổi proxy trên web là lượt sau có hiệu lực.
+  // Pool rỗng (hoặc mọi proxy status='die') → setProxies([]) tạo đúng 1 làn TRỰC TIẾP, job vẫn chạy.
+  await this.fetch.setProxies(await this.db.listHttpProxies());
+  const lanes = Math.max(1, Math.min(cfg.concurrency ?? this.fetch.laneCount(), this.fetch.laneCount()));
+  const out = { net: null as string | null, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes };
+
   for (const n of await this.db.listNets()) {
     if (n.enabled === false) continue;
-    // Fingerprint trang giả: chỉ làm 1 lần/net, TRƯỚC khi quét (net catch-all trả 200 cho mọi host).
+    // Fingerprint trang giả: 1 lần/net, TRƯỚC khi quét (net catch-all trả 200 cho mọi host).
     let fake = { len: n.fakeLen, hash: n.fakeHash };
     if (!n.fakeCheckedAt) {
-      const f = await this.fetch.probeFake(n.net);
+      const f = await this.fetch.probeFake(n.net, 0);
       await this.db.setFakeBaseline(n.net, f.len, f.hash);
       fake = { len: f.len, hash: f.hash };
     }
     const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
     if (!hosts.length) continue;
     out.net = n.net;
-    for (let i = 0; i < hosts.length; i++) {
-      const h = hosts[i];
-      const r = await this.fetch.fetchCampaign(n.net, h.slug, fake);
-      out.checked++;
-      if (r.outcome === 'blocked') {
-        // CHƯA BIẾT → không kết luận, để quét lại lượt sau.
-        out.blocked++;
-        await this.db.bumpHostTries(n.net, h.slug);
-      } else if (r.outcome === 'active' && r.parsed) {
-        out.active++;
-        await this.db.upsertProgram({
-          ...r.parsed, net: n.net, slug: h.slug,
-          joinUrl: joinUrlOf(n.net, h.slug), termsText: r.termsText,
-          status: 'active', fetchedAt: Date.now(),
-        });
-        await this.db.markHostChecked(n.net, h.slug, 'active');
-      } else {
-        if (r.outcome === 'inactive') out.inactive++;
-        else if (r.outcome === 'notfound') out.notfound++;
-        await this.db.markHostChecked(n.net, h.slug, r.outcome);
+
+    let idx = 0;
+    // 1 worker = 1 LÀN = 1 IP. Giãn paceMs nằm TRONG worker → giãn theo từng IP, không phải toàn cục.
+    const worker = async (lane: number) => {
+      while (true) {
+        const i = idx++;
+        if (i >= hosts.length) return;
+        const h = hosts[i];
+        let r: { outcome: string; parsed: any; termsText: string | null };
+        try {
+          r = await this.fetch.fetchCampaign(n.net, h.slug, fake, lane);
+        } catch (e) {
+          // Proxy chết / lỗi mạng của LÀN này → coi như CHƯA BIẾT (đừng kết luận), khai tử làn này,
+          // các làn khác chạy tiếp. Đếm riêng để biết proxy hỏng chứ không phải Cloudflare chặn.
+          out.laneErrors++;
+          await this.db.bumpHostTries(n.net, h.slug);
+          return;
+        }
+        out.checked++;
+        if (r.outcome === 'blocked') {
+          out.blocked++;                                   // CHƯA BIẾT → quét lại lượt sau
+          await this.db.bumpHostTries(n.net, h.slug);
+        } else if (r.outcome === 'active' && r.parsed) {
+          out.active++;
+          await this.db.upsertProgram({
+            ...r.parsed, net: n.net, slug: h.slug,
+            joinUrl: joinUrlOf(n.net, h.slug), termsText: r.termsText,
+            status: 'active', fetchedAt: Date.now(),
+          });
+          await this.db.markHostChecked(n.net, h.slug, 'active');
+        } else {
+          if (r.outcome === 'inactive') out.inactive++;
+          else if (r.outcome === 'notfound') out.notfound++;
+          await this.db.markHostChecked(n.net, h.slug, r.outcome);
+        }
+        if (cfg.paceMs > 0) await new Promise((res) => setTimeout(res, cfg.paceMs));
       }
-      if (cfg.paceMs > 0 && i < hosts.length - 1) await new Promise((res) => setTimeout(res, cfg.paceMs));
-    }
+    };
+    await Promise.all(Array.from({ length: lanes }, (_, l) => worker(l)));
     break; // xong 1 net là dừng lượt này
   }
   return out;
 }
 ```
 
-Lỗi thì **ném ra** để job bắt — `ShJobsService` đã có `try/catch` + backoff sẵn.
+Lỗi ngoài dự kiến thì **ném ra** để job bắt — `ShJobsService` đã có `try/catch` + backoff sẵn.
 
 - [ ] **Step 4: Viết `affnet.controller.ts`**
 
@@ -1669,11 +1894,11 @@ describe('2 job affnet', () => {
     expect(JOB_NAMES).toContain('afffetch');
   });
 
-  it('cfg mặc định afffetch: paceMs 10000 và concurrency 1 (đã đo: giãn 10s → 0/8 bị chặn)', async () => {
+  it('cfg mặc định afffetch: paceMs 10000 (đã đo: giãn 10s → 0/8 bị chặn) + concurrency 3 (mỗi luồng 1 làn proxy)', async () => {
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, { } as any);
     const cfg = await svc.getJobCfg('afffetch' as any);
     expect(cfg.paceMs).toBe(10000);
-    expect(cfg.concurrency).toBe(1);
+    expect(cfg.concurrency).toBe(3);
   });
 
   it('cfg mặc định affdiscover: paceMs 8000 (subdomain.center 429 nếu dồn)', async () => {
@@ -1681,25 +1906,32 @@ describe('2 job affnet', () => {
     expect((await svc.getJobCfg('affdiscover' as any)).paceMs).toBe(8000);
   });
 
-  it('step afffetch gọi AffnetService.fetchStep với batch+paceMs từ cfg', async () => {
-    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'getrewardful.com', checked: 3, active: 2, inactive: 1, notfound: 0, blocked: 0 }), discoverStep: jest.fn() };
+  it('step afffetch gọi AffnetService.fetchStep với batch+paceMs+concurrency từ cfg', async () => {
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'getrewardful.com', checked: 3, active: 2, inactive: 1, notfound: 0, blocked: 0, lanes: 1 }), discoverStep: jest.fn() };
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, aff as any);
     await (svc as any).step('afffetch', true);
-    expect(aff.fetchStep).toHaveBeenCalledWith(expect.objectContaining({ batch: 30, paceMs: 10000 }));
+    expect(aff.fetchStep).toHaveBeenCalledWith(expect.objectContaining({ batch: 30, paceMs: 10000, concurrency: 3 }));
   });
 
   it('afffetch: cả batch bị chặn → lastStatus blocked (job sẽ backoff)', async () => {
-    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'x.com', checked: 5, active: 0, inactive: 0, notfound: 0, blocked: 5 }), discoverStep: jest.fn() };
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'x.com', checked: 5, active: 0, inactive: 0, notfound: 0, blocked: 5, lanes: 1 }), discoverStep: jest.fn() };
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, aff as any);
     const r = await (svc as any).step('afffetch', true);
     expect(r.pace).toBeGreaterThanOrEqual(300000);   // BLOCK_MS
   });
 
   it('afffetch: hết host chờ (net=null) → nghỉ IDLE', async () => {
-    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: null, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0 }), discoverStep: jest.fn() };
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: null, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, lanes: 1 }), discoverStep: jest.fn() };
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, aff as any);
     const r = await (svc as any).step('afffetch', true);
     expect(r.pace).toBe(120000);   // IDLE_MS
+  });
+
+  it('afffetch: stats có số LÀN proxy đang dùng (user cần thấy proxy có tác dụng)', async () => {
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'x.com', checked: 6, active: 4, inactive: 2, notfound: 0, blocked: 0, lanes: 3 }), discoverStep: jest.fn() };
+    const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, aff as any);
+    await (svc as any).step('afffetch', true);
+    expect((svc as any).mem.afffetch.stats.lan).toBe(3);
   });
 });
 ```
@@ -1715,13 +1947,14 @@ Expected: FAIL — `JOB_NAMES` chưa có `'affdiscover'`.
 2. `DESC`: 
    ```ts
    affdiscover: 'Phát hiện dự án (subdomain) của các net affiliate qua 4 nguồn passive-DNS miễn phí. Poll LẶP để tích luỹ — nguồn chính trả mẫu ngẫu nhiên mỗi lần.',
-   afffetch: 'Mở từng trang campaign bằng Chromium (chờ Cloudflare) → lấy %hoa hồng/web/điều khoản. Giãn 10s/trang, KHÔNG chạy song song.',
+   afffetch: 'Mở từng trang campaign bằng Chromium (chờ Cloudflare) → lấy %hoa hồng/web/điều khoản. Xoay proxy dùng chung (Cài đặt → Proxy): mỗi proxy 1 làn IP, giãn 10s/làn. Không proxy → 1 làn trực tiếp (chậm hơn).',
    ```
 3. `DEFAULT_CFG`:
    ```ts
    affdiscover: { batch: 1, paceMs: 8000, daily: 200, activeStart: 0, activeEnd: 24 },
-   afffetch: { batch: 30, paceMs: 10000, daily: 3000, concurrency: 1, activeStart: 0, activeEnd: 24 },
+   afffetch: { batch: 30, paceMs: 10000, daily: 3000, concurrency: 3, activeStart: 0, activeEnd: 24 },
    ```
+   `concurrency: 3` = tối đa 3 luồng, nhưng runtime tự kẹp theo **số làn proxy thật** (`Math.min(cfg.concurrency, laneCount)`), nên không có proxy thì vẫn chạy 1 luồng an toàn.
 4. `mem` khởi tạo: thêm `affdiscover: this.blank(), afffetch: this.blank()`.
 5. `onModuleInit`: thêm 2 tên vào danh sách auto-start.
 6. Constructor: thêm `private readonly affnet: AffnetService` (import từ `../affnet/affnet.service`).
@@ -1757,19 +1990,21 @@ Expected: FAIL — `JOB_NAMES` chưa có `'affdiscover'`.
      const dk = this.dayKey('afffetch');
      if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.afffetch.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
      let r: any;
-     try { r = await this.affnet.fetchStep({ batch: cfg.batch, paceMs: cfg.paceMs }); }
+     try { r = await this.affnet.fetchStep({ batch: cfg.batch, paceMs: cfg.paceMs, concurrency: cfg.concurrency }); }
      catch (e) { this.mem.afffetch.lastStatus = 'error'; await this.mysql.appendJobLog('afffetch', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
      this.mem.afffetch.lastRunAt = Date.now();
+     this.mem.afffetch.stats = { quet: r?.checked || 0, song: r?.active || 0, chet: r?.inactive || 0, khong_co: r?.notfound || 0, chan: r?.blocked || 0, loi_proxy: r?.laneErrors || 0, lan: r?.lanes || 1 };
+     if (r?.laneErrors) await this.mysql.appendJobLog('afffetch', 'warn', `${r.laneErrors} làn proxy lỗi (proxy chết?) — kiểm ở Cài đặt → Proxy, bấm Test.`).catch(() => {});
      if (!r?.net || !r.checked) { this.mem.afffetch.lastStatus = 'idle'; await this.mysql.appendJobLog('afffetch', 'info', 'Hết dự án cần quét; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
      await this.mysql.addDailyCount(dk, r.checked).catch(() => {});
-     this.mem.afffetch.stats = { quet: r.checked, song: r.active, chet: r.inactive, khong_co: r.notfound, chan: r.blocked };
-     if (r.blocked >= r.checked) { this.mem.afffetch.lastStatus = 'blocked'; await this.mysql.appendJobLog('afffetch', 'warn', `Bị Cloudflare chặn cả lượt (${r.blocked}/${r.checked}); nghỉ rồi thử lại.`).catch(() => {}); return { pace: BLOCK_MS }; }
+     if (r.blocked >= r.checked) { this.mem.afffetch.lastStatus = 'blocked'; await this.mysql.appendJobLog('afffetch', 'warn', `Bị chặn cả lượt (${r.blocked}/${r.checked}) trên ${r.lanes} làn; nghỉ rồi thử lại. Thêm proxy ở Cài đặt → Proxy để đỡ bị chặn.`).catch(() => {}); return { pace: BLOCK_MS }; }
      this.mem.afffetch.lastStatus = 'ok';
-     await this.mysql.appendJobLog('afffetch', 'info', `${r.net}: ${r.checked} quét · ${r.active} sống · ${r.inactive} chết · ${r.blocked} chặn`).catch(() => {});
+     await this.mysql.appendJobLog('afffetch', 'info', `${r.net}: ${r.checked} quét · ${r.active} sống · ${r.inactive} chết · ${r.blocked} chặn · ${r.lanes} làn proxy`).catch(() => {});
      return { pace: cfg.paceMs };
    }
    ```
-9. `needsProxy()` KHÔNG thêm 2 job này (không dùng seam proxy Shopify).
+   ⚠️ `stats` phải set **TRƯỚC** nhánh `idle` (test kiểm `stats.lan` cả khi không có host) — đừng đổi thứ tự.
+9. `needsProxy()` **KHÔNG** thêm 2 job này. Đó là seam vá `shopifyHttp.get` bằng `makeProxiedGet` — chỉ dành cho job catalog/affiliate/productrev. Playwright nhận proxy trực tiếp qua `newContext({ proxy })` nên affnet đọc pool `sh_proxy` theo đường riêng (`AffnetMysql.listHttpProxies`), **vẫn là cùng một pool user quản ở Settings → Proxy**.
 
 ⚠️ `sh_job_log.job` là `VARCHAR(16)` — `'affdiscover'` (11) và `'afffetch'` (8) vừa, không cần ALTER.
 

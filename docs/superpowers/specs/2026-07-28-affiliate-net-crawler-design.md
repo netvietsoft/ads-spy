@@ -32,7 +32,8 @@ Thay thế việc user đang làm tay: search Google `site:*.getrewardful.com` r
 | Playwright, **không giãn cách** | 2 trang đầu OK rồi **9/9 bị chặn** liên tiếp (avg 25s/trang vì phải chờ challenge) | Cloudflare chặn theo **nhịp burst**, không theo identity |
 | Playwright, **giãn 20s** | **3/3 qua**, ~2s/trang (đúng 3 slug vừa bị chặn ở trên) | Nghỉ là hồi phục |
 | Playwright, **giãn 10s** | **0/8 bị chặn**, 1,5–2,8s/trang | **Pace mặc định 10s** |
-| Proxy pool trong repo | **5/5 chết** (`scripts/proxies.txt` hết hạn) | Không thiết kế dựa vào proxy; proxy chỉ là tuỳ chọn tăng tốc |
+| Proxy pool trong repo | `scripts/proxies.txt`: **5/5 chết** (hết hạn) | Không đọc file này; đọc pool **`sh_proxy`** user quản ở Settings → Proxy |
+| Playwright xoay proxy theo context được không? | **Được**: launch KHÔNG proxy + `browser.newContext({ proxy })` → context dùng đúng proxy đó; context KHÔNG proxy trong cùng browser thì đi **trực tiếp**. (Sentinel `proxy:{server:'per-context'}` thì làm context-không-proxy lỗi `ERR_PROXY_CONNECTION_FAILED` → **đừng dùng sentinel**) | 1 browser + **1 context/proxy** = nhiều "làn" IP độc lập, xoay vòng. Pace tính **theo từng làn**, nên tốc độ tăng tỉ lệ số proxy |
 | Tỷ lệ dự án còn sống | Trên 16 host đã fetch: **~43% active**, ~50% inactive, ~7% khác | 1.850 host ≈ **700–800 dự án sống**. Phải nói rõ với user, đừng hứa 1.850 dự án |
 | Dữ liệu trên trang campaign | Server-rendered (Rails), **không có JSON endpoint công khai**. Template rất ổn định (§5) | Parse HTML/innerText |
 | **Oracle phân loại qua URL** (phát hiện muộn, tốt hơn cách so khớp chữ) | GET **trang gốc** `https://<slug>.getrewardful.com/` → redirect tới **`/signup`** = dự án SỐNG · **`/inactive`** = dự án CHẾT · **HTTP 404** = slug KHÔNG tồn tại. Đo 3/3 đúng (`editgpt`→/signup, `hostgpo`→/inactive, slug giả→404) | **Phân loại theo URL TRƯỚC**, text chỉ là fallback. Bền với mọi wording, khỏi cần fingerprint trang giả cho Rewardful |
@@ -165,9 +166,33 @@ mỗi tick:
 
 ## 5. Luồng 2 — Fetch + Parse (job `afffetch`)
 
+### Proxy xoay dùng chung (user chốt 2026-07-28)
+
+Dùng **cùng pool `sh_proxy`** mà job catalog/affiliate/productrev đang dùng — user thêm/test/bật-tắt ở **Settings → Proxy**, không thêm chỗ cấu hình mới, không đọc `scripts/proxies.txt`.
+
+```
+1 browser Chromium
+├─ context #0  → proxy A   ─┐
+├─ context #1  → proxy B    │ mỗi context = 1 "làn" IP độc lập
+├─ context #2  → proxy C    │ xoay vòng, mỗi làn tự giãn paceMs
+└─ (không proxy) → trực tiếp ┘ chỉ khi pool RỖNG
+```
+
+- Số làn = số proxy dùng được. **`enabled=1` KHÔNG có nghĩa còn sống**: đo thật trong DB hiện tại — **10/10 proxy đang `enabled=1` nhưng `status='die'`** (nút Test ở Settings đánh dấu, lần test 2026-07-14), và tôi cũng tự thử 5/5 đều không kết nối được. ⇒ query phải lọc `enabled=1 AND (type='http' OR type IS NULL) AND (status IS NULL OR status <> 'die')`. (Bảng `sh_proxy` **không có** cột `live`; cột trạng thái là `status`.)
+- Không còn proxy dùng được → **1 làn trực tiếp** (vẫn chạy, chỉ chậm hơn). Proxy chết giữa lượt → đếm `laneErrors` **riêng** với `blocked` (proxy hỏng ≠ Cloudflare chặn) + log nhắc user bấm Test ở Settings → Proxy.
+- **Thực tế lúc bắt đầu code: user cần nạp proxy mới**, vì pool hiện tại chết hết. Crawler vẫn chạy được ở 1 làn trực tiếp trong lúc chờ.
+- `paceMs` giãn **theo từng làn** (per-IP), không phải toàn cục → **throughput ≈ số_làn × (1/paceMs)**.
+  Ví dụ 5 proxy sống, pace 10s → ~30 trang/phút → 1.850 dự án xong sau **~1 giờ** (thay vì ~5 giờ khi chạy 1 IP).
+- `concurrency` = số làn (kẹp tối đa 6). Đây là chỗ **khác** thiết kế 1-IP: chạy song song chỉ an toàn khi mỗi luồng một IP riêng.
+- Proxy chết giữa lượt → làn đó trả lỗi mạng (không phải `blocked`) → **loại làn khỏi vòng xoay** lượt này + log cảnh báo, các làn khác chạy tiếp.
+- Đổi danh sách proxy ở Settings → lượt sau tự dựng lại pool context (đọc DB mỗi lượt, giống `refreshProxies()` của `ShJobsService`).
+
+⚠️ Đây là **seam riêng**, KHÔNG mượn `shopifyHttp.get` như job catalog/affiliate (những job đó vá `shopifyHttp.get` bằng `makeProxiedGet`). Playwright nhận proxy trực tiếp qua `newContext({ proxy })` nên không cần seam đó.
+
 ```
 mỗi tick:
-  0. nếu net chưa có fingerprint trang giả (fake_checked_at NULL):
+  0. đọc sh_proxy (enabled + http) → dựng/cập nhật pool context; rỗng → 1 làn trực tiếp
+  0b. nếu net chưa có fingerprint trang giả (fake_checked_at NULL):
        fetch https://zzz-not-real-<random>.<net>/signup  → lưu fake_len + fake_hash(normalized text)
        ★ BẮT BUỘC: tapfiliate/partnerstack trả 200 + trang catch-all cho MỌI host,
          kể cả host giả → chỉ dựa status code là SAI
