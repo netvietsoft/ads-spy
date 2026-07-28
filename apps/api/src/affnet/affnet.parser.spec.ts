@@ -43,11 +43,21 @@ describe('parseRewardful — dạng % (fixtures thật)', () => {
     expect(r.commissionFlat).toBeNull();
     expect(r.commissionScope).toContain('lifetime');
   });
+
+  // FIX 12: fixture thật CÓ SẴN (getrewardful_com__akool-1.txt) nhưng trước đây không có test nào đọc.
+  it('akool-1 (fixture thật, trước đây không test nào đọc — FIX 12): 35% + web akool.com', () => {
+    const r = parseRewardful(fx('getrewardful_com__akool-1.txt'));
+    expect(r.commissionPct).toBe(35);
+    expect(r.web).toBe('akool.com');
+  });
 });
 
 describe('parseRewardful — dạng $ CỐ ĐỊNH (bug dễ mắc nhất)', () => {
-  it('hoa hồng "$25 commission" → commissionFlat=25, commissionPct=NULL (KHÔNG được đọc lẫn thành 25%)', () => {
-    const r = parseRewardful('FounderPass\nJoin FounderPass and receive a $25 commission for every new paying member you refer to founderpass.com!');
+  // FIX 12: chuyển sang đọc fixture THẬT (trước đây dùng chuỗi tự viết đã sẵn domain thường, không exercise
+  // được logic lowercase/bỏ www.). Fixture thật viết "you refer to www.FounderPass.com!" — bằng chứng
+  // THẬT duy nhất cho việc web bị hạ thường + bỏ tiền tố www. (www.FounderPass.com → founderpass.com).
+  it('founderpass (fixture thật): "$25 commission" → commissionFlat=25, commissionPct=NULL; web hạ thường + bỏ www.', () => {
+    const r = parseRewardful(fx('getrewardful_com__founderpass.txt'));
     expect(r.commissionFlat).toBe(25);
     expect(r.commissionPct).toBeNull();
     expect(r.commissionCurrency).toBe('USD');
@@ -187,6 +197,56 @@ describe('best-effort cookie/threshold/notes', () => {
   it('"30 days" trong câu về thời hạn nộp bằng chứng KHÔNG bị nhận nhầm thành cookie', () => {
     const r = parseRewardful(fx('getrewardful_com__editgpt.txt'));
     expect(r.cookieDays).toBeNull(); // điều khoản editgpt có "within thirty (30) days of the request"
+  });
+});
+
+describe('parseRewardful — FIX 3: chặn ĐỘ DÀI (cột DB VARCHAR(255), tránh lỗi 1406 kẹt hàng đợi mãi mãi)', () => {
+  it('dòng đầu (brand) dài hơn 255 ký tự bị cắt còn ĐÚNG 250, không throw', () => {
+    const longLine = 'A'.repeat(400);
+    const r = parseRewardful(`${longLine}\nJoin X and receive a 10% commission on all payments for paying customers you refer to x.com!`);
+    expect(r.brand).not.toBeNull();
+    expect(r.brand!.length).toBe(250);
+  });
+
+  it('programName fallback (dòng 2, khi không khớp "Join X and receive") dài hơn 255 ký tự cũng bị cắt còn 250', () => {
+    const longLine2 = 'B'.repeat(400);
+    const r = parseRewardful(`X\n${longLine2}`);
+    expect(r.programName).not.toBeNull();
+    expect(r.programName!.length).toBe(250);
+  });
+
+  it('web dài bất thường vẫn bị cắt còn 250 (phòng thủ, dù hiếm gặp thật)', () => {
+    const longDomain = 'a'.repeat(300) + '.com';
+    const r = parseRewardful(`X\nJoin X and receive a 10% commission on all payments for paying customers you refer to ${longDomain}!`);
+    expect(r.web).not.toBeNull();
+    expect(r.web!.length).toBe(250);
+  });
+});
+
+describe('parseRewardful — FIX 6: regex giá trị phải chạy trên CÂU đã bắt (sentM[0]), không phải toàn trang', () => {
+  it('thêm 1 dòng điều khoản "$10 commission" (lương hoa hồng cũ, KHÔNG liên quan) KHÔNG được đè lên 30% commission đã bắt (fixture thật editgpt + 1 dòng, ca thật đã đo)', () => {
+    const text = fx('getrewardful_com__editgpt.txt') + '\nLegacy affiliates receive a $10 commission per seat.\n';
+    const r = parseRewardful(text);
+    expect(r.commissionPct).toBe(30);
+    expect(r.commissionFlat).toBeNull();
+    expect(r.commissionRaw).toContain('30% commission');
+  });
+});
+
+describe('parseRewardful — FIX 7: cookieDays KHÔNG được bịa từ câu delay THANH TOÁN (thiếu qualifier window/period/…)', () => {
+  it('"Referral commissions are approved 30 days after purchase." (mốc TRẢ TIỀN, không nhắc window/period gì) → cookieDays NULL', () => {
+    const r = parseRewardful('X\nJoin X and receive a 10% commission on all payments for paying customers you refer to x.com!\nReferral commissions are approved 30 days after purchase.');
+    expect(r.cookieDays).toBeNull();
+  });
+
+  it('chống hồi quy: "30-day cookie window" (regex có mẫu window rõ ràng) vẫn ra 30', () => {
+    const r = parseRewardful('X\nJoin X and receive a 10% commission on all payments for paying customers you refer to x.com!\nReferrals are tracked with a 30-day cookie window.');
+    expect(r.cookieDays).toBe(30);
+  });
+
+  it('"Cookie window: 30 days" (dạng từ-khoá-TRƯỚC, qualifier "window" bắt buộc phải khớp) vẫn ra 30', () => {
+    const r = parseRewardful('X\nJoin X and receive a 10% commission on all payments for paying customers you refer to x.com!\nCookie window: 30 days.');
+    expect(r.cookieDays).toBe(30);
   });
 });
 

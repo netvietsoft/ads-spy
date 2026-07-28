@@ -53,11 +53,15 @@ export function parseRewardful(text: string): ParsedProgram {
   const out: ParsedProgram = { ...EMPTY };
 
   const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
-  out.brand = lines[0] || null;
+  // FIX 3: chặn ĐỘ DÀI — cột DB là VARCHAR(255); 1 dòng đầu bất thường dài (banner cookie-consent chẳng
+  // hạn) vượt 255 ký tự sẽ làm upsertProgram NÉM lỗi 1406 (MySQL STRICT_TRANS_TABLES) NGOÀI try/catch,
+  // khiến host kẹt vĩnh viễn (không markHostChecked cũng không bumpHostTries). .slice(0,250) theo đúng
+  // convention đã dùng ở sh.mysql.ts:441.
+  out.brand = lines[0] ? lines[0].slice(0, 250) : null;
 
   // Tên chương trình: "Join X and receive" là dạng chuẩn; fallback dòng 2.
   const nameM = flat.match(/Join\s+(.{2,120}?)\s+and receive/i);
-  out.programName = nameM ? nameM[1].trim() : lines[1] || null;
+  out.programName = nameM ? nameM[1].trim() : (lines[1] ? lines[1].slice(0, 250) : null);
 
   // Câu hoa hồng. % và $ là HAI dạng khác nhau — thử $ TRƯỚC để "$25" không bị regex số đọc thành 25%.
   // sentM: neo-động-từ là ưu tiên 1; fallback (không neo động từ) chỉ dùng khi ưu tiên 1 không khớp —
@@ -68,8 +72,15 @@ export function parseRewardful(text: string): ParsedProgram {
   const sentM = flat.match(vSentRe) || flat.match(fSentRe);
   if (sentM) out.commissionRaw = sentM[0].slice(0, 500);
 
-  const vFlatM = flat.match(new RegExp(`\\b(?:${VERB})\\b\\s+(?:a\\s+)?\\$\\s?([\\d,.]+)\\s*commission`, 'i'));
-  const vPctM = flat.match(new RegExp(`\\b(?:${VERB})\\b\\s+(?:a\\s+)?([\\d.]+)\\s*%\\s*commission`, 'i'));
+  // FIX 6: 4 regex giá trị bên dưới PHẢI chạy trên CÂU ĐÃ BẮT (sentM[0]), KHÔNG phải toàn trang — toàn
+  // trang có thể chứa 1 câu KHÁC cũng nhắc "$X commission" ở chỗ khác (VD điều khoản riêng cho affiliate
+  // cũ: "Legacy affiliates receive a $10 commission per seat"), đè lên đúng % đã bắt được vào
+  // commissionRaw, khiến commission_pct/commission_flat LỆCH với commission_raw (đã tái hiện trên fixture
+  // thật getrewardful_com__editgpt.txt khi thêm 1 dòng điều khoản như trên). Chỉ dùng TOÀN TRANG khi
+  // không bắt được câu nào (sentM null — xem fallback không neo động từ bên dưới).
+  const valueSource = sentM ? sentM[0] : flat;
+  const vFlatM = valueSource.match(new RegExp(`\\b(?:${VERB})\\b\\s+(?:a\\s+)?\\$\\s?([\\d,.]+)\\s*commission`, 'i'));
+  const vPctM = valueSource.match(new RegExp(`\\b(?:${VERB})\\b\\s+(?:a\\s+)?([\\d.]+)\\s*%\\s*commission`, 'i'));
   if (vFlatM) {
     out.commissionFlat = num(vFlatM[1]);
     out.commissionCurrency = 'USD';
@@ -80,8 +91,8 @@ export function parseRewardful(text: string): ParsedProgram {
     // payments..." không có receive/earn/get đứng trước. Chỉ chạy khi CẢ HAI regex neo-động-từ ở
     // trên đều thất bại (giữ "neo-động-từ là ưu tiên 1" cho toàn bộ câu, không riêng từng field, để
     // tránh 1 câu $ không liên quan ở nơi khác trong trang đè lên đúng % đã bắt được qua neo-động-từ).
-    const fFlatM = flat.match(/\$\s?([\d,.]+)\s*commission/i);
-    const fPctM = flat.match(/(\d+(?:\.\d+)?)\s*%\s*commission/i);
+    const fFlatM = valueSource.match(/\$\s?([\d,.]+)\s*commission/i);
+    const fPctM = valueSource.match(/(\d+(?:\.\d+)?)\s*%\s*commission/i);
     if (fFlatM) {
       out.commissionFlat = num(fFlatM[1]);
       out.commissionCurrency = 'USD';
@@ -98,11 +109,17 @@ export function parseRewardful(text: string): ParsedProgram {
   if (scopeM) out.commissionScope = scopeM[1].trim().slice(0, 160);
 
   const webM = flat.match(/you refer to\s+([a-z0-9.-]+\.[a-z]{2,})/i);
-  if (webM) out.web = webM[1].toLowerCase().replace(/^www\./, '');
+  // FIX 3: chặn ĐỘ DÀI (xem comment ở brand/programName phía trên) — web cũng ghi vào cột VARCHAR(255).
+  if (webM) out.web = webM[1].toLowerCase().replace(/^www\./, '').slice(0, 250);
 
   // best-effort: CHỈ nhận khi câu nói rõ về cookie/attribution window (tránh "within thirty (30) days of the request").
+  // FIX 7: qualifier (window/period/…) ở regex fallback BẮT BUỘC phải có mặt — trước đây để "?"
+  // (optional) nên câu payout-delay kiểu "Referral commissions are approved 30 days after purchase."
+  // (KHÔNG hề nhắc window/period gì cả) vẫn khớp và bịa ra cookieDays=30 — nhầm mốc TRẢ TIỀN thành cửa sổ
+  // ATTRIBUTION, đúng thứ nhầm lẫn mà comment gốc của dòng này cảnh báo. Widen thêm duration/length/last(s)
+  // để không bỏ sót cách viết thật khác.
   const ckM = flat.match(/(\d{1,3})[-\s]day\s*(?:cookie|attribution|referral|tracking)\s*(?:window|period)?/i)
-    || flat.match(/(?:cookie|attribution|referral)\s*(?:window|period)?[^.]{0,25}?(\d{1,3})\s*day/i);
+    || flat.match(/(?:cookie|attribution|referral)\s*(?:window|period|duration|length|lasts?)[^.]{0,25}?(\d{1,3})\s*day/i);
   if (ckM) out.cookieDays = num(ckM[1]);
 
   // Thứ tự "từ khoá trước $" là dạng phổ biến, nhưng trang thật a2b-labs viết NGƯỢC: "$50 threshold" —
