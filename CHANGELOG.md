@@ -4,6 +4,36 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-29 — Affiliate Nets: 3 cột traffic (dán tay) + GỘP nhánh `saas` vào `main`
+
+### Traffic dán tay theo domain (visits / bounce / time-on-site + global rank) — [docs/12](docs/12-affiliate-nets.md)
+- Thêm 3 cột traffic vào bảng Dự án của tab `/affnet`, nhập **THỦ CÔNG** bằng cách dán khối "Traffic Overview"
+  copy từ extension AITDK. **Cố ý không tự động hoá** (không job nền, không Cloudflare, không dùng key nhúng của
+  họ) — sau khi cân nhắc pháp lý/ToS: dữ liệu extension cho không, nhưng moi secret ký của họ để forge request
+  là credential-misuse (harness cũng chặn). Đã soạn bản disclosure riêng cho AITDK về secret nhúng client.
+- `apps/api/src/affnet/affnet.traffic.ts`: parser thuần (test bằng panel thật) — bắt cả 2 thứ tự số/nhãn,
+  K/M/B, mm:ss + hh:mm:ss; KHÔNG nhầm "Pages Per Visit" thành visits, "Country Rank" thành global rank.
+- Bảng `aff_domain_traffic` khoá theo `web` (COALESCE để dán thiếu không xoá số cũ; cột `global_rank` vì `rank`
+  là reserved word MySQL 8), LEFT JOIN vào `programList` (qualify `p.`/`t.`, vẫn không select `terms_text`),
+  endpoint `POST /api/aff/traffic`. UI: nút ✎/hàng mở modal dán; web subdomain đánh dấu `*` "số domain gốc";
+  Xuất Excel +4 cột (số thô). Số AITDK là **tương đối, phồng 3-7× site nhỏ** — chỉ để so sánh merchant.
+- Verify: 171/171 test affnet xanh; E2E backend (MySQL sống) + E2E UI (Playwright: chọn net → ✎ → dán panel →
+  Lưu → hàng hiện 42.7M/40.64%/4:25) đều đậu. Commit `b2c143e`/`0dd3480`/`3ea9846`.
+
+### Gộp nhánh `saas` (96 commit) vào `main` — main thành trunk đầy đủ (SaaS + affnet)
+- `saas` (auth/subscriptions/payments-Stripe/admin/i18n/landing/pricing/cap-5 khách) và `main` (affnet crawler +
+  traffic) rẽ đôi từ `0947992`; gộp `saas → main` (merge `8ef1c97`). Không mất code — cả hai nhánh vốn nguyên vẹn.
+  Backup: nhánh `backup/main-pre-saas` + tag `backup-main-4e10cbe`.
+- 4 file đụng độ resolve giữ **cả hai phía**: `app.module.ts` (dùng `PrismaModule` của saas + thêm affnet
+  controller/3 provider, bỏ `PrismaService` provider), `TopNav.tsx` (NAV có cả `/affnet` lẫn `/admin/*`),
+  `page.tsx` (Source + route + panel đủ affnet lẫn admin), `CHANGELOG.md` (giữ cả 2 mục).
+- **Hệ quả auth:** guard toàn cục của saas làm MỌI endpoint staff (affnet, shophunter, google, fb, tiktok) giờ
+  **sau đăng nhập** (401 khi chưa auth) — nhất quán, đúng thiết kế; FE gửi cookie phiên khi đã đăng nhập → 200.
+- Verify trên trunk gộp: `prisma generate` + `migrate deploy` (dev.db SQLite có bảng auth/subscription/payment);
+  API build + boot sạch (mọi module DI khớp); web build đủ route; affnet 171/171 + saas suite mẫu xanh.
+- **Còn lại để chạy localhost:** tạo tài khoản admin (`node apps/api/scripts/create-admin.mjs <email> <pass>`) —
+  dev.db hiện 0 user. `main` mới merge **local, chưa push**.
+
 ## 2026-07-28 — Affiliate Nets: dò subdomain net affiliate → cào bảng dự án/%hoa hồng — [docs/12](docs/12-affiliate-nets.md)
 
 ### Module mới `apps/api/src/affnet/` (tách riêng, dùng chung MySQL `shophunter` + job framework + pool proxy `sh_proxy`)
