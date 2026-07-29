@@ -20,6 +20,8 @@ const mkDb = () => ({
   upsertProgram: jest.fn().mockResolvedValue(undefined),
   netSummaries: jest.fn().mockResolvedValue([]),
   listHttpProxies: jest.fn().mockResolvedValue([]),
+  upsertDomainTraffic: jest.fn().mockResolvedValue(undefined),
+  getDomainTraffic: jest.fn().mockResolvedValue(null),
 });
 const mkFetch = (lanes = 1) => ({
   fetchCampaign: jest.fn(), probeFake: jest.fn().mockResolvedValue({ len: 1, hash: 'h' }),
@@ -229,5 +231,34 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
     expect(slugs).toEqual(['a', 'b', 'c', 'd']);
     const usedLanes = new Set(f.fetchCampaign.mock.calls.map((c: any[]) => c[3]));
     expect(usedLanes.size).toBe(2);          // thật sự dùng 2 làn khác nhau
+  });
+});
+
+describe('saveTraffic — lưu traffic dán tay theo domain', () => {
+  const PANEL = '42.67M Monthly Visits 40.64% Bounce Rate 00:04:25 Visit Duration 781 Global Rank';
+
+  it('dán khối text từ extension → parse rồi lưu theo domain đã chuẩn hoá', async () => {
+    const db = mkDb();
+    const s = new AffnetService(db as any, mkFetch() as any);
+    await s.saveTraffic({ web: 'editgpt.app', text: PANEL });
+    expect(db.upsertDomainTraffic).toHaveBeenCalledWith('editgpt.app', {
+      visits: 42670000, bounceRate: 40.64, visitDurationSec: 265, globalRank: 781, note: null,
+    });
+  });
+
+  it('số gõ tay override số đã parse từ text', async () => {
+    const db = mkDb();
+    const s = new AffnetService(db as any, mkFetch() as any);
+    await s.saveTraffic({ web: 'editgpt.app', text: PANEL, visits: 999 });
+    expect(db.upsertDomainTraffic).toHaveBeenCalledWith('editgpt.app', {
+      visits: 999, bounceRate: 40.64, visitDurationSec: 265, globalRank: 781, note: null,
+    });
+  });
+
+  it('web được chuẩn hoá giống hệt cách lưu web của chương trình (bỏ scheme/www/path, lowercase)', async () => {
+    const db = mkDb();
+    const s = new AffnetService(db as any, mkFetch() as any);
+    await s.saveTraffic({ web: 'https://WWW.Editgpt.app/', visits: 100 });
+    expect(db.upsertDomainTraffic).toHaveBeenCalledWith('editgpt.app', expect.any(Object));
   });
 });

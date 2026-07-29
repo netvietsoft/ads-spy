@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { AffnetMysql } from './affnet.mysql';
 import { AffnetFetch, joinUrlOf } from './affnet.fetch';
 import { discoverNet } from './affnet.discovery';
+import { parseTrafficPaste } from './affnet.traffic';
 
 @Injectable()
 export class AffnetService {
@@ -143,5 +144,18 @@ export class AffnetService {
 
   async programDetail(net: string, slug: string): Promise<any | null> {
     return this.db.programDetail(net, slug);
+  }
+
+  // Lưu traffic thủ công cho 1 domain. Nhận HOẶC khối text dán từ extension (parse), HOẶC số gõ tay (override).
+  async saveTraffic(input: { web: string; text?: string; visits?: number|null; bounceRate?: number|null; visitDurationSec?: number|null; globalRank?: number|null; note?: string|null }): Promise<any> {
+    const web = this.normalizeNet(input.web);
+    if (!web) throw new Error('Thiếu web');
+    let f = { visits: input.visits ?? null, bounceRate: input.bounceRate ?? null, visitDurationSec: input.visitDurationSec ?? null, globalRank: input.globalRank ?? null };
+    if (input.text) {
+      const p = parseTrafficPaste(input.text);
+      f = { visits: f.visits ?? p.visits, bounceRate: f.bounceRate ?? p.bounceRate, visitDurationSec: f.visitDurationSec ?? p.visitDurationSec, globalRank: f.globalRank ?? p.rank };
+    }
+    await this.db.upsertDomainTraffic(web, { ...f, note: input.note ?? null });
+    return this.db.getDomainTraffic(web);
   }
 }

@@ -53,4 +53,10 @@ export class AffnetController {
     if (!r) throw new BadRequestException('Không tìm thấy dự án');
     return r;
   }
+
+  @Post('aff/traffic')
+  saveTraffic(@Body() body: any) {
+    if (!body || !body.web) throw new BadRequestException('Thiếu tham số web');
+    return this.svc.saveTraffic(body);
+  }
 }

@@ -226,4 +226,63 @@ describe('AffnetMysql', () => {
     const { total } = await db.programList({ net: NET, offset: 0, limit: 10 });
     expect(total).toBe(0);
   });
+
+  describe('aff_domain_traffic — traffic dán tay theo domain (web), LEFT JOIN vào programList', () => {
+    const WEB = 'zz-test-traffic.example';
+
+    afterAll(async () => {
+      const pool = await sh.getPool();
+      await pool.query('DELETE FROM aff_domain_traffic WHERE web = ?', [WEB]);
+    });
+
+    it('upsertDomainTraffic rồi getDomainTraffic trả đúng dòng vừa lưu', async () => {
+      await db.upsertDomainTraffic(WEB, { visits: 1000, bounceRate: 40.5, visitDurationSec: 120, globalRank: 999 });
+      const r = await db.getDomainTraffic(WEB);
+      expect(r).not.toBeNull();
+      expect(Number(r.visits)).toBe(1000);
+      expect(Number(r.bounce_rate)).toBe(40.5);
+      expect(Number(r.visit_duration_sec)).toBe(120);
+      expect(Number(r.global_rank)).toBe(999);
+    });
+
+    it('upsert lần 2 chỉ set visits → KHÔNG xoá bounce_rate cũ (COALESCE)', async () => {
+      await db.upsertDomainTraffic(WEB, { visits: 2000 });
+      const r = await db.getDomainTraffic(WEB);
+      expect(Number(r.visits)).toBe(2000);
+      expect(Number(r.bounce_rate)).toBe(40.5); // giữ nguyên giá trị đã lưu trước đó
+    });
+
+    it('programList LEFT JOIN: chương trình có web CHƯA có traffic → traffic_* NULL; sau khi upsert thì có giá trị', async () => {
+      await db.upsertProgram(prog('traffic-join', 12));
+      const pool = await sh.getPool();
+      await pool.query('UPDATE aff_program SET web = ? WHERE net = ? AND slug = ?', [WEB, NET, 'traffic-join']);
+
+      // Trước khi có traffic cho domain này (xoá tạm để test nhánh NULL)
+      await pool.query('DELETE FROM aff_domain_traffic WHERE web = ?', [WEB]);
+      let { rows } = await db.programList({ net: NET, q: 'traffic-join', offset: 0, limit: 10 });
+      let row = rows.find((r: any) => r.slug === 'traffic-join');
+      expect(row).toBeDefined();
+      expect(row.traffic_visits).toBeNull();
+      expect(row.traffic_bounce).toBeNull();
+      expect(row.traffic_duration_sec).toBeNull();
+      expect(row.traffic_rank).toBeNull();
+
+      await db.upsertDomainTraffic(WEB, { visits: 5000, bounceRate: 33.3, visitDurationSec: 180, globalRank: 111 });
+      ({ rows } = await db.programList({ net: NET, q: 'traffic-join', offset: 0, limit: 10 }));
+      row = rows.find((r: any) => r.slug === 'traffic-join');
+      expect(Number(row.traffic_visits)).toBe(5000);
+      expect(Number(row.traffic_bounce)).toBe(33.3);
+      expect(Number(row.traffic_duration_sec)).toBe(180);
+      expect(Number(row.traffic_rank)).toBe(111);
+    });
+
+    it('programList vẫn KHÔNG trả terms_text kể cả sau khi JOIN thêm bảng traffic', async () => {
+      const { rows } = await db.programList({ net: NET, q: 'traffic-join', offset: 0, limit: 10 });
+      expect(Object.keys(rows[0])).not.toContain('terms_text');
+    });
+
+    it('programList sort theo "web" KHÔNG ném lỗi cột mơ hồ (ambiguous column) sau khi JOIN', async () => {
+      await expect(db.programList({ net: NET, sort: 'web', dir: 'asc', offset: 0, limit: 10 })).resolves.toBeDefined();
+    });
+  });
 });
