@@ -1,4 +1,4 @@
-import { ShJobsService } from './sh.jobs.service';
+import { ShJobsService, JOB_NAMES } from './sh.jobs.service';
 import { shopifyHttp } from './shopify.client';
 
 function make() {
@@ -14,7 +14,8 @@ function make() {
     getStatus: jest.fn(async () => ({ lastRunAt: 111, lastStatus: 'ok', totalSeen: 5 })),
     getDaily: jest.fn(async () => ({ day: '2026-07-22', used: 3, cap: 500 })),
   };
-  const s = new ShJobsService(svc, mysql, harvest);
+  const affnet: any = {};
+  const s = new ShJobsService(svc, mysql, harvest, affnet);
   // Chặn loop thật chạy trong unit test.
   jest.spyOn(s as any, 'start').mockImplementation(() => {});
   jest.spyOn(s as any, 'stop').mockImplementation(() => {});
@@ -45,7 +46,8 @@ describe('ShJobsService toggle/getJobs', () => {
     expect(h.enabled).toBe(false);            // cờ null + env unset
     expect(h.stats.used).toBe(3);
     expect(h.stats.cap).toBe(500);
-    expect(jobs.map((j) => j.name).sort()).toEqual(['catalog', 'enrich', 'harvest']);
+    // Lấy danh sách kỳ vọng từ JOB_NAMES (nguồn chân lý) thay vì viết cứng, để thêm job mới không làm test lạc hậu.
+    expect(jobs.map((j) => j.name).sort()).toEqual([...JOB_NAMES].sort());
   });
 });
 
@@ -101,6 +103,41 @@ describe('ShJobsService.runOnce (Chạy ngay)', () => {
     const spy = jest.spyOn(s as any, 'doRunOnce').mockResolvedValue(undefined);
     await expect(s.runOnce('bogus')).rejects.toThrow();
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('ShJobsService.runStepGuarded (FIX 8: "Chạy ngay" không được chạy 2 step song song cho CÙNG job)', () => {
+  it('gọi 2 lần chồng nhau cho CÙNG job trong lúc lượt đầu còn treo → lượt 2 bị bỏ qua, step() KHÔNG được gọi lần 2', async () => {
+    const { s, mysql } = make();
+    let resolveStep: () => void;
+    const gate = new Promise<void>((res) => { resolveStep = res; });
+    const stepSpy = jest.spyOn(s as any, 'step').mockImplementation(async () => { await gate; return { pace: 1500 }; });
+
+    const p1 = (s as any).runStepGuarded('afffetch', true);
+    const p2 = (s as any).runStepGuarded('afffetch', true); // "Chạy ngay" lần 2 trong lúc lượt 1 CHƯA xong
+
+    resolveStep!();
+    const [r1, r2] = await Promise.all([p1, p2]);
+
+    expect(stepSpy).toHaveBeenCalledTimes(1);
+    expect(r1.pace).toBe(1500);        // lượt 1 chạy thật, trả pace của step()
+    expect(r2.pace).toBeGreaterThanOrEqual(300000); // lượt 2 bị chặn → BLOCK_MS, không phải kết quả step() thật
+    expect(mysql.appendJobLog).toHaveBeenCalledWith('afffetch', 'warn', expect.stringContaining('Đang có 1 lượt chạy khác'));
+  });
+
+  it('job KHÁC nhau chạy song song bình thường — cờ in-flight tính riêng theo TỪNG job', async () => {
+    const { s } = make();
+    const stepSpy = jest.spyOn(s as any, 'step').mockResolvedValue({ pace: 1500 });
+    await Promise.all([(s as any).runStepGuarded('afffetch', true), (s as any).runStepGuarded('affdiscover', true)]);
+    expect(stepSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('lượt trước đã xong (finally đã clear cờ) → lượt sau vẫn gọi step() bình thường, không bị chặn oan', async () => {
+    const { s } = make();
+    const stepSpy = jest.spyOn(s as any, 'step').mockResolvedValue({ pace: 1500 });
+    await (s as any).runStepGuarded('afffetch', true);
+    await (s as any).runStepGuarded('afffetch', true);
+    expect(stepSpy).toHaveBeenCalledTimes(2);
   });
 });
 

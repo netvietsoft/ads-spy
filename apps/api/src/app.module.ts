@@ -18,10 +18,14 @@ import { ShAuth } from './shophunter/sh.auth';
 import { ShMysql } from './shophunter/sh.mysql';
 import { ShHarvestService } from './shophunter/sh.harvest.service';
 import { ShJobsService } from './shophunter/sh.jobs.service';
+import { AffnetController } from './affnet/affnet.controller';
+import { AffnetService } from './affnet/affnet.service';
+import { AffnetMysql } from './affnet/affnet.mysql';
+import { AffnetFetch } from './affnet/affnet.fetch';
 
 @Module({
   imports: [ScheduleModule.forRoot()],
-  controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController],
-  providers: [PrismaService, GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService],
+  controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController],
+  providers: [PrismaService, GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetService],
 })
 export class AppModule {}

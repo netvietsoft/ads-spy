@@ -1,0 +1,94 @@
+// Phân loại 1 trang campaign đã fetch. HÀM THUẦN (không mạng/DB) để test được mọi ca biên.
+//
+// Thứ tự kiểm CÓ CHỦ Ý — đảo thứ tự là lưu kết luận oan:
+//   1. chặn (chưa biết gì)  2. URL sau redirect (tín hiệu mạnh nhất)  3. 404  4. 429/403/5xx (tạm thời)
+//   5. fingerprint trang giả KHỚP HASH TUYỆT ĐỐI  6. "no longer active"/"program inactive" (chữ trên
+//   trang, chết THẬT)  7. fingerprint trang giả DUNG SAI ĐỘ DÀI  8. chữ "commission" chung (fallback active)
+//
+// (Vòng sửa 2, re-review — B2) Bước 6 PHẢI đứng TRƯỚC bước 7: 1 trang inactive THẬT (VD "Sorry, this
+// affiliate program is no longer active.") không hề nhắc "commission" nên không có PROGRAM_SIGNAL bảo vệ
+// — nếu để dung sai độ dài (bước 7) kiểm trước, và độ dài trang đó tình cờ rơi vào dải dung sai của MỘT
+// NET KHÁC (net catch-all), nó sẽ bị kết luận nhầm thành notfound — VĨNH VIỄN, xoá sổ oan 1 dự án có
+// thật chỉ vì đã ngừng hoạt động. "no longer active" là tín hiệu THẬT về NỘI DUNG nên đúng bất kể độ dài
+// trùng hợp thế nào; trang catch-all của net thì không chứa cụm này nên đổi thứ tự không ảnh hưởng nó.
+// Bước 5 (khớp hash TUYỆT ĐỐI) vẫn đứng TRƯỚC bước 6 vì khớp hash tuyệt đối với 1 trang inactive thật là
+// gần như không thể (nội dung hoàn toàn khác trang catch-all marketing) — an toàn để giữ nguyên vị trí.
+//
+// ĐO THẬT: mở trang GỐC https://<slug>.getrewardful.com/ →
+//   editgpt → …/signup (sống) · hostgpo → …/inactive (chết) · slug giả → HTTP 404.
+// Nhờ vậy Rewardful KHÔNG cần fingerprint trang giả; net catch-all (firstpromoter/tapfiliate/
+// partnerstack trả 200 cho cả host giả) thì vẫn cần.
+import { createHash } from 'crypto';
+import { FetchOutcome } from './affnet.types';
+import { isInactiveText } from './affnet.parser';
+
+export interface PageSnapshot { status: number; finalUrl: string; title: string; text: string }
+export interface FakeBaseline { len: number | null; hash: string | null }
+
+// Soi CẢ title lẫn body — dùng để KẾT LUẬN outcome 'blocked'. Phạm vi RỘNG hơn CÓ CHỦ Ý so với `CF_TITLE`
+// trong affnet.fetch.ts (chỉ soi <title>, dùng để biết khi nào ngừng poll chờ challenge tự giải, không
+// dùng để kết luận outcome) — 2 hằng số này lệch nhau là có ý, KHÔNG phải bug; đừng "gộp cho gọn" mà
+// không đọc comment ở affnet.fetch.ts trước (2 hàm phục vụ 2 mục đích khác nhau, gộp sai sẽ làm 1 trong
+// 2 chỗ mất tín hiệu nó cần).
+const CF = /just a moment|security verification|attention required|checking your browser/i;
+
+// Hash text đã chuẩn hoá khoảng trắng → so được trang catch-all dù render lệch space.
+export function textHash(text: string): string {
+  const norm = String(text || '').replace(/\s+/g, ' ').trim();
+  return createHash('sha256').update(norm).digest('hex');
+}
+
+// Dung sai TƯƠNG ĐỐI cho độ dài trang catch-all (FIX 2): trang catch-all có thể nhúng 1 con số ĐỘNG (VD
+// bộ đếm "69.500+ khách hàng" tự tăng theo thời gian) — hash tuyệt đối lệch dù nội dung thực chất KHÔNG
+// đổi. 3% đủ hấp thụ vài chữ số đổi trong 1 câu ngắn, nhưng đủ hẹp để KHÔNG lẫn với 1 trang chương trình
+// thật có độ dài tình cờ gần bằng (đã kiểm bằng fixture thật, xem affnet.classify.spec.ts).
+export const FAKE_LEN_TOLERANCE = 0.03;
+
+// Tín hiệu ĐẶC TRƯNG cho 1 trang chương trình THẬT — số/％/$ đứng NGAY SÁT chữ "commission", hoặc "you
+// refer to <domain>". Chỉ chứa từ "commission" một mình KHÔNG đủ: trang catch-all Tapfiliate mô tả tính
+// năng sản phẩm bằng câu kiểu "Total margin control: set percentage, fixed, or tiered commissions" — có
+// chữ "commission" nhưng không phải trang chương trình thật. Dùng regex lỏng /commission|you refer to/i
+// (như dòng fallback bên dưới) làm tín hiệu loại trừ dung sai từng khiến trang catch-all đó lọt qua dung
+// sai vẫn bị coi là "trang thật" (xem FIX 2 report — lỗi đã đo trên fixture thật).
+const PROGRAM_SIGNAL = /(?:\d+(?:\.\d+)?%|\$\s?[\d,.]+)\s*commission|you refer to\s+[a-z0-9.-]+\.[a-z]{2,}/i;
+
+export function classifyPage(p: PageSnapshot, fake: FakeBaseline): FetchOutcome {
+  const title = p.title || '';
+  const text = p.text || '';
+
+  // 1. Bị chặn = CHƯA BIẾT. Kiểm trước tiên; KHÔNG được lưu vào check_status.
+  if (CF.test(title) || CF.test(text)) return 'blocked';
+
+  // 2. URL sau redirect — tín hiệu mạnh nhất, bền với mọi wording.
+  const path = (() => { try { return new URL(p.finalUrl).pathname; } catch { return ''; } })();
+  if (/^\/signup\b/.test(path)) return 'active';
+  if (/^\/inactive\b/.test(path)) return 'inactive';
+
+  if (p.status === 404) return 'notfound';
+
+  // FIX 1: 429 (rate-limit)/403/5xx là lỗi TẠM THỜI của LƯỢT GỌI này (IP bị giới hạn, server đang lỗi…),
+  // KHÔNG PHẢI bằng chứng host không tồn tại/đã chết. markHostChecked là VĨNH VIỄN (không có cơ chế
+  // requeue) nên tuyệt đối không được kết luận verdict ở đây — phải trả 'blocked' để đi qua bumpHostTries
+  // (quay lại hàng đợi thử lại), giống hệt cách bot-challenge và lỗi điều hướng đã được xử lý.
+  if (p.status === 429 || p.status === 403 || p.status >= 500) return 'blocked';
+
+  // 3a. Trang catch-all của net (giống trang host-giả) → host không tồn tại. Khớp CHÍNH XÁC (hash tuyệt
+  // đối) — xem comment đầu file vì sao bước này đứng TRƯỚC isInactiveText.
+  if (fake.hash && textHash(text) === fake.hash) return 'notfound';
+
+  // 3b. "no longer active"/"program inactive" — PHẢI đứng TRƯỚC dung sai độ dài bên dưới (xem comment
+  // đầu file, B2 Vòng sửa 2): tránh xoá sổ oan 1 trang inactive THẬT chỉ vì độ dài tình cờ giống 1 net
+  // catch-all khác.
+  if (isInactiveText(text)) return 'inactive';
+
+  // 3c. Dung sai ĐỘ DÀI cho fingerprint trang giả (bộ đếm động, xem FAKE_LEN_TOLERANCE) VÀ trang không
+  // mang tín hiệu chương trình thật (PROGRAM_SIGNAL) — thiếu vế sau thì 1 trang chương trình thật tình cờ
+  // dài gần bằng fake.len sẽ bị nuốt oan thành notfound.
+  const lenClose = fake.len != null && fake.len > 0 && Math.abs(text.length - fake.len) <= fake.len * FAKE_LEN_TOLERANCE;
+  if (lenClose && !PROGRAM_SIGNAL.test(text)) return 'notfound';
+
+  // 4. Fallback theo chữ (net không redirect rõ ràng, không khớp fingerprint).
+  if (/commission|you refer to/i.test(text)) return 'active';
+
+  return 'error';
+}

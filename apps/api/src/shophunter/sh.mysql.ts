@@ -355,6 +355,9 @@ export class ShMysql implements OnModuleInit {
     }
   }
 
+  // Cho module khác (affnet) dùng chung pool MySQL — khỏi mở pool thứ 2 (pool giới hạn 25 kết nối).
+  async getPool(): Promise<mysql.Pool> { await this.ensureReady(); return this.pool!; }
+
   private pk(table: Table) {
     return table === 'sh_shop' ? 'shop_id' : 'product_id';
   }

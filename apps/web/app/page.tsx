@@ -25,6 +25,7 @@ import { LocalDbPanel } from './components/LocalDbPanel';
 import { TrackPanel } from './components/TrackPanel';
 import { ImportPanel } from './components/ImportPanel';
 import { ReportPanel } from './components/ReportPanel';
+import { AffnetPanel } from './components/AffnetPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
@@ -45,11 +46,11 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
-type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'settings';
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'affnet' | 'settings';
 // Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
 const SOURCE_TO_PATH: Record<Source, string> = {
   google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
-  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', settings: '/settings',
+  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', affnet: '/affnet', settings: '/settings',
 };
 function pathToSource(p: string): Source {
   if (p.startsWith('/facebookads')) return 'facebook';
@@ -58,6 +59,7 @@ function pathToSource(p: string): Source {
   if (p.startsWith('/localdb')) return 'localdb';
   if (p.startsWith('/trackshopify')) return 'track';
   if (p.startsWith('/reportlocaldb')) return 'report';
+  if (p.startsWith('/affnet')) return 'affnet';
   if (p.startsWith('/import')) return 'import';
   if (p.startsWith('/settings')) return 'settings';
   return 'google'; // '/', '/googleads', và fallback
@@ -254,6 +256,7 @@ export default function Home() {
       {source === 'track' && <TrackPanel />}
       {source === 'import' && <ImportPanel />}
       {source === 'report' && <ReportPanel />}
+      {source === 'affnet' && <AffnetPanel />}
       {source === 'settings' && <SettingsPanel />}
 
       {source === 'google' && (
