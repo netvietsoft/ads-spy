@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affPrograms, AffNetRow, AffProgramRow } from '../api';
+import { affNets, affAddNets, affDeleteNet, affPrograms, affSaveTraffic, AffNetRow, AffProgramRow } from '../api';
 import { Paginator } from './Paginator';
 
 // Cột bậc %commit — khớp đúng key backend trả về (aff_program.BUCKET_SQL). Key vắng mặt = 0.
@@ -26,6 +26,24 @@ function siteUrl(web: string | null): string | null {
   if (!web) return null;
   return /^https?:\/\//i.test(web) ? web : 'https://' + web;
 }
+
+// Định dạng traffic để hiển thị (DB lưu SỐ thật để sắp/lọc được).
+const fmtVisits = (n: number | null) => (n == null ? '—' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n));
+const fmtBounce = (n: number | null) => (n == null ? '—' : n + '%');
+const fmtDur = (s: number | null) => {
+  if (s == null) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const mm = String(m).padStart(h ? 2 : 1, '0'), ss = String(sec).padStart(2, '0');
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+};
+// Hậu tố công khai 2 phần phổ biến → 'a.co.uk' là domain gốc, KHÔNG phải subdomain.
+const TWO_PART_TLD = ['co.uk', 'com.au', 'co.nz', 'com.br', 'co.jp', 'co.in', 'com.mx', 'co.za', 'com.tr', 'org.uk', 'net.au', 'com.sg', 'co.id'];
+const isSubWeb = (web: string | null) => {
+  if (!web) return false;
+  const p = web.replace(/^https?:\/\//, '').replace(/\/.*$/, '').split('.');
+  const base = TWO_PART_TLD.includes(p.slice(-2).join('.')) ? 3 : 2;
+  return p.length > base;
+};
 
 // Mobile: dưới 760px hiện dạng THẺ (mirror LocalDbPanel — khỏi vỡ bảng nhiều cột).
 function useIsMobile(bp = 760) {
@@ -60,7 +78,7 @@ function NetRowCard({ n, active, onSelect, onDelete }: { n: AffNetRow; active: b
   );
 }
 
-function ProgramRowCard({ p }: { p: AffProgramRow }) {
+function ProgramRowCard({ p, onEdit }: { p: AffProgramRow; onEdit: (web: string) => void }) {
   const site = siteUrl(p.web);
   return (
     <div className="fbcard localcard">
@@ -69,6 +87,12 @@ function ProgramRowCard({ p }: { p: AffProgramRow }) {
         <span><b className="rev">{pctOrFlat(p)}</b></span>
         <span>Cookie {p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</span>
         <span>Payout {orDash(p.payout_threshold)}</span>
+      </div>
+      <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span>Traffic/th <b>{fmtVisits(p.traffic_visits)}</b></span>
+        <span>Bounce <b>{fmtBounce(p.traffic_bounce)}</b></span>
+        <span>Time <b>{fmtDur(p.traffic_duration_sec)}</b></span>
+        {p.web && <button className="ghost" onClick={() => onEdit(p.web!)}>✎ Traffic</button>}
       </div>
       {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8 }}>{p.notes}</div>}
       <div className="fbfoot" style={{ gap: 10, flexWrap: 'wrap' }}>
@@ -101,7 +125,14 @@ export function AffnetPanel() {
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [reloadTick, setReloadTick] = useState(0);
   const reqRef = useRef(0);
+
+  // Ô nhập traffic (dán khối từ extension) cho 1 domain (web).
+  const [editWeb, setEditWeb] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+  const [editMsg, setEditMsg] = useState<string | null>(null);
 
   const refreshNets = () => affNets().then((r) => { setNets(r); setNetsErr(null); }).catch((e) => setNetsErr((e as Error).message));
   useEffect(() => { refreshNets(); }, []);
@@ -119,7 +150,7 @@ export function AffnetPanel() {
       .then((r) => { if (myReq === reqRef.current) setData(r); })
       .catch((e) => { if (myReq === reqRef.current) setErr((e as Error).message); })
       .finally(() => { if (myReq === reqRef.current) setLoading(false); });
-  }, [activeNet, minPct, maxPct, q, page, pageSize, sort, dir]);
+  }, [activeNet, minPct, maxPct, q, page, pageSize, sort, dir, reloadTick]);
 
   // Đổi net → xoá ngay dữ liệu net cũ (đừng để bảng hiện "Dự án của X" nhưng vẫn còn dòng của net trước, dù chỉ trong lúc chờ fetch mới).
   const selectNet = (net: string) => {
@@ -150,6 +181,27 @@ export function AffnetPanel() {
     refreshNets();
   };
 
+  // Mở/đóng ô nhập traffic.
+  const openEdit = (web: string) => { setEditWeb(web); setEditText(''); setEditMsg(null); };
+  const closeEdit = () => { if (!editBusy) { setEditWeb(null); setEditText(''); setEditMsg(null); } };
+  const saveTraffic = async () => {
+    if (!editWeb || !editText.trim() || editBusy) return;
+    setEditBusy(true); setEditMsg(null);
+    try {
+      const r = await affSaveTraffic({ web: editWeb, text: editText });
+      if (r.visits == null && r.bounce_rate == null && r.visit_duration_sec == null && r.global_rank == null) {
+        setEditMsg('Không đọc được số nào từ khối text — cần có Monthly Visits / Bounce Rate / Visit Duration.');
+        return;
+      }
+      setEditWeb(null); setEditText('');
+      setReloadTick((t) => t + 1); // tải lại danh sách để số vừa lưu hiện lên (mọi dự án cùng web).
+    } catch (e) {
+      setEditMsg('Lỗi: ' + (e as Error).message);
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
   const exportExcel = async () => {
     if (!activeNet) return;
     const r = await affPrograms({ net: activeNet, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page: 1, pageSize: 5000, sort, dir });
@@ -165,6 +217,10 @@ export function AffnetPanel() {
       Note: p.notes || '',
       Cookie: p.cookie_days ?? '',
       Payout: p.payout_threshold ?? '',
+      'Traffic/tháng': p.traffic_visits ?? '',
+      'Bounce %': p.traffic_bounce ?? '',
+      'Time-on-site (giây)': p.traffic_duration_sec ?? '',
+      'Global rank': p.traffic_rank ?? '',
     }));
     const ws = XLSX.utils.json_to_sheet(sheetRows);
     const wb = XLSX.utils.book_new();
@@ -266,7 +322,7 @@ export function AffnetPanel() {
           {isMobile ? (
             <div className="localcards">
               {data.rows.length === 0 && !loading ? <p className="hint">Không có dự án khớp bộ lọc.</p>
-                : data.rows.map((p) => <ProgramRowCard key={p.slug} p={p} />)}
+                : data.rows.map((p) => <ProgramRowCard key={p.slug} p={p} onEdit={openEdit} />)}
             </div>
           ) : (
             <div className="localtbl-scroll">
@@ -279,6 +335,10 @@ export function AffnetPanel() {
                   <th>Note</th>
                   <th>Cookie</th>
                   <th>Payout</th>
+                  <th>Traffic/tháng</th>
+                  <th>Bounce</th>
+                  <th>Time-on-site</th>
+                  <th></th>
                 </tr></thead>
                 <tbody>
                   {data.rows.map((p) => {
@@ -292,17 +352,42 @@ export function AffnetPanel() {
                         <td className="wrap" style={{ maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
                         <td>{p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</td>
                         <td>{orDash(p.payout_threshold)}</td>
+                        <td title={p.traffic_updated_at ? 'Cập nhật ' + new Date(p.traffic_updated_at).toLocaleDateString('vi-VN') + (isSubWeb(p.web) ? ' · số của domain gốc' : '') : (isSubWeb(p.web) ? 'số của domain gốc' : undefined)}>
+                          {fmtVisits(p.traffic_visits)}{isSubWeb(p.web) && p.traffic_visits != null ? ' *' : ''}
+                        </td>
+                        <td>{fmtBounce(p.traffic_bounce)}</td>
+                        <td>{fmtDur(p.traffic_duration_sec)}</td>
+                        <td>{p.web ? <button className="ghost" title="Nhập/sửa traffic (dán từ extension)" onClick={() => openEdit(p.web!)}>✎</button> : '—'}</td>
                       </tr>
                     );
                   })}
                   {data.rows.length === 0 && !loading && (
-                    <tr><td colSpan={7} className="hint">Không có dự án khớp bộ lọc.</td></tr>
+                    <tr><td colSpan={11} className="hint">Không có dự án khớp bộ lọc.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           )}
         </>
+      )}
+
+      {editWeb && (
+        <div onClick={closeEdit} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 12 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius, 8px)', padding: 16, width: 'min(560px, 94vw)', maxHeight: '86vh', overflow: 'auto' }}>
+            <h3 style={{ marginTop: 0 }}>Traffic cho <code>{editWeb}</code></h3>
+            {isSubWeb(editWeb) && <p className="hint" style={{ marginTop: 0 }}>⚠ Đây là subdomain — công cụ traffic báo theo <b>domain gốc</b>, số sẽ là của cả domain chứ không riêng subdomain này.</p>}
+            <p className="hint" style={{ marginTop: 0 }}>
+              Mở extension AITDK cho <b>{editWeb}</b>, bôi đen khối “Traffic Overview” (Monthly Visits / Bounce Rate / Visit Duration / Global Rank) rồi dán vào đây:
+            </p>
+            <textarea rows={8} style={{ width: '100%' }} value={editText} onChange={(e) => setEditText(e.target.value)} disabled={editBusy}
+              placeholder={'42.67M\nMonthly Visits\n40.64%\nBounce Rate\n00:04:25\nVisit Duration\n781\nGlobal Rank'} />
+            {editMsg && <div className="err" style={{ marginTop: 6 }}>{editMsg}</div>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+              <button className="srcbtn active" onClick={saveTraffic} disabled={editBusy || !editText.trim()}>{editBusy ? <span className="spinner" /> : 'Lưu'}</button>
+              <button className="srcbtn" onClick={closeEdit} disabled={editBusy}>Huỷ</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

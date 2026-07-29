@@ -7,8 +7,10 @@ import { ShMysql, buildOrderBy } from '../shophunter/sh.mysql';
 import { AffNet, AffHostRow, AffProgram, NetSummary, DiscoveredHost, ProxyOpt } from './affnet.types';
 
 // Cột sort hợp lệ cho programList (whitelist — tránh SQL injection qua tên cột).
+// Qualify bằng p. vì programList LEFT JOIN với aff_domain_traffic (t.) — web tồn tại ở CẢ 2 bảng,
+// không qualify sẽ ném lỗi "Column 'web' in order clause is ambiguous".
 const PROGRAM_SORTS: Record<string, string> = {
-  pct: 'commission_pct', name: 'program_name', web: 'web', fetched: 'fetched_at', slug: 'slug',
+  pct: 'p.commission_pct', name: 'p.program_name', web: 'p.web', fetched: 'p.fetched_at', slug: 'p.slug',
 };
 
 // Cơ chế "no hoà" (docs/superpowers/specs/2026-07-28-affiliate-net-crawler-design.md §"Cơ chế no hoà").
@@ -140,6 +142,19 @@ export class AffnetMysql {
     // Index cho programList lọc theo khoảng %commit / theo status.
     await this.ensureIndexMulti(pool, 'aff_program', 'idx_net_pct', 'net, commission_pct');
     await this.ensureIndexMulti(pool, 'aff_program', 'idx_net_status', 'net, status');
+
+    // Traffic dán tay theo DOMAIN (web) — KHÔNG theo net/slug, vì 1 domain có thể là web của nhiều chương
+    // trình (chưa xảy ra thật, nhưng key theo domain mới đúng bản chất + chịu được tương lai).
+    // rank đặt tên global_rank vì `rank` là TỪ KHOÁ DÀNH RIÊNG (reserved word) trong MySQL 8.
+    await pool.query(`CREATE TABLE IF NOT EXISTS aff_domain_traffic (
+      web VARCHAR(255) NOT NULL PRIMARY KEY,
+      visits BIGINT NULL,
+      bounce_rate DOUBLE NULL,
+      visit_duration_sec INT NULL,
+      global_rank INT NULL,
+      note VARCHAR(255) NULL,
+      updated_at BIGINT
+    )`);
   }
 
   // Thêm net mới; net đã có thì chỉ cập nhật platform (không nhân đôi). Trả SỐ NET MỚI thêm.
@@ -313,6 +328,28 @@ export class AffnetMysql {
     );
   }
 
+  // Lưu traffic theo DOMAIN (web). COALESCE để lần dán thiếu trường KHÔNG xoá số cũ đã có.
+  async upsertDomainTraffic(web: string, f: { visits?: number|null; bounceRate?: number|null; visitDurationSec?: number|null; globalRank?: number|null; note?: string|null }): Promise<void> {
+    const pool = await this.sh.getPool();
+    await pool.query(
+      `INSERT INTO aff_domain_traffic (web, visits, bounce_rate, visit_duration_sec, global_rank, note, updated_at)
+       VALUES (?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE
+         visits=COALESCE(VALUES(visits), visits),
+         bounce_rate=COALESCE(VALUES(bounce_rate), bounce_rate),
+         visit_duration_sec=COALESCE(VALUES(visit_duration_sec), visit_duration_sec),
+         global_rank=COALESCE(VALUES(global_rank), global_rank),
+         note=COALESCE(VALUES(note), note),
+         updated_at=VALUES(updated_at)`,
+      [web, f.visits ?? null, f.bounceRate ?? null, f.visitDurationSec ?? null, f.globalRank ?? null, f.note ?? null, Date.now()],
+    );
+  }
+  async getDomainTraffic(web: string): Promise<any | null> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(`SELECT web, visits, bounce_rate, visit_duration_sec, global_rank, note, updated_at FROM aff_domain_traffic WHERE web = ?`, [web]);
+    return (rows as any[])[0] || null;
+  }
+
   // Bậc %commit — biểu thức DUY NHẤT, dùng ở đây và không lặp lại ở nơi khác.
   private static BUCKET_SQL = `CASE
       WHEN commission_pct IS NULL AND commission_flat IS NOT NULL THEN 'flat'
@@ -356,32 +393,39 @@ export class AffnetMysql {
     offset: number; limit: number; sort?: string; dir?: string;
   }): Promise<{ rows: any[]; total: number }> {
     const pool = await this.sh.getPool();
-    const where: string[] = ['net = ?'];
+    // p. = aff_program, t. = aff_domain_traffic — bắt buộc qualify vì `web` tồn tại ở CẢ 2 bảng sau JOIN,
+    // không qualify MySQL sẽ ném lỗi cột mơ hồ (ambiguous column).
+    const where: string[] = ['p.net = ?'];
     const params: any[] = [q.net];
     if (q.minPct != null && q.maxPct != null) {
-      where.push('commission_pct BETWEEN ? AND ?');
+      where.push('p.commission_pct BETWEEN ? AND ?');
       params.push(q.minPct, q.maxPct);
     } else if (q.minPct != null) {
-      where.push('commission_pct >= ?');
+      where.push('p.commission_pct >= ?');
       params.push(q.minPct);
     } else if (q.maxPct != null) {
-      where.push('commission_pct <= ?');
+      where.push('p.commission_pct <= ?');
       params.push(q.maxPct);
     }
-    if (q.status) { where.push('status = ?'); params.push(q.status); }
+    if (q.status) { where.push('p.status = ?'); params.push(q.status); }
     if (q.q) {
-      where.push('(program_name LIKE ? OR slug LIKE ? OR web LIKE ?)');
+      where.push('(p.program_name LIKE ? OR p.slug LIKE ? OR p.web LIKE ?)');
       params.push('%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%');
     }
     const whereSql = 'WHERE ' + where.join(' AND ');
     const orderBy = buildOrderBy(q.sort || 'fetched', q.dir || 'desc', PROGRAM_SORTS, 'fetched');
+    // LEFT JOIN theo domain (web) — chương trình chưa có ai dán traffic thì traffic_* ra NULL, không loại hàng.
     const [rows] = await pool.query(
-      `SELECT net, slug, join_url, program_name, brand, web, commission_pct, commission_flat, commission_currency,
-              commission_scope, commission_raw, cookie_days, payout_threshold, notes, status, fetched_at
-       FROM aff_program ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      `SELECT p.net, p.slug, p.join_url, p.program_name, p.brand, p.web, p.commission_pct, p.commission_flat,
+              p.commission_currency, p.commission_scope, p.commission_raw, p.cookie_days, p.payout_threshold,
+              p.notes, p.status, p.fetched_at,
+              t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce, t.visit_duration_sec AS traffic_duration_sec,
+              t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at
+       FROM aff_program p LEFT JOIN aff_domain_traffic t ON t.web = p.web
+       ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, q.limit, q.offset],
     );
-    const [cnt] = await pool.query(`SELECT COUNT(*) AS n FROM aff_program ${whereSql}`, params);
+    const [cnt] = await pool.query(`SELECT COUNT(*) AS n FROM aff_program p ${whereSql}`, params);
     return { rows: rows as any[], total: Number((cnt as any[])[0].n) || 0 };
   }
 

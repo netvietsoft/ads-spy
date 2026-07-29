@@ -649,6 +649,13 @@ export interface AffProgramRow {
   commission_currency: string | null; commission_scope: string | null; commission_raw: string | null;
   cookie_days: number | null; payout_threshold: number | null; notes: string | null;
   status: string; fetched_at: number;
+  // Traffic dán tay theo domain (LEFT JOIN aff_domain_traffic) — null nếu chưa dán cho web này.
+  traffic_visits: number | null; traffic_bounce: number | null;
+  traffic_duration_sec: number | null; traffic_rank: number | null; traffic_updated_at: number | null;
+}
+export interface AffTrafficRow {
+  web: string; visits: number | null; bounce_rate: number | null;
+  visit_duration_sec: number | null; global_rank: number | null; note: string | null; updated_at: number | null;
 }
 export async function affNets(): Promise<AffNetRow[]> {
   return jsonOrThrow(await fetch(`${API}/api/aff/nets`));
@@ -680,6 +687,20 @@ export async function affPrograms(p: {
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
   return jsonOrThrow(await fetch(`${API}/api/aff/programs?${qs.toString()}`));
+}
+// Lưu traffic dán tay cho 1 domain (web). Gửi khối text từ extension để backend parse,
+// hoặc số gõ tay (override). Backend chuẩn hoá web + upsert theo domain.
+export async function affSaveTraffic(payload: {
+  web: string; text?: string; visits?: number | null; bounceRate?: number | null;
+  visitDurationSec?: number | null; globalRank?: number | null; note?: string | null;
+}): Promise<AffTrafficRow> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/aff/traffic`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+  );
 }
 
 // ===== Job nền (Settings) =====
