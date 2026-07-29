@@ -61,6 +61,14 @@ async function jsonOrThrow(res: Response) {
 // Đặt NEXT_PUBLIC_API_ORIGIN khi deploy; mặc định API dev ở :3100.
 const API = process.env.NEXT_PUBLIC_API_ORIGIN || 'http://localhost:3100';
 
+// Auth guard toàn cục cần cookie phiên `gas_session`. api.ts gọi API KHÁC ORIGIN (giữ gọi thẳng, không
+// qua proxy Next — xem lý do timeout FB ở trên), nên fetch mặc định `same-origin` sẽ KHÔNG kèm cookie → 401.
+// Bọc fetch cấp module để mọi call trong file tự gửi credentials; backend đã bật CORS credentials tương ứng.
+const _fetch: typeof globalThis.fetch = globalThis.fetch.bind(globalThis);
+function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return _fetch(input, { credentials: 'include', ...init });
+}
+
 export function assetProxy(url: string, download = false): string {
   return `${API}/api/asset?url=${encodeURIComponent(url)}${download ? '&download=1' : ''}`;
 }

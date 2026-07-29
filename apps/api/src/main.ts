@@ -13,7 +13,7 @@ async function bootstrap() {
   app.use(json({ limit: '25mb' }));
   app.use(urlencoded({ extended: true, limit: '25mb' }));
   app.setGlobalPrefix('api');
-  app.enableCors({ origin: true });
+  app.enableCors({ origin: true, credentials: true });
   app.useGlobalFilters(new GoogleBlockedFilter(), new FbBlockedFilter(), new TtBlockedFilter());
   const port = process.env.PORT ? Number(process.env.PORT) : 3100;
   await app.listen(port);
