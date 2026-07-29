@@ -6,6 +6,7 @@ describe('ShController — cap tra cứu shophunter', () => {
   const svc = {
     explore: jest.fn(async () => ({ items: items10, nextFromValue: 'NX', totalHits: 200, cached: false })),
     localShops: jest.fn(async () => ({ items: items10, total: 200 })),
+    reportTopShops: jest.fn(async () => ({ byRevenue: items10, byGrowth: items10, bySteady: items10 })),
   } as any;
   const ent = { resolve: jest.fn() } as any;
   const c = new ShController(svc, {} as any, {} as any, {} as any, ent);
@@ -50,6 +51,22 @@ describe('ShController — cap tra cứu shophunter', () => {
     ent.resolve.mockResolvedValue({ access: 'staff', recordCap: null, tier: null, features: {}, quotas: {} });
     const r: any = await c.localShops({ id: 3, role: 'admin' } as any, 'revenue_month', 'desc', '2', '50', '', '', '', '', '', '', '', '', '', '', '', '');
     expect(r.items).toHaveLength(10);
+    expect(r.capped).toBe(false);
+  });
+
+  it('report/top-shops: free-limited → mỗi top-list cắt còn 5 + capped', async () => {
+    ent.resolve.mockResolvedValue({ access: 'free-limited', recordCap: 5, tier: null, features: {}, quotas: {} });
+    const r: any = await c.reportTopShops({ id: 4, role: 'user' } as any, '', '');
+    expect(r.byRevenue).toHaveLength(5);
+    expect(r.byGrowth).toHaveLength(5);
+    expect(r.bySteady).toHaveLength(5);
+    expect(r.capped).toBe(true);
+  });
+
+  it('report/top-shops: staff → không cap (10)', async () => {
+    ent.resolve.mockResolvedValue({ access: 'staff', recordCap: null, tier: null, features: {}, quotas: {} });
+    const r: any = await c.reportTopShops({ id: 4, role: 'admin' } as any, '', '');
+    expect(r.byRevenue).toHaveLength(10);
     expect(r.capped).toBe(false);
   });
 });
