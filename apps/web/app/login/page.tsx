@@ -50,7 +50,7 @@ export default function LoginPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f6f8', fontFamily: 'system-ui, sans-serif' }}>
       <form onSubmit={mode === 'login' ? login : forgot} style={{ width: 340, background: '#fff', padding: 28, borderRadius: 14, boxShadow: '0 8px 30px rgba(0,0,0,0.08)', display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ fontSize: 22, fontWeight: 700, textAlign: 'center' }}>Ads <span style={{ color: '#16a34a' }}>Spy</span></div>
-        <div style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', marginTop: -6 }}>{mode === 'login' ? 'Đăng nhập khu quản trị' : 'Đặt lại mật khẩu'}</div>
+        <div style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', marginTop: -6 }}>{mode === 'login' ? 'Đăng nhập' : 'Đặt lại mật khẩu'}</div>
         <input type="email" value={email} autoFocus placeholder="Email" onChange={(e) => { setEmail(e.target.value); setErr(''); }} style={inputStyle} />
         {mode === 'login' && (
           <input type="password" value={pw} placeholder="Mật khẩu" onChange={(e) => { setPw(e.target.value); setErr(''); }} style={inputStyle} />

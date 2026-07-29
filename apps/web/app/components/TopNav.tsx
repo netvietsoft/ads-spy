@@ -10,6 +10,7 @@ const NAV: [string, string][] = [
   ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/settings', 'Cài đặt'],
   ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'], ['/admin/plans', 'Gói'],
 ];
+const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/pricing'];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
 function activeHref(p: string): string {
@@ -34,16 +35,13 @@ export function TopNav() {
   const active = activeHref(pathname);
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [menuOpen, setMenuOpen] = useState(false); // menu xổ ra trên mobile
-  // Role/email lấy từ /api/auth/me. Staff (admin/manager) → nav công cụ; guest/user → header khách.
-  // '' = chưa load xong hoặc chưa đăng nhập. loaded để tránh nháy sai header.
+  // Role/email từ /api/auth/me. Staff (admin/manager) → nav công cụ; guest/user → header khách.
   const [role, setRole] = useState('');
   const [email, setEmail] = useState('');
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => { setMenuOpen(false); }, [pathname]); // điều hướng xong → đóng menu mobile
-
   useEffect(() => { setTheme(((localStorage.getItem('theme') as 'dark' | 'light') || 'light')); }, []);
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('theme', theme); }, [theme]);
   useEffect(() => {
     let alive = true;
     fetch('/api/auth/me')
@@ -55,6 +53,13 @@ export function TopNav() {
   }, [pathname]);
 
   const isStaff = role === 'admin' || role === 'manager';
+  const isPublicRoute = PUBLIC_ROUTES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+  // Tránh nháy/nhảy layout lúc tải: chưa biết role → đoán theo route (public→khách, còn lại→staff).
+  const showCustomer = loaded ? !isStaff : isPublicRoute;
+
+  // Theme: staff dùng theme đã lưu; vùng khách ép SÁNG (không có nút đổi theme, style cx- màu sáng).
+  useEffect(() => { document.documentElement.dataset.theme = showCustomer ? 'light' : theme; }, [showCustomer, theme]);
+
   const items = role === 'admin' ? NAV : NAV.filter(([href]) => href !== '/import' && href !== '/settings' && !href.startsWith('/admin'));
 
   // Chuột trái thường → điều hướng SPA (không reload); Ctrl/Cmd/Shift/chuột-giữa → để browser mở tab mới.
@@ -66,46 +71,31 @@ export function TopNav() {
   };
 
   const activeLabel = items.find(([href]) => href === active)?.[1] || '';
-  const langBtn = (
-    <button className="ghost" type="button" onClick={() => setLang(lang === 'vi' ? 'en' : 'vi')} title="Ngôn ngữ / Language">
-      {lang === 'vi' ? 'EN' : 'VI'}
-    </button>
-  );
-
+  const toggleLang = () => setLang(lang === 'vi' ? 'en' : 'vi');
+  const toggleTheme = () => setTheme((prev) => { const n = prev === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('theme', n); } catch {} return n; });
   const logout = async () => {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
     window.location.href = '/landing';
   };
 
-  // Chưa biết role (đang tải) → header tối giản để tránh nháy nhầm nav.
-  if (!loaded) {
-    return (
-      <header className="topbar">
-        <div className="topbar-inner">
-          <h1 className="brand-h">Ads <span className="dot">Spy</span></h1>
-        </div>
-      </header>
-    );
-  }
-
-  // Guest / khách (role user) → header khách (không có nav công cụ ở S1).
-  if (!isStaff) {
+  // Guest / khách (role user) → header khách (không có nav công cụ ở S1). Dùng lúc tải trên route công khai.
+  if (showCustomer) {
     return (
       <header className="topbar">
         <div className="topbar-inner">
           <a href="/landing" className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
           <div className="topbar-actions">
-            <a href="/pricing" className="ghost" style={{ textDecoration: 'none' }}>{t('nav.pricing')}</a>
-            {langBtn}
+            <a href="/pricing" className="cx-ghost">{t('nav.pricing')}</a>
+            <button type="button" className="cx-ghost" onClick={toggleLang} title="Ngôn ngữ / Language">{lang === 'vi' ? 'EN' : 'VI'}</button>
             {email ? (
               <>
-                <span className="ghost" style={{ pointerEvents: 'none', opacity: 0.8 }}>{email}</span>
-                <button className="ghost" type="button" onClick={logout}>{t('nav.logout')}</button>
+                <span style={{ fontSize: 13, color: '#6b7280', alignSelf: 'center' }}>{email}</span>
+                <button type="button" className="cx-ghost" onClick={logout}>{t('nav.logout')}</button>
               </>
             ) : (
               <>
-                <a href="/login" className="ghost" style={{ textDecoration: 'none' }}>{t('nav.login')}</a>
-                <a href="/register" className="ghost" style={{ textDecoration: 'none' }}>{t('nav.register')}</a>
+                <a href="/login" className="cx-ghost">{t('nav.login')}</a>
+                <a href="/register" className="cx-ghost">{t('nav.register')}</a>
               </>
             )}
           </div>
@@ -114,7 +104,7 @@ export function TopNav() {
     );
   }
 
-  // Staff (admin/manager) → header + nav công cụ như cũ.
+  // Staff (admin/manager) → header + nav công cụ như cũ (không có nút đổi ngôn ngữ — nhãn công cụ chỉ tiếng Việt).
   return (
     <header className="topbar">
       <div className="topbar-inner">
@@ -124,8 +114,7 @@ export function TopNav() {
             <span className="navtoggle-ic">{menuOpen ? '✕' : '☰'}</span>
             <span className="navtoggle-lb">{menuOpen ? 'Đóng' : activeLabel || 'Menu'}</span>
           </button>
-          {langBtn}
-          <button className="ghost" type="button" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} title="Đổi giao diện sáng/tối">
+          <button className="ghost" type="button" onClick={toggleTheme} title="Đổi giao diện sáng/tối">
             {theme === 'dark' ? '☀️ Sáng' : '🌙 Tối'}
           </button>
           <button className="ghost" type="button" onClick={logout} title="Đăng xuất">Đăng xuất</button>
