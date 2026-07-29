@@ -6,6 +6,8 @@ describe('ShController — cap tra cứu shophunter', () => {
   const svc = {
     explore: jest.fn(async () => ({ items: items10, nextFromValue: 'NX', totalHits: 200, cached: false })),
     localShops: jest.fn(async () => ({ items: items10, total: 200 })),
+    reportTopShops: jest.fn(async () => ({ byRevenue: items10, byGrowth: items10, bySteady: items10 })),
+    reportShopOrdersByRange: jest.fn(async () => items10),
   } as any;
   const ent = { resolve: jest.fn() } as any;
   const c = new ShController(svc, {} as any, {} as any, {} as any, ent);
@@ -51,5 +53,35 @@ describe('ShController — cap tra cứu shophunter', () => {
     const r: any = await c.localShops({ id: 3, role: 'admin' } as any, 'revenue_month', 'desc', '2', '50', '', '', '', '', '', '', '', '', '', '', '', '');
     expect(r.items).toHaveLength(10);
     expect(r.capped).toBe(false);
+  });
+
+  it('report/top-shops: free-limited → mỗi top-list cắt còn 5 + capped', async () => {
+    ent.resolve.mockResolvedValue({ access: 'free-limited', recordCap: 5, tier: null, features: {}, quotas: {} });
+    const r: any = await c.reportTopShops({ id: 4, role: 'user' } as any, '', '');
+    expect(r.byRevenue).toHaveLength(5);
+    expect(r.byGrowth).toHaveLength(5);
+    expect(r.bySteady).toHaveLength(5);
+    expect(r.capped).toBe(true);
+  });
+
+  it('report/top-shops: staff → không cap (10)', async () => {
+    ent.resolve.mockResolvedValue({ access: 'staff', recordCap: null, tier: null, features: {}, quotas: {} });
+    const r: any = await c.reportTopShops({ id: 4, role: 'admin' } as any, '', '');
+    expect(r.byRevenue).toHaveLength(10);
+    expect(r.capped).toBe(false);
+  });
+
+  it('report/shop-orders: free-limited → mảng cắt còn 5 + limit ép về cap', async () => {
+    ent.resolve.mockResolvedValue({ access: 'free-limited', recordCap: 5, tier: null, features: {}, quotas: {} });
+    const r: any = await c.shopOrdersByRange({ id: 5, role: 'user' } as any, '2000-01-01', '2030-01-01', '0', '', '2000');
+    expect(r).toHaveLength(5);
+    expect(svc.reportShopOrdersByRange).toHaveBeenCalledWith('2000-01-01', '2030-01-01', 0, null, 5);
+  });
+
+  it('report/shop-orders: staff → không cap, giữ limit người dùng', async () => {
+    ent.resolve.mockResolvedValue({ access: 'staff', recordCap: null, tier: null, features: {}, quotas: {} });
+    const r: any = await c.shopOrdersByRange({ id: 5, role: 'admin' } as any, '2000-01-01', '2030-01-01', '0', '', '2000');
+    expect(r).toHaveLength(10);
+    expect(svc.reportShopOrdersByRange).toHaveBeenCalledWith('2000-01-01', '2030-01-01', 0, null, 2000);
   });
 });

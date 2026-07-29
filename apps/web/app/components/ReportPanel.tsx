@@ -163,6 +163,13 @@ function OverviewReport() {
         </div>
       )}
 
+      {(topShops?.capped || topProducts?.capped) && (
+        <div className="cx-card" style={{ textAlign: 'center', margin: '4px 0 18px', maxWidth: 460 }}>
+          <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 10 }}>Bản xem thử chỉ hiện top 5. Nâng cấp để xem bảng xếp hạng đầy đủ.</div>
+          <a className="cx-btn" href="/pricing" style={{ textDecoration: 'none', display: 'inline-block' }}>Nâng cấp thành viên</a>
+        </div>
+      )}
+
       <h3 style={{ margin: '10px 0 4px' }}>Top sản phẩm trong ngành</h3>
       {!topProducts && !prodLoading && (
         <button className="srcbtn" onClick={loadProducts}>Xem top sản phẩm (quét ~2–3 phút)</button>

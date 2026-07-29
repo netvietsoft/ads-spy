@@ -10,7 +10,11 @@ import {
 } from '@nestjs/common';
 import { FbService } from './fb.service';
 import { FbPlaywrightService } from './fb.playwright.service';
+import { Roles } from '../auth/roles.decorator';
+import { RequiresModule } from '../subscriptions/requires.decorator';
 
+// Module fb-ads là free → mở các endpoint ĐỌC cho khách (role user), không cap.
+// GIỮ staff-only: session* (đặt/kiểm cookie FB dùng chung — chỉ nhân viên set).
 @Controller('fb')
 export class FbController {
   constructor(
@@ -37,6 +41,8 @@ export class FbController {
   }
 
   // GET /api/fb/report?country=VN&range=30  → bảng xếp hạng chi tiêu theo Page
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('report')
   report(@Query('country') country?: string, @Query('range') range?: string) {
     const r = ['yesterday', '7', '30', '90', 'all'].includes(range || '') ? range! : '30';
@@ -44,6 +50,8 @@ export class FbController {
   }
 
   // GET /api/fb/page-posts?page=<url|handle>&from=YYYY-MM-DD&to=YYYY-MM-DD  (quét + lưu DB)
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('page-posts')
   pagePosts(
     @Query('page') pg: string,
@@ -62,6 +70,8 @@ export class FbController {
   }
 
   // Quét DẦN (progressive): trả jobId, rồi client poll /page-posts/job/:id
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('page-posts/start')
   startPagePosts(
     @Query('page') pg: string,
@@ -79,6 +89,8 @@ export class FbController {
     return this.fb.startPagePosts(pg.trim(), n, toUnix(from, false), toUnix(to, true), from, to);
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('page-posts/job/:id')
   pagePostsJob(@Param('id') id: string) {
     const job = this.fb.getJob(id);
@@ -86,11 +98,15 @@ export class FbController {
     return job;
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('page-posts/history')
   pagePostsHistory() {
     return this.fb.pagePostsHistory();
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('page-posts/saved/:id')
   async pagePostsSaved(@Param('id') id: string) {
     const saved = await this.fb.pagePostsById(Number(id));
@@ -99,6 +115,8 @@ export class FbController {
   }
 
   // GET /api/fb/search?q=nike&country=VN  (scrape + lưu DB)
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('search')
   search(
     @Query('q') q: string,
@@ -110,12 +128,16 @@ export class FbController {
     return this.fb.search(q.trim(), (country || 'VN').toUpperCase(), active);
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('history')
   history() {
     return this.fb.history();
   }
 
   // GET /api/fb/search/:id  (đọc lại từ DB, không chạy Chromium)
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('fb-ads')
   @Get('search/:id')
   async getSaved(@Param('id') id: string) {
     const saved = await this.fb.getById(Number(id));

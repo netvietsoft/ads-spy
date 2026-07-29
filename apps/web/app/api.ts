@@ -544,8 +544,8 @@ export async function shReport(p: { country?: string; category?: string } = {}):
   if (p.category) qs.set('category', p.category);
   return jsonOrThrow(await fetch(`${API}/api/sh/report?${qs.toString()}`));
 }
-export interface ShTopShops { byRevenue: any[]; byGrowth: any[]; bySteady: any[] }
-export interface ShTopProducts { byRevenue: any[]; bySteady: any[] }
+export interface ShTopShops { byRevenue: any[]; byGrowth: any[]; bySteady: any[]; capped?: boolean }
+export interface ShTopProducts { byRevenue: any[]; bySteady: any[]; capped?: boolean }
 export async function shReportTopShops(p: { country?: string; category?: string } = {}): Promise<ShTopShops> {
   const qs = new URLSearchParams();
   if (p.country) qs.set('country', p.country);
