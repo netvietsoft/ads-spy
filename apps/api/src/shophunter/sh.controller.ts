@@ -386,19 +386,27 @@ export class ShController {
     return this.svc.coverageStats(); // độ phủ đồng bộ catalog + doanh thu ngày (dashboard admin)
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/local/shops')
-  async localShops(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string, @Query('cntMin') cntMin: string, @Query('cntMax') cntMax: string, @Query('cntPeriod') cntPeriod: string, @Query('skuMin') skuMin: string, @Query('skuMax') skuMax: string) {
+  async localShops(@CurrentUser() user: any, @Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string, @Query('cntMin') cntMin: string, @Query('cntMax') cntMax: string, @Query('cntPeriod') cntPeriod: string, @Query('skuMin') skuMin: string, @Query('skuMax') skuMax: string) {
+    const cap = await this.shCap(user);
     const p = localParams(sort, dir, page, pageSize);
     const cp = cntPeriod === 'day' || cntPeriod === 'week' || cntPeriod === 'month' ? cntPeriod : undefined;
-    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true', revMin: parseRev(revMin), revMax: parseRev(revMax), cntMin: parseRev(cntMin), cntMax: parseRev(cntMax), cntPeriod: cp, skuMin: parseRev(skuMin), skuMax: parseRev(skuMax) });
-    return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
+    const r = await this.svc.localShops({ sort: p.sort, dir: p.dir, offset: cap != null ? 0 : p.offset, limit: cap != null ? cap : p.limit, country: country || undefined, category: category || undefined, q: q || undefined, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true', revMin: parseRev(revMin), revMax: parseRev(revMax), cntMin: parseRev(cntMin), cntMax: parseRev(cntMax), cntPeriod: cp, skuMin: parseRev(skuMin), skuMax: parseRev(skuMax) });
+    if (cap != null) return { items: (r.items || []).slice(0, cap), total: r.total, page: 1, pageSize: cap, capped: true };
+    return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize, capped: false };
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/local/products')
-  async localProducts(@Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('shop') shop: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string) {
+  async localProducts(@CurrentUser() user: any, @Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('shop') shop: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string) {
+    const cap = await this.shCap(user);
     const p = localParams(sort, dir, page, pageSize);
-    const r = await this.svc.localProducts({ sort: p.sort, dir: p.dir, offset: p.offset, limit: p.limit, country: country || undefined, category: category || undefined, q: q || undefined, shop: shop || undefined, revMin: parseRev(revMin), revMax: parseRev(revMax) });
-    return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize };
+    const r = await this.svc.localProducts({ sort: p.sort, dir: p.dir, offset: cap != null ? 0 : p.offset, limit: cap != null ? cap : p.limit, country: country || undefined, category: category || undefined, q: q || undefined, shop: shop || undefined, revMin: parseRev(revMin), revMax: parseRev(revMax) });
+    if (cap != null) return { items: (r.items || []).slice(0, cap), total: r.total, page: 1, pageSize: cap, capped: true };
+    return { items: r.items, total: r.total, page: p.page, pageSize: p.pageSize, capped: false };
   }
 
   // Xuất CSV (Excel mở được — có BOM UTF-8) TOÀN BỘ data đã lọc theo tiêu chí hiện tại (không phân trang). Cap 50k dòng.

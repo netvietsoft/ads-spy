@@ -11,8 +11,8 @@ const NAV: [string, string][] = [
   ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'], ['/admin/plans', 'Gói'],
 ];
 const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/pricing'];
-// Tab công cụ MỞ cho khách (role user) — thêm dần mỗi slice. Slice này: Shopify (ShopHunter).
-const CUSTOMER_NAV: [string, string][] = [['/shophuntershopify', 'Shopify']];
+// Tab công cụ MỞ cho khách (role user) — thêm dần mỗi slice. Đã mở: Shopify, Local DB.
+const CUSTOMER_NAV: [string, string][] = [['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB']];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
 function activeHref(p: string): string {

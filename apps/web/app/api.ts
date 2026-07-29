@@ -496,7 +496,7 @@ export function shLocalExportUrl(type: 'shops' | 'products', p: { sort?: string;
   if (p.revMax != null) qs.set('revMax', String(p.revMax));
   return `${API}/api/sh/local/export?${qs.toString()}`;
 }
-export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
+export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number; capped?: boolean }
 export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month'; skuMin?: number; skuMax?: number } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);

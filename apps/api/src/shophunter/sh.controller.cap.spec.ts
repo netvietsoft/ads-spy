@@ -3,7 +3,10 @@ import { ShController } from './sh.controller';
 // Cap tra cứu ShopHunter cho role user (free-limited → recordCap 5). Staff/paid → recordCap null → không cap.
 describe('ShController — cap tra cứu shophunter', () => {
   const items10 = Array.from({ length: 10 }, (_, i) => ({ shop_id: 's' + i, product_id: 'p' + i }));
-  const svc = { explore: jest.fn(async () => ({ items: items10, nextFromValue: 'NX', totalHits: 200, cached: false })) } as any;
+  const svc = {
+    explore: jest.fn(async () => ({ items: items10, nextFromValue: 'NX', totalHits: 200, cached: false })),
+    localShops: jest.fn(async () => ({ items: items10, total: 200 })),
+  } as any;
   const ent = { resolve: jest.fn() } as any;
   const c = new ShController(svc, {} as any, {} as any, {} as any, ent);
 
@@ -33,5 +36,20 @@ describe('ShController — cap tra cứu shophunter', () => {
     expect(r.items).toHaveLength(5);
     expect(r.capped).toBe(true);
     expect(svc.explore).toHaveBeenCalledWith('products', expect.objectContaining({ from: 0 }));
+  });
+
+  it('local/shops: free-limited → cap 5 + capped, ép offset 0 + limit 5', async () => {
+    ent.resolve.mockResolvedValue({ access: 'free-limited', recordCap: 5, tier: null, features: {}, quotas: {} });
+    const r: any = await c.localShops({ id: 3, role: 'user' } as any, 'revenue_month', 'desc', '2', '50', '', '', '', '', '', '', '', '', '', '', '', '');
+    expect(r.items).toHaveLength(5);
+    expect(r.capped).toBe(true);
+    expect(svc.localShops).toHaveBeenCalledWith(expect.objectContaining({ offset: 0, limit: 5 }));
+  });
+
+  it('local/shops: staff → không cap', async () => {
+    ent.resolve.mockResolvedValue({ access: 'staff', recordCap: null, tier: null, features: {}, quotas: {} });
+    const r: any = await c.localShops({ id: 3, role: 'admin' } as any, 'revenue_month', 'desc', '2', '50', '', '', '', '', '', '', '', '', '', '', '', '');
+    expect(r.items).toHaveLength(10);
+    expect(r.capped).toBe(false);
   });
 });
