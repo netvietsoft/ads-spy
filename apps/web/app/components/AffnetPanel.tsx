@@ -1,8 +1,11 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affPrograms, affSaveTraffic, AffNetRow, AffProgramRow } from '../api';
+import { affNets, affAddNets, affDeleteNet, affPrograms, affSaveTraffic, AffNetRow, AffProgramRow, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
+
+// 2 job nền lo việc quét net (dùng chung hàng đợi cho MỌI net, không theo từng net).
+const SCAN_JOBS = ['affdiscover', 'afffetch'];
 
 // Cột bậc %commit — khớp đúng key backend trả về (aff_program.BUCKET_SQL). Key vắng mặt = 0.
 const BUCKET_COLS: { key: string; label: string }[] = [
@@ -134,13 +137,36 @@ export function AffnetPanel() {
   const [editBusy, setEditBusy] = useState(false);
   const [editMsg, setEditMsg] = useState<string | null>(null);
 
+  // Trạng thái quét: true khi CẢ 2 job scan đang bật. null = chưa đọc được (lỗi/đang tải).
+  const [scanOn, setScanOn] = useState<boolean | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
+
   const refreshNets = () => affNets().then((r) => { setNets(r); setNetsErr(null); }).catch((e) => setNetsErr((e as Error).message));
-  useEffect(() => { refreshNets(); }, []);
-  // Poll bảng Net mỗi 10s trong lúc tab đang mở (job quét chạy nền, thấy tiến độ tăng dần).
+  const refreshScan = () => shJobs()
+    .then((js) => { const m = Object.fromEntries(js.map((j) => [j.name, j])); setScanOn(SCAN_JOBS.every((n) => m[n]?.enabled)); })
+    .catch(() => {});
+  useEffect(() => { refreshNets(); refreshScan(); }, []);
+  // Poll bảng Net + trạng thái quét mỗi 10s trong lúc tab đang mở (job quét chạy nền, thấy tiến độ tăng dần).
   useEffect(() => {
-    const t = setInterval(refreshNets, 10000);
+    const t = setInterval(() => { refreshNets(); refreshScan(); }, 10000);
     return () => clearInterval(t);
   }, []);
+
+  // Bật/tắt quét toàn cục: toggle cả 2 job. Khi bật thì kick chạy ngay để khỏi chờ nhịp cron đầu tiên.
+  const toggleScan = async () => {
+    if (scanBusy) return;
+    setScanBusy(true);
+    try {
+      const turnOn = !scanOn;
+      for (const n of SCAN_JOBS) await shToggleJob(n, turnOn);
+      if (turnOn) for (const n of SCAN_JOBS) await shRunJobOnce(n).catch(() => {});
+      await refreshScan();
+    } catch (e) {
+      setNetsErr('Không đổi được trạng thái quét: ' + (e as Error).message);
+    } finally {
+      setScanBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!activeNet) { setData({ rows: [], total: 0 }); return; }
@@ -251,6 +277,17 @@ export function AffnetPanel() {
           </button>
           {importMsg && <span className="hint" style={{ margin: 0 }}>{importMsg}</span>}
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0 0', flexWrap: 'wrap' }}>
+        <button className={scanOn ? 'srcbtn' : 'srcbtn active'} onClick={toggleScan} disabled={scanBusy || scanOn == null}>
+          {scanBusy ? <span className="spinner" /> : scanOn ? '⏸ Dừng quét' : '▶ Bắt đầu quét'}
+        </button>
+        <span className="hint" style={{ margin: 0 }}>
+          {scanOn == null ? 'Đang đọc trạng thái quét…'
+            : scanOn ? 'Đang quét nền (dò subdomain + quét trang) cho tất cả net — số liệu tự tăng dần.'
+              : 'Quét đang tắt. Bấm để bắt đầu dò subdomain và quét trang cho mọi net.'}
+        </span>
       </div>
 
       {netsErr && <div className="err">{netsErr}</div>}
