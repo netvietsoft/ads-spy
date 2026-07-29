@@ -24,7 +24,8 @@ export default function LoginPage() {
       const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: pw }) });
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
-        if (data?.user?.role === 'user') { setErr('Tài khoản khách chưa dùng được khu quản trị.'); setLoading(false); return; }
+        // Khách (role user) → trang khách; staff → next/'/home'.
+        if (data?.user?.role === 'user') { window.location.href = '/landing'; return; }
         window.location.href = nextUrl();
         return;
       }
@@ -67,6 +68,9 @@ export default function LoginPage() {
         <button type="button" onClick={() => { setMode(mode === 'login' ? 'forgot' : 'login'); setErr(''); setMsg(''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 13, cursor: 'pointer' }}>
           {mode === 'login' ? 'Quên mật khẩu?' : '← Quay lại đăng nhập'}
         </button>
+        {mode === 'login' && (
+          <a href="/register" style={{ color: '#2563eb', fontSize: 13, textAlign: 'center', textDecoration: 'none' }}>Chưa có tài khoản? Đăng ký</a>
+        )}
       </form>
     </div>
   );
