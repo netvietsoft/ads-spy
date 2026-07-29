@@ -24,8 +24,8 @@ export default function LoginPage() {
       const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: pw }) });
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
-        // Khách (role user) → trang khách; staff → next/'/home'.
-        if (data?.user?.role === 'user') { window.location.href = '/landing'; return; }
+        // Khách (role user) → thẳng công cụ Shopify (gated); staff → next/'/home'.
+        if (data?.user?.role === 'user') { window.location.href = '/shophuntershopify'; return; }
         window.location.href = nextUrl();
         return;
       }

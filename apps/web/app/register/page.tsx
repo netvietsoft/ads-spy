@@ -16,7 +16,7 @@ export default function RegisterPage() {
     setBusy(true);
     try {
       await register(email, password, name || undefined);
-      window.location.href = '/landing';
+      window.location.href = '/shophuntershopify';
     } catch (e: any) {
       setErr(e?.message || t('auth.err'));
       setBusy(false);

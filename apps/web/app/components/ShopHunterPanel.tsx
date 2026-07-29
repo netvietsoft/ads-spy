@@ -109,6 +109,7 @@ export function ShopHunterPanel() {
   const [items, setItems] = useState<any[]>([]);
   const [from, setFrom] = useState(0);
   const [total, setTotal] = useState(0);
+  const [capped, setCapped] = useState(false); // khách free-limited: BE cắt 5 record → khóa phân trang, hiện CTA nâng cấp
   const [filters, setFilters] = useState<Record<string, { gte: number | string | null; lte: number | string | null }>>({});
   const [cats, setCats] = useState<string[]>([]);
   const [lists, setLists] = useState<Record<string, string[]>>({});
@@ -127,6 +128,7 @@ export function ShopHunterPanel() {
       const r: ShExplore = await shExplore(tab, { sort: useSort || undefined, q: q || undefined, from: nextFrom, filters, categories: cats.join(','), lists });
       setItems((prev) => (reset ? r.items : [...prev, ...r.items])); // nối tiếp (không đọc `items` cũ trong closure)
       setTotal(r.totalHits);
+      setCapped(!!r.capped);
       setFrom(typeof r.nextFromValue === 'number' ? r.nextFromValue : nextFrom + r.items.length);
     } catch (e) { setErr((e as Error).message); }
     setLoading(false);
@@ -138,11 +140,11 @@ export function ShopHunterPanel() {
     const el = moreRef.current;
     if (!el) return;
     const obs = new IntersectionObserver((e) => {
-      if (e[0].isIntersecting && !loading && items.length < total) load(false);
+      if (e[0].isIntersecting && !loading && !capped && items.length < total) load(false);
     }, { rootMargin: '1200px' });
     obs.observe(el);
     return () => obs.disconnect();
-  }, [items.length, total, loading, from]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [items.length, total, loading, from, capped]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortList = tab === 'shops' ? sorts.shops : sorts.products;
 
@@ -193,13 +195,23 @@ export function ShopHunterPanel() {
               : <ProductCard key={it.product_id} p={it} onOpen={() => window.open(`/product/${it.shop_id}/${it.product_id}`, '_blank')} />)}
           </div>
 
-          {items.length > 0 && items.length < total && (
-            <>
-              <div ref={moreRef} aria-hidden style={{ height: 1 }} />
-              <div style={{ textAlign: 'center', margin: 16 }}>
-                <button className="srcbtn loadmore" onClick={() => load(false)} disabled={loading}>{loading ? 'Đang tải nền…' : 'Tải thêm'}</button>
+          {capped ? (
+            items.length > 0 && (
+              <div className="cx-card" style={{ textAlign: 'center', margin: '16px auto', maxWidth: 460 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>Đang xem {items.length}/{total}</div>
+                <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 12 }}>Nâng cấp thành viên để xem tất cả kết quả.</div>
+                <a className="cx-btn" href="/pricing" style={{ textDecoration: 'none', display: 'inline-block' }}>Nâng cấp thành viên</a>
               </div>
-            </>
+            )
+          ) : (
+            items.length > 0 && items.length < total && (
+              <>
+                <div ref={moreRef} aria-hidden style={{ height: 1 }} />
+                <div style={{ textAlign: 'center', margin: 16 }}>
+                  <button className="srcbtn loadmore" onClick={() => load(false)} disabled={loading}>{loading ? 'Đang tải nền…' : 'Tải thêm'}</button>
+                </div>
+              </>
+            )
           )}
         </div>
       </div>

@@ -394,7 +394,7 @@ export async function getSearch(id: number): Promise<SearchResponse> {
 // ---- ShopHunter ----
 export interface ShShop { shop_id: string; [k: string]: any }
 export interface ShProduct { product_id: string; [k: string]: any }
-export interface ShExplore<T = any> { items: T[]; nextFromValue: string | number | null; totalHits: number; cached: boolean }
+export interface ShExplore<T = any> { items: T[]; nextFromValue: string | number | null; totalHits: number; cached: boolean; capped?: boolean }
 export interface ShSort { value: string; label: string }
 export interface ShTokenStatus { valid: boolean; email?: string; expiresAt?: number }
 

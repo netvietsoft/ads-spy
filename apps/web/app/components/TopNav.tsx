@@ -11,6 +11,8 @@ const NAV: [string, string][] = [
   ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'], ['/admin/plans', 'Gói'],
 ];
 const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/pricing'];
+// Tab công cụ MỞ cho khách (role user) — thêm dần mỗi slice. Slice này: Shopify (ShopHunter).
+const CUSTOMER_NAV: [string, string][] = [['/shophuntershopify', 'Shopify']];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
 function activeHref(p: string): string {
@@ -78,12 +80,12 @@ export function TopNav() {
     window.location.href = '/landing';
   };
 
-  // Guest / khách (role user) → header khách (không có nav công cụ ở S1). Dùng lúc tải trên route công khai.
+  // Guest (chưa đăng nhập) → header công khai; khách đã đăng nhập (role user, có email) → thêm nav tab công cụ mở.
   if (showCustomer) {
     return (
       <header className="topbar">
         <div className="topbar-inner">
-          <a href="/landing" className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
+          <a href={email ? '/shophuntershopify' : '/landing'} className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
           <div className="topbar-actions">
             <a href="/pricing" className="cx-ghost">{t('nav.pricing')}</a>
             <button type="button" className="cx-ghost" onClick={toggleLang} title="Ngôn ngữ / Language">{lang === 'vi' ? 'EN' : 'VI'}</button>
@@ -100,6 +102,13 @@ export function TopNav() {
             )}
           </div>
         </div>
+        {email && (
+          <nav className="topnav">
+            {CUSTOMER_NAV.map(([href, label]) => (
+              <a key={href} href={href} className={`srcbtn ${active === href ? 'active' : ''}`} onClick={(e) => nav(e, href)}>{label}</a>
+            ))}
+          </nav>
+        )}
       </header>
     );
   }
