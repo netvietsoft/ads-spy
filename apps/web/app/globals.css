@@ -346,3 +346,15 @@ button.ghost.danger { color: var(--danger); }
   /* Bảng đứng lẻ (report/modal) giữ full-width; nếu quá rộng thì khung cha (overflow:auto) tự cuộn */
   .localtbl { width: 100%; }
 }
+
+/* ===== Trang khách/công khai (S1) — prefix cx- để không đụng style công cụ ===== */
+.cx-wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px; color: #111827; }
+.cx-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; color: #111827; }
+.cx-authbox { max-width: 360px; margin: 48px auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 26px; display: flex; flex-direction: column; gap: 12px; color: #111827; }
+.cx-inp { padding: 11px 12px; border-radius: 9px; border: 1px solid #d1d5db; font-size: 15px; outline: none; }
+.cx-btn { padding: 11px 12px; border-radius: 9px; border: none; background: #16a34a; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+.cx-btn:disabled { background: #9ca3af; }
+.cx-err { color: #e0384f; font-size: 13px; text-align: center; }
+.cx-ok { color: #16a34a; font-size: 13px; text-align: center; }
+.cx-plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .cx-plans { grid-template-columns: 1fr; } }
