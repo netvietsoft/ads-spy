@@ -12,15 +12,15 @@ Spec/plan chi tiết: `docs/superpowers/specs/` + `docs/superpowers/plans/`. Nh�
 
 ## Còn lại
 
-### Customer access (P5+P6 tách nhỏ) — spec/plan: `2026-07-28-ca*`
-Khối "cho khách (role `user`) đăng nhập + dùng công cụ gated" chia 3 tiểu dự án (mỗi cái spec→plan→build):
-- [x] **CA-2 — App khách + auth + giá + i18n:** app Next mới `apps/customer` (dev :3102, proxy `/api`→BE), đăng nhập/đăng ký(self-signup, role user)/quên-reset, Home (entitlements của tôi từ `/me`), Bảng giá (`/api/plans`+`/api/modules`), i18n vi/en (`t()` + toggle). Middleware gate cookie (mọi role authed vào được). Build xanh; smoke test :3102 OK (register→me role user + ents free-limited/free; proxy plans/modules). **Không đụng** apps/web/apps/api.
-- [ ] **CA-1 — BE Customer API:** `/api/customer/*` tra cứu ShopHunter (gate `@RequiresModule('shophunter')` + cap 5 record free) + xem ads Google/FB/TikTok (module free) + `/api/customer/me`. Dùng lại ShService/SearchService; giữ nguyên endpoint staff.
-- [ ] **CA-3 — Trang tính năng khách:** trong `apps/customer` — ShopHunter (tra cứu gated + nút mua) + ads. Cần CA-1.
+### Customer access — hướng B: gộp vào `apps/web` (spec `2026-07-29-customer-on-web-design.md`)
+> **Đổi hướng (2026-07-29):** thay vì app khách riêng, gộp phần khách vào chính `apps/web` (1 FE nhiều vùng: landing công khai / khách gated / staff+admin). CA-2 (app riêng `apps/customer`) đã build rồi **gỡ**, port landing/auth/giá/i18n sang web.
+- [x] **S1 — Nền customer trên web** (plan `2026-07-29-s1-foundation-web.md`): i18n vi/en (`t()`+toggle EN/VI); **Landing** công khai; cho role `user` đăng nhập + trang **đăng ký** (self-signup) + bảng giá công khai; middleware chưa-login → `/landing`; **TopNav** thành zone header (staff = nav công cụ như cũ; guest/user = header khách, chưa có tab công cụ). Gỡ `apps/customer`. Build xanh; smoke :3101 OK (landing/pricing/register 200; `/`→307 landing; register→role user; admin+user vào `/`; plans qua proxy). **Staff không đổi.**
+- [ ] **S2 — BE gating (CA-1):** mở endpoint tra cứu cho role `user` + cap theo `entitlement.recordCap` (ShopHunter free = 5) + trả `{items,total,capped}`; giữ staff-only settings/jobs/proxy/import. Làm theo module (Shopify trước → ads → localdb/track/report).
+- [ ] **S3 — Gating UI:** hiện tab công cụ cho `user`; trang công cụ hiện ≤5 record + block khóa "Nâng cấp thành viên" khi `capped`. Song song S2 theo từng module.
 
-### Gốc P5/P6 (bao trùm bởi CA-*)
-- [ ] **P5 — API mobile:** đóng gói `/api/v1` versioned + auth token cho app; áp `@RequiresModule/@RequiresFeature` + recordCap/checkQuota lên endpoint tool thật (giới hạn 5 record cho free, đếm export/tháng). (CA-1 là bước đầu.)
-- [ ] **P6 — FE khách + i18n:** app khách tại `dpboss.pet`, admin dời `admin.dpboss.pet`. (CA-2 đã dựng app khách + i18n; còn deploy/tách domain.)
+### Gốc P5/P6 (bao trùm bởi S1–S3)
+- [ ] **P5 — API mobile:** đóng gói `/api/v1` versioned + auth token cho app; áp `@RequiresModule/@RequiresFeature` + recordCap/checkQuota lên endpoint tool thật. (S2 là bước đầu.)
+- [ ] **P6 — FE khách + i18n:** (S1 đã gộp app khách + i18n vào web); còn deploy + tách domain `dpboss.pet` / `admin.dpboss.pet` (tuỳ chọn — 1 FE có thể deploy chung, phân vùng theo role).
 
 ## Hardening / nợ kỹ thuật (hoãn có chủ đích — ghi từ review các phase)
 **Chặn trước khi mở cho khách thật (P5/P6):**
