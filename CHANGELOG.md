@@ -4,6 +4,21 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-29 — Customer access HOÀN TẤT (S1→S3): khách đăng nhập + dùng công cụ gated → merge vào `main`
+
+> Tuyến khách (role `user`) trên **`apps/web`** (đổi hướng từ "app khách riêng" `apps/customer` → gộp 1 FE nhiều vùng). Spec/plan: `docs/superpowers/{specs,plans}/2026-07-29-*`. Đã **merge vào `main`** (commit `00320e9`), giữ nguyên affnet/traffic; backup ref `backup/main-premerge-saas`. Test cap 9/9; 3 vòng fresh-eyes review (over-exposure CLEAN cả 4 controller). Chưa push origin.
+
+- **S1 — Nền:** i18n vi/en (`t()`+toggle EN/VI); **Landing** công khai (chưa login → `/landing`); cho role `user` đăng nhập + **đăng ký** self-signup + **Bảng giá** công khai; `TopNav` thành zone header (staff=nav công cụ như cũ; guest=header công khai; khách đăng nhập=nav tab mở). Gỡ `apps/customer` (port hết sang web).
+- **S2+S3 — mở công cụ cho khách + cap 5 (theo `entitlement.recordCap`):**
+  - **Shopify** (`sh/shops|products|shop/:id|product/...|sorts|asset`): cap 5 record, **ép `from=0`+`nextFromValue=null`** khi capped (chặn phân trang cộng dồn); FE block "Nâng cấp thành viên" + tắt tải-thêm/observer.
+  - **Local DB** (`sh/local/shops|products`): cap 5 (ép offset 0/limit cap); FE ẩn pager + **xuất Excel** thay bằng CTA. `sh/local/export` giữ staff-only.
+  - **Báo cáo** (`sh/report*`): mở aggregate + histogram (buckets/order-buckets); **cap 5** các danh sách bản ghi (top-shops, top-products, shop-orders, order-products); FE CTA khi capped. POST `analyze-now`/`reconcile-shop-revenue` giữ staff-only.
+  - **Ads** Google/FB/TikTok (module **free** → không cap): mở endpoint ĐỌC cho `user` (`search.controller`/`fb.controller`/`tiktok.controller`); hiện 3 tab. **GIỮ staff-only:** Google `settings/proxy*`, FB `session*`.
+- **Bảo mật:** cap enforce ở BE (không dựa FE ẩn); chỉ mở endpoint đọc/lookup cho khách; mọi token/proxy/jobs/harvest/import/export/settings/POST-action vẫn staff-only. Review fix MEDIUM: `shop-orders`/`order-products` ban đầu quên cap → đã cap. Guard: `@Roles('admin','manager','user')` + `@RequiresModule('<key>')`; cap qua `EntitlementService.resolve().recordCap`.
+- **Caveat local:** Shopify **live search** cần refresh token ShopHunter (tài khoản hết hạn) mới hiện thẻ; Ads + Local DB + Báo cáo chạy được ngay (đọc DB/scrape). Chi tiết + hardening (rate-limit khách, siết `sh/asset` host): `docs/saas-tasks.md`.
+
+---
+
 ## 2026-07-29 — Affiliate Nets: 3 cột traffic (dán tay) + GỘP nhánh `saas` vào `main`
 
 ### Traffic dán tay theo domain (visits / bounce / time-on-site + global rank) — [docs/12](docs/12-affiliate-nets.md)

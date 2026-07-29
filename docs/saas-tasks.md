@@ -1,6 +1,7 @@
-# SaaS — Task tracker (nhánh `saas`)
+# SaaS — Task tracker
 
-Cập nhật: 2026-07-28. Nhánh dev `saas` (worktree `google-ads-spy-saas`), local-only, **`main`/prod chưa đụng**.
+Cập nhật: **2026-07-29**. Tuyến SaaS + customer-access **ĐÃ MERGE vào `main`** (commit `00320e9`; backup ref `backup/main-premerge-saas`). **Chưa push origin.** Nhánh `saas` = ancestor của main.
+Test local: BE `:3200` (`cd apps/api && PORT=3200 node dist/main.js`), web `:3101` (`cd apps/web && API_ORIGIN=http://localhost:3200 node ../../node_modules/next/dist/bin/next start -p 3101`). Admin `admin@dpboss.pet`/`changeme12`. dev.db đã seed (1 admin + 4 module + 3 plan).
 Spec/plan chi tiết: `docs/superpowers/specs/` + `docs/superpowers/plans/`. Nhật ký: `CHANGELOG.md`. Lộ trình: `docs/roadmap.md`.
 
 ## Đã xong (P0→P4)
