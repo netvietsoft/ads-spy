@@ -13,6 +13,11 @@ import type { Response } from 'express';
 import { Readable } from 'stream';
 import { GoogleClient } from '../google/google.client';
 import { SearchService, isAllowedAssetHost } from './search.service';
+import { Roles } from '../auth/roles.decorator';
+import { RequiresModule } from '../subscriptions/requires.decorator';
+
+// Module google-ads là free → mở các endpoint ĐỌC cho khách (role user), không cap.
+// GIỮ staff-only: settings/proxy* (cấu hình proxy). asset/embed = proxy media/dựng ad, mở cho user (không gate module — dùng chung mọi panel).
 
 @Controller()
 export class SearchController {
@@ -21,6 +26,8 @@ export class SearchController {
     private readonly google: GoogleClient,
   ) {}
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
   @Post('search')
   async doSearch(@Body('domain') domain: string) {
     if (!domain || !domain.trim()) {
@@ -45,18 +52,24 @@ export class SearchController {
     return this.google.testProxy();
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
   @Get('suggest')
   suggest(@Query('q') q: string) {
     if (!q || !q.trim()) throw new BadRequestException('Vui lòng nhập từ khóa.');
     return this.search.suggest(q.trim());
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
   @Get('advertiser/:id')
   byAdvertiser(@Param('id') id: string) {
     return this.search.searchByAdvertiser(id);
   }
 
   // Lọc theo vùng (B): gửi danh sách creative đang xem + mã geo → job mở chi tiết từng ad, trả ad khớp vùng.
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
   @Post('creatives/regions/start')
   startRegionCheck(
     @Body('items') items: { advertiserId: string; creativeId: string }[],
@@ -68,6 +81,8 @@ export class SearchController {
     return this.search.startRegionCheck(items, Number(geo), Math.min(Number(limit) || 100, 200));
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
   @Get('creatives/regions/job/:id')
   regionJob(@Param('id') id: string) {
     const j = this.search.getRegionJob(id);
@@ -75,6 +90,8 @@ export class SearchController {
     return j;
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
   @Get('creative/:advertiserId/:creativeId')
   getCreative(
     @Param('advertiserId') advertiserId: string,
@@ -83,11 +100,15 @@ export class SearchController {
     return this.search.getCreative(advertiserId, creativeId);
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
   @Get('history')
   history() {
     return this.search.history();
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
   @Get('search/:id')
   async getSaved(@Param('id') id: string) {
     const saved = await this.search.getById(Number(id));
@@ -97,6 +118,7 @@ export class SearchController {
 
   // Render quảng cáo động (content.js) bằng cơ chế "fletch" của Google, trả 1 trang HTML
   // để web nhúng iframe → hiện video/app-install như trên Transparency Center.
+  @Roles('admin', 'manager', 'user')
   @Get('embed')
   embed(@Query('url') url: string, @Res() res: Response) {
     if (!url || !isAllowedAssetHost(url)) {
@@ -136,6 +158,7 @@ window["${cb}"]=function(payload){
     res.send(html);
   }
 
+  @Roles('admin', 'manager', 'user')
   @Get('asset')
   async asset(
     @Query('url') url: string,

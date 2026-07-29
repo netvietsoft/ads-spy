@@ -1,7 +1,12 @@
 import { Controller, Get, NotFoundException, Query, Param } from '@nestjs/common';
 import { TiktokService } from './tiktok.service';
+import { Roles } from '../auth/roles.decorator';
+import { RequiresModule } from '../subscriptions/requires.decorator';
 
+// Module tiktok-ads là free → mở cho khách (role user), không cap. Cả 3 endpoint đều là đọc.
 @Controller('tiktok')
+@Roles('admin', 'manager', 'user')
+@RequiresModule('tiktok-ads')
 export class TiktokController {
   constructor(private readonly tt: TiktokService) {}
 
