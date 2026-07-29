@@ -6,6 +6,10 @@ import { ShClient, SH_SORTS_SHOPS, SH_SORTS_PRODUCTS } from './sh.client';
 import { ShBlockedFilter } from './sh.blocked.filter';
 import { ShHarvestService } from './sh.harvest.service';
 import { ShJobsService, JOB_NAMES } from './sh.jobs.service';
+import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { RequiresModule } from '../subscriptions/requires.decorator';
+import { EntitlementService } from '../subscriptions/entitlement.service';
 
 const ALLOWED_ASSET = /(^|\.)(shopify\.com|shopifycdn\.com|myshopify\.com|shophunter\.io|cloudfront\.net)$/i;
 const REVENUE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -85,7 +89,15 @@ export class ShController {
     private readonly client: ShClient,
     private readonly harvest: ShHarvestService,
     private readonly jobsSvc: ShJobsService,
+    private readonly ent: EntitlementService,
   ) {}
+
+  // Giới hạn record cho khách theo entitlement module 'shophunter'.
+  // staff/đã mua → recordCap null (không cap); free-limited → số (vd 5). Trả về null nghĩa là không giới hạn.
+  private async shCap(user: { id: number; role: string }): Promise<number | null> {
+    const e = await this.ent.resolve(user.id, user.role, 'shophunter');
+    return e.recordCap;
+  }
 
   @Post('sh/token')
   setToken(@Body('refreshToken') refreshToken: string) {
@@ -125,6 +137,8 @@ export class ShController {
   @Delete('sh/proxies/:id')
   deleteProxy(@Param('id') id: string) { return this.svc.deleteProxy(Number(id)); }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/sorts')
   sorts() {
     return { shops: SH_SORTS_SHOPS, products: SH_SORTS_PRODUCTS };
@@ -229,20 +243,32 @@ export class ShController {
     return this.svc.enrichProductRevenueRun(Number.isFinite(n) && n > 0 ? n : undefined);
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/shops')
-  shops(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
-    return this.svc.explore('shops', {
-      sort: sort || SH_SORTS_SHOPS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters), lists: parseLists(lists),
+  async shops(@CurrentUser() user: any, @Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
+    const cap = await this.shCap(user);
+    const r = await this.svc.explore('shops', {
+      sort: sort || SH_SORTS_SHOPS[0].value, q: q || '', from: cap != null ? 0 : (Number(from) || 0), categoryIds: parseCategories(categories), filters: parseFilters(filters), lists: parseLists(lists),
     });
+    if (cap != null) return { items: (r.items || []).slice(0, cap), nextFromValue: null, totalHits: r.totalHits, cached: r.cached, capped: true };
+    return { ...r, capped: false };
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/products')
-  products(@Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
-    return this.svc.explore('products', {
-      sort: sort || SH_SORTS_PRODUCTS[0].value, q: q || '', from: Number(from) || 0, categoryIds: parseCategories(categories), filters: parseFilters(filters), lists: parseLists(lists),
+  async products(@CurrentUser() user: any, @Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
+    const cap = await this.shCap(user);
+    const r = await this.svc.explore('products', {
+      sort: sort || SH_SORTS_PRODUCTS[0].value, q: q || '', from: cap != null ? 0 : (Number(from) || 0), categoryIds: parseCategories(categories), filters: parseFilters(filters), lists: parseLists(lists),
     });
+    if (cap != null) return { items: (r.items || []).slice(0, cap), nextFromValue: null, totalHits: r.totalHits, cached: r.cached, capped: true };
+    return { ...r, capped: false };
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/shop/:id')
   async shopDetail(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Thiếu shop id.');
@@ -252,24 +278,32 @@ export class ShController {
     return { ...d, storefrontCurrency };
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/shop/:id/revenue-daily')
   shopRevenueDaily(@Param('id') id: string) {
     if (!id) throw new BadRequestException('Thiếu shop id.');
     return this.svc.revenueDaily(id); // chuỗi doanh thu ngày tích luỹ (>90 ngày dần)
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/product/:shopId/:productId')
   productDetail(@Param('shopId') shopId: string, @Param('productId') productId: string) {
     if (!shopId || !productId) throw new BadRequestException('Thiếu id.');
     return this.svc.productDetail(shopId, productId);
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/product/:shopId/:productId/revenue-daily')
   productRevenueDaily(@Param('shopId') shopId: string, @Param('productId') productId: string) {
     if (!shopId || !productId) throw new BadRequestException('Thiếu id.');
     return this.svc.productRevenueDaily(productId); // chuỗi doanh thu ngày tích luỹ sản phẩm (Task 2)
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/asset')
   async asset(@Query('url') url: string, @Query('download') download: string, @Res() res: Response) {
     if (!url || !assetHostOk(url)) throw new BadRequestException('URL ảnh không hợp lệ hoặc không được phép.');
