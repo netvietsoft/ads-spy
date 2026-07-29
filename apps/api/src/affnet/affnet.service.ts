@@ -1,5 +1,5 @@
 // Nghiệp vụ affnet: import net, discovery 1 lượt, fetch 1 lượt (song song theo làn IP), uỷ quyền đọc dữ liệu.
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { AffnetMysql } from './affnet.mysql';
 import { AffnetFetch, joinUrlOf } from './affnet.fetch';
 import { discoverNet } from './affnet.discovery';
@@ -149,13 +149,18 @@ export class AffnetService {
   // Lưu traffic thủ công cho 1 domain. Nhận HOẶC khối text dán từ extension (parse), HOẶC số gõ tay (override).
   async saveTraffic(input: { web: string; text?: string; visits?: number|null; bounceRate?: number|null; visitDurationSec?: number|null; globalRank?: number|null; note?: string|null }): Promise<any> {
     const web = this.normalizeNet(input.web);
-    if (!web) throw new Error('Thiếu web');
+    if (!web) throw new BadRequestException('Thiếu web');
     let f = { visits: input.visits ?? null, bounceRate: input.bounceRate ?? null, visitDurationSec: input.visitDurationSec ?? null, globalRank: input.globalRank ?? null };
     if (input.text) {
       const p = parseTrafficPaste(input.text);
       f = { visits: f.visits ?? p.visits, bounceRate: f.bounceRate ?? p.bounceRate, visitDurationSec: f.visitDurationSec ?? p.visitDurationSec, globalRank: f.globalRank ?? p.rank };
     }
-    await this.db.upsertDomainTraffic(web, { ...f, note: input.note ?? null });
+    const note = input.note ?? null;
+    // Dán rác → parse ra toàn null (và không có note): KHÔNG ghi dòng rác toàn null, trả nguyên trạng.
+    if (f.visits == null && f.bounceRate == null && f.visitDurationSec == null && f.globalRank == null && note == null) {
+      return this.db.getDomainTraffic(web);
+    }
+    await this.db.upsertDomainTraffic(web, { ...f, note });
     return this.db.getDomainTraffic(web);
   }
 }

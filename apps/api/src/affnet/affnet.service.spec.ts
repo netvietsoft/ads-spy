@@ -261,4 +261,12 @@ describe('saveTraffic — lưu traffic dán tay theo domain', () => {
     await s.saveTraffic({ web: 'https://WWW.Editgpt.app/', visits: 100 });
     expect(db.upsertDomainTraffic).toHaveBeenCalledWith('editgpt.app', expect.any(Object));
   });
+
+  it('dán RÁC (parse ra toàn null, không note) → KHÔNG ghi dòng rác, không gọi upsert', async () => {
+    const db = mkDb();
+    const s = new AffnetService(db as any, mkFetch() as any);
+    await s.saveTraffic({ web: 'editgpt.app', text: 'xin chào không có số nào cả' });
+    expect(db.upsertDomainTraffic).not.toHaveBeenCalled();
+    expect(db.getDomainTraffic).toHaveBeenCalledWith('editgpt.app');
+  });
 });

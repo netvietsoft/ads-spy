@@ -147,7 +147,7 @@ export class AffnetMysql {
     // trình (chưa xảy ra thật, nhưng key theo domain mới đúng bản chất + chịu được tương lai).
     // rank đặt tên global_rank vì `rank` là TỪ KHOÁ DÀNH RIÊNG (reserved word) trong MySQL 8.
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_domain_traffic (
-      web VARCHAR(190) NOT NULL PRIMARY KEY,
+      web VARCHAR(255) NOT NULL PRIMARY KEY,
       visits BIGINT NULL,
       bounce_rate DOUBLE NULL,
       visit_duration_sec INT NULL,
