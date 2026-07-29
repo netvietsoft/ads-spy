@@ -489,26 +489,30 @@ export class ShController {
   @Roles('admin', 'manager', 'user')
   @RequiresModule('shophunter')
   @Get('sh/report/shop-orders')
-  shopOrdersByRange(@Query('from') from: string, @Query('to') to: string, @Query('min') min: string, @Query('max') max: string, @Query('limit') limit: string) {
+  async shopOrdersByRange(@CurrentUser() user: any, @Query('from') from: string, @Query('to') to: string, @Query('min') min: string, @Query('max') max: string, @Query('limit') limit: string) {
     const d = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? s : null);
     const f = d(from); const t = d(to);
     if (!f || !t) throw new BadRequestException('Ngày không hợp lệ (cần YYYY-MM-DD).');
     const mn = Math.max(0, Number(min) || 0);
     const mx = max === '' || max == null ? null : (Number.isFinite(Number(max)) ? Number(max) : null);
-    const lim = Math.min(2000, Math.max(1, Number(limit) || 500));
-    return this.svc.reportShopOrdersByRange(f, t, mn, mx, lim);
+    const cap = await this.shCap(user); // danh sách bản ghi → cap cho khách (free = 5)
+    const lim = cap != null ? cap : Math.min(2000, Math.max(1, Number(limit) || 500));
+    const r = await this.svc.reportShopOrdersByRange(f, t, mn, mx, lim);
+    return cap != null ? (r || []).slice(0, cap) : r;
   }
 
   // Danh sách sản phẩm trong 1 bậc số đơn (kỳ) — cho expand ở báo cáo xếp hạng.
   @Roles('admin', 'manager', 'user')
   @RequiresModule('shophunter')
   @Get('sh/report/order-products')
-  orderProducts(@Query('period') period: string, @Query('lo') lo: string, @Query('hi') hi: string, @Query('limit') limit: string) {
+  async orderProducts(@CurrentUser() user: any, @Query('period') period: string, @Query('lo') lo: string, @Query('hi') hi: string, @Query('limit') limit: string) {
     const p = period === 'day' || period === 'week' || period === 'month' ? period : 'month';
     const loN = Number(lo) || 0;
     const hiN = hi === '' || hi == null ? null : (Number.isFinite(Number(hi)) ? Number(hi) : null);
-    const lim = Math.min(200, Math.max(1, Number(limit) || 50));
-    return this.svc.productsByOrders(p, loN, hiN, lim);
+    const cap = await this.shCap(user); // danh sách bản ghi → cap cho khách (free = 5)
+    const lim = cap != null ? cap : Math.min(200, Math.max(1, Number(limit) || 50));
+    const r = await this.svc.productsByOrders(p, loN, hiN, lim);
+    return cap != null ? (r || []).slice(0, cap) : r;
   }
 
   // Sửa lệch cột revenue phẳng (báo cáo bậc dùng) khớp doanh thu tháng trong raw. Chạy 1 lần sau khi cập nhật code.
