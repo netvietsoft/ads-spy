@@ -394,7 +394,7 @@ export async function getSearch(id: number): Promise<SearchResponse> {
 // ---- ShopHunter ----
 export interface ShShop { shop_id: string; [k: string]: any }
 export interface ShProduct { product_id: string; [k: string]: any }
-export interface ShExplore<T = any> { items: T[]; nextFromValue: string | number | null; totalHits: number; cached: boolean }
+export interface ShExplore<T = any> { items: T[]; nextFromValue: string | number | null; totalHits: number; cached: boolean; capped?: boolean }
 export interface ShSort { value: string; label: string }
 export interface ShTokenStatus { valid: boolean; email?: string; expiresAt?: number }
 
@@ -496,7 +496,7 @@ export function shLocalExportUrl(type: 'shops' | 'products', p: { sort?: string;
   if (p.revMax != null) qs.set('revMax', String(p.revMax));
   return `${API}/api/sh/local/export?${qs.toString()}`;
 }
-export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number }
+export interface ShLocalResult { items: any[]; total: number; page: number; pageSize: number; capped?: boolean }
 export async function shLocalShops(p: { sort?: string; dir?: string; page?: number; pageSize?: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month'; skuMin?: number; skuMax?: number } = {}): Promise<ShLocalResult> {
   const qs = new URLSearchParams();
   if (p.sort) qs.set('sort', p.sort);
@@ -726,4 +726,69 @@ export async function shSetJobConfig(name: string, cfg: Record<string, number>):
   return jsonOrThrow(await fetch(`${API}/api/sh/jobs/${name}/config`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cfg),
   }));
+}
+
+export async function adminRevenue(from?: string, to?: string) {
+  const p = new URLSearchParams();
+  if (from) p.set('from', from);
+  if (to) p.set('to', to);
+  const r = await fetch(`/api/admin/dashboard/revenue?${p.toString()}`);
+  if (!r.ok) throw new Error('Không tải được doanh thu');
+  return r.json();
+}
+
+export async function adminUsers(params: { search?: string; status?: string; page?: number } = {}) {
+  const p = new URLSearchParams();
+  if (params.search) p.set('search', params.search);
+  if (params.status) p.set('status', params.status);
+  if (params.page) p.set('page', String(params.page));
+  const r = await fetch(`/api/admin/users?${p.toString()}`);
+  if (!r.ok) throw new Error('Không tải được danh sách user');
+  return r.json();
+}
+export async function adminUpdateUser(id: number, body: any) {
+  const r = await fetch(`/api/admin/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi cập nhật');
+  return r.json();
+}
+export async function adminUserAction(id: number, action: 'ban' | 'disable' | 'activate') {
+  const r = await fetch(`/api/admin/users/${id}/${action}`, { method: 'POST' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi thao tác');
+  return r.json();
+}
+
+// ---- Admin catalog (Gói) + grant ----
+async function jok(r: Response, msg: string) {
+  if (!r.ok) throw new Error((await r.json().catch(() => ({} as any)))?.message || msg);
+  return r.json();
+}
+export async function adminModules() {
+  return jok(await fetch('/api/admin/modules'), 'Không tải được modules');
+}
+export async function adminSaveModule(body: any, key?: string) {
+  return jok(await fetch(`/api/admin/modules${key ? '/' + encodeURIComponent(key) : ''}`, { method: key ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), 'Lỗi lưu module');
+}
+export async function adminDeleteModule(key: string) {
+  return jok(await fetch(`/api/admin/modules/${encodeURIComponent(key)}`, { method: 'DELETE' }), 'Lỗi xóa module');
+}
+export async function adminPlans(moduleKey?: string) {
+  return jok(await fetch(`/api/admin/plans${moduleKey ? '?module=' + encodeURIComponent(moduleKey) : ''}`), 'Không tải được plans');
+}
+export async function adminCreatePlan(body: any) {
+  return jok(await fetch('/api/admin/plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), 'Lỗi tạo plan');
+}
+export async function adminUpdatePlan(id: number, body: any) {
+  return jok(await fetch(`/api/admin/plans/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), 'Lỗi sửa plan');
+}
+export async function adminDeletePlan(id: number) {
+  return jok(await fetch(`/api/admin/plans/${id}`, { method: 'DELETE' }), 'Lỗi xóa plan');
+}
+export async function adminGrantPlan(body: any) {
+  return jok(await fetch('/api/admin/subscriptions/grant-plan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), 'Lỗi cấp gói');
+}
+export async function adminUserSubs(userId: number) {
+  return jok(await fetch(`/api/admin/subscriptions/user/${userId}`), 'Không tải được gói của user');
+}
+export async function adminRevokeSub(id: number) {
+  return jok(await fetch(`/api/admin/subscriptions/${id}/revoke`, { method: 'POST' }), 'Lỗi thu hồi');
 }

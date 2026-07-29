@@ -6,10 +6,10 @@ Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-s
 
 ## 0. Project-Specific (Google Ads Spy)
 
-**Đọc [`docs/README.md`](docs/README.md) trước khi sửa.** Tin code hơn doc — doc lệch thì sửa code trước rồi cập nhật doc.
+**Đọc [`docs/kien-truc.md`](docs/kien-truc.md) trước khi sửa.** Tin code hơn doc — doc lệch thì sửa code trước rồi cập nhật doc.
 
 - Dự án standalone: `apps/api` (NestJS 3100, Prisma+SQLite) + `apps/web` (Next.js 3101). Lấy dữ liệu bằng cách port API nội bộ `adstransparency.google.com` sang TS.
-- **Bẫy nhớ đời**: `SearchCreatives` phải có field `"7":{"1":1,"2":30,"3":"1"}`, thiếu là trả `{}`. Loại asset suy từ preview, KHÔNG tin format code. Chi tiết: [`docs/03`](docs/03-api-noi-bo-google.md).
+- **Bẫy nhớ đời**: `SearchCreatives` phải có field `"7":{"1":1,"2":30,"3":"1"}`, thiếu là trả `{}`. Loại asset suy từ preview, KHÔNG tin format code. Chi tiết: [`docs/archive/03`](docs/archive/03-api-noi-bo-google.md).
 - Parser là phần dễ vỡ nhất → test bằng fixtures thật trong `fixtures/`. Đổi mapping phải giữ test xanh.
 - Bị 503 "đang giới hạn" = Google throttle IP do gọi nhiều, không phải bug — đợi vài phút.
 
@@ -72,3 +72,51 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+## 5. Vision SaaS & Cấu Trúc Repo (Google Ads Spy)
+
+### Vision
+
+`google-ads-spy` đang chuyển từ tool nội bộ (1 người dùng) sang **phần mềm SaaS cho thuê bao** (nhiều
+khách hàng, gói trả phí), sau này có thêm bản mobile. Việc chuyển đổi làm theo từng tiểu dự án độc
+lập (User/Auth, gói sub, thanh toán, dashboard admin, API mobile, FE khách i18n) — xem
+[`docs/roadmap.md`](docs/roadmap.md) để biết thứ tự và trạng thái từng tiểu dự án.
+
+### Cấu trúc repo — hiện tại → mục tiêu
+
+Monorepo npm workspaces: `apps/api` (NestJS, BE) + `apps/web` (Next.js, FE) + `docs/`. Mục tiêu kiến
+trúc SaaS: `apps/web` hiện tại → **Admin** (`admin.dpboss.pet`); FE khách hàng **mới** tại
+`dpboss.pet` (đa ngôn ngữ, i18n); `apps/api` mở `/api` (versioned, auth token) dùng chung cho web
+khách + mobile app. Chi tiết đầy đủ: [`docs/kien-truc.md`](docs/kien-truc.md) +
+[`docs/roadmap.md`](docs/roadmap.md).
+
+### Quy ước dev
+
+- Làm việc SaaS trên nhánh `saas`, trong worktree riêng `google-ads-spy-saas` — không đụng vào working
+  tree đang chạy prod.
+- **Prod chạy ở nhánh `main`**, deploy bằng `git reset --hard origin/main` (xem `deploy.sh`) — khi
+  merge `saas` → `main`, không được để thay đổi ngoài ý muốn lọt vào prod giữa chừng.
+- Giữ nguyên tên thư mục `apps/api` / `apps/web` — `ecosystem.config.js` (PM2) và cấu hình deploy trỏ
+  thẳng vào các đường dẫn này, đổi tên sẽ gãy production.
+
+### Deploy an toàn
+
+- **KHÔNG BAO GIỜ `pm2 restart all`** — VPS chạy chung nhiều app khác. Luôn restart riêng từng process:
+  `pm2 restart ads-spy-api` / `pm2 restart ads-spy-web`.
+- FE (`apps/web`) phải `rm -rf .next` trước khi build lại, rồi purge cache Cloudflare (Purge
+  Everything) sau mỗi lần đổi FE — không làm là dính chunk/HTML cũ.
+- Repo **public** trên GitHub — không hardcode mật khẩu/token/proxy vào file có commit
+  (`ecosystem.config.js`, `deploy.sh`...); mọi secret đọc từ biến môi trường.
+- Chi tiết đầy đủ: [`docs/deployment.md`](docs/deployment.md).
+
+### Bộ docs
+
+[`docs/kien-truc.md`](docs/kien-truc.md) ·
+[`docs/backend-modules.md`](docs/backend-modules.md) ·
+[`docs/frontend.md`](docs/frontend.md) ·
+[`docs/database.md`](docs/database.md) ·
+[`docs/integrations-webhooks.md`](docs/integrations-webhooks.md) ·
+[`docs/deployment.md`](docs/deployment.md) ·
+[`docs/roadmap.md`](docs/roadmap.md) ·
+[`docs/i18n.md`](docs/i18n.md) ·
+[`docs/api-reference.md`](docs/api-reference.md)

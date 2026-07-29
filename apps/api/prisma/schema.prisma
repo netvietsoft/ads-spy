@@ -115,3 +115,158 @@ model FbAd {
   fbSearch      FbSearch @relation(fields: [fbSearchId], references: [id], onDelete: Cascade)
   fbSearchId    Int
 }
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String?
+  name         String?
+  phone        String?
+  role         String    @default("user")   // 'admin' | 'manager' | 'user'
+  status       String    @default("active") // 'active' | 'banned' | 'disabled'
+  googleId     String?   @unique
+  avatarUrl    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  resetTokens  PasswordResetToken[]
+  subscriptions Subscription[]
+  payments     Payment[]
+}
+
+model Session {
+  id         Int       @id @default(autoincrement())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id         Int       @id @default(autoincrement())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Module {
+  id            Int      @id @default(autoincrement())
+  key           String   @unique
+  name          String
+  category      String?
+  isFree        Boolean  @default(false)
+  freeFeatures  String?  // JSON {feat:bool}
+  freeRecordCap Int?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  plans         Plan[]
+}
+
+model Plan {
+  id           Int      @id @default(autoincrement())
+  module       Module   @relation(fields: [moduleKey], references: [key], onDelete: Cascade)
+  moduleKey    String
+  tier         String
+  name         String
+  priceMonthly Int      @default(0) // cents
+  priceYearly  Int      @default(0) // cents
+  currency     String   @default("USD")
+  stripePriceMonthly String?
+  stripePriceYearly  String?
+  features     String   @default("{}") // JSON
+  quotas       String   @default("{}") // JSON
+  active       Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([moduleKey, tier])
+  @@index([moduleKey])
+}
+
+model Subscription {
+  id               Int      @id @default(autoincrement())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           Int
+  moduleKey        String
+  tier             String
+  cycle            String   // 'monthly'|'yearly'|'comp'
+  startedAt        DateTime @default(now())
+  expiresAt        DateTime
+  status           String   @default("active") // 'active'|'canceled'|'expired'
+  note             String?
+  stripeSubscriptionId String?
+  featuresSnapshot String   @default("{}")
+  quotasSnapshot   String   @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, moduleKey])
+  @@index([userId])
+}
+
+model Usage {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  moduleKey String
+  metric    String
+  period    String   // 'YYYY-MM'
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, moduleKey, metric, period])
+}
+
+model Payment {
+  id          Int       @id @default(autoincrement())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  provider    String    // 'stripe' | 'qr'
+  amount      Int       // minor-unit của currency
+  currency    String    // 'USD' | 'VND'
+  status      String    @default("pending") // 'pending' | 'paid' | 'failed'
+  providerRef String    @unique
+  moduleKey   String
+  tier        String
+  cycle       String
+  note        String?
+  createdAt   DateTime  @default(now())
+  paidAt      DateTime?
+
+  @@index([userId])
+}
+
+model ProcessedEvent {
+  id        Int      @id @default(autoincrement())
+  provider  String
+  eventId   String
+  createdAt DateTime @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model GrantLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  actorUserId Int?
+  action      String   // 'grant'|'extend'|'revoke'|'grant-module'
+  moduleKey   String?
+  tier        String?
+  cycle       String?
+  detail      String?  // JSON
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}

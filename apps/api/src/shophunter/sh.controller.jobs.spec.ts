@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { ShController } from './sh.controller';
 
 function ctrl(jobs: any) {
-  return new ShController({} as any, {} as any, {} as any, jobs);
+  return new ShController({} as any, {} as any, {} as any, jobs, {} as any);
 }
 
 describe('ShController jobs endpoints', () => {

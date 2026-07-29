@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { HealthController } from './health.controller';
-import { PrismaService } from './prisma.service';
+import { PrismaModule } from './prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { PaymentsModule } from './payments/payments.module';
+import { AdminModule } from './admin/admin.module';
 import { GoogleClient } from './google/google.client';
 import { SearchService } from './search/search.service';
 import { SearchController } from './search/search.controller';
@@ -24,8 +28,8 @@ import { AffnetMysql } from './affnet/affnet.mysql';
 import { AffnetFetch } from './affnet/affnet.fetch';
 
 @Module({
-  imports: [ScheduleModule.forRoot()],
+  imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule, AdminModule],
   controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController],
-  providers: [PrismaService, GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetService],
+  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetService],
 })
 export class AppModule {}

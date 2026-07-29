@@ -1,13 +1,18 @@
 'use client';
 import { type MouseEvent as ReactMouseEvent, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useI18n } from '../i18n/I18nProvider';
 
 // Menu chính + brand + nút theme — đặt trong layout nên hiện CỐ ĐỊNH ở MỌI trang (kể cả /product, /shop).
 const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
   ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/settings', 'Cài đặt'],
+  ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'], ['/admin/plans', 'Gói'],
 ];
+const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/pricing'];
+// Tab công cụ MỞ cho khách (role user) — thêm dần mỗi slice. Đã mở: Shopify, Local DB.
+const CUSTOMER_NAV: [string, string][] = [['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB']];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
 function activeHref(p: string): string {
@@ -20,28 +25,45 @@ function activeHref(p: string): string {
   if (p.startsWith('/affnet')) return '/affnet';
   if (p.startsWith('/import')) return '/import';
   if (p.startsWith('/settings')) return '/settings';
+  if (p.startsWith('/admin/users')) return '/admin/users';
+  if (p.startsWith('/admin/dashboard')) return '/admin/dashboard';
+  if (p.startsWith('/admin/plans')) return '/admin/plans';
   return '/googleads'; // '/' và '/googleads'
 }
 
 export function TopNav() {
   const pathname = usePathname() || '/';
   const router = useRouter();
+  const { t, lang, setLang } = useI18n();
   const active = activeHref(pathname);
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [menuOpen, setMenuOpen] = useState(false); // menu xổ ra trên mobile
-  // Quyền để hiện menu: guest ẩn Import + Cài đặt (chặn thật ở middleware, đây chỉ hiển thị). '' = mở/dev → hiện đủ.
+  // Role/email từ /api/auth/me. Staff (admin/manager) → nav công cụ; guest/user → header khách.
   const [role, setRole] = useState('');
+  const [email, setEmail] = useState('');
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => { setMenuOpen(false); }, [pathname]); // điều hướng xong → đóng menu mobile
-
   useEffect(() => { setTheme(((localStorage.getItem('theme') as 'dark' | 'light') || 'light')); }, []);
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('theme', theme); }, [theme]);
   useEffect(() => {
-    const m = document.cookie.match(/(?:^|; )site_role=([^;]+)/);
-    setRole(m ? decodeURIComponent(m[1]) : '');
+    let alive = true;
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive) { setRole(d?.user?.role || ''); setEmail(d?.user?.email || ''); } })
+      .catch(() => { if (alive) { setRole(''); setEmail(''); } })
+      .finally(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
   }, [pathname]);
 
-  const items = role === 'guest' ? NAV.filter(([href]) => href !== '/import' && href !== '/settings') : NAV;
+  const isStaff = role === 'admin' || role === 'manager';
+  const isPublicRoute = PUBLIC_ROUTES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+  // Tránh nháy/nhảy layout lúc tải: chưa biết role → đoán theo route (public→khách, còn lại→staff).
+  const showCustomer = loaded ? !isStaff : isPublicRoute;
+
+  // Theme: staff dùng theme đã lưu; vùng khách ép SÁNG (không có nút đổi theme, style cx- màu sáng).
+  useEffect(() => { document.documentElement.dataset.theme = showCustomer ? 'light' : theme; }, [showCustomer, theme]);
+
+  const items = role === 'admin' ? NAV : NAV.filter(([href]) => href !== '/import' && href !== '/settings' && !href.startsWith('/admin'));
 
   // Chuột trái thường → điều hướng SPA (không reload); Ctrl/Cmd/Shift/chuột-giữa → để browser mở tab mới.
   const nav = (e: ReactMouseEvent, href: string) => {
@@ -52,7 +74,47 @@ export function TopNav() {
   };
 
   const activeLabel = items.find(([href]) => href === active)?.[1] || '';
+  const toggleLang = () => setLang(lang === 'vi' ? 'en' : 'vi');
+  const toggleTheme = () => setTheme((prev) => { const n = prev === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('theme', n); } catch {} return n; });
+  const logout = async () => {
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+    window.location.href = '/landing';
+  };
 
+  // Guest (chưa đăng nhập) → header công khai; khách đã đăng nhập (role user, có email) → thêm nav tab công cụ mở.
+  if (showCustomer) {
+    return (
+      <header className="topbar">
+        <div className="topbar-inner">
+          <a href={email ? '/shophuntershopify' : '/landing'} className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
+          <div className="topbar-actions">
+            <a href="/pricing" className="cx-ghost">{t('nav.pricing')}</a>
+            <button type="button" className="cx-ghost" onClick={toggleLang} title="Ngôn ngữ / Language">{lang === 'vi' ? 'EN' : 'VI'}</button>
+            {email ? (
+              <>
+                <span style={{ fontSize: 13, color: '#6b7280', alignSelf: 'center' }}>{email}</span>
+                <button type="button" className="cx-ghost" onClick={logout}>{t('nav.logout')}</button>
+              </>
+            ) : (
+              <>
+                <a href="/login" className="cx-ghost">{t('nav.login')}</a>
+                <a href="/register" className="cx-ghost">{t('nav.register')}</a>
+              </>
+            )}
+          </div>
+        </div>
+        {email && (
+          <nav className="topnav">
+            {CUSTOMER_NAV.map(([href, label]) => (
+              <a key={href} href={href} className={`srcbtn ${active === href ? 'active' : ''}`} onClick={(e) => nav(e, href)}>{label}</a>
+            ))}
+          </nav>
+        )}
+      </header>
+    );
+  }
+
+  // Staff (admin/manager) → header + nav công cụ như cũ (không có nút đổi ngôn ngữ — nhãn công cụ chỉ tiếng Việt).
   return (
     <header className="topbar">
       <div className="topbar-inner">
@@ -62,9 +124,10 @@ export function TopNav() {
             <span className="navtoggle-ic">{menuOpen ? '✕' : '☰'}</span>
             <span className="navtoggle-lb">{menuOpen ? 'Đóng' : activeLabel || 'Menu'}</span>
           </button>
-          <button className="ghost" type="button" onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} title="Đổi giao diện sáng/tối">
+          <button className="ghost" type="button" onClick={toggleTheme} title="Đổi giao diện sáng/tối">
             {theme === 'dark' ? '☀️ Sáng' : '🌙 Tối'}
           </button>
+          <button className="ghost" type="button" onClick={logout} title="Đăng xuất">Đăng xuất</button>
         </div>
       </div>
       <nav className={`topnav ${menuOpen ? 'open' : ''}`}>

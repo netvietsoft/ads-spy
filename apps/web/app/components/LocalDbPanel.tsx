@@ -421,7 +421,15 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
       </div>
       )}
 
-      {pager}
+      {data.capped ? (
+        data.items.length > 0 && (
+          <div className="cx-card" style={{ textAlign: 'center', margin: '16px auto', maxWidth: 460 }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Đang xem {data.items.length}/{data.total.toLocaleString()}</div>
+            <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 12 }}>Nâng cấp thành viên để xem tất cả + xuất Excel.</div>
+            <a className="cx-btn" href="/pricing" style={{ textDecoration: 'none', display: 'inline-block' }}>Nâng cấp thành viên</a>
+          </div>
+        )
+      ) : pager}
 
     </div>
   );
