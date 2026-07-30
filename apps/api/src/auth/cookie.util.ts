@@ -14,5 +14,8 @@ export function parseCookies(header: string | undefined): Record<string, string>
 }
 
 export function cookieOptions(maxAgeMs: number) {
-  return { httpOnly: true, secure: authConfig.secureCookie, sameSite: 'lax' as const, path: '/', maxAge: maxAgeMs };
+  return {
+    httpOnly: true, secure: authConfig.secureCookie, sameSite: 'lax' as const, path: '/', maxAge: maxAgeMs,
+    ...(authConfig.cookieDomain ? { domain: authConfig.cookieDomain } : {}), // chỉ set Domain khi có COOKIE_DOMAIN (prod)
+  };
 }

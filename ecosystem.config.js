@@ -14,6 +14,9 @@ module.exports = {
         // SH_MYSQL_URL đọc từ env (KHÔNG hardcode mật khẩu — repo public). Set trước khi pm2 start, vd:
         //   export SH_MYSQL_URL='mysql://shop:PASS@127.0.0.1:3306/shophunter'
         SH_MYSQL_URL: process.env.SH_MYSQL_URL || 'mysql://root@127.0.0.1:3306/shophunter', SH_CACHE_TTL_HOURS: '6',
+        // Auth SaaS: APP_BASE_URL https → cookie Secure + link reset/OAuth đúng; COOKIE_DOMAIN chia sẻ cookie web↔api subdomain.
+        APP_BASE_URL: process.env.APP_BASE_URL || 'https://dpboss.pet',
+        COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || '.dpboss.pet',
       },
       max_memory_restart: '900M',
       time: true,

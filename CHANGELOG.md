@@ -4,6 +4,15 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-30 — Fix đăng nhập PROD (rewrite /api + cookie cross-subdomain)
+
+> Sau deploy SaaS đầu lên dpboss.pet, login web → **500**. Chẩn: API `api.dpboss.pet` OK (login trực tiếp 201, admin đã seed, pw đúng) nhưng `dpboss.pet/api/*` (rewrite) → 500. Push để redeploy.
+
+- **Login 500** — FE login gọi relative `/api/auth/login` → Next rewrite → `API_ORIGIN`. `deploy.sh` chỉ set `NEXT_PUBLIC_API_ORIGIN` (KHÔNG set `API_ORIGIN`) → rewrite bake về `localhost:3100` (không tồn tại trên prod) → 500. **Fix** `next.config.js`: `API_ORIGIN || NEXT_PUBLIC_API_ORIGIN || localhost:3100` → prod tự trỏ `api.dpboss.pet`.
+- **Tool tabs cross-subdomain** (đề phòng 401 sau khi login chạy) — cookie phiên host-only, login set ở `dpboss.pet` nhưng tool tabs gọi thẳng `api.dpboss.pet` → không nhận cookie. **Fix**: `cookieOptions` thêm `domain` khi có env `COOKIE_DOMAIN`; `ecosystem.config.js` (API) set `COOKIE_DOMAIN='.dpboss.pet'` + `APP_BASE_URL='https://dpboss.pet'` (cookie Secure). CORS đã `origin:true,credentials:true`. Local để trống → host-only như cũ (không đổi).
+
+---
+
 ## 2026-07-30 — Tạm KHÓA/ẨN tầng SaaS (đăng ký/gói/OAuth/marketing) để phát triển sau
 
 > Ẩn UI + khóa route các surface SaaS chưa hoàn thiện. **Giữ nguyên code** (chỉ chặn truy cập + ẩn), dễ bật lại: bỏ path khỏi 2 mảng trong `middleware.ts` + gỡ comment các marker `TODO(saas)`. Chưa push origin.

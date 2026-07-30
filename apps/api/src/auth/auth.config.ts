@@ -1,5 +1,8 @@
 export const authConfig = {
   cookieName: process.env.AUTH_COOKIE_NAME || 'gas_session',
+  // Prod đặt COOKIE_DOMAIN='.dpboss.pet' → cookie phiên chia sẻ giữa dpboss.pet (web) và api.dpboss.pet (tool tabs gọi thẳng).
+  // Local để trống → host-only (localhost, không cần domain).
+  cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   sessionTtlDays: Number(process.env.SESSION_TTL_DAYS || 30),
   resetTtlMinutes: Number(process.env.RESET_TTL_MINUTES || 60),
   appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:3101',
