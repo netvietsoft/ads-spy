@@ -8,6 +8,7 @@ export default function LoginPage() {
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
 
   const nextUrl = () => {
     if (typeof window === 'undefined') return '/home';
@@ -53,7 +54,17 @@ export default function LoginPage() {
         <div style={{ fontSize: 13, color: '#6b7280', textAlign: 'center', marginTop: -6 }}>{mode === 'login' ? 'Đăng nhập' : 'Đặt lại mật khẩu'}</div>
         <input type="email" value={email} autoFocus placeholder="Email" onChange={(e) => { setEmail(e.target.value); setErr(''); }} style={inputStyle} />
         {mode === 'login' && (
-          <input type="password" value={pw} placeholder="Mật khẩu" onChange={(e) => { setPw(e.target.value); setErr(''); }} style={inputStyle} />
+          <div style={{ position: 'relative', display: 'flex' }}>
+            <input type={showPw ? 'text' : 'password'} value={pw} placeholder="Mật khẩu" onChange={(e) => { setPw(e.target.value); setErr(''); }} style={{ ...inputStyle, flex: 1, paddingRight: 42 }} />
+            <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} title={showPw ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              style={{ position: 'absolute', right: 4, top: 0, bottom: 0, display: 'flex', alignItems: 'center', padding: '0 8px', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+              {showPw ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+              )}
+            </button>
+          </div>
         )}
         <button type="submit" disabled={loading} style={{ padding: '11px 12px', borderRadius: 9, border: 'none', background: loading ? '#9ca3af' : '#16a34a', color: '#fff', fontSize: 15, fontWeight: 600, cursor: loading ? 'default' : 'pointer' }}>
           {loading ? 'Đang xử lý…' : mode === 'login' ? 'Đăng nhập' : 'Gửi liên kết đặt lại'}
