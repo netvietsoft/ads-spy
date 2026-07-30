@@ -35,6 +35,7 @@ export function AffLibraryPanel() {
   const [traffic, setTraffic] = useState<{ web: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [detect, setDetect] = useState<AffLibDetectStatus | null>(null);
+  const [starting, setStarting] = useState(false);
   const pollRef = useRef<any>(null);
 
   const load = (p = page) => {
@@ -62,7 +63,8 @@ export function AffLibraryPanel() {
   };
 
   const startDetect = async () => {
-    setErr(null);
+    if (starting || detect?.running) return;
+    setErr(null); setStarting(true);
     try {
       const st = await affLibDetectStart();
       setDetect(st);
@@ -75,6 +77,7 @@ export function AffLibraryPanel() {
         } catch { /* giữ poll */ }
       }, 2000);
     } catch (e) { setErr((e as Error).message); }
+    finally { setStarting(false); }
   };
   const stopDetect = async () => { try { await affLibDetectStop(); } catch {} };
 
@@ -125,7 +128,7 @@ export function AffLibraryPanel() {
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '4px 0 10px', fontSize: 13 }}>
         {!detect?.running ? (
-          <button className="srcbtn" onClick={startDetect}>🔎 Quét phát hiện affiliate (job nền)</button>
+          <button className="srcbtn" onClick={startDetect} disabled={starting}>{starting ? 'Đang khởi động…' : '🔎 Quét phát hiện affiliate (job nền)'}</button>
         ) : (
           <>
             <span>Đang phát hiện: <b>{detect.done}/{detect.total}</b> · thấy aff: <b style={{ color: '#16a34a' }}>{detect.found}</b>{detect.current ? ` · ${detect.current}` : ''}{detect.noProxy ? ' · ⚠ không proxy (dễ bị chặn)' : ''}</span>

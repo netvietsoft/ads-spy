@@ -37,9 +37,9 @@ const PORTAL_HOSTS: { host: RegExp; via: string }[] = [
   { host: /tapfiliate\.com/i, via: 'Tapfiliate' },
   { host: /collabs\.shopify\.com/i, via: 'ShopifyCollabs' },
   { host: /getrewardful\.com|\.rewardful\.com/i, via: 'Rewardful' },
-  { host: /\.partnerstack\.com|partnerstack\.com\/(?:login|signup|join)/i, via: 'PartnerStack' },
+  { host: /app\.partnerstack\.com|partnerstack\.com\/(?:login|signup|join)/i, via: 'PartnerStack' }, // neo app. — tránh khớp SDK js.partnerstack.com (→ để rơi xuống 'app')
   { host: /firstpromoter\.com|\.fprom\.io/i, via: 'FirstPromoter' },
-  { host: /\.pxf\.io|impact\.com\/campaign/i, via: 'Impact' },
+  { host: /impact\.com\/campaign|app\.impact\.com/i, via: 'Impact' }, // chỉ cổng merchant; KHÔNG bắt pxf.io (link outbound = shop đi làm publisher)
   { host: /shareasale\.com|impact\.com|cj\.com|awin1?\.com|partnerize/i, via: 'Network' },
 ];
 

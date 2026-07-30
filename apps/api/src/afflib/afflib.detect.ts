@@ -33,19 +33,25 @@ export class AffLibDetect {
 
   async start(limit = 500): Promise<DetectState> {
     if (this.state.running) return this.status();
-    await this.db.ensureTables();
-    const webs = await this.db.rowsToDetect(limit);
-    const proxies = (await this.sh.listProxiesFull(true).catch(() => []))
-      .filter((r: any) => (r.type || 'http') === 'http')
-      .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
-    const noProxy = proxies.length === 0;
-    // Có proxy → CONNECT qua proxy xoay; không có → fetch trực tiếp (cảnh báo, dễ bị chặn/ratelimited).
-    const get = noProxy ? shopifyHttp.get : makeProxiedGet(() => proxies);
-    this.state = { running: true, total: webs.length, done: 0, found: 0, current: null, noProxy, startedAt: Date.now() };
-    this.stopFlag = false;
-    // chạy nền, KHÔNG await (endpoint trả ngay; FE poll status)
-    this.run(webs, get).catch(() => {}).finally(() => { this.state.running = false; this.state.current = null; });
-    return this.status();
+    this.state.running = true; // CLAIM cờ ĐỒNG BỘ trước mọi await → 2 request /detect/start chồng nhau không cùng lọt
+    try {
+      await this.db.ensureTables();
+      const webs = await this.db.rowsToDetect(limit);
+      const proxies = (await this.sh.listProxiesFull(true).catch(() => []))
+        .filter((r: any) => (r.type || 'http') === 'http')
+        .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+      const noProxy = proxies.length === 0;
+      // Có proxy → CONNECT qua proxy xoay; không có → fetch trực tiếp (cảnh báo, dễ bị chặn/ratelimited).
+      const get = noProxy ? shopifyHttp.get : makeProxiedGet(() => proxies);
+      this.state = { running: true, total: webs.length, done: 0, found: 0, current: null, noProxy, startedAt: Date.now() };
+      this.stopFlag = false;
+      // chạy nền, KHÔNG await (endpoint trả ngay; FE poll status)
+      this.run(webs, get).catch(() => {}).finally(() => { this.state.running = false; this.state.current = null; });
+      return this.status();
+    } catch (e) {
+      this.state.running = false; // setup lỗi → nhả cờ, không kẹt running=true mãi
+      throw e;
+    }
   }
 
   private async run(webs: string[], get: (url: string, headers?: any) => Promise<{ status: number; body: string }>): Promise<void> {
