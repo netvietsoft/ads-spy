@@ -7,7 +7,7 @@ import { useI18n } from '../i18n/I18nProvider';
 const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
-  ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/settings', 'Cài đặt'],
+  ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/afflibrary', 'Aff Library'], ['/settings', 'Cài đặt'],
   ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'], ['/admin/plans', 'Gói'],
 ];
 const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/pricing'];
@@ -25,6 +25,7 @@ function activeHref(p: string): string {
   if (p.startsWith('/localdb')) return '/localdb/shops';
   if (p.startsWith('/trackshopify')) return '/trackshopify';
   if (p.startsWith('/reportlocaldb')) return '/reportlocaldb';
+  if (p.startsWith('/afflibrary')) return '/afflibrary';
   if (p.startsWith('/affnet')) return '/affnet';
   if (p.startsWith('/import')) return '/import';
   if (p.startsWith('/settings')) return '/settings';

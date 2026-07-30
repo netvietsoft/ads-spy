@@ -26,6 +26,7 @@ import { TrackPanel } from './components/TrackPanel';
 import { ImportPanel } from './components/ImportPanel';
 import { ReportPanel } from './components/ReportPanel';
 import { AffnetPanel } from './components/AffnetPanel';
+import { AffLibraryPanel } from './components/AffLibraryPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { DashboardPanel } from './components/DashboardPanel';
 import { UsersAdminPanel } from './components/UsersAdminPanel';
@@ -49,11 +50,11 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
-type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'affnet' | 'settings' | 'dashboard' | 'users' | 'plans';
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'affnet' | 'afflib' | 'settings' | 'dashboard' | 'users' | 'plans';
 // Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
 const SOURCE_TO_PATH: Record<Source, string> = {
   google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
-  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', affnet: '/affnet', settings: '/settings',
+  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', settings: '/settings',
   dashboard: '/admin/dashboard', users: '/admin/users', plans: '/admin/plans',
 };
 function pathToSource(p: string): Source {
@@ -63,6 +64,7 @@ function pathToSource(p: string): Source {
   if (p.startsWith('/localdb')) return 'localdb';
   if (p.startsWith('/trackshopify')) return 'track';
   if (p.startsWith('/reportlocaldb')) return 'report';
+  if (p.startsWith('/afflibrary')) return 'afflib';
   if (p.startsWith('/affnet')) return 'affnet';
   if (p.startsWith('/import')) return 'import';
   if (p.startsWith('/settings')) return 'settings';
@@ -264,6 +266,7 @@ export default function Home() {
       {source === 'import' && <ImportPanel />}
       {source === 'report' && <ReportPanel />}
       {source === 'affnet' && <AffnetPanel />}
+      {source === 'afflib' && <AffLibraryPanel />}
       {source === 'settings' && <SettingsPanel />}
       {source === 'dashboard' && <DashboardPanel />}
       {source === 'users' && <UsersAdminPanel />}

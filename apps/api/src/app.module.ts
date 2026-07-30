@@ -26,10 +26,13 @@ import { AffnetController } from './affnet/affnet.controller';
 import { AffnetService } from './affnet/affnet.service';
 import { AffnetMysql } from './affnet/affnet.mysql';
 import { AffnetFetch } from './affnet/affnet.fetch';
+import { AffLibController } from './afflib/afflib.controller';
+import { AffLibService } from './afflib/afflib.service';
+import { AffLibMysql } from './afflib/afflib.mysql';
 
 @Module({
   imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule, AdminModule],
-  controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController],
-  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetService],
+  controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController, AffLibController],
+  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetService, AffLibMysql, AffLibService],
 })
 export class AppModule {}
