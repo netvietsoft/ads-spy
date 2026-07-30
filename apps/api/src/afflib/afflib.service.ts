@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AffLibMysql, AffLibSnapshot } from './afflib.mysql';
+import { AffLibDetect } from './afflib.detect';
 
 // Chuẩn hoá domain (bản sao logic affnet normalizeNet): lowercase, bỏ scheme/www, cắt tại '/'.
 export function normalizeDomain(raw: string): string {
@@ -10,9 +11,9 @@ const numOrNull = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null 
 
 @Injectable()
 export class AffLibService {
-  constructor(private readonly db: AffLibMysql) {}
+  constructor(private readonly db: AffLibMysql, private readonly detect: AffLibDetect) {}
 
-  async scan(rawList: string): Promise<any[]> {
+  async scan(rawList: string): Promise<any> {
     await this.db.ensureTables();
     const domains = Array.from(new Set(String(rawList || '').split(/[\n,;]+/).map(normalizeDomain).filter(isDomain))).slice(0, 500);
     for (const web of domains) {
@@ -36,13 +37,23 @@ export class AffLibService {
       await this.db.upsertSnapshot(snap); // found=0 → chỉ tạo placeholder, KHÔNG đè snapshot cũ
       await this.db.prefillFromProgram(web);
     }
-    return this.db.listRows();
+    return this.db.listRows({ page: 1 }); // domain mới (aff_checked_at NULL) sẽ được job detect phát hiện affiliate
   }
 
-  async rows(): Promise<any[]> {
+  async rows(o?: { page?: number; pageSize?: number; affOnly?: boolean }): Promise<any> {
     await this.db.ensureTables();
-    return this.db.listRows();
+    return this.db.listRows(o);
   }
+
+  // (A) Đồng bộ shop có aff ('yes') từ Local DB.
+  sync(): Promise<number> {
+    return this.db.syncFromLocalDbYes();
+  }
+
+  // (B) Job phát hiện affiliate cho domain chưa kiểm.
+  detectStart() { return this.detect.start(); }
+  detectStatus() { return this.detect.status(); }
+  detectStop() { this.detect.stop(); return this.detect.status(); }
 
   // Full/partial patch từ FE: chỉ đụng khoá có mặt; null = xoá giá trị (cho phép clear cột số).
   update(web: string, p: any): Promise<void> {

@@ -21,7 +21,7 @@ describe('AffLibService', () => {
       listRows: jest.fn(async () => captured),
     } as any;
 
-    await new AffLibService(db).scan('nike.com\nunknown-shop.com');
+    await new AffLibService(db, {} as any).scan('nike.com\nunknown-shop.com');
     const nike = captured.find((s) => s.web === 'nike.com');
     const unk = captured.find((s) => s.web === 'unknown-shop.com');
     expect(nike).toMatchObject({ found: 1, shop_name: 'Nike', rev_day: 10, rev_week: 70, rev_month: 300, sku: 42, rev_total: 999, currency: 'USD', shop_id: 's1' });
@@ -32,7 +32,7 @@ describe('AffLibService', () => {
   it('update: null cột số được TRUYỀN (để xoá), không bị nuốt thành undefined', async () => {
     let patch: any = null;
     const db = { updateAffiliate: jest.fn(async (_w: string, p: any) => { patch = p; }) } as any;
-    await new AffLibService(db).update('https://www.Nike.com', { join_url: '', commission_pct: null, payout: null, cookie_days: null, note: 'x' });
+    await new AffLibService(db, {} as any).update('https://www.Nike.com', { join_url: '', commission_pct: null, payout: null, cookie_days: null, note: 'x' });
     expect(db.updateAffiliate).toHaveBeenCalledWith('nike.com', expect.anything());
     expect(patch).toEqual({ join_url: '', note: 'x', commission_pct: null, payout: null, cookie_days: null });
   });
