@@ -711,6 +711,27 @@ export async function affSaveTraffic(payload: {
   );
 }
 
+// ---- Aff Library (/api/aff-lib/*) — thư viện shop affiliate: quét domain → shop data + affiliate + traffic ----
+export interface AffLibRow {
+  web: string; shop_name?: string | null; shop_id?: string | null; currency?: string | null;
+  rev_day?: number | null; rev_week?: number | null; rev_month?: number | null; rev_total?: number | null;
+  sku?: number | null; found?: number;
+  join_url?: string | null; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string | null;
+  traffic_visits?: number | null; traffic_bounce?: number | null; traffic_duration_sec?: number | null; traffic_rank?: number | null;
+}
+export async function affLibScan(domains: string): Promise<AffLibRow[]> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }) }));
+}
+export async function affLibRows(): Promise<AffLibRow[]> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/rows`));
+}
+export async function affLibUpdate(web: string, patch: { join_url?: string; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string }): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/${encodeURIComponent(web)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) }));
+}
+export async function affLibDelete(web: string): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/${encodeURIComponent(web)}`, { method: 'DELETE' }));
+}
+
 // ===== Job nền (Settings) =====
 export interface ShJobLog { ts: number; level: string; msg: string }
 export interface ShJob {
