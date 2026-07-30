@@ -159,9 +159,10 @@ export class AffLibMysql {
   async syncFromLocalDbYes(): Promise<number> {
     await this.ensureTables();
     const pool = await this.sh.getPool();
+    // KHÔNG tính rev_total (SUM daily) ở đây — subquery tương quan trên chuỗi ngày rất chậm khi nhiều shop.
+    // rev_total để null lúc đồng bộ; sẽ có khi "Thêm domain" (scan lẻ) hoặc bổ sung sau.
     const [rows] = await pool.query(
-      `SELECT ${WEB_EXPR} AS web, shop_id, raw, storefront_currency, affiliate_link,
-        (SELECT SUM(revenue) FROM sh_shop_revenue_daily d WHERE d.shop_id = s.shop_id) AS rev_total
+      `SELECT ${WEB_EXPR} AS web, shop_id, raw, storefront_currency, affiliate_link
        FROM sh_shop s WHERE affiliate_status = 'yes'`,
     );
     const now = Date.now();
