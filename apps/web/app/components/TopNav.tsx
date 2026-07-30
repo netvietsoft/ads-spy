@@ -8,8 +8,9 @@ const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
   ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/afflibrary', 'Aff Library'], ['/settings', 'Cài đặt'],
-  ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'],
-  // ['/admin/plans', 'Gói'], // TODO(saas): tạm ẩn tab Gói — phát triển sau
+  ['/admin/users', 'Người dùng'],
+  // TODO(saas): tạm ẩn tab 'Doanh thu' (/admin/dashboard) + 'Gói' (/admin/plans) — phát triển sau
+  // ['/admin/dashboard', 'Doanh thu'], ['/admin/plans', 'Gói'],
 ];
 const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/pricing'];
 // Tab công cụ MỞ cho khách (role user). Ads (free) + Shopify/Local DB/Báo cáo (shophunter, gated).
