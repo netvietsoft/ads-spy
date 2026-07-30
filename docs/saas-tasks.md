@@ -1,8 +1,26 @@
 # SaaS — Task tracker
 
-Cập nhật: **2026-07-29**. Tuyến SaaS + customer-access **ĐÃ MERGE vào `main`** (commit `00320e9`; backup ref `backup/main-premerge-saas`). **Chưa push origin.** Nhánh `saas` = ancestor của main.
+Cập nhật: **2026-07-30**. Tuyến SaaS + customer-access **ĐÃ MERGE vào `main`** (commit `00320e9`; backup ref `backup/main-premerge-saas`). **Chưa push origin.** Nhánh `saas` = ancestor của main.
 Test local: BE `:3200` (`cd apps/api && PORT=3200 node dist/main.js`), web `:3101` (`cd apps/web && API_ORIGIN=http://localhost:3200 node ../../node_modules/next/dist/bin/next start -p 3101`). Admin `admin@dpboss.pet`/`changeme12`. dev.db đã seed (1 admin + 4 module + 3 plan).
 Spec/plan chi tiết: `docs/superpowers/specs/` + `docs/superpowers/plans/`. Nhật ký: `CHANGELOG.md`. Lộ trình: `docs/roadmap.md`.
+
+## ⛔ TẠM KHÓA/ẨN (2026-07-30) — bật lại khi phát triển SaaS thật
+
+> Ẩn UI + khóa route các surface SaaS **chưa hoàn thiện** để dùng nội bộ trước (kho công cụ + Aff Library). **Code giữ NGUYÊN**, chỉ chặn truy cập/ẩn. Commit `7db8213` + `7c87ac9` trên main. Chưa push origin.
+
+**Đang khóa:**
+- **Route** (`apps/web/middleware.ts`): `/landing`,`/register`,`/pricing` → `/login`; `/admin/plans`,`/admin/dashboard` → `/admin/users`; fallback chưa-login `/landing`→`/login`.
+- **Login** (`login/page.tsx`): ẩn Đăng nhập-Google (OAuth), Quên mật khẩu, Đăng ký.
+- **TopNav**: bỏ tab **Doanh thu** + **Gói** (admin chỉ còn **Người dùng**); ẩn link Bảng giá + Đăng ký (header khách); logout/brand → `/login`.
+- **UsersAdminPanel**: ẩn cột **Gói** + nút **Cấp gói**/**Gói** (modal grant/subs giữ lại).
+- **ShopHunter/LocalDb/Report** (panel khách): ẩn nút "Nâng cấp thành viên" (link `/pricing`).
+
+**Bật lại (khi làm SaaS):**
+1. `middleware.ts`: bỏ path khỏi `DISABLED_TO_LOGIN` + `DISABLED_TO_ADMIN`.
+2. Gỡ comment mọi marker **`TODO(saas)`** trong FE (grep cả `apps/web`).
+3. `cd apps/web && next build` lại.
+
+**⚠️ Gotcha local (dual-BE):** Next **bake `rewrites()` lúc `next build`** (không đọc env lúc `next start`) → build hiện bake `/api/*` → **:3200**. Nên chạy **2 BE**: **:3200** = login/`/api` relative (đích rewrite), **:3100** = tool tabs `${API}` (Aff Library — `NEXT_PUBLIC_API_ORIGIN` mặc định). **ĐỪNG kill :3200** (login chết) hay :3100 (Aff Library chết). Muốn gộp 1 BE: rebuild với `API_ORIGIN=http://localhost:3100` rồi chỉ chạy :3100. (dev.db SQLite dùng chung 2 BE → login ghi Session có thể tranh khóa nhẹ; đọc auth thì ổn.)
 
 ## Đã xong (P0→P4)
 - [x] **P0** Chuẩn hóa repo + docs.
