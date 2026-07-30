@@ -52,6 +52,21 @@ export class AffLibMysql {
     if (!(c as any[])[0].n) await pool.query(`ALTER TABLE aff_library ADD COLUMN ${ddl}`);
   }
 
+  // Bảo đảm có index trên sh_shop.affiliate_status — nếu thiếu, WHERE affiliate_status='yes' full-scan cả bảng
+  // (46k dòng nhưng 872MB vì raw JSON béo) → sync treo. Online DDL (INPLACE/LOCK=NONE) không khoá crawl đang chạy.
+  // Idempotent: chỉ tạo 1 lần, lần sau no-op. User đã duyệt override constraint "đừng ALTER bảng hot" (bảng chỉ 46k dòng).
+  private async ensureShopIndex(): Promise<void> {
+    const pool = await this.sh.getPool();
+    const [c] = await pool.query(
+      `SELECT COUNT(*) n FROM information_schema.statistics
+       WHERE table_schema = DATABASE() AND table_name = 'sh_shop' AND column_name = 'affiliate_status'`,
+    );
+    if ((c as any[])[0].n) return; // đã có index
+    await pool.query(
+      'ALTER TABLE sh_shop ADD INDEX idx_afflib_affiliate_status (affiliate_status), ALGORITHM=INPLACE, LOCK=NONE',
+    );
+  }
+
   async sumDailyRevenue(shopId: string): Promise<number | null> {
     const pool = await this.sh.getPool();
     const [r] = await pool.query('SELECT SUM(revenue) s FROM sh_shop_revenue_daily WHERE shop_id = ?', [shopId]);
@@ -158,11 +173,19 @@ export class AffLibMysql {
   // (A) Đồng bộ shop affiliate_status='yes' từ Local DB vào aff_library. Trả số shop đã đồng bộ.
   async syncFromLocalDbYes(): Promise<number> {
     await this.ensureTables();
+    await this.ensureShopIndex(); // index affiliate_status → WHERE 'yes' tra tức thì thay vì full-scan 872MB
     const pool = await this.sh.getPool();
-    // KHÔNG tính rev_total (SUM daily) ở đây — subquery tương quan trên chuỗi ngày rất chậm khi nhiều shop.
-    // rev_total để null lúc đồng bộ; sẽ có khi "Thêm domain" (scan lẻ) hoặc bổ sung sau.
+    // Rút thẳng field cần bằng JSON_EXTRACT trong SQL — KHÔNG kéo cả cột raw (LONGTEXT ~18KB/shop × 9.9k ≈ 178MB
+    // truyền về + JSON.parse 9.9k lần) → sync nhanh hơn nhiều. rev_total để null (SUM daily quá đắt; bổ sung khi cần).
     const [rows] = await pool.query(
-      `SELECT ${WEB_EXPR} AS web, shop_id, raw, storefront_currency, affiliate_link
+      `SELECT ${WEB_EXPR} AS web, shop_id, storefront_currency, affiliate_link,
+              JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_title')) AS shop_title,
+              JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_name')) AS shop_name,
+              JSON_EXTRACT(raw, '$.day_current_period_revenue') AS rev_day,
+              JSON_EXTRACT(raw, '$.week_current_period_revenue') AS rev_week,
+              JSON_EXTRACT(raw, '$.month_current_period_revenue') AS rev_month,
+              JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')) AS raw_currency,
+              JSON_EXTRACT(raw, '$.sku_count') AS sku
        FROM sh_shop s WHERE affiliate_status = 'yes'`,
     );
     const now = Date.now();
@@ -171,12 +194,11 @@ export class AffLibMysql {
     const CHUNK = 200;
     for (let i = 0; i < list.length; i += CHUNK) {
       const tuples = list.slice(i, i + CHUNK).map((r) => {
-        let raw: any = {}; try { raw = JSON.parse(r.raw); } catch {}
         const web = String(r.web || '').trim();
         if (!web) return null;
         // 17 cột: web,shop_name,shop_id,currency,rev_day,rev_week,rev_month,rev_total,sku,found,synced_at,join_url,aff_status,aff_platform,aff_checked_at,created_at,updated_at
-        return [web, raw.shop_title || raw.shop_name || null, String(r.shop_id), r.storefront_currency || raw.currency || null,
-          num(raw.day_current_period_revenue), num(raw.week_current_period_revenue), num(raw.month_current_period_revenue), num(r.rev_total), num(raw.sku_count),
+        return [web, r.shop_title || r.shop_name || null, String(r.shop_id), r.storefront_currency || r.raw_currency || null,
+          num(r.rev_day), num(r.rev_week), num(r.rev_month), null, num(r.sku),
           1, now, r.affiliate_link || null, 'yes', platformOfLink(r.affiliate_link || ''), now, now, now];
       }).filter(Boolean) as any[][];
       if (!tuples.length) continue;
