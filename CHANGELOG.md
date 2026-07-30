@@ -4,6 +4,17 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-30 — Aff Library: fix sync-localdb treo (index + JSON_EXTRACT)
+
+> `sync-localdb` treo >180s → timeout. Debug hệ thống (systematic-debugging): đo bằng chứng thay vì đoán. Commit `66a289e` + `7c58d51` trên main. Chưa push origin.
+
+- **Root cause:** `WHERE affiliate_status='yes'` **full-scan bảng `sh_shop`** (46,695 dòng nhưng **872MB** vì cột `raw` JSON béo) — **không có index** trên `affiliate_status`. `COUNT(*)` mất **62s**; SELECT sync đọc raw off-page + JSON.parse cho ~9,895 shop 'yes' → treo. Các lần retry để lại **query zombie** (client timeout nhưng MySQL vẫn chạy) càng nghẽn.
+- **Fix 1 — index (`ensureShopIndex`):** tạo `INDEX idx_afflib_affiliate_status (affiliate_status)` bằng **online DDL** (`ALGORITHM=INPLACE, LOCK=NONE`) → không khoá crawl đang chạy. Idempotent (kiểm `information_schema.statistics`). ⚠️ sh_shop thực chỉ **46k dòng** (ghi chú cũ "4M+" sai) → thêm index rẻ + an toàn; user đã duyệt override. COUNT: **62s → 24ms**.
+- **Fix 2 — JSON_EXTRACT:** SELECT rút thẳng field (`shop_title`/rev/sku…) trong SQL thay vì kéo cả cột `raw` (~178MB) về Node + parse 9.9k lần.
+- **Kết quả:** sync-localdb **>180s (treo) → 20s** cho 9,895 shop 'yes' (9,879 dòng vào `aff_library`, data đúng). Giữ đồng bộ synchronous (user chọn; 20s chấp nhận được cho thao tác một-lần).
+
+---
+
 ## 2026-07-30 — Aff Library P1.5: kho web có affiliate (đồng bộ Local DB + job phát hiện)
 
 > Mở rộng Aff Library thành kho lưu web CÓ affiliate. Merge `5ec289f` (backup `backup/main-preafflib-p15`). Review đối kháng 4 lăng kính → 3 lỗi (race job / regex PartnerStack SDK / Impact pxf.io) đã sửa. Test 21/21 (afflib 3 + affiliate.client 18). Chưa push origin.
