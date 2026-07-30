@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ShMysql } from '../shophunter/sh.mysql';
 import { AffLibMysql, AffLibSnapshot } from './afflib.mysql';
 
 // Chuẩn hoá domain (bản sao logic affnet normalizeNet): lowercase, bỏ scheme/www, cắt tại '/'.
@@ -11,14 +10,13 @@ const numOrNull = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null 
 
 @Injectable()
 export class AffLibService {
-  constructor(private readonly sh: ShMysql, private readonly db: AffLibMysql) {}
+  constructor(private readonly db: AffLibMysql) {}
 
   async scan(rawList: string): Promise<any[]> {
     await this.db.ensureTables();
     const domains = Array.from(new Set(String(rawList || '').split(/[\n,;]+/).map(normalizeDomain).filter(isDomain))).slice(0, 500);
     for (const web of domains) {
-      const { items } = await this.sh.queryLocalShops({ sort: 'revenue_month', dir: 'desc', offset: 0, limit: 10, q: web });
-      const hit = items.find((it) => normalizeDomain(it.url || it.myshopify_url || '') === web) || null;
+      const hit = await this.db.findShopByDomain(web); // khớp url CHÍNH XÁC trong DB (không phụ thuộc top-N doanh thu)
       let snap: AffLibSnapshot = { web, shop_name: null, shop_id: null, currency: null, rev_day: null, rev_week: null, rev_month: null, rev_total: null, sku: null, found: 0 };
       if (hit) {
         const shopId = String(hit.shop_id || '');
@@ -35,7 +33,7 @@ export class AffLibService {
           found: 1,
         };
       }
-      await this.db.upsertSnapshot(snap);
+      await this.db.upsertSnapshot(snap); // found=0 → chỉ tạo placeholder, KHÔNG đè snapshot cũ
       await this.db.prefillFromProgram(web);
     }
     return this.db.listRows();
@@ -46,14 +44,15 @@ export class AffLibService {
     return this.db.listRows();
   }
 
+  // Full/partial patch từ FE: chỉ đụng khoá có mặt; null = xoá giá trị (cho phép clear cột số).
   update(web: string, p: any): Promise<void> {
-    return this.db.updateAffiliate(normalizeDomain(web), {
-      join_url: p?.join_url,
-      commission_pct: numOrNull(p?.commission_pct) ?? undefined,
-      payout: numOrNull(p?.payout) ?? undefined,
-      cookie_days: numOrNull(p?.cookie_days) ?? undefined,
-      note: p?.note,
-    });
+    const patch: any = {};
+    if ('join_url' in p) patch.join_url = p.join_url;
+    if ('note' in p) patch.note = p.note;
+    if ('commission_pct' in p) patch.commission_pct = numOrNull(p.commission_pct);
+    if ('payout' in p) patch.payout = numOrNull(p.payout);
+    if ('cookie_days' in p) patch.cookie_days = numOrNull(p.cookie_days);
+    return this.db.updateAffiliate(normalizeDomain(web), patch);
   }
 
   remove(web: string): Promise<void> {

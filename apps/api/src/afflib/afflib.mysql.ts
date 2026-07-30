@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ShMysql } from '../shophunter/sh.mysql';
+import { AffnetMysql } from '../affnet/affnet.mysql';
 
 export interface AffLibSnapshot {
   web: string;
@@ -17,9 +18,12 @@ export interface AffLibSnapshot {
 // Bảng riêng cho Aff Library (thư viện shop affiliate). Dùng chung pool MySQL `shophunter` với ShopHunter/affnet.
 @Injectable()
 export class AffLibMysql {
-  constructor(private readonly sh: ShMysql) {}
+  constructor(private readonly sh: ShMysql, private readonly affnet: AffnetMysql) {}
 
   async ensureTables(): Promise<void> {
+    // Tạo bảng affnet (aff_domain_traffic + aff_program) trước — vì listRows JOIN + prefill dùng chúng,
+    // mà affnet chỉ tạo bảng lazy khi có thao tác affnet (DB mới chưa dùng affnet → thiếu bảng → JOIN lỗi 1146).
+    await this.affnet.ensureTables().catch(() => {});
     const pool = await this.sh.getPool();
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_library (
       web VARCHAR(255) PRIMARY KEY,
@@ -38,18 +42,45 @@ export class AffLibMysql {
     return s == null ? null : Number(s);
   }
 
-  // Ghi snapshot shop; KHÔNG đè cột affiliate người dùng đã nhập (chỉ INSERT mới mới rỗng).
+  // Tìm shop CHÍNH XÁC theo domain (khớp url đã chuẩn hoá trong SQL), không phụ thuộc xếp hạng doanh thu.
+  async findShopByDomain(web: string): Promise<any | null> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      `SELECT shop_id, raw, storefront_currency FROM sh_shop
+       WHERE SUBSTRING_INDEX(TRIM(LEADING 'www.' FROM REPLACE(REPLACE(LOWER(JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url'))), 'https://', ''), 'http://', '')), '/', 1) = ?
+       LIMIT 1`,
+      [web],
+    );
+    const r = (rows as any[])[0];
+    if (!r) return null;
+    try {
+      return { ...JSON.parse(r.raw), shop_id: r.shop_id, _storefront_currency: r.storefront_currency ?? null };
+    } catch {
+      return null;
+    }
+  }
+
+  // Ghi snapshot shop. Nếu found=1 → cập nhật đầy đủ cột shop. Nếu found=0 → CHỈ tạo placeholder nếu chưa có,
+  // KHÔNG đè snapshot cũ (tránh xoá data đúng khi lookup lỡ trượt). Không đụng cột affiliate (người dùng nhập tay).
   async upsertSnapshot(s: AffLibSnapshot): Promise<void> {
     const pool = await this.sh.getPool();
     const now = Date.now();
-    await pool.query(
-      `INSERT INTO aff_library (web, shop_name, shop_id, currency, rev_day, rev_week, rev_month, rev_total, sku, found, synced_at, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE shop_name=VALUES(shop_name), shop_id=VALUES(shop_id), currency=VALUES(currency),
-         rev_day=VALUES(rev_day), rev_week=VALUES(rev_week), rev_month=VALUES(rev_month), rev_total=VALUES(rev_total),
-         sku=VALUES(sku), found=VALUES(found), synced_at=VALUES(synced_at), updated_at=VALUES(updated_at)`,
-      [s.web, s.shop_name, s.shop_id, s.currency, s.rev_day, s.rev_week, s.rev_month, s.rev_total, s.sku, s.found, now, now, now],
-    );
+    if (s.found) {
+      await pool.query(
+        `INSERT INTO aff_library (web, shop_name, shop_id, currency, rev_day, rev_week, rev_month, rev_total, sku, found, synced_at, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE shop_name=VALUES(shop_name), shop_id=VALUES(shop_id), currency=VALUES(currency),
+           rev_day=VALUES(rev_day), rev_week=VALUES(rev_week), rev_month=VALUES(rev_month), rev_total=VALUES(rev_total),
+           sku=VALUES(sku), found=VALUES(found), synced_at=VALUES(synced_at), updated_at=VALUES(updated_at)`,
+        [s.web, s.shop_name, s.shop_id, s.currency, s.rev_day, s.rev_week, s.rev_month, s.rev_total, s.sku, s.found, now, now, now],
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO aff_library (web, found, synced_at, created_at, updated_at) VALUES (?,0,?,?,?)
+         ON DUPLICATE KEY UPDATE synced_at=VALUES(synced_at), updated_at=VALUES(updated_at)`,
+        [s.web, now, now, now],
+      );
+    }
   }
 
   // Prefill affiliate từ aff_program (affnet crawl) nếu aff_library chưa có — best-effort.
@@ -68,16 +99,24 @@ export class AffLibMysql {
          WHERE al.web = ?`,
         [web, web],
       )
-      .catch(() => {}); // aff_program có thể chưa tồn tại (chưa dùng affnet) → bỏ qua
+      .catch(() => {}); // aff_program có thể chưa có dữ liệu → bỏ qua
   }
 
-  async updateAffiliate(web: string, p: { join_url?: string; commission_pct?: number; payout?: number; cookie_days?: number; note?: string }): Promise<void> {
+  // Sửa cột affiliate. CHỈ cập nhật khoá có mặt trong patch (phân biệt "vắng" với "null=xoá") → cho phép xoá giá trị.
+  async updateAffiliate(web: string, p: { join_url?: string | null; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string | null }): Promise<void> {
+    const cols: string[] = [];
+    const vals: any[] = [];
+    const set = (c: string, v: any) => { cols.push(`${c}=?`); vals.push(v ?? null); };
+    if ('join_url' in p) set('join_url', p.join_url);
+    if ('commission_pct' in p) set('commission_pct', p.commission_pct);
+    if ('payout' in p) set('payout', p.payout);
+    if ('cookie_days' in p) set('cookie_days', p.cookie_days);
+    if ('note' in p) set('note', p.note);
+    if (!cols.length) return;
+    cols.push('updated_at=?');
+    vals.push(Date.now());
     const pool = await this.sh.getPool();
-    await pool.query(
-      `UPDATE aff_library SET join_url=COALESCE(?,join_url), commission_pct=COALESCE(?,commission_pct),
-        payout=COALESCE(?,payout), cookie_days=COALESCE(?,cookie_days), note=COALESCE(?,note), updated_at=? WHERE web=?`,
-      [p.join_url ?? null, p.commission_pct ?? null, p.payout ?? null, p.cookie_days ?? null, p.note ?? null, Date.now(), web],
-    );
+    await pool.query(`UPDATE aff_library SET ${cols.join(', ')} WHERE web=?`, [...vals, web]);
   }
 
   async listRows(): Promise<any[]> {
