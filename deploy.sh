@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Deploy Ads Spy lên server dpboss.pet bằng PM2.
 # Chạy TRÊN SERVER: cd /home/netviet/projects-deploy/ads-spy && bash deploy.sh
+#
+# ⚠️ LẦN ĐẦU deploy tầng SaaS (auth mới = email/mật khẩu + Prisma User/Session — SITE_PASSWORD cũ ĐÃ BỎ):
+#   sau khi chạy script, TẠO ADMIN 1 LẦN (nếu không sẽ không đăng nhập được):
+#     SEED_ADMIN_EMAIL='admin@dpboss.pet' SEED_ADMIN_PASSWORD='<mật khẩu mạnh>' npm --workspace @gas/api run seed:admin
+#   KHÔNG đưa seed vào script: upsert sẽ RESET mật khẩu admin về giá trị env MỖI lần deploy.
 set -e
 
 # Domain công khai của API (browser gọi tới) — subdomain riêng -> API :8075.
@@ -21,6 +26,7 @@ npm --workspace @gas/api exec prisma migrate deploy
 npm --workspace @gas/api exec prisma generate
 
 echo "==> [5/6] Build (API + Web, API_ORIGIN=$NEXT_PUBLIC_API_ORIGIN)"
+rm -rf apps/web/.next   # xoá build FE cũ — tránh ChunkLoadError sau deploy (nhớ purge Cloudflare + Ctrl+Shift+R)
 npm run build
 
 echo "==> [6/6] Khởi động/Reload PM2"
