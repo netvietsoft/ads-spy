@@ -13,6 +13,11 @@ export class UsersAdminController {
     return this.users.list({ search, status, page: page ? Number(page) : undefined, pageSize: pageSize ? Number(pageSize) : undefined });
   }
 
+  @Post()
+  create(@Body() b: any) {
+    return this.users.create(b || {});
+  }
+
   @Put(':id')
   update(@Param('id') id: string, @Body() b: any, @CurrentUser() u: any) {
     return this.users.updateProfile(Number(id), b || {}, u.id);

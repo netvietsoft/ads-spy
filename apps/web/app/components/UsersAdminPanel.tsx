@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { adminUsers, adminUpdateUser, adminUserAction, adminModules, adminGrantPlan, adminUserSubs, adminRevokeSub } from '../api';
+import { adminUsers, adminUpdateUser, adminUserAction, adminModules, adminGrantPlan, adminUserSubs, adminRevokeSub, adminCreateUser } from '../api';
 
 const usd = (c?: number | null) => (c == null ? '—' : `$${(c / 100).toFixed(2)}`);
 const fmt = (d?: string) => (d ? new Date(d).toLocaleDateString('vi-VN') : '');
@@ -12,6 +12,7 @@ export function UsersAdminPanel() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
   const [edit, setEdit] = useState<any>(null);
+  const [create, setCreate] = useState<any>(null);
   const [grant, setGrant] = useState<any>(null);
   const [subs, setSubs] = useState<any>(null);
   const [mods, setMods] = useState<any[]>([]);
@@ -30,6 +31,10 @@ export function UsersAdminPanel() {
     try { await adminUpdateUser(edit.id, { name: edit.name, phone: edit.phone, role: edit.role, status: edit.status }); setEdit(null); load(); }
     catch (e: any) { alert(e.message); }
   };
+  const doCreate = async () => {
+    try { await adminCreateUser({ email: create.email, password: create.password, name: create.name || undefined, role: create.role }); setCreate(null); load(); }
+    catch (e: any) { alert(e.message); }
+  };
   const doGrant = async () => {
     try {
       await adminGrantPlan({ userId: grant.userId, moduleKey: grant.moduleKey, tier: grant.tier, cycle: grant.cycle, trialDays: grant.trialDays ? Number(grant.trialDays) : undefined, note: grant.note || undefined });
@@ -39,7 +44,10 @@ export function UsersAdminPanel() {
 
   return (
     <div>
-      <h2 style={{ margin: '10px 0' }}>Người dùng</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <h2 style={{ margin: '10px 0' }}>Người dùng</h2>
+        <button className="primary" onClick={() => setCreate({ email: '', password: '', name: '', role: 'user' })}>+ Tạo user</button>
+      </div>
       <form className="searchbar" onSubmit={(e) => { e.preventDefault(); setPage(1); load(); }}>
         <input value={search} placeholder="Tìm email/tên…" onChange={(e) => setSearch(e.target.value)} />
         <button className="primary" disabled={loading}>{loading ? '…' : 'Tìm'}</button>
@@ -88,6 +96,21 @@ export function UsersAdminPanel() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="ghost" onClick={() => setEdit(null)}>Hủy</button>
               <button className="primary" onClick={saveEdit}>Lưu</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {create && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setCreate(null)}>
+          <div style={{ background: '#fff', padding: 20, borderRadius: 12, width: 320, display: 'flex', flexDirection: 'column', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+            <b>Tạo user mới</b>
+            <input placeholder="Email" value={create.email} onChange={(e) => setCreate({ ...create, email: e.target.value })} />
+            <input placeholder="Mật khẩu (≥8 ký tự)" value={create.password} onChange={(e) => setCreate({ ...create, password: e.target.value })} />
+            <input placeholder="Tên (tùy chọn)" value={create.name} onChange={(e) => setCreate({ ...create, name: e.target.value })} />
+            <select value={create.role} onChange={(e) => setCreate({ ...create, role: e.target.value })}><option value="user">user</option><option value="manager">manager</option><option value="admin">admin</option></select>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="ghost" onClick={() => setCreate(null)}>Hủy</button>
+              <button className="primary" onClick={doCreate}>Tạo</button>
             </div>
           </div>
         </div>

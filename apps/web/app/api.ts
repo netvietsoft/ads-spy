@@ -802,6 +802,11 @@ export async function adminUserAction(id: number, action: 'ban' | 'disable' | 'a
   if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi thao tác');
   return r.json();
 }
+export async function adminCreateUser(body: { email: string; password: string; name?: string; role?: string }) {
+  const r = await fetch('/api/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi tạo user');
+  return r.json();
+}
 
 // ---- Admin catalog (Gói) + grant ----
 async function jok(r: Response, msg: string) {

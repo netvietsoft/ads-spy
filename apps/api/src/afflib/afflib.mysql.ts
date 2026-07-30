@@ -152,6 +152,7 @@ export class AffLibMysql {
   }
 
   async listRows(o?: { page?: number; pageSize?: number; affOnly?: boolean }): Promise<{ items: any[]; total: number; page: number; pageSize: number }> {
+    await this.ensureTables(); // DB mới (vd prod chưa sync bao giờ) → bảng aff_library/aff_domain_traffic chưa tồn tại → tạo trước, tránh 500
     const pool = await this.sh.getPool();
     const page = Math.max(1, Number(o?.page) || 1);
     const pageSize = Math.min(500, Math.max(1, Number(o?.pageSize) || 100));

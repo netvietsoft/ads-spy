@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { SessionService } from '../auth/session.service';
+import { UsersService } from '../users/users.service';
 
 const ROLES = ['admin', 'manager', 'user'];
 const STATUSES = ['active', 'banned', 'disabled'];
@@ -11,7 +12,19 @@ function safe(u: any) {
 
 @Injectable()
 export class UsersAdminService {
-  constructor(private prisma: PrismaService, private sessions: SessionService) {}
+  constructor(private prisma: PrismaService, private sessions: SessionService, private users: UsersService) {}
+
+  // Admin tạo user thủ công (đăng ký self-signup đang tắt). Mật khẩu tối thiểu 8 ký tự; email không trùng.
+  async create(data: { email?: string; password?: string; name?: string; role?: string }) {
+    const email = (data.email || '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new BadRequestException('Email không hợp lệ');
+    if (!data.password || data.password.length < 8) throw new BadRequestException('Mật khẩu tối thiểu 8 ký tự');
+    const role = data.role || 'user';
+    if (!ROLES.includes(role)) throw new BadRequestException('role không hợp lệ');
+    if (await this.prisma.user.findUnique({ where: { email } })) throw new BadRequestException('Email đã tồn tại');
+    const u = await this.users.create({ email, password: data.password, name: data.name, role }); // status=active (schema default)
+    return safe(u);
+  }
 
   async list(q: { search?: string; status?: string; page?: number; pageSize?: number }) {
     const page = q.page && q.page > 0 ? q.page : 1;

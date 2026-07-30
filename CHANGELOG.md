@@ -4,6 +4,15 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-30 — Fix Aff Library 500 (prod) + Admin tạo user thủ công
+
+> Sau deploy prod: (1) tab Aff Library → **500**; (2) đăng ký tự-signup đang tắt nên admin không có cách thêm user.
+
+- **Aff Library 500** — `listRows` truy vấn thẳng `aff_library`/JOIN `aff_domain_traffic` mà KHÔNG gọi `ensureTables()`. DB mới (prod chưa sync bao giờ) → bảng chưa tạo → 1146 → 500. **Fix**: `ensureTables()` đầu `listRows` (idempotent; local chạy được vì đã sync tạo bảng). Chẩn: `sh/local/shops` 200 nhưng `aff-lib/rows` 500 → lỗi riêng module.
+- **Admin tạo user** — `POST /api/admin/users` (`UsersAdminService.create`: validate email/mật khẩu≥8/role, chặn email trùng, tái dùng `UsersService.create` → status=active). AdminModule import UsersModule. FE: nút **"+ Tạo user"** + modal (email/mật khẩu/tên/role) trong UsersAdminPanel. Test 7/7 (thêm 3 case create).
+
+---
+
 ## 2026-07-30 — Fix đăng nhập PROD (rewrite /api + cookie cross-subdomain)
 
 > Sau deploy SaaS đầu lên dpboss.pet, login web → **500**. Chẩn: API `api.dpboss.pet` OK (login trực tiếp 201, admin đã seed, pw đúng) nhưng `dpboss.pet/api/*` (rewrite) → 500. Push để redeploy.
