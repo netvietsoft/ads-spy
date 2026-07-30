@@ -4,6 +4,17 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-30 — Aff Library (P1): quét danh sách domain → thư viện shop affiliate
+
+> Tab mới **`/afflibrary`** (staff-only) + module BE `apps/api/src/afflib/`. Spec/plan `docs/superpowers/{specs,plans}/2026-07-30-aff-library-*`. Merge vào `main` (`3f0d260`, backup ref `backup/main-preafflib`). Build BE+FE xanh, test 3/3, review đối kháng 4 lăng kính (3 lỗi Important đã sửa).
+
+- **Quét:** dán danh sách domain → mỗi domain tra `sh_shop` theo url CHÍNH XÁC (`findShopByDomain`, chuẩn hoá url trong SQL) → điền **tên shop / DT ngày-tuần-tháng / DT tổng (=SUM `sh_shop_revenue_daily`) / SKU**; không có trong DB → để trống (found=0, không đè snapshot cũ khi re-scan).
+- **Bảng riêng `aff_library`** (MySQL `shophunter`, chung pool). Cột affiliate **sửa tay** (link đăng ký / %commit / payout / cookie / note; prefill best-effort từ `aff_program`; cho phép xoá). **Traffic dán tay** — tái dùng bảng `aff_domain_traffic` + parser của affnet (`POST /api/aff/traffic`). **Xuất Excel**. Doanh thu quy USD khi hiển thị.
+- **Tái dùng** affnet/shophunter (chỉ GỌI, không sửa); `ensureTables` gọi `AffnetMysql.ensureTables()` để có sẵn bảng traffic/program. Staff-only (không vào `CUSTOMER_NAV`).
+- **KHÔNG dùng `traffictool`** (forge chữ ký bằng secret nhúng AITDK = credential-misuse). **Phase 2** (tự quét traffic) làm sau — hướng sạch: userscript trong browser thật của user (`f614f19`) đẩy về `/api/aff/traffic`, KHÔNG Playwright-headless-extension. Chưa push origin.
+
+---
+
 ## 2026-07-29 — Customer access HOÀN TẤT (S1→S3): khách đăng nhập + dùng công cụ gated → merge vào `main`
 
 > Tuyến khách (role `user`) trên **`apps/web`** (đổi hướng từ "app khách riêng" `apps/customer` → gộp 1 FE nhiều vùng). Spec/plan: `docs/superpowers/{specs,plans}/2026-07-29-*`. Đã **merge vào `main`** (commit `00320e9`), giữ nguyên affnet/traffic; backup ref `backup/main-premerge-saas`. Test cap 9/9; 3 vòng fresh-eyes review (over-exposure CLEAN cả 4 controller). Chưa push origin.
