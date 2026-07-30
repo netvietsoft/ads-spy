@@ -4,6 +4,18 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-30 — Aff Library P1.5: kho web có affiliate (đồng bộ Local DB + job phát hiện)
+
+> Mở rộng Aff Library thành kho lưu web CÓ affiliate. Merge `5ec289f` (backup `backup/main-preafflib-p15`). Review đối kháng 4 lăng kính → 3 lỗi (race job / regex PartnerStack SDK / Impact pxf.io) đã sửa. Test 21/21 (afflib 3 + affiliate.client 18). Chưa push origin.
+
+- **(A) Đồng bộ từ Local DB:** nút "⤵ Đồng bộ có-aff" → kéo shop `affiliate_status='yes'` từ `sh_shop` vào `aff_library` (join_url = affiliate_link, aff_platform đoán từ link, snapshot DT/SKU). Batch 200.
+- **(B) Job phát hiện affiliate (proxy xoay):** nút "🔎 Quét phát hiện" → job nền chạy `checkShopAffiliate` cho domain chưa kiểm (`aff_checked_at NULL`) qua **proxy xoay** (tái dùng `sh_proxy`/`makeProxiedGet`; thiếu proxy → fetch trực tiếp + cảnh báo). FE poll tiến độ (done/total/found) + nút Dừng. `ratelimited` không ghi (thử lại sau).
+- **Detector mở rộng** (`shophunter/affiliate.client.ts`, additive — tái dùng cho cả marking Local DB): thêm **Rewardful/PartnerStack/FirstPromoter/Impact** (PORTAL + APP marker) + `platformOfLink()` + tham số `get` (bơm proxy). Tương thích ngược (caller cũ + 18 test giữ nguyên). *(`?ref=` = cơ chế DISCOVER domain từ link outbound — để dành, không nhét vào per-domain check để tránh dương tính giả.)*
+- **Bảng `aff_library`**: cột `aff_status`/`aff_platform`/`aff_checked_at` (ensureColumn); **phân trang** + lọc "chỉ web có aff"; badge Affiliate (có link/app/không/chưa) trên UI.
+- Chỉ thêm afflib/* + additive vào affiliate.client; không đụng logic affnet/shophunter. Staff-only.
+
+---
+
 ## 2026-07-30 — Aff Library (P1): quét danh sách domain → thư viện shop affiliate
 
 > Tab mới **`/afflibrary`** (staff-only) + module BE `apps/api/src/afflib/`. Spec/plan `docs/superpowers/{specs,plans}/2026-07-30-aff-library-*`. Merge vào `main` (`3f0d260`, backup ref `backup/main-preafflib`). Build BE+FE xanh, test 3/3, review đối kháng 4 lăng kính (3 lỗi Important đã sửa).
