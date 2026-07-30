@@ -49,20 +49,21 @@ export function UsersAdminPanel() {
         <>
           <div style={{ overflowX: 'auto' }}>
             <table className="localtbl" style={{ width: '100%', marginTop: 12 }}>
-              <thead><tr><th>Email</th><th>Tên</th><th>ĐT</th><th>Role</th><th>Trạng thái</th><th>Gói</th><th>Ngày ĐK</th><th></th></tr></thead>
+              <thead><tr><th>Email</th><th>Tên</th><th>ĐT</th><th>Role</th><th>Trạng thái</th>{/* TODO(saas): tạm ẩn cột Gói */}<th>Ngày ĐK</th><th></th></tr></thead>
               <tbody>
                 {data.items.map((u: any) => (
                   <tr key={u.id}>
                     <td>{u.email}</td><td>{u.name || ''}</td><td>{u.phone || ''}</td><td>{u.role}</td><td>{u.status}</td>
-                    <td>{u.subscriptions.length ? u.subscriptions.map((s: any) => `${s.moduleKey}/${s.tier} ${usd(s.priceUsdCents)} → ${fmt(s.expiresAt)}`).join('; ') : 'chưa có gói'}</td>
+                    {/* TODO(saas): tạm ẩn cột Gói — <td>{u.subscriptions.length ? ... : 'chưa có gói'}</td> */}
                     <td>{fmt(u.createdAt)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="ghost" onClick={() => setEdit({ ...u })}>Sửa</button>
                       {u.status !== 'banned' && <button className="ghost" onClick={() => act(u.id, 'ban')}>Ban</button>}
                       {u.status !== 'disabled' && <button className="ghost" onClick={() => act(u.id, 'disable')}>Xóa</button>}
                       {u.status !== 'active' && <button className="ghost" onClick={() => act(u.id, 'activate')}>Kích hoạt</button>}
+                      {/* TODO(saas): tạm ẩn nút "Cấp gói" + "Gói" — phát triển sau (giữ modal grant/subs bên dưới để bật lại)
                       <button className="ghost" onClick={() => setGrant({ userId: u.id, email: u.email, moduleKey: mods[0]?.key || '', tier: 'pro', cycle: 'monthly', trialDays: '', note: '' })}>Cấp gói</button>
-                      <button className="ghost" onClick={async () => { try { setSubs({ userId: u.id, email: u.email, items: await adminUserSubs(u.id) }); } catch (e: any) { alert(e.message); } }}>Gói</button>
+                      <button className="ghost" onClick={async () => { try { setSubs({ userId: u.id, email: u.email, items: await adminUserSubs(u.id) }); } catch (e: any) { alert(e.message); } }}>Gói</button> */}
                     </td>
                   </tr>
                 ))}

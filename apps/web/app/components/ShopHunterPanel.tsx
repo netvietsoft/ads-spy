@@ -200,7 +200,8 @@ export function ShopHunterPanel() {
               <div className="cx-card" style={{ textAlign: 'center', margin: '16px auto', maxWidth: 460 }}>
                 <div style={{ fontWeight: 600, marginBottom: 6 }}>Đang xem {items.length}/{total}</div>
                 <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 12 }}>Nâng cấp thành viên để xem tất cả kết quả.</div>
-                <a className="cx-btn" href="/pricing" style={{ textDecoration: 'none', display: 'inline-block' }}>Nâng cấp thành viên</a>
+                {/* TODO(saas): tạm ẩn nút Nâng cấp — /pricing khóa, phát triển sau
+                <a className="cx-btn" href="/pricing" style={{ textDecoration: 'none', display: 'inline-block' }}>Nâng cấp thành viên</a> */}
               </div>
             )
           ) : (

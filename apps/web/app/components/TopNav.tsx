@@ -8,7 +8,8 @@ const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
   ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/afflibrary', 'Aff Library'], ['/settings', 'Cài đặt'],
-  ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'], ['/admin/plans', 'Gói'],
+  ['/admin/dashboard', 'Doanh thu'], ['/admin/users', 'Người dùng'],
+  // ['/admin/plans', 'Gói'], // TODO(saas): tạm ẩn tab Gói — phát triển sau
 ];
 const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/pricing'];
 // Tab công cụ MỞ cho khách (role user). Ads (free) + Shopify/Local DB/Báo cáo (shophunter, gated).
@@ -82,7 +83,7 @@ export function TopNav() {
   const toggleTheme = () => setTheme((prev) => { const n = prev === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('theme', n); } catch {} return n; });
   const logout = async () => {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
-    window.location.href = '/landing';
+    window.location.href = '/login'; // TODO(saas): /landing tạm khóa → về /login
   };
 
   // Guest (chưa đăng nhập) → header công khai; khách đã đăng nhập (role user, có email) → thêm nav tab công cụ mở.
@@ -90,9 +91,9 @@ export function TopNav() {
     return (
       <header className="topbar">
         <div className="topbar-inner">
-          <a href={email ? '/shophuntershopify' : '/landing'} className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
+          <a href={email ? '/shophuntershopify' : '/login'} className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
           <div className="topbar-actions">
-            <a href="/pricing" className="cx-ghost">{t('nav.pricing')}</a>
+            {/* TODO(saas): tạm ẩn link Bảng giá — /pricing khóa, phát triển sau */}
             <button type="button" className="cx-ghost" onClick={toggleLang} title="Ngôn ngữ / Language">{lang === 'vi' ? 'EN' : 'VI'}</button>
             {email ? (
               <>
@@ -102,7 +103,7 @@ export function TopNav() {
             ) : (
               <>
                 <a href="/login" className="cx-ghost">{t('nav.login')}</a>
-                <a href="/register" className="cx-ghost">{t('nav.register')}</a>
+                {/* TODO(saas): tạm ẩn link Đăng ký — /register khóa, phát triển sau */}
               </>
             )}
           </div>

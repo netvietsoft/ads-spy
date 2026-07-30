@@ -166,7 +166,8 @@ function OverviewReport() {
       {(topShops?.capped || topProducts?.capped) && (
         <div className="cx-card" style={{ textAlign: 'center', margin: '4px 0 18px', maxWidth: 460 }}>
           <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 10 }}>Bản xem thử chỉ hiện top 5. Nâng cấp để xem bảng xếp hạng đầy đủ.</div>
-          <a className="cx-btn" href="/pricing" style={{ textDecoration: 'none', display: 'inline-block' }}>Nâng cấp thành viên</a>
+          {/* TODO(saas): tạm ẩn nút Nâng cấp — /pricing khóa, phát triển sau
+          <a className="cx-btn" href="/pricing" style={{ textDecoration: 'none', display: 'inline-block' }}>Nâng cấp thành viên</a> */}
         </div>
       )}
 

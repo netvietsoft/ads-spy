@@ -69,19 +69,10 @@ export default function LoginPage() {
         <button type="submit" disabled={loading} style={{ padding: '11px 12px', borderRadius: 9, border: 'none', background: loading ? '#9ca3af' : '#16a34a', color: '#fff', fontSize: 15, fontWeight: 600, cursor: loading ? 'default' : 'pointer' }}>
           {loading ? 'Đang xử lý…' : mode === 'login' ? 'Đăng nhập' : 'Gửi liên kết đặt lại'}
         </button>
-        {mode === 'login' && (
-          <a href={`/api/auth/google?next=${encodeURIComponent(nextUrl())}`} style={{ padding: '10px 12px', borderRadius: 9, border: '1px solid #d1d5db', textAlign: 'center', textDecoration: 'none', color: '#111827', fontSize: 14, fontWeight: 600 }}>
-            Đăng nhập bằng Google
-          </a>
-        )}
+        {/* TODO(saas): tạm ẩn Đăng nhập bằng Google — OAuth chưa xong, phát triển sau */}
         {err && <div style={{ color: '#e0384f', fontSize: 13, textAlign: 'center' }}>{err}</div>}
         {msg && <div style={{ color: '#16a34a', fontSize: 13, textAlign: 'center' }}>{msg}</div>}
-        <button type="button" onClick={() => { setMode(mode === 'login' ? 'forgot' : 'login'); setErr(''); setMsg(''); }} style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 13, cursor: 'pointer' }}>
-          {mode === 'login' ? 'Quên mật khẩu?' : '← Quay lại đăng nhập'}
-        </button>
-        {mode === 'login' && (
-          <a href="/register" style={{ color: '#2563eb', fontSize: 13, textAlign: 'center', textDecoration: 'none' }}>Chưa có tài khoản? Đăng ký</a>
-        )}
+        {/* TODO(saas): tạm ẩn "Quên mật khẩu?" + "Đăng ký" — phát triển sau (giữ hàm forgot() + mode để bật lại) */}
       </form>
     </div>
   );

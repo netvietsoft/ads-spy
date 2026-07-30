@@ -4,6 +4,18 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-30 — Tạm KHÓA/ẨN tầng SaaS (đăng ký/gói/OAuth/marketing) để phát triển sau
+
+> Ẩn UI + khóa route các surface SaaS chưa hoàn thiện. **Giữ nguyên code** (chỉ chặn truy cập + ẩn), dễ bật lại: bỏ path khỏi 2 mảng trong `middleware.ts` + gỡ comment các marker `TODO(saas)`. Chưa push origin.
+
+- **`middleware.ts`** — khóa route: `/landing`,`/register`,`/pricing` → `/login`; `/admin/plans` → `/admin/dashboard`; fallback chưa-đăng-nhập `/landing`→`/login` (landing đã khóa). Code các trang vẫn build bình thường, chỉ redirect trước khi render.
+- **`TopNav.tsx`** — bỏ tab **Gói** (`/admin/plans`); ẩn link **Bảng giá** + **Đăng ký** ở header khách; logout/brand trỏ `/landing`→`/login`.
+- **`login/page.tsx`** — ẩn **Đăng nhập bằng Google** (OAuth chưa xong), **Quên mật khẩu?**, **Chưa có tài khoản? Đăng ký**. Giữ hàm `forgot()`/mode để bật lại.
+- **`UsersAdminPanel.tsx`** — ẩn cột **Gói** + nút **Cấp gói**/**Gói** (giữ modal grant/subs để bật lại).
+- **3 panel khách** (ShopHunter/LocalDb/Report) — ẩn nút "Nâng cấp thành viên" (link `/pricing` đã khóa → tránh link chết); giữ text giải thích cap.
+
+---
+
 ## 2026-07-30 — Aff Library: fix sync-localdb treo (index + JSON_EXTRACT)
 
 > `sync-localdb` treo >180s → timeout. Debug hệ thống (systematic-debugging): đo bằng chứng thay vì đoán. Commit `66a289e` + `7c58d51` trên main. Chưa push origin.
