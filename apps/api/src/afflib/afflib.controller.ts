@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { AffLibService } from './afflib.service';
 
 // Staff-only theo global RolesGuard mặc định (không @Roles → chỉ admin/manager). Không mở cho khách.
@@ -12,8 +12,31 @@ export class AffLibController {
   }
 
   @Get('rows')
-  rows() {
-    return this.svc.rows();
+  rows(@Query('page') page: string, @Query('pageSize') pageSize: string, @Query('affOnly') affOnly: string) {
+    return this.svc.rows({ page: Number(page) || 1, pageSize: Number(pageSize) || 100, affOnly: affOnly === '1' || affOnly === 'true' });
+  }
+
+  // (A) Đồng bộ shop có aff ('yes') từ Local DB → aff_library.
+  @Post('sync-localdb')
+  async syncLocaldb() {
+    const synced = await this.svc.sync();
+    return { ok: true, synced };
+  }
+
+  // (B) Job phát hiện affiliate cho domain chưa kiểm (chạy nền, poll status).
+  @Post('detect/start')
+  detectStart() {
+    return this.svc.detectStart();
+  }
+
+  @Get('detect/status')
+  detectStatus() {
+    return this.svc.detectStatus();
+  }
+
+  @Post('detect/stop')
+  detectStop() {
+    return this.svc.detectStop();
   }
 
   @Put(':web')

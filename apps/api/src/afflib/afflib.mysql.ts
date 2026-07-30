@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ShMysql } from '../shophunter/sh.mysql';
 import { AffnetMysql } from '../affnet/affnet.mysql';
+import { platformOfLink } from '../shophunter/affiliate.client';
+
+const num = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v));
+// Chuẩn hoá url shop trong SQL (khớp normalizeDomain phía service): lower, bỏ scheme/www, cắt path.
+const WEB_EXPR = "SUBSTRING_INDEX(TRIM(LEADING 'www.' FROM REPLACE(REPLACE(LOWER(JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url'))), 'https://', ''), 'http://', '')), '/', 1)";
 
 export interface AffLibSnapshot {
   web: string;
@@ -33,6 +38,18 @@ export class AffLibMysql {
       join_url VARCHAR(1024), commission_pct DOUBLE, payout DOUBLE, cookie_days INT, note VARCHAR(512),
       created_at BIGINT, updated_at BIGINT
     ) CHARACTER SET utf8mb4`);
+    // Cột phát hiện affiliate (P1.5) — thêm sau nếu bảng đã tạo từ P1.
+    await this.ensureColumn(pool, 'aff_status', 'aff_status VARCHAR(16)');
+    await this.ensureColumn(pool, 'aff_platform', 'aff_platform VARCHAR(40)');
+    await this.ensureColumn(pool, 'aff_checked_at', 'aff_checked_at BIGINT');
+  }
+
+  private async ensureColumn(pool: any, col: string, ddl: string): Promise<void> {
+    const [c] = await pool.query(
+      `SELECT COUNT(*) n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'aff_library' AND column_name = ?`,
+      [col],
+    );
+    if (!(c as any[])[0].n) await pool.query(`ALTER TABLE aff_library ADD COLUMN ${ddl}`);
   }
 
   async sumDailyRevenue(shopId: string): Promise<number | null> {
@@ -119,15 +136,80 @@ export class AffLibMysql {
     await pool.query(`UPDATE aff_library SET ${cols.join(', ')} WHERE web=?`, [...vals, web]);
   }
 
-  async listRows(): Promise<any[]> {
+  async listRows(o?: { page?: number; pageSize?: number; affOnly?: boolean }): Promise<{ items: any[]; total: number; page: number; pageSize: number }> {
     const pool = await this.sh.getPool();
+    const page = Math.max(1, Number(o?.page) || 1);
+    const pageSize = Math.min(500, Math.max(1, Number(o?.pageSize) || 100));
+    const where = o?.affOnly ? "WHERE al.aff_status = 'yes'" : '';
+    const [cnt] = await pool.query(`SELECT COUNT(*) n FROM aff_library al ${where}`);
+    const total = Number((cnt as any[])[0].n) || 0;
     const [rows] = await pool.query(
       `SELECT al.*, t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce,
               t.visit_duration_sec AS traffic_duration_sec, t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at
        FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web
-       ORDER BY al.rev_month DESC, al.created_at DESC`,
+       ${where}
+       ORDER BY al.rev_month DESC, al.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [pageSize, (page - 1) * pageSize],
     );
-    return rows as any[];
+    return { items: rows as any[], total, page, pageSize };
+  }
+
+  // (A) Đồng bộ shop affiliate_status='yes' từ Local DB vào aff_library. Trả số shop đã đồng bộ.
+  async syncFromLocalDbYes(): Promise<number> {
+    await this.ensureTables();
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      `SELECT ${WEB_EXPR} AS web, shop_id, raw, storefront_currency, affiliate_link,
+        (SELECT SUM(revenue) FROM sh_shop_revenue_daily d WHERE d.shop_id = s.shop_id) AS rev_total
+       FROM sh_shop s WHERE affiliate_status = 'yes'`,
+    );
+    const now = Date.now();
+    const list = rows as any[];
+    let n = 0;
+    const CHUNK = 200;
+    for (let i = 0; i < list.length; i += CHUNK) {
+      const tuples = list.slice(i, i + CHUNK).map((r) => {
+        let raw: any = {}; try { raw = JSON.parse(r.raw); } catch {}
+        const web = String(r.web || '').trim();
+        if (!web) return null;
+        // 17 cột: web,shop_name,shop_id,currency,rev_day,rev_week,rev_month,rev_total,sku,found,synced_at,join_url,aff_status,aff_platform,aff_checked_at,created_at,updated_at
+        return [web, raw.shop_title || raw.shop_name || null, String(r.shop_id), r.storefront_currency || raw.currency || null,
+          num(raw.day_current_period_revenue), num(raw.week_current_period_revenue), num(raw.month_current_period_revenue), num(r.rev_total), num(raw.sku_count),
+          1, now, r.affiliate_link || null, 'yes', platformOfLink(r.affiliate_link || ''), now, now, now];
+      }).filter(Boolean) as any[][];
+      if (!tuples.length) continue;
+      const ph = tuples.map(() => `(${Array(17).fill('?').join(',')})`).join(',');
+      await pool.query(
+        `INSERT INTO aff_library (web, shop_name, shop_id, currency, rev_day, rev_week, rev_month, rev_total, sku, found, synced_at, join_url, aff_status, aff_platform, aff_checked_at, created_at, updated_at)
+         VALUES ${ph}
+         ON DUPLICATE KEY UPDATE shop_name=VALUES(shop_name), shop_id=VALUES(shop_id), currency=VALUES(currency),
+           rev_day=VALUES(rev_day), rev_week=VALUES(rev_week), rev_month=VALUES(rev_month), rev_total=VALUES(rev_total),
+           sku=VALUES(sku), found=1, synced_at=VALUES(synced_at),
+           join_url=COALESCE(join_url, VALUES(join_url)), aff_status='yes',
+           aff_platform=COALESCE(aff_platform, VALUES(aff_platform)), aff_checked_at=VALUES(aff_checked_at), updated_at=VALUES(updated_at)`,
+        tuples.flat(),
+      );
+      n += tuples.length;
+    }
+    return n;
+  }
+
+  // (B) Hàng chưa phát hiện affiliate (aff_checked_at NULL) — hàng đợi cho job detect.
+  async rowsToDetect(limit = 500): Promise<string[]> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query('SELECT web FROM aff_library WHERE aff_checked_at IS NULL LIMIT ?', [Math.min(2000, Math.max(1, limit))]);
+    return (rows as any[]).map((r) => r.web);
+  }
+
+  // Ghi kết quả phát hiện. Không đè join_url/aff_platform người dùng/đồng bộ đã có.
+  async setDetect(web: string, status: string, platform: string | null, link: string | null): Promise<void> {
+    const pool = await this.sh.getPool();
+    const now = Date.now();
+    await pool.query(
+      `UPDATE aff_library SET aff_status=?, aff_platform=COALESCE(aff_platform, ?), join_url=COALESCE(join_url, ?), aff_checked_at=?, updated_at=? WHERE web=?`,
+      [status, platform, link, now, now, web],
+    );
   }
 
   async deleteRow(web: string): Promise<void> {

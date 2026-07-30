@@ -1,5 +1,5 @@
 // affiliate.client.spec.ts — quét tín hiệu affiliate: parser pure + flow check (mock shopifyHttp.get, không mạng thật).
-import { findAffiliateHits, checkShopAffiliate } from './affiliate.client';
+import { findAffiliateHits, checkShopAffiliate, platformOfLink } from './affiliate.client';
 import { shopifyHttp } from './shopify.client';
 
 const realGet = shopifyHttp.get;
@@ -95,5 +95,30 @@ describe('checkShopAffiliate (flow, mock http)', () => {
   it('trang chủ 429 (Shopify bóp IP) → ratelimited (KHÔNG phải blocked)', async () => {
     getMock.mockResolvedValueOnce({ status: 429, body: '<html>rate limited</html>' });
     expect((await checkShopAffiliate('c.test', FAST)).status).toBe('ratelimited');
+  });
+  it('opts.get truyền vào được dùng thay shopifyHttp.get (cho proxy job)', async () => {
+    const customGet = jest.fn().mockResolvedValueOnce({ status: 200, body: '<a href="https://af.uppromote.com/zz/register">x</a>' });
+    const r = await checkShopAffiliate('x.test', { requestDelayMs: 0, get: customGet });
+    expect(r.status).toBe('yes');
+    expect(customGet).toHaveBeenCalled();
+    expect(getMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('signal mở rộng — Rewardful/PartnerStack/FirstPromoter + platformOfLink', () => {
+  it('findAffiliateHits bắt cổng Rewardful', () => {
+    const hits = findAffiliateHits('<a href="https://mybrand.getrewardful.com/signup">Affiliate</a>', 'mybrand.com');
+    expect(hits.some((h) => h.via === 'Rewardful')).toBe(true);
+  });
+  it('findAffiliateHits bắt cổng PartnerStack', () => {
+    const hits = findAffiliateHits('<a href="https://app.partnerstack.com/join/acme">Partner</a>', 'acme.com');
+    expect(hits.some((h) => h.via === 'PartnerStack')).toBe(true);
+  });
+  it('platformOfLink map link → tên platform', () => {
+    expect(platformOfLink('https://x.getrewardful.com/join')).toBe('Rewardful');
+    expect(platformOfLink('https://app.partnerstack.com/xyz')).toBe('PartnerStack');
+    expect(platformOfLink('https://acme.firstpromoter.com')).toBe('FirstPromoter');
+    expect(platformOfLink('https://nike.com/about')).toBeNull();
+    expect(platformOfLink('')).toBeNull();
   });
 });

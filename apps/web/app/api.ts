@@ -717,19 +717,36 @@ export interface AffLibRow {
   rev_day?: number | null; rev_week?: number | null; rev_month?: number | null; rev_total?: number | null;
   sku?: number | null; found?: number;
   join_url?: string | null; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string | null;
+  aff_status?: string | null; aff_platform?: string | null;
   traffic_visits?: number | null; traffic_bounce?: number | null; traffic_duration_sec?: number | null; traffic_rank?: number | null;
 }
-export async function affLibScan(domains: string): Promise<AffLibRow[]> {
+export interface AffLibPage { items: AffLibRow[]; total: number; page: number; pageSize: number }
+export interface AffLibDetectStatus { running: boolean; total: number; done: number; found: number; current: string | null; noProxy: boolean; startedAt: number | null }
+export async function affLibScan(domains: string): Promise<AffLibPage> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }) }));
 }
-export async function affLibRows(): Promise<AffLibRow[]> {
-  return jsonOrThrow(await fetch(`${API}/api/aff-lib/rows`));
+export async function affLibRows(page = 1, pageSize = 100, affOnly = false): Promise<AffLibPage> {
+  const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (affOnly) qs.set('affOnly', '1');
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/rows?${qs.toString()}`));
 }
 export async function affLibUpdate(web: string, patch: { join_url?: string; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string }): Promise<{ ok: boolean }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/${encodeURIComponent(web)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) }));
 }
 export async function affLibDelete(web: string): Promise<{ ok: boolean }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/${encodeURIComponent(web)}`, { method: 'DELETE' }));
+}
+export async function affLibSyncLocaldb(): Promise<{ ok: boolean; synced: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/sync-localdb`, { method: 'POST' }));
+}
+export async function affLibDetectStart(): Promise<AffLibDetectStatus> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/detect/start`, { method: 'POST' }));
+}
+export async function affLibDetectStatus(): Promise<AffLibDetectStatus> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/detect/status`));
+}
+export async function affLibDetectStop(): Promise<AffLibDetectStatus> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/detect/stop`, { method: 'POST' }));
 }
 
 // ===== Job nền (Settings) =====

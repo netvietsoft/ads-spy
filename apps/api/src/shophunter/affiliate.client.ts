@@ -18,6 +18,10 @@ const APP_INSTALLED: { sign: RegExp; via: string }[] = [
   { sign: /leaddyno/i, via: 'LeadDyno' },
   { sign: /socialsnowball|social-snowball/i, via: 'SocialSnowball' },
   { sign: /secomapp/i, via: 'UpPromote' },
+  { sign: /rewardful|r\.wdfl\.co|Rewardful\.init/i, via: 'Rewardful' },
+  { sign: /partnerstack|growsumo/i, via: 'PartnerStack' },
+  { sign: /firstpromoter|\$FPROM|cdn\.firstpromoter/i, via: 'FirstPromoter' },
+  { sign: /impact-cdn|impactradius|utt\.impactcdn/i, via: 'Impact' },
 ];
 
 // Cổng đăng ký affiliate HOST NGOÀI (link trong trang chủ trỏ tới đây = có chương trình affiliate CÔNG KHAI, vào được thật).
@@ -32,8 +36,19 @@ const PORTAL_HOSTS: { host: RegExp; via: string }[] = [
   { host: /referralcandy\.com|\.rc\d/i, via: 'ReferralCandy' },
   { host: /tapfiliate\.com/i, via: 'Tapfiliate' },
   { host: /collabs\.shopify\.com/i, via: 'ShopifyCollabs' },
+  { host: /getrewardful\.com|\.rewardful\.com/i, via: 'Rewardful' },
+  { host: /app\.partnerstack\.com|partnerstack\.com\/(?:login|signup|join)/i, via: 'PartnerStack' }, // neo app. — tránh khớp SDK js.partnerstack.com (→ để rơi xuống 'app')
+  { host: /firstpromoter\.com|\.fprom\.io/i, via: 'FirstPromoter' },
+  { host: /impact\.com\/campaign|app\.impact\.com/i, via: 'Impact' }, // chỉ cổng merchant; KHÔNG bắt pxf.io (link outbound = shop đi làm publisher)
   { host: /shareasale\.com|impact\.com|cj\.com|awin1?\.com|partnerize/i, via: 'Network' },
 ];
+
+// Đoán platform từ 1 link affiliate (cho đồng bộ từ Local DB: affiliate_link → platform).
+export function platformOfLink(link: string): string | null {
+  if (!link) return null;
+  for (const p of PORTAL_HOSTS) if (p.host.test(link)) return p.via;
+  return null;
+}
 
 // Từ khoá trên href/anchor text — bắt link "Affiliate program", "Ambassador", "Referral", "Cộng tác viên"…
 const LINK_KEYWORDS = /affiliate|ambassador|referral|refer-a-friend|refer_a_friend|partner-program|partnership|collab(?!s\.shopify)|cong-tac-vien|cộng tác viên/i;
@@ -81,14 +96,15 @@ export function findAffiliateHits(html: string, domain: string): AffiliateHit[] 
 // Check 1 shop: GET trang chủ → quét → (nếu chỉ có link keyword nội bộ thì GET xác nhận 200) → probe path chuẩn.
 export async function checkShopAffiliate(
   shopUrl: string,
-  opts?: { requestDelayMs?: number },
+  opts?: { requestDelayMs?: number; get?: (url: string, headers?: any) => Promise<{ status: number; body: string }> },
 ): Promise<AffiliateResult> {
   const delay = opts?.requestDelayMs ?? 300;
+  const get = opts?.get ?? shopifyHttp.get; // cho phép truyền proxied-get (job phát hiện Aff Library dùng proxy xoay)
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const domain = normalizeDomain(shopUrl);
   let home: { status: number; body: string };
   try {
-    home = await shopifyHttp.get(`https://${domain}/`, HEADERS);
+    home = await get(`https://${domain}/`, HEADERS);
   } catch (e: any) {
     // Chỉ coi là 'blocked' (chết thật) khi host không tồn tại/không có server; còn timeout/reset (throttle) → 'ratelimited' (thử lại).
     const code = e?.code || '';
@@ -108,7 +124,7 @@ export async function checkShopAffiliate(
     if (!linkHit.link.includes(domain)) return { status: 'yes', link: linkHit.link, via: 'link' };
     if (delay) await sleep(delay);
     try {
-      const r = await shopifyHttp.get(linkHit.link, HEADERS);
+      const r = await get(linkHit.link, HEADERS);
       if (r.status === 200) return { status: 'yes', link: linkHit.link, via: 'link' };
     } catch { /* rơi xuống probe */ }
   }
@@ -116,7 +132,7 @@ export async function checkShopAffiliate(
   for (const p of PROBE_PATHS) {
     if (delay) await sleep(delay);
     try {
-      const r = await shopifyHttp.get(`https://${domain}${p}`, HEADERS);
+      const r = await get(`https://${domain}${p}`, HEADERS);
       if (r.status === 200 && r.body.length > 500) {
         return { status: 'yes', link: `https://${domain}${p}`, via: 'probe' };
       }
