@@ -4,6 +4,15 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-31 — Fix Aff Library 500 (prod) THẬT: xung đột COLLATION ở JOIN web
+
+> Endpoint chẩn đoán tạm `/aff-lib/diag` chỉ ra chính xác (thay vì đoán): bảng ĐỦ, `ensureTables` OK, `aff_library` **5624 dòng**, nhưng JOIN `t.web = al.web` → **"Illegal mix of collations (utf8mb4_unicode_ci, utf8mb4_0900_ai_ci) for operation '='"**. Prod migrate bằng mysqldump khiến `aff_library.web` và `aff_domain_traffic.web`/`aff_program.web` lệch collation (local tạo mới đồng nhất nên không lỗi — đúng bài học migration đã ghi).
+
+- **Fix**: ép `COLLATE utf8mb4_unicode_ci` ở 2 JOIN web across-table của afflib — `listRows` (JOIN `aff_domain_traffic`) + `prefillFromProgram` (JOIN `aff_program`). Collation EXPLICIT thắng IMPLICIT → hết illegal-mix, không cần ALTER bảng/đổi quyền.
+- Các phỏng đoán trước (listRows thiếu `ensureTables`, thiếu quyền CREATE của user `shop`) đều SAI — `service.rows()` đã gọi `ensureTables`, và `shop` tạo bảng OK. Giữ `ensureTables` trong `listRows` (vô hại). Thêm `GET /aff-lib/diag` (tạm, staff-only) để soi bước lỗi + `sqlMessage` — nguồn sự thật thay vì đoán.
+
+---
+
 ## 2026-07-31 — Fix affnet fetch KẸT ở net đầu bảng chữ cái (chỉ 1 net quét được)
 
 > Triệu chứng: mọi net đều discover + poll ~240 lần nhưng "Đã quét"=0, CHỈ `getrewardful.com` có dự án sống. Chẩn: discovery xoay vòng công bằng (`pickNetToPoll` theo `discover_polled_at`) nhưng **fetch KHÔNG** — `fetchStep` lặp `listNets() ORDER BY net` (alphabet) + xử lý net ĐẦU TIÊN có host chờ rồi `break`.

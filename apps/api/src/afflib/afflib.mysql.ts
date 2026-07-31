@@ -122,7 +122,7 @@ export class AffLibMysql {
       .query(
         `UPDATE aff_library al
          LEFT JOIN (SELECT web, MAX(join_url) join_url, MAX(commission_pct) commission_pct, MAX(payout_threshold) payout, MAX(cookie_days) cookie_days, MAX(notes) notes
-                    FROM aff_program WHERE web = ? GROUP BY web) p ON p.web = al.web
+                    FROM aff_program WHERE web = ? GROUP BY web) p ON p.web = al.web COLLATE utf8mb4_unicode_ci
          SET al.join_url = COALESCE(al.join_url, p.join_url),
              al.commission_pct = COALESCE(al.commission_pct, p.commission_pct),
              al.payout = COALESCE(al.payout, p.payout),
@@ -162,7 +162,7 @@ export class AffLibMysql {
     const [rows] = await pool.query(
       `SELECT al.*, t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce,
               t.visit_duration_sec AS traffic_duration_sec, t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at
-       FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web
+       FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
        ${where}
        ORDER BY al.rev_month DESC, al.created_at DESC
        LIMIT ? OFFSET ?`,
@@ -186,7 +186,7 @@ export class AffLibMysql {
     } catch (e: any) { out.tables = 'FAIL: ' + e.message; }
     try { await this.ensureTables(); out.ensureTables = 'OK'; } catch (e: any) { out.ensureTables = 'FAIL: ' + (e?.sqlMessage || e?.message || String(e)); }
     try { const [r] = await pool.query('SELECT COUNT(*) n FROM aff_library'); out.count = (r as any[])[0].n; } catch (e: any) { out.count = 'FAIL: ' + (e?.sqlMessage || e?.message || String(e)); }
-    try { await pool.query('SELECT al.*, t.visits FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web LIMIT 1'); out.join = 'OK'; } catch (e: any) { out.join = 'FAIL: ' + (e?.sqlMessage || e?.message || String(e)); }
+    try { await pool.query('SELECT al.*, t.visits FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci LIMIT 1'); out.join = 'OK'; } catch (e: any) { out.join = 'FAIL: ' + (e?.sqlMessage || e?.message || String(e)); }
     return out;
   }
 
