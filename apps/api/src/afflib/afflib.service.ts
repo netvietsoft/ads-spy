@@ -45,6 +45,9 @@ export class AffLibService {
     return this.db.listRows(o);
   }
 
+  // Chẩn đoán 500 (tạm) — trả bước lỗi + sqlMessage thật.
+  diag() { return this.db.diag(); }
+
   // (A) Đồng bộ shop có aff ('yes') từ Local DB.
   sync(): Promise<number> {
     return this.db.syncFromLocalDbYes();

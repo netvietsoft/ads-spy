@@ -171,6 +171,25 @@ export class AffLibMysql {
     return { items: rows as any[], total, page, pageSize };
   }
 
+  // Chẩn đoán vì sao afflib 500 (prod): user MySQL + bảng nào tồn tại + từng bước ensureTables/count/join,
+  // bắt lỗi trả sqlMessage THẬT (NestJS prod giấu message 500). Staff-only. Xoá sau khi hết bug.
+  async diag(): Promise<any> {
+    const out: any = {};
+    let pool: any;
+    try { pool = await this.sh.getPool(); } catch (e: any) { return { getPool: 'FAIL: ' + (e?.message || String(e)) }; }
+    try { const [r] = await pool.query('SELECT CURRENT_USER() u, DATABASE() db'); out.user = (r as any[])[0]; } catch (e: any) { out.user = 'FAIL: ' + e.message; }
+    try {
+      const [r] = await pool.query(
+        `SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE()
+         AND table_name IN ('aff_library','aff_domain_traffic','aff_net','aff_host','aff_program')`);
+      out.tables = (r as any[]).map((x) => x.t);
+    } catch (e: any) { out.tables = 'FAIL: ' + e.message; }
+    try { await this.ensureTables(); out.ensureTables = 'OK'; } catch (e: any) { out.ensureTables = 'FAIL: ' + (e?.sqlMessage || e?.message || String(e)); }
+    try { const [r] = await pool.query('SELECT COUNT(*) n FROM aff_library'); out.count = (r as any[])[0].n; } catch (e: any) { out.count = 'FAIL: ' + (e?.sqlMessage || e?.message || String(e)); }
+    try { await pool.query('SELECT al.*, t.visits FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web LIMIT 1'); out.join = 'OK'; } catch (e: any) { out.join = 'FAIL: ' + (e?.sqlMessage || e?.message || String(e)); }
+    return out;
+  }
+
   // (A) Đồng bộ shop affiliate_status='yes' từ Local DB vào aff_library. Trả số shop đã đồng bộ.
   async syncFromLocalDbYes(): Promise<number> {
     await this.ensureTables();

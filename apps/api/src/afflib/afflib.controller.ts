@@ -16,6 +16,12 @@ export class AffLibController {
     return this.svc.rows({ page: Number(page) || 1, pageSize: Number(pageSize) || 100, affOnly: affOnly === '1' || affOnly === 'true' });
   }
 
+  // Chẩn đoán 500 (tạm — xoá sau khi hết bug): trả bước lỗi + sqlMessage thật.
+  @Get('diag')
+  diag() {
+    return this.svc.diag();
+  }
+
   // (A) Đồng bộ shop có aff ('yes') từ Local DB → aff_library.
   @Post('sync-localdb')
   async syncLocaldb() {
