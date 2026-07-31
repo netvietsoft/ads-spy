@@ -4,6 +4,16 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-07-31 — Fix affnet fetch KẸT ở net đầu bảng chữ cái (chỉ 1 net quét được)
+
+> Triệu chứng: mọi net đều discover + poll ~240 lần nhưng "Đã quét"=0, CHỈ `getrewardful.com` có dự án sống. Chẩn: discovery xoay vòng công bằng (`pickNetToPoll` theo `discover_polled_at`) nhưng **fetch KHÔNG** — `fetchStep` lặp `listNets() ORDER BY net` (alphabet) + xử lý net ĐẦU TIÊN có host chờ rồi `break`.
+
+- **Tầng 1 (bug cốt lõi):** `probeFake` KHÔNG có try/catch. Net đầu bảng chữ cái `affiliatly.com` **không có wildcard subdomain** → `<fake>.affiliatly.com` = NXDOMAIN → probeFake NÉM → **cả `fetchStep` chết mỗi lượt**, chặn đứng mọi net phía sau (verify bằng DNS: affiliatly NXDOMAIN, affonso/getrewardful resolve). getrewardful có 1.701 quét vì được quét TRƯỚC khi import các net kia. **Fix**: bọc probeFake try/catch → net không wildcard vẫn fetch host với baseline rỗng (classify bằng redirect/404/text).
+- **Tầng 2 (chống độc chiếm):** thêm cột `aff_net.fetch_polled_at` + `pickNetToFetch()` (net enabled còn host chờ, `fetch_polled_at` cũ nhất) + `markNetFetched()` → fetch **XOAY VÒNG công bằng** như discovery, thay `listNets` alphabet + `break`. 1 net "khó" (host toàn 'blocked' → requeue) không còn chặn các net khác.
+- Test: affnet.service 24/24 (thêm case probeFake-ném) + affnet.mysql 24/24 (live DB) + verify SQL pickNetToFetch/markNetFetched trên MySQL 8.4.
+
+---
+
 ## 2026-07-30 — Fix Aff Library 500 (prod) + Admin tạo user thủ công
 
 > Sau deploy prod: (1) tab Aff Library → **500**; (2) đăng ký tự-signup đang tắt nên admin không có cách thêm user.

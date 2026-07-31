@@ -14,6 +14,8 @@ const mkDb = () => ({
   markPolled: jest.fn().mockResolvedValue(undefined),
   setFakeBaseline: jest.fn().mockResolvedValue(undefined),
   listNets: jest.fn().mockResolvedValue([]),
+  pickNetToFetch: jest.fn().mockResolvedValue(null),
+  markNetFetched: jest.fn().mockResolvedValue(undefined),
   takeHostsToCheck: jest.fn().mockResolvedValue([]),
   markHostChecked: jest.fn().mockResolvedValue(undefined),
   bumpHostTries: jest.fn().mockResolvedValue(undefined),
@@ -87,7 +89,7 @@ describe('fetchStep', () => {
 
   it('host active → lưu program + mark active', async () => {
     const db = mkDb(); const f = mkFetch();
-    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 10, fakeHash: 'h' }]);
+    db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 10, fakeHash: 'h' });
     db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
     f.fetchCampaign.mockResolvedValue({ outcome: 'active', parsed: { commissionPct: 30, web: 'editgpt.app' }, termsText: 'T' });
     const s = new AffnetService(db as any, f as any);
@@ -95,11 +97,12 @@ describe('fetchStep', () => {
     expect(r.active).toBe(1);
     expect(db.upsertProgram).toHaveBeenCalledTimes(1);
     expect(db.markHostChecked).toHaveBeenCalledWith('getrewardful.com', 'editgpt', 'active');
+    expect(db.markNetFetched).toHaveBeenCalledWith('getrewardful.com'); // xoay vòng: net đã fetch → xuống cuối hàng đợi
   });
 
   it('host bị chặn → bumpHostTries, TUYỆT ĐỐI không markHostChecked (để quét lại)', async () => {
     const db = mkDb(); const f = mkFetch();
-    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' }]);
+    db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' });
     db.takeHostsToCheck.mockResolvedValue([host('x')]);
     f.fetchCampaign.mockResolvedValue({ outcome: 'blocked', parsed: null, termsText: null });
     const s = new AffnetService(db as any, f as any);
@@ -112,7 +115,7 @@ describe('fetchStep', () => {
 
   it('net chưa có fingerprint trang giả (có host chờ) → probeFake TRƯỚC khi quét', async () => {
     const db = mkDb(); const f = mkFetch();
-    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null }]);
+    db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null });
     db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
     f.probeFake.mockResolvedValue({ len: 5, hash: 'abc' });
     f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
@@ -128,7 +131,7 @@ describe('fetchStep', () => {
   // khi đã biết net có host chờ.
   it('Việc A: net KHÔNG có host chờ → probeFake KHÔNG được gọi (khỏi trả giá 1 fetch vô ích mỗi lượt)', async () => {
     const db = mkDb(); const f = mkFetch();
-    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null }]);
+    db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null });
     db.takeHostsToCheck.mockResolvedValue([]);
     const s = new AffnetService(db as any, f as any);
     await s.fetchStep({ batch: 5, paceMs: 0 });
@@ -138,7 +141,7 @@ describe('fetchStep', () => {
 
   it('Việc A: paceMs > 0 → giãn cách TRƯỚC fetch thật đầu tiên (không burst 2 request liền nhau với probeFake trên cùng làn 0)', async () => {
     const db = mkDb(); const f = mkFetch();
-    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null }]);
+    db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null });
     db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
     let probeAt = 0, fetchAt = 0;
     f.probeFake.mockImplementation(async () => { probeAt = Date.now(); return { len: 5, hash: 'abc' }; });
@@ -150,7 +153,7 @@ describe('fetchStep', () => {
 
   it('FIX 2: net ĐÃ có fingerprint từ trước (fakeCheckedAt cũ) vẫn probeFake LẠI mỗi lượt — không dùng baseline cached', async () => {
     const db = mkDb(); const f = mkFetch();
-    db.listNets.mockResolvedValue([{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: Date.now() - 999999, fakeLen: 10, fakeHash: 'old-hash' }]);
+    db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: Date.now() - 999999, fakeLen: 10, fakeHash: 'old-hash' });
     db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
     f.probeFake.mockResolvedValue({ len: 20, hash: 'new-hash' });
     f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
@@ -160,24 +163,39 @@ describe('fetchStep', () => {
     expect(db.setFakeBaseline).toHaveBeenCalledWith('getrewardful.com', 20, 'new-hash');
   });
 
-  it('không còn host chờ ở mọi net → trả net=null (job sẽ nghỉ)', async () => {
+  it('không còn host chờ ở mọi net → pickNetToFetch null → trả net=null (job sẽ nghỉ)', async () => {
     const db = mkDb();
-    db.listNets.mockResolvedValue([{ net: 'a.com', platform: 'generic', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' }]);
-    db.takeHostsToCheck.mockResolvedValue([]);
+    db.pickNetToFetch.mockResolvedValue(null);
     const s = new AffnetService(db as any, mkFetch() as any);
     expect((await s.fetchStep({ batch: 5, paceMs: 0 })).net).toBeNull();
+  });
+
+  // TẦNG 1 của fix: net KHÔNG có wildcard subdomain (vd affiliatly.com → NXDOMAIN) làm probeFake NÉM. Trước đây
+  // lỗi văng ra làm chết cả fetchStep → chặn mọi net phía sau. Nay BẮT lại + fetch tiếp với baseline rỗng.
+  it('probeFake NÉM → KHÔNG chết cả lượt, vẫn fetch host với baseline rỗng {len:null,hash:null}', async () => {
+    const db = mkDb(); const f = mkFetch();
+    db.pickNetToFetch.mockResolvedValue({ net: 'affiliatly.com', platform: 'generic' });
+    db.takeHostsToCheck.mockResolvedValue([host('realslug')]);
+    f.probeFake.mockRejectedValue(new Error('net::ERR_NAME_NOT_RESOLVED'));
+    f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
+    const s = new AffnetService(db as any, f as any);
+    const r = await s.fetchStep({ batch: 5, paceMs: 0 });
+    expect(f.fetchCampaign).toHaveBeenCalledTimes(1);          // vẫn quét host dù probeFake ném
+    expect(db.setFakeBaseline).not.toHaveBeenCalled();          // probeFake fail → không đặt baseline
+    expect(f.fetchCampaign.mock.calls[0][2]).toEqual({ len: null, hash: null }); // baseline rỗng truyền vào
+    expect(r.notfound).toBe(1);
   });
 });
 
 describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
   const host = (slug: string) => ({ net: 'getrewardful.com', slug, firstSeen: 1, lastSeen: 1, sources: 's', checkedAt: null, checkStatus: null, checkTries: 0 });
-  const net1 = [{ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' }];
+  const net1 = { net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' };
 
   it('MỖI LƯỢT đọc lại pool proxy từ DB rồi nạp vào fetch (đổi proxy trên web → lượt sau có hiệu lực)', async () => {
     const db = mkDb(); const f = mkFetch(2);
     const pool = [{ host: '1.1.1.1', port: 80 }, { host: '2.2.2.2', port: 80 }];
     db.listHttpProxies.mockResolvedValue(pool);
-    db.listNets.mockResolvedValue(net1);
+    db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([]);
     const s = new AffnetService(db as any, f as any);
     await s.fetchStep({ batch: 5, paceMs: 0 });
@@ -188,7 +206,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
   it('pool RỖNG (hoặc mọi proxy die) → vẫn chạy với 1 làn, KHÔNG ném lỗi', async () => {
     const db = mkDb(); const f = mkFetch(1);
     db.listHttpProxies.mockResolvedValue([]);
-    db.listNets.mockResolvedValue(net1);
+    db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([host('a')]);
     f.fetchCampaign.mockResolvedValue({ outcome: 'active', parsed: { commissionPct: 10 }, termsText: 'T' });
     const s = new AffnetService(db as any, f as any);
@@ -200,7 +218,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
 
   it('concurrency bị KẸP theo số làn thật (cfg 5 nhưng chỉ 2 làn → 2)', async () => {
     const db = mkDb(); const f = mkFetch(2);
-    db.listNets.mockResolvedValue(net1);
+    db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([]);
     const s = new AffnetService(db as any, f as any);
     expect((await s.fetchStep({ batch: 5, paceMs: 0, concurrency: 5 })).lanes).toBe(2);
@@ -208,7 +226,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
 
   it('proxy chết giữa lượt (fetchCampaign NÉM) → đếm laneErrors, bumpHostTries, KHÔNG markHostChecked', async () => {
     const db = mkDb(); const f = mkFetch(1);
-    db.listNets.mockResolvedValue(net1);
+    db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([host('a')]);
     f.fetchCampaign.mockRejectedValue(new Error('net::ERR_PROXY_CONNECTION_FAILED'));
     const s = new AffnetService(db as any, f as any);
@@ -221,7 +239,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
 
   it('2 làn chia nhau danh sách host, mỗi host quét ĐÚNG 1 LẦN', async () => {
     const db = mkDb(); const f = mkFetch(2);
-    db.listNets.mockResolvedValue(net1);
+    db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([host('a'), host('b'), host('c'), host('d')]);
     f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
     const s = new AffnetService(db as any, f as any);

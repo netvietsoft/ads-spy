@@ -66,67 +66,68 @@ export class AffnetService {
     const lanes = Math.max(1, Math.min(cfg.concurrency ?? this.fetch.laneCount(), this.fetch.laneCount()));
     const out = { net: null as string | null, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes };
 
-    for (const n of await this.db.listNets()) {
-      if (n.enabled === false) continue;
-      // Việc A (Vòng sửa 2, từ re-review): kiểm hosts.length TRƯỚC — net không có host chờ thì khỏi trả
-      // giá 1 lượt probeFake vô ích. Trước đây probe nằm TRƯỚC guard này nên chạy vô điều kiện mỗi lượt
-      // cho MỌI net, kể cả net rỗng.
-      const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
-      if (!hosts.length) continue;
-      out.net = n.net;
+    // XOAY VÒNG công bằng: net (enabled) CÒN host chờ, fetch_polled_at CŨ NHẤT — thay vòng lặp cũ (listNets
+    // ORDER BY net alphabet + break) từng để 1 net đầu bảng chữ cái độc chiếm MỌI lượt fetch.
+    const n = await this.db.pickNetToFetch();
+    if (!n) return out; // không net nào còn host chờ → job nghỉ (out.net = null)
+    out.net = n.net;
+    await this.db.markNetFetched(n.net); // đẩy net này xuống cuối hàng đợi → net khác được lượt sau
+    const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
+    if (!hosts.length) return out; // race hiếm (host vừa bị lượt khác lấy) → bỏ lượt
 
-      // FIX 2: probe LẠI MỖI LƯỢT (bỏ guard "1 lần/net" cũ) — trang catch-all có thể tự đổi theo thời
-      // gian (bộ đếm động, VD "69.500+ khách hàng" tăng dần) VÀ lượt quét fan-out nhiều làn IP khác nhau,
-      // baseline đo 1 lần ở làn #0 không chắc còn khớp làn khác đang chạy lượt này.
+    // probeFake: net KHÔNG có wildcard subdomain (vd affiliatly.com → NXDOMAIN) làm probeFake NÉM LỖI. TRƯỚC đây
+    // lỗi này văng ra làm CHẾT cả fetchStep → chặn đứng MỌI net phía sau (chỉ net quét trước đó có dữ liệu). BẮT
+    // lại + fetch tiếp với baseline RỖNG (classifyPage vẫn chạy bằng redirect/404/text). Vẫn probe LẠI mỗi lượt
+    // (trang catch-all đổi động + fan-out nhiều làn IP nên baseline đo 1 lần ở làn #0 không chắc còn khớp).
+    let fake: { len: number | null; hash: string | null } = { len: null, hash: null };
+    try {
       const f = await this.fetch.probeFake(n.net);
       await this.db.setFakeBaseline(n.net, f.len, f.hash);
-      const fake = { len: f.len, hash: f.hash };
-      // Việc A: probeFake bắn trên LÀN 0 (mặc định của probeFake) — nếu không giãn cách, fetch THẬT đầu
-      // tiên của worker làn 0 bắn NGAY SAU đó, tạo 1 burst 2 request không giãn trên CÙNG 1 IP (đo thật:
-      // không giãn → 9/9 bị chặn — đây chính là tham số chống-chặn duy nhất cả thiết kế dựa vào). Chèn
-      // đúng 1 khoảng nghỉ paceMs ở đây trước khi mở vòng worker.
-      if (cfg.paceMs > 0) await new Promise((res) => setTimeout(res, cfg.paceMs));
-
-      let idx = 0;
-      // 1 worker = 1 LÀN = 1 IP. Giãn paceMs nằm TRONG worker → giãn theo từng IP, không phải toàn cục.
-      const worker = async (lane: number) => {
-        while (true) {
-          const i = idx++;
-          if (i >= hosts.length) return;
-          const h = hosts[i];
-          let r: { outcome: string; parsed: any; termsText: string | null };
-          try {
-            r = await this.fetch.fetchCampaign(n.net, h.slug, fake, lane);
-          } catch (e) {
-            // Proxy chết / lỗi mạng của LÀN này → coi như CHƯA BIẾT (đừng kết luận), khai tử làn này,
-            // các làn khác chạy tiếp. Đếm riêng để biết proxy hỏng chứ không phải Cloudflare chặn.
-            out.laneErrors++;
-            await this.db.bumpHostTries(n.net, h.slug);
-            return;
-          }
-          out.checked++;
-          if (r.outcome === 'blocked') {
-            out.blocked++;                                   // CHƯA BIẾT → quét lại lượt sau
-            await this.db.bumpHostTries(n.net, h.slug);
-          } else if (r.outcome === 'active' && r.parsed) {
-            out.active++;
-            await this.db.upsertProgram({
-              ...r.parsed, net: n.net, slug: h.slug,
-              joinUrl: joinUrlOf(n.net, h.slug), termsText: r.termsText,
-              status: 'active', fetchedAt: Date.now(),
-            });
-            await this.db.markHostChecked(n.net, h.slug, 'active');
-          } else {
-            if (r.outcome === 'inactive') out.inactive++;
-            else if (r.outcome === 'notfound') out.notfound++;
-            await this.db.markHostChecked(n.net, h.slug, r.outcome);
-          }
-          if (cfg.paceMs > 0) await new Promise((res) => setTimeout(res, cfg.paceMs));
-        }
-      };
-      await Promise.all(Array.from({ length: lanes }, (_, l) => worker(l)));
-      break; // xong 1 net là dừng lượt này
+      fake = { len: f.len, hash: f.hash };
+    } catch {
+      /* net không có trang catch-all → baseline rỗng; phân loại dựa vào redirect/404/text */
     }
+    // Giãn cách trước fetch thật đầu tiên (probeFake bắn LÀN 0 — tránh burst 2 request liền không giãn trên cùng IP).
+    if (cfg.paceMs > 0) await new Promise((res) => setTimeout(res, cfg.paceMs));
+
+    let idx = 0;
+    // 1 worker = 1 LÀN = 1 IP. Giãn paceMs nằm TRONG worker → giãn theo từng IP, không phải toàn cục.
+    const worker = async (lane: number) => {
+      while (true) {
+        const i = idx++;
+        if (i >= hosts.length) return;
+        const h = hosts[i];
+        let r: { outcome: string; parsed: any; termsText: string | null };
+        try {
+          r = await this.fetch.fetchCampaign(n.net, h.slug, fake, lane);
+        } catch (e) {
+          // Proxy chết / lỗi mạng của LÀN này → coi như CHƯA BIẾT (đừng kết luận), khai tử làn này,
+          // các làn khác chạy tiếp. Đếm riêng để biết proxy hỏng chứ không phải Cloudflare chặn.
+          out.laneErrors++;
+          await this.db.bumpHostTries(n.net, h.slug);
+          return;
+        }
+        out.checked++;
+        if (r.outcome === 'blocked') {
+          out.blocked++;                                   // CHƯA BIẾT → quét lại lượt sau
+          await this.db.bumpHostTries(n.net, h.slug);
+        } else if (r.outcome === 'active' && r.parsed) {
+          out.active++;
+          await this.db.upsertProgram({
+            ...r.parsed, net: n.net, slug: h.slug,
+            joinUrl: joinUrlOf(n.net, h.slug), termsText: r.termsText,
+            status: 'active', fetchedAt: Date.now(),
+          });
+          await this.db.markHostChecked(n.net, h.slug, 'active');
+        } else {
+          if (r.outcome === 'inactive') out.inactive++;
+          else if (r.outcome === 'notfound') out.notfound++;
+          await this.db.markHostChecked(n.net, h.slug, r.outcome);
+        }
+        if (cfg.paceMs > 0) await new Promise((res) => setTimeout(res, cfg.paceMs));
+      }
+    };
+    await Promise.all(Array.from({ length: lanes }, (_, l) => worker(l)));
     return out;
   }
 

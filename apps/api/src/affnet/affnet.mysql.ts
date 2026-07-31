@@ -103,6 +103,9 @@ export class AffnetMysql {
     await this.ensureColumn(pool, 'aff_net', 'created_at', 'created_at BIGINT');
     // dry_rounds: đếm lượt "no hoà" LIÊN TIẾP (xem markPolled/pickNetToPoll) — cơ chế giãn poll khi net đã bão hoà.
     await this.ensureColumn(pool, 'aff_net', 'dry_rounds', 'dry_rounds INT NOT NULL DEFAULT 0');
+    // fetch_polled_at: mốc lần fetch gần nhất — để fetchStep XOAY VÒNG công bằng (net fetch lâu nhất được ưu tiên),
+    // tránh 1 net đầu bảng chữ cái / có host toàn 'blocked' độc chiếm mọi lượt (xem pickNetToFetch/markNetFetched).
+    await this.ensureColumn(pool, 'aff_net', 'fetch_polled_at', 'fetch_polled_at BIGINT');
 
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_host (
       net VARCHAR(255) NOT NULL,
@@ -269,6 +272,27 @@ export class AffnetMysql {
       'UPDATE aff_net SET fake_len = ?, fake_hash = ?, fake_checked_at = ? WHERE net = ?',
       [len, hash, Date.now(), net],
     );
+  }
+
+  // Chọn net để FETCH: net (enabled) CÒN host chờ (checked_at NULL), ưu tiên fetch_polled_at CŨ NHẤT (NULL trước)
+  // → xoay vòng công bằng như discovery. Trả null nếu không net nào còn host chờ (job nghỉ).
+  async pickNetToFetch(): Promise<AffNet | null> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      `SELECT net, platform, enabled, note, discover_polled_at, discover_polls, discover_last_new,
+              fake_len, fake_hash, fake_checked_at
+       FROM aff_net n
+       WHERE enabled = 1 AND EXISTS (SELECT 1 FROM aff_host h WHERE h.net = n.net AND h.checked_at IS NULL)
+       ORDER BY fetch_polled_at IS NOT NULL, fetch_polled_at LIMIT 1`,
+    );
+    const r = (rows as any[])[0];
+    return r ? rowToAffNet(r) : null;
+  }
+
+  // Đánh dấu net vừa được fetch → đẩy xuống cuối hàng đợi xoay vòng (net khác được ưu tiên lượt sau).
+  async markNetFetched(net: string): Promise<void> {
+    const pool = await this.sh.getPool();
+    await pool.query('UPDATE aff_net SET fetch_polled_at = ? WHERE net = ?', [Date.now(), net]);
   }
 
   async takeHostsToCheck(net: string, limit: number): Promise<AffHostRow[]> {
