@@ -720,14 +720,17 @@ export interface AffLibRow {
   aff_status?: string | null; aff_platform?: string | null;
   traffic_visits?: number | null; traffic_bounce?: number | null; traffic_duration_sec?: number | null; traffic_rank?: number | null;
 }
-export interface AffLibPage { items: AffLibRow[]; total: number; page: number; pageSize: number }
+export type AffLibDir = 'asc' | 'desc';
+// sort/dir: BE tự chuẩn hoá (cột lạ → rev_month, dir lạ → desc) rồi echo lại giá trị thật đã dùng.
+export interface AffLibPage { items: AffLibRow[]; total: number; page: number; pageSize: number; sort?: string; dir?: AffLibDir }
 export interface AffLibDetectStatus { running: boolean; total: number; done: number; found: number; current: string | null; noProxy: boolean; startedAt: number | null }
 export async function affLibScan(domains: string): Promise<AffLibPage> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }) }));
 }
-export async function affLibRows(page = 1, pageSize = 100, affOnly = false): Promise<AffLibPage> {
+export async function affLibRows(page = 1, pageSize = 100, affOnly = false, sort?: string, dir?: AffLibDir): Promise<AffLibPage> {
   const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (affOnly) qs.set('affOnly', '1');
+  if (sort) { qs.set('sort', sort); qs.set('dir', dir || 'desc'); }
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/rows?${qs.toString()}`));
 }
 export async function affLibUpdate(web: string, patch: { join_url?: string; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string }): Promise<{ ok: boolean }> {

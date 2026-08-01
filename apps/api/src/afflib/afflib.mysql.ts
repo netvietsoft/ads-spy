@@ -2,10 +2,34 @@ import { Injectable } from '@nestjs/common';
 import { ShMysql } from '../shophunter/sh.mysql';
 import { AffnetMysql } from '../affnet/affnet.mysql';
 import { platformOfLink } from '../shophunter/affiliate.client';
+import { CURRENCY_USD } from '../shophunter/sh.currency';
 
 const num = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v));
 // Chuẩn hoá url shop trong SQL (khớp normalizeDomain phía service): lower, bỏ scheme/www, cắt path.
 const WEB_EXPR = "SUBSTRING_INDEX(TRIM(LEADING 'www.' FROM REPLACE(REPLACE(LOWER(JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url'))), 'https://', ''), 'http://', '')), '/', 1)";
+
+// Tỉ giá → USD ngay trong SQL. Doanh thu lưu theo TIỀN TỆ GỐC của shop, FE hiển thị đã ×tỉ giá →
+// sort theo số thô sẽ cho shop VND/JPY chen lên đầu dù USD nhỏ hơn. Chỉ nội suy số từ CURRENCY_USD (hằng của ta).
+const RATE_CASE = `CASE UPPER(COALESCE(al.currency,'USD')) ${Object.entries(CURRENCY_USD).map(([c, r]) => `WHEN '${c}' THEN ${r}`).join(' ')} ELSE 1 END`;
+const revUsd = (col: string) => `(al.${col} * ${RATE_CASE})`;
+
+// Whitelist cột sort → biểu thức SQL. Key ngoài map này bị bỏ qua (không ghép chuỗi từ query → không SQL injection).
+// payout nhập tay và FE hiển thị số thô (không qua toUsd) → sort số thô, KHÔNG quy đổi.
+const SORT_EXPR: Record<string, string> = {
+  rev_month: revUsd('rev_month'),
+  rev_day: revUsd('rev_day'),
+  rev_week: revUsd('rev_week'),
+  rev_total: revUsd('rev_total'),
+  sku: 'al.sku',
+  join_url: "NULLIF(TRIM(al.join_url),'')",
+  commission_pct: 'al.commission_pct',
+  traffic_visits: 't.visits',
+  traffic_bounce: 't.bounce_rate',
+  traffic_duration_sec: 't.visit_duration_sec',
+  payout: 'al.payout',
+  cookie_days: 'al.cookie_days',
+  note: "NULLIF(TRIM(al.note),'')",
+};
 
 export interface AffLibSnapshot {
   web: string;
@@ -151,12 +175,19 @@ export class AffLibMysql {
     await pool.query(`UPDATE aff_library SET ${cols.join(', ')} WHERE web=?`, [...vals, web]);
   }
 
-  async listRows(o?: { page?: number; pageSize?: number; affOnly?: boolean }): Promise<{ items: any[]; total: number; page: number; pageSize: number }> {
+  async listRows(o?: { page?: number; pageSize?: number; affOnly?: boolean; sort?: string; dir?: string }): Promise<{ items: any[]; total: number; page: number; pageSize: number; sort: string; dir: string }> {
     await this.ensureTables(); // DB mới (vd prod chưa sync bao giờ) → bảng aff_library/aff_domain_traffic chưa tồn tại → tạo trước, tránh 500
     const pool = await this.sh.getPool();
     const page = Math.max(1, Number(o?.page) || 1);
     const pageSize = Math.min(500, Math.max(1, Number(o?.pageSize) || 100));
     const where = o?.affOnly ? "WHERE al.aff_status = 'yes'" : '';
+    const sort = SORT_EXPR[String(o?.sort || '')] ? String(o?.sort) : 'rev_month';
+    const dir = String(o?.dir || '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const expr = SORT_EXPR[sort];
+    // MySQL coi NULL là nhỏ nhất → DESC đã đẩy ô trống xuống cuối; ASC thì phải chèn `IS NULL` để trống không chen lên đầu.
+    // `al.web` (unique) chốt cuối: thiếu nó, hàng nghìn dòng đồng giá trị (sku trùng, cột toàn NULL, created_at giống
+    // nhau do sync hàng loạt) sẽ được MySQL xếp khác nhau mỗi query → LIMIT/OFFSET lặp dòng + bỏ sót dòng khi lật trang.
+    const orderBy = `ORDER BY ${dir === 'ASC' ? `${expr} IS NULL, ` : ''}${expr} ${dir}, al.created_at DESC, al.web ASC`;
     const [cnt] = await pool.query(`SELECT COUNT(*) n FROM aff_library al ${where}`);
     const total = Number((cnt as any[])[0].n) || 0;
     const [rows] = await pool.query(
@@ -164,11 +195,11 @@ export class AffLibMysql {
               t.visit_duration_sec AS traffic_duration_sec, t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at
        FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
        ${where}
-       ORDER BY al.rev_month DESC, al.created_at DESC
+       ${orderBy}
        LIMIT ? OFFSET ?`,
       [pageSize, (page - 1) * pageSize],
     );
-    return { items: rows as any[], total, page, pageSize };
+    return { items: rows as any[], total, page, pageSize, sort, dir: dir.toLowerCase() };
   }
 
   // (A) Đồng bộ shop affiliate_status='yes' từ Local DB vào aff_library. Trả số shop đã đồng bộ.

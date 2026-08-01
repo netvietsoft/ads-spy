@@ -256,8 +256,9 @@ export default function Home() {
 
   const pagedCreatives = paginate(creatives, gPage, gSize);
 
+  // Aff Library: bảng 16 cột cần ~1440px → bỏ chặn 1180px của .container (xem .container-wide trong globals.css)
   return (
-    <div className="container">
+    <div className={source === 'afflib' ? 'container container-wide' : 'container'}>
       {source === 'facebook' && <FacebookPanel />}
       {source === 'tiktok' && <TiktokPanel />}
       {source === 'shophunter' && <ShopHunterPanel />}

@@ -40,7 +40,7 @@ export class AffLibService {
     return this.db.listRows({ page: 1 }); // domain mới (aff_checked_at NULL) sẽ được job detect phát hiện affiliate
   }
 
-  async rows(o?: { page?: number; pageSize?: number; affOnly?: boolean }): Promise<any> {
+  async rows(o?: { page?: number; pageSize?: number; affOnly?: boolean; sort?: string; dir?: string }): Promise<any> {
     await this.db.ensureTables();
     return this.db.listRows(o);
   }

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, AffLibRow, AffLibDetectStatus } from '../api';
+import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, AffLibRow, AffLibDetectStatus, AffLibDir } from '../api';
 import { toUsd } from '../currency';
 
 const money = (n?: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('en-US'));
@@ -22,13 +22,27 @@ function affBadge(r: AffLibRow) {
 
 interface AffEdit { web: string; join_url: string; commission_pct: string; payout: string; cookie_days: string; note: string }
 
+// Cột bảng. `key` = cột sort (khớp whitelist SORT_EXPR ở BE); không có key → không sort được.
+const COLS: { label: string; key?: string }[] = [
+  { label: 'Shop / Web' }, { label: 'Affiliate' },
+  { label: 'DT tháng', key: 'rev_month' }, { label: 'SKU', key: 'sku' },
+  { label: 'DT ngày', key: 'rev_day' }, { label: 'DT tuần', key: 'rev_week' }, { label: 'DT tổng', key: 'rev_total' },
+  { label: 'Link đăng ký', key: 'join_url' }, { label: '%commit', key: 'commission_pct' },
+  { label: 'Traffic/th', key: 'traffic_visits' }, { label: 'Bounce', key: 'traffic_bounce' },
+  { label: 'Time', key: 'traffic_duration_sec' }, { label: 'Payout', key: 'payout' },
+  { label: 'Cookie', key: 'cookie_days' }, { label: 'Note', key: 'note' }, { label: '' },
+];
+const DEFAULT_SORT: { key: string; dir: AffLibDir } = { key: 'rev_month', dir: 'desc' };
+
 export function AffLibraryPanel() {
   const [domains, setDomains] = useState('');
   const [items, setItems] = useState<AffLibRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [affOnly, setAffOnly] = useState(false);
-  const pageSize = 100;
+  const [sort, setSort] = useState(DEFAULT_SORT);
+  const [pageSize, setPageSize] = useState(20);
+  const barRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [edit, setEdit] = useState<AffEdit | null>(null);
@@ -38,19 +52,39 @@ export function AffLibraryPanel() {
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<any>(null);
 
-  const load = (p = page) => {
+  // Sort + phân trang đều ở SERVER (LIMIT/OFFSET) → sort là toàn bộ kho, không chỉ trang đang xem.
+  const load = (p = page, s = sort, ps = pageSize) => {
     setLoading(true);
-    return affLibRows(p, pageSize, affOnly)
+    return affLibRows(p, ps, affOnly, s.key, s.dir)
       .then((r) => { setItems(r.items); setTotal(r.total); setPage(r.page); })
       .catch((e) => setErr((e as Error).message))
       .finally(() => setLoading(false));
   };
+  const changePageSize = (n: number) => { setPageSize(n); load(1, sort, n); }; // state async → truyền thẳng n
+  // Bấm header: cột mới → giảm dần (lớn→bé, nhu cầu chính); bấm lại cột đang sort → đảo chiều. Về trang 1 vì thứ tự đổi.
+  const clickSort = (key: string) => {
+    if (loading) return;
+    const s: { key: string; dir: AffLibDir } = { key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' };
+    setSort(s); load(1, s);
+  };
   useEffect(() => { load(1); }, [affOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
+  // Header bảng dính ngay dưới thanh công cụ (mà thanh công cụ dính dưới top menu) → cần biết chiều cao
+  // thanh công cụ. offsetHeight, KHÔNG dùng rect: body có `zoom: 1.2` nên rect đã nhân 1.2, gán vào `top`
+  // sẽ bị nhân lần hai. Thanh công cụ cao khác nhau khi job detect chạy / khi xuống dòng → cập nhật lại.
+  useEffect(() => {
+    const set = () => {
+      if (barRef.current) document.documentElement.style.setProperty('--afflib-bar-h', `${barRef.current.offsetHeight}px`);
+    };
+    set();
+    window.addEventListener('resize', set);
+    return () => window.removeEventListener('resize', set);
+  }, [detect?.running, err, loading]);
+
   const scan = async () => {
     setLoading(true); setErr(null);
-    try { const r = await affLibScan(domains); setItems(r.items); setTotal(r.total); setPage(1); }
+    try { const r = await affLibScan(domains); setItems(r.items); setTotal(r.total); setPage(1); setSort(DEFAULT_SORT); } // /scan trả thứ tự mặc định → mũi tên sort phải khớp
     catch (e) { setErr((e as Error).message); }
     setLoading(false);
   };
@@ -111,7 +145,10 @@ export function AffLibraryPanel() {
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'AffLibrary'); XLSX.writeFile(wb, 'aff-library.xlsx');
   };
 
-  const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap', fontSize: 12 };
+  // Header bảng dính ở cấp TRANG, ngay dưới thanh công cụ (thanh công cụ lại dính dưới top menu).
+  // z-index 10 < 20 của thanh công cụ < 30 của topbar → không cái nào đè lên cái phía trên nó.
+  const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap', fontSize: 12,
+    position: 'sticky', top: 'calc(var(--topbar-h, 135px) + var(--afflib-bar-h, 61px))', zIndex: 10, background: 'var(--bg)' };
   const td: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid #f0f0f0', fontSize: 13, whiteSpace: 'nowrap' };
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -126,7 +163,12 @@ export function AffLibraryPanel() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '4px 0 10px', fontSize: 13 }}>
+      {/* Thanh công cụ dính dưới top menu khi cuộn. `--topbar-h` do TopNav tự đo theo bề rộng màn hình
+          (fallback 135px = chiều cao desktop tính bằng px layout, trước khi zoom 1.2 của body nhân vào);
+          dùng padding thay margin-bottom để nền che kín, không cho dòng bảng lộ qua khe. z-index dưới topbar (30). */}
+      <div ref={barRef} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: 13,
+        position: 'sticky', top: 'var(--topbar-h, 135px)', zIndex: 20,
+        background: 'var(--bg)', margin: '4px 0 0', padding: '8px 0 10px', borderBottom: '1px solid var(--border)' }}>
         {!detect?.running ? (
           <button className="srcbtn" onClick={startDetect} disabled={starting}>{starting ? 'Đang khởi động…' : '🔎 Quét phát hiện affiliate (job nền)'}</button>
         ) : (
@@ -138,13 +180,25 @@ export function AffLibraryPanel() {
         <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
           <input type="checkbox" checked={affOnly} onChange={(e) => setAffOnly(e.target.checked)} /> chỉ web có aff
         </label>
+        <select value={pageSize} onChange={(e) => changePageSize(Number(e.target.value))} disabled={loading} title="Số bản ghi mỗi trang" style={sel}>
+          {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n} bản ghi</option>)}
+        </select>
         <span style={{ opacity: 0.7 }}>{total.toLocaleString()} web · trang {page}/{totalPages}</span>
       </div>
       {err && <div className="err" style={{ marginBottom: 8 }}>{err}</div>}
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="afflib-tablewrap">
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead><tr>{['Shop / Web', 'Affiliate', 'DT tháng', 'SKU', 'DT ngày', 'DT tuần', 'DT tổng', 'Link đăng ký', '%commit', 'Traffic/th', 'Bounce', 'Time', 'Payout', 'Cookie', 'Note', ''].map((h) => <th key={h} style={th}>{h}</th>)}</tr></thead>
+          <thead><tr>{COLS.map((c) => (
+            <th key={c.label} style={c.key ? { ...th, cursor: 'pointer', userSelect: 'none' } : th}
+                onClick={c.key ? () => clickSort(c.key!) : undefined}
+                title={c.key ? 'Bấm để sắp xếp (bấm lại để đảo chiều)' : undefined}>
+              {c.label}
+              {c.key && (sort.key === c.key
+                ? <span style={{ color: '#2563eb' }}>{sort.dir === 'desc' ? ' ▼' : ' ▲'}</span>
+                : <span style={{ opacity: 0.25 }}> ▼</span>)}
+            </th>
+          ))}</tr></thead>
           <tbody>
             {items.map((r) => (
               <tr key={r.web}>
@@ -182,7 +236,10 @@ export function AffLibraryPanel() {
       {totalPages > 1 && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0' }}>
           <button className="srcbtn" disabled={page <= 1 || loading} onClick={() => load(page - 1)}>‹ Trước</button>
-          <span>Trang {page}/{totalPages}</span>
+          <select value={page} onChange={(e) => load(Number(e.target.value))} disabled={loading} style={sel}>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => <option key={p} value={p}>Trang {p}</option>)}
+          </select>
+          <span style={{ opacity: 0.7 }}>/ {totalPages}</span>
           <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => load(page + 1)}>Sau ›</button>
         </div>
       )}
@@ -222,3 +279,4 @@ export function AffLibraryPanel() {
 }
 
 const inp: React.CSSProperties = { display: 'block', width: '100%', marginTop: 3, padding: '7px 9px', borderRadius: 7, border: '1px solid #d1d5db', fontSize: 14 };
+const sel: React.CSSProperties = { padding: '5px 8px', borderRadius: 7, border: '1px solid #d1d5db', fontSize: 13, fontFamily: 'inherit' };

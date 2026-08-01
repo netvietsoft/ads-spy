@@ -69,6 +69,20 @@ export function TopNav() {
   // Theme: staff dùng theme đã lưu; vùng khách ép SÁNG (không có nút đổi theme, style cx- màu sáng).
   useEffect(() => { document.documentElement.dataset.theme = showCustomer ? 'light' : theme; }, [showCustomer, theme]);
 
+  // Chiều cao .topbar đổi theo bề rộng màn hình (nav xuống dòng, dưới 760px thu thành hamburger)
+  // → phát ra CSS var để thanh sticky bên dưới neo đúng, khỏi hardcode sai chỗ.
+  // PHẢI dùng offsetHeight, KHÔNG dùng getBoundingClientRect(): body có `zoom: 1.2` (globals.css) nên rect
+  // đã nhân 1.2, gán vào `top` sẽ bị nhân lần hai → thanh sticky rớt xuống thấp hơn đáy topbar 20%.
+  useEffect(() => {
+    const el = document.querySelector<HTMLElement>('.topbar');
+    if (!el) return;
+    const set = () => document.documentElement.style.setProperty('--topbar-h', `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [showCustomer]);
+
   const items = role === 'admin' ? NAV : NAV.filter(([href]) => href !== '/import' && href !== '/settings' && !href.startsWith('/admin'));
 
   // Chuột trái thường → điều hướng SPA (không reload); Ctrl/Cmd/Shift/chuột-giữa → để browser mở tab mới.

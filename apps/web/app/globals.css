@@ -53,6 +53,13 @@ body {
 
 /* Thanh menu cố định (sticky) ở mọi trang — brand + theme + menu ngang */
 .topbar { position: sticky; top: 0; z-index: 30; background: var(--bg); border-bottom: 1px solid var(--border); }
+/* Aff Library: bảng cần ~1440px, hẹp hơn là phải cuộn ngang TRONG bảng — mà thẻ bọc cuộn được sẽ làm
+   `position: sticky` của <th> vô hiệu (overflow-x:auto ⇒ overflow-y:auto ⇒ nó thành scroll container).
+   Nên: bỏ chặn bề rộng để bảng trải hết màn hình, thẻ bọc để overflow visible → cuộn ở cấp TRANG, <th> dính được.
+   Dưới 760px màn hình quá hẹp thì trả lại cuộn ngang trong bảng (đánh đổi: ở đó header không dính). */
+.container-wide { max-width: none; }
+.afflib-tablewrap { overflow: visible; }
+@media (max-width: 760px) { .afflib-tablewrap { overflow-x: auto; } }
 .topbar-inner { max-width: 1180px; margin: 0 auto; padding: 12px 20px 0; display: flex; align-items: center; justify-content: space-between; }
 .brand-h { font-size: 22px; margin: 0; letter-spacing: -0.02em; font-weight: 800; }
 .topbar .topnav { max-width: 1180px; margin: 6px auto 0; padding: 0 20px; border-bottom: 0; }

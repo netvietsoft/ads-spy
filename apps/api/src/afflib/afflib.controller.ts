@@ -12,8 +12,8 @@ export class AffLibController {
   }
 
   @Get('rows')
-  rows(@Query('page') page: string, @Query('pageSize') pageSize: string, @Query('affOnly') affOnly: string) {
-    return this.svc.rows({ page: Number(page) || 1, pageSize: Number(pageSize) || 100, affOnly: affOnly === '1' || affOnly === 'true' });
+  rows(@Query('page') page: string, @Query('pageSize') pageSize: string, @Query('affOnly') affOnly: string, @Query('sort') sort: string, @Query('dir') dir: string) {
+    return this.svc.rows({ page: Number(page) || 1, pageSize: Number(pageSize) || 100, affOnly: affOnly === '1' || affOnly === 'true', sort, dir });
   }
 
   // (A) Đồng bộ shop có aff ('yes') từ Local DB → aff_library.
