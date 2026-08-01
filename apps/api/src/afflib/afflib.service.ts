@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AffLibMysql, AffLibSnapshot } from './afflib.mysql';
 import { AffLibDetect } from './afflib.detect';
+import { resolveDomains } from './afflib.dns';
 
 // Chuẩn hoá domain (bản sao logic affnet normalizeNet): lowercase, bỏ scheme/www, cắt tại '/'.
 export function normalizeDomain(raw: string): string {
@@ -37,12 +38,47 @@ export class AffLibService {
       await this.db.upsertSnapshot(snap); // found=0 → chỉ tạo placeholder, KHÔNG đè snapshot cũ
       await this.db.prefillFromProgram(web);
     }
+    // Kiểm DNS ngay cho domain vừa thêm: regex isDomain ở trên KHÔNG bắt được rác kiểu
+    // 'swanwicksleep.comoffioiolcwonwiol' (vẫn đúng dạng label.label) → không lọc thì rác lẫn vào
+    // "chưa quét" mãi. Vẫn lưu, chỉ gắn dns_ok=0 để nó hiện ngay ở danh sách "cần dọn".
+    if (domains.length) {
+      const v = await resolveDomains(domains).catch(() => null);
+      if (v) await this.db.setDnsBulk(v.alive, v.dead);
+    }
     return this.db.listRows({ page: 1 }); // domain mới (aff_checked_at NULL) sẽ được job detect phát hiện affiliate
   }
 
-  async rows(o?: { page?: number; pageSize?: number; affOnly?: boolean; sort?: string; dir?: string }): Promise<any> {
+  async rows(o?: { page?: number; pageSize?: number; affOnly?: boolean; filter?: string; sort?: string; dir?: string }): Promise<any> {
     await this.db.ensureTables();
     return this.db.listRows(o);
+  }
+
+  // Lọc domain chết bằng DNS: ~30ms/domain, 30 luồng → cả kho vài chục giây, KHÔNG cần proxy.
+  // Mỗi lần gọi tối đa 5.000 domain rồi trả `remaining` để FE gọi tiếp — tránh treo request quá lâu.
+  async dnsCheck(limit = 5000): Promise<{ checked: number; alive: number; dead: number; unknown: number; remaining: number }> {
+    await this.db.ensureTables();
+    const webs = await this.db.rowsToDnsCheck(limit);
+    if (!webs.length) return { checked: 0, alive: 0, dead: 0, unknown: 0, remaining: 0 };
+    const v = await resolveDomains(webs);
+    await this.db.setDnsBulk(v.alive, v.dead);
+    // unknown (SERVFAIL/timeout) giữ dns_ok NULL → lần sau kiểm lại, nhưng vẫn nằm trong `remaining`.
+    return { checked: webs.length, alive: v.alive.length, dead: v.dead.length, unknown: v.unknown.length, remaining: await this.db.countDnsPending() };
+  }
+
+  detectOne(web: string) {
+    return this.detect.detectOne(normalizeDomain(web));
+  }
+
+  async bulkDelete(webs: string[]): Promise<number> {
+    return this.db.deleteRows(this.cleanWebs(webs));
+  }
+
+  async bulkRetry(webs: string[]): Promise<number> {
+    return this.db.resetTryBulk(this.cleanWebs(webs));
+  }
+
+  private cleanWebs(webs: string[]): string[] {
+    return Array.from(new Set((webs || []).map(normalizeDomain).filter(Boolean))).slice(0, 1000);
   }
 
   // (A) Đồng bộ shop có aff ('yes') từ Local DB.

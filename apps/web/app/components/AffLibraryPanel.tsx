@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, AffLibRow, AffLibDetectStatus, AffLibDir } from '../api';
+import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
 import { toUsd } from '../currency';
 
 const money = (n?: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('en-US'));
@@ -22,6 +22,18 @@ function affBadge(r: AffLibRow) {
 
 interface AffEdit { web: string; join_url: string; commission_pct: string; payout: string; cookie_days: string; note: string }
 
+const FILTERS: { v: AffLibFilter; label: string }[] = [
+  { v: 'all', label: 'tất cả' }, { v: 'aff', label: 'chỉ web có aff' },
+  { v: 'unscanned', label: 'chưa quét' }, { v: 'junk', label: 'cần dọn' },
+];
+
+// Lý do một dòng bị coi là "cần dọn" — suy từ dns_ok / aff_try_count / aff_last_error do BE trả về.
+function junkReason(r: AffLibRow): string {
+  if (r.dns_ok === 0) return `DNS chết${r.aff_last_error ? ` (${r.aff_last_error})` : ''}`;
+  if ((r.aff_try_count ?? 0) >= 3) return `${r.aff_try_count} lần lỗi: ${r.aff_last_error || 'không rõ'}`;
+  return '—';
+}
+
 // Cột bảng. `key` = cột sort (khớp whitelist SORT_EXPR ở BE); không có key → không sort được.
 const COLS: { label: string; key?: string }[] = [
   { label: 'Shop / Web' }, { label: 'Affiliate' },
@@ -39,7 +51,9 @@ export function AffLibraryPanel() {
   const [items, setItems] = useState<AffLibRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [affOnly, setAffOnly] = useState(false);
+  const [filter, setFilter] = useState<AffLibFilter>('all');
+  const [sel, setSel] = useState<Set<string>>(new Set()); // dòng đã tick ở chế độ "cần dọn"
+  const [dns, setDns] = useState<string | null>(null); // kết quả lần lọc DNS gần nhất
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [pageSize, setPageSize] = useState(20);
   const barRef = useRef<HTMLDivElement>(null);
@@ -52,22 +66,23 @@ export function AffLibraryPanel() {
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<any>(null);
 
-  // Sort + phân trang đều ở SERVER (LIMIT/OFFSET) → sort là toàn bộ kho, không chỉ trang đang xem.
-  const load = (p = page, s = sort, ps = pageSize) => {
+  // Sort + phân trang + lọc đều ở SERVER (LIMIT/OFFSET) → tác dụng trên toàn bộ kho, không chỉ trang đang xem.
+  const load = (p = page, s = sort, ps = pageSize, f = filter) => {
     setLoading(true);
-    return affLibRows(p, ps, affOnly, s.key, s.dir)
+    return affLibRows(p, ps, f, s.key, s.dir)
       .then((r) => { setItems(r.items); setTotal(r.total); setPage(r.page); })
       .catch((e) => setErr((e as Error).message))
       .finally(() => setLoading(false));
   };
   const changePageSize = (n: number) => { setPageSize(n); load(1, sort, n); }; // state async → truyền thẳng n
+  const changeFilter = (f: AffLibFilter) => { setFilter(f); setSel(new Set()); load(1, sort, pageSize, f); };
   // Bấm header: cột mới → giảm dần (lớn→bé, nhu cầu chính); bấm lại cột đang sort → đảo chiều. Về trang 1 vì thứ tự đổi.
   const clickSort = (key: string) => {
     if (loading) return;
     const s: { key: string; dir: AffLibDir } = { key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' };
     setSort(s); load(1, s);
   };
-  useEffect(() => { load(1); }, [affOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   // Header bảng dính ngay dưới thanh công cụ (mà thanh công cụ dính dưới top menu) → cần biết chiều cao
@@ -132,6 +147,48 @@ export function AffLibraryPanel() {
   };
   const del = async (web: string) => { if (!confirm(`Xoá "${web}"?`)) return; await affLibDelete(web).catch((e) => setErr((e as Error).message)); await load(); };
 
+  // Lọc DNS: gọi lặp cho tới khi không còn tiến triển. Điều kiện dừng phải xét `checked` và `remaining`
+  // giảm dần — dòng SERVFAIL cố ý giữ dns_ok NULL nên `remaining` không bao giờ về 0, dễ thành vòng vô hạn.
+  const runDnsCheck = async () => {
+    setBusy(true); setErr(null); setDns('Đang phân giải DNS…');
+    try {
+      let checked = 0, dead = 0, unknown = 0, prev = Infinity;
+      for (;;) {
+        const r = await affLibDnsCheck();
+        checked += r.checked; dead += r.dead; unknown = r.unknown;
+        setDns(`Đã kiểm ${checked.toLocaleString()} · chết ${dead}${unknown ? ` · chưa rõ ${unknown}` : ''}`);
+        if (!r.checked || r.remaining >= prev) break;
+        prev = r.remaining;
+      }
+      await load();
+    } catch (e) { setErr((e as Error).message); setDns(null); }
+    setBusy(false);
+  };
+
+  // Quét 1 domain: cập nhật đúng dòng đó, không tải lại cả trang.
+  const detectRow = async (web: string) => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await affLibDetectOne(web);
+      setItems((prev) => prev.map((x) => (x.web === web ? { ...x, aff_status: r.aff_status, aff_platform: r.aff_platform, join_url: r.join_url ?? x.join_url } : x)));
+    } catch (e) { setErr((e as Error).message); }
+    setBusy(false);
+  };
+
+  const bulk = async (kind: 'del' | 'retry') => {
+    const webs = Array.from(sel);
+    if (!webs.length) return;
+    if (kind === 'del' && !confirm(`Xoá ${webs.length} domain khỏi kho? Không hoàn lại được.`)) return;
+    setBusy(true); setErr(null);
+    try {
+      if (kind === 'del') await affLibBulkDelete(webs); else await affLibBulkRetry(webs);
+      setSel(new Set()); await load();
+    } catch (e) { setErr((e as Error).message); }
+    setBusy(false);
+  };
+  const toggleSel = (web: string) => setSel((s) => { const n = new Set(s); if (n.has(web)) n.delete(web); else n.add(web); return n; });
+  const toggleAll = () => setSel((s) => (s.size === items.length ? new Set<string>() : new Set(items.map((x) => x.web))));
+
   const exportXlsx = () => {
     const data = items.map((r) => ({
       'Shop/Web': r.shop_name || r.web, Web: r.web, Affiliate: r.aff_status || '', Platform: r.aff_platform || '',
@@ -151,6 +208,7 @@ export function AffLibraryPanel() {
     position: 'sticky', top: 'calc(var(--topbar-h, 135px) + var(--afflib-bar-h, 61px))', zIndex: 10, background: 'var(--bg)' };
   const td: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid #f0f0f0', fontSize: 13, whiteSpace: 'nowrap' };
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const junkMode = filter === 'junk'; // chế độ dọn rác: thêm ô tick + cột Lý do + nút xoá/thử lại hàng loạt
 
   return (
     <div style={{ padding: '8px 4px' }}>
@@ -177,31 +235,54 @@ export function AffLibraryPanel() {
             <button className="srcbtn" onClick={stopDetect}>⏹ Dừng</button>
           </>
         )}
-        <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
-          <input type="checkbox" checked={affOnly} onChange={(e) => setAffOnly(e.target.checked)} /> chỉ web có aff
-        </label>
-        <select value={pageSize} onChange={(e) => changePageSize(Number(e.target.value))} disabled={loading} title="Số bản ghi mỗi trang" style={sel}>
+        <button className="srcbtn" onClick={runDnsCheck} disabled={busy || loading} title="Phân giải DNS toàn kho (~ms/domain, không cần proxy) — domain không tồn tại sẽ vào danh sách cần dọn">
+          {busy && dns ? '⏳ Đang lọc DNS…' : '🧹 Lọc domain chết (DNS)'}
+        </button>
+        {dns && <span style={{ opacity: 0.75 }}>{dns}</span>}
+        <select value={filter} onChange={(e) => changeFilter(e.target.value as AffLibFilter)} disabled={loading} title="Lọc danh sách" style={selStyle}>
+          {FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
+        </select>
+        <select value={pageSize} onChange={(e) => changePageSize(Number(e.target.value))} disabled={loading} title="Số bản ghi mỗi trang" style={selStyle}>
           {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n} bản ghi</option>)}
         </select>
         <span style={{ opacity: 0.7 }}>{total.toLocaleString()} web · trang {page}/{totalPages}</span>
+        {junkMode && sel.size > 0 && (
+          <>
+            <button className="srcbtn" onClick={() => bulk('del')} disabled={busy} style={{ color: '#e0384f' }}>🗑 Xoá {sel.size} domain</button>
+            <button className="srcbtn" onClick={() => bulk('retry')} disabled={busy} title="Đưa lại vào hàng đợi quét (nếu bị đánh oan do một đợt bị bóp)">⟳ Thử lại {sel.size}</button>
+          </>
+        )}
       </div>
       {err && <div className="err" style={{ marginBottom: 8 }}>{err}</div>}
 
       <div className="afflib-tablewrap">
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead><tr>{COLS.map((c) => (
-            <th key={c.label} style={c.key ? { ...th, cursor: 'pointer', userSelect: 'none' } : th}
-                onClick={c.key ? () => clickSort(c.key!) : undefined}
-                title={c.key ? 'Bấm để sắp xếp (bấm lại để đảo chiều)' : undefined}>
-              {c.label}
-              {c.key && (sort.key === c.key
-                ? <span style={{ color: '#2563eb' }}>{sort.dir === 'desc' ? ' ▼' : ' ▲'}</span>
-                : <span style={{ opacity: 0.25 }}> ▼</span>)}
-            </th>
-          ))}</tr></thead>
+          <thead><tr>
+            {junkMode && (
+              <th style={th} title="Chọn/bỏ chọn cả trang">
+                <input type="checkbox" checked={items.length > 0 && sel.size === items.length} onChange={toggleAll} />
+              </th>
+            )}
+            {COLS.map((c) => (
+              <th key={c.label} style={c.key ? { ...th, cursor: 'pointer', userSelect: 'none' } : th}
+                  onClick={c.key ? () => clickSort(c.key!) : undefined}
+                  title={c.key ? 'Bấm để sắp xếp (bấm lại để đảo chiều)' : undefined}>
+                {c.label}
+                {c.key && (sort.key === c.key
+                  ? <span style={{ color: '#2563eb' }}>{sort.dir === 'desc' ? ' ▼' : ' ▲'}</span>
+                  : <span style={{ opacity: 0.25 }}> ▼</span>)}
+              </th>
+            ))}
+            {junkMode && <th style={th}>Lý do</th>}
+          </tr></thead>
           <tbody>
             {items.map((r) => (
-              <tr key={r.web}>
+              <tr key={r.web} style={junkMode && sel.has(r.web) ? { background: '#fef2f2' } : undefined}>
+                {junkMode && (
+                  <td style={td}>
+                    <input type="checkbox" checked={sel.has(r.web)} onChange={() => toggleSel(r.web)} />
+                  </td>
+                )}
                 <td style={{ ...td, whiteSpace: 'normal', maxWidth: 220 }}>
                   <div style={{ fontWeight: 600 }}>{r.shop_name || <span style={{ color: '#9ca3af' }}>—</span>}</div>
                   <a href={`https://${r.web}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#2563eb' }}>{r.web}</a>
@@ -222,13 +303,17 @@ export function AffLibraryPanel() {
                 <td style={td}>{r.cookie_days == null ? '—' : r.cookie_days + 'd'}</td>
                 <td style={{ ...td, whiteSpace: 'normal', maxWidth: 140 }}>{r.note || '—'}</td>
                 <td style={td}>
+                  <button className="srcbtn" title="Quét affiliate domain này ngay (quét lại nếu đã quét)" onClick={() => detectRow(r.web)} disabled={busy} style={{ padding: '2px 8px' }}>⟳</button>{' '}
                   <button className="srcbtn" title="Sửa affiliate" onClick={() => openEdit(r)} style={{ padding: '2px 8px' }}>✎</button>{' '}
                   <button className="srcbtn" title="Dán traffic" onClick={() => setTraffic({ web: r.web, text: '' })} style={{ padding: '2px 8px' }}>📊</button>{' '}
                   <button className="srcbtn" title="Xoá" onClick={() => del(r.web)} style={{ padding: '2px 8px' }}>🗑</button>
                 </td>
+                {junkMode && <td style={{ ...td, whiteSpace: 'normal', maxWidth: 220, color: '#b45309' }}>{junkReason(r)}</td>}
               </tr>
             ))}
-            {!items.length && !loading && <tr><td colSpan={16} style={{ ...td, textAlign: 'center', color: '#9ca3af', padding: 20 }}>Chưa có dữ liệu — Đồng bộ từ Local DB, hoặc dán domain mới rồi Thêm.</td></tr>}
+            {!items.length && !loading && <tr><td colSpan={COLS.length + (junkMode ? 2 : 0)} style={{ ...td, textAlign: 'center', color: '#9ca3af', padding: 20 }}>
+              {filter === 'junk' ? 'Không có domain nào cần dọn.' : filter === 'unscanned' ? 'Không còn domain nào trong hàng đợi quét.' : 'Chưa có dữ liệu — Đồng bộ từ Local DB, hoặc dán domain mới rồi Thêm.'}
+            </td></tr>}
           </tbody>
         </table>
       </div>
@@ -236,7 +321,7 @@ export function AffLibraryPanel() {
       {totalPages > 1 && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0' }}>
           <button className="srcbtn" disabled={page <= 1 || loading} onClick={() => load(page - 1)}>‹ Trước</button>
-          <select value={page} onChange={(e) => load(Number(e.target.value))} disabled={loading} style={sel}>
+          <select value={page} onChange={(e) => load(Number(e.target.value))} disabled={loading} style={selStyle}>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => <option key={p} value={p}>Trang {p}</option>)}
           </select>
           <span style={{ opacity: 0.7 }}>/ {totalPages}</span>
@@ -279,4 +364,4 @@ export function AffLibraryPanel() {
 }
 
 const inp: React.CSSProperties = { display: 'block', width: '100%', marginTop: 3, padding: '7px 9px', borderRadius: 7, border: '1px solid #d1d5db', fontSize: 14 };
-const sel: React.CSSProperties = { padding: '5px 8px', borderRadius: 7, border: '1px solid #d1d5db', fontSize: 13, fontFamily: 'inherit' };
+const selStyle: React.CSSProperties = { padding: '5px 8px', borderRadius: 7, border: '1px solid #d1d5db', fontSize: 13, fontFamily: 'inherit' };

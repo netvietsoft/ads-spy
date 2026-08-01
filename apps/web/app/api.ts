@@ -718,20 +718,36 @@ export interface AffLibRow {
   sku?: number | null; found?: number;
   join_url?: string | null; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string | null;
   aff_status?: string | null; aff_platform?: string | null;
+  dns_ok?: number | null; aff_try_count?: number | null; aff_last_error?: string | null;
   traffic_visits?: number | null; traffic_bounce?: number | null; traffic_duration_sec?: number | null; traffic_rank?: number | null;
 }
 export type AffLibDir = 'asc' | 'desc';
-// sort/dir: BE tự chuẩn hoá (cột lạ → rev_month, dir lạ → desc) rồi echo lại giá trị thật đã dùng.
-export interface AffLibPage { items: AffLibRow[]; total: number; page: number; pageSize: number; sort?: string; dir?: AffLibDir }
+// all=tất cả · aff=chỉ có aff · unscanned=còn trong hàng đợi quét · junk=cần dọn (DNS chết / 3 lần lỗi)
+export type AffLibFilter = 'all' | 'aff' | 'unscanned' | 'junk';
+// sort/dir/filter: BE tự chuẩn hoá (giá trị lạ → mặc định) rồi echo lại giá trị thật đã dùng.
+export interface AffLibPage { items: AffLibRow[]; total: number; page: number; pageSize: number; sort?: string; dir?: AffLibDir; filter?: AffLibFilter }
 export interface AffLibDetectStatus { running: boolean; total: number; done: number; found: number; current: string | null; noProxy: boolean; startedAt: number | null }
 export async function affLibScan(domains: string): Promise<AffLibPage> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }) }));
 }
-export async function affLibRows(page = 1, pageSize = 100, affOnly = false, sort?: string, dir?: AffLibDir): Promise<AffLibPage> {
-  const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  if (affOnly) qs.set('affOnly', '1');
+export async function affLibRows(page = 1, pageSize = 100, filter: AffLibFilter = 'all', sort?: string, dir?: AffLibDir): Promise<AffLibPage> {
+  const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize), filter });
   if (sort) { qs.set('sort', sort); qs.set('dir', dir || 'desc'); }
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/rows?${qs.toString()}`));
+}
+// Lọc domain chết bằng DNS (~ms/domain, không cần proxy). remaining > 0 → gọi tiếp cho kho lớn.
+export async function affLibDnsCheck(limit = 5000): Promise<{ checked: number; alive: number; dead: number; unknown: number; remaining: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/dns-check`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
+}
+// Quét 1 domain ngay (nút ⟳ từng dòng) — dùng cho cả quét lần đầu và quét lại.
+export async function affLibDetectOne(web: string): Promise<{ web: string; aff_status: string; aff_platform: string | null; join_url: string | null }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/${encodeURIComponent(web)}/detect`, { method: 'POST' }));
+}
+export async function affLibBulkDelete(webs: string[]): Promise<{ ok: boolean; deleted: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/bulk-delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ webs }) }));
+}
+export async function affLibBulkRetry(webs: string[]): Promise<{ ok: boolean; reset: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/bulk-retry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ webs }) }));
 }
 export async function affLibUpdate(web: string, patch: { join_url?: string; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string }): Promise<{ ok: boolean }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/${encodeURIComponent(web)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) }));

@@ -12,8 +12,8 @@ export class AffLibController {
   }
 
   @Get('rows')
-  rows(@Query('page') page: string, @Query('pageSize') pageSize: string, @Query('affOnly') affOnly: string, @Query('sort') sort: string, @Query('dir') dir: string) {
-    return this.svc.rows({ page: Number(page) || 1, pageSize: Number(pageSize) || 100, affOnly: affOnly === '1' || affOnly === 'true', sort, dir });
+  rows(@Query('page') page: string, @Query('pageSize') pageSize: string, @Query('affOnly') affOnly: string, @Query('filter') filter: string, @Query('sort') sort: string, @Query('dir') dir: string) {
+    return this.svc.rows({ page: Number(page) || 1, pageSize: Number(pageSize) || 100, affOnly: affOnly === '1' || affOnly === 'true', filter, sort, dir });
   }
 
   // (A) Đồng bộ shop có aff ('yes') từ Local DB → aff_library.
@@ -37,6 +37,32 @@ export class AffLibController {
   @Post('detect/stop')
   detectStop() {
     return this.svc.detectStop();
+  }
+
+  // (C) Lọc domain chết bằng DNS — nhanh, không cần proxy. Trả `remaining` để FE gọi tiếp nếu kho lớn.
+  @Post('dns-check')
+  dnsCheck(@Body('limit') limit: number) {
+    return this.svc.dnsCheck(Number(limit) || 5000);
+  }
+
+  // Xoá hàng loạt (dọn rác): 1 query cho cả lô thay vì gọi DELETE từng domain.
+  @Post('bulk-delete')
+  async bulkDelete(@Body('webs') webs: string[]) {
+    const deleted = await this.svc.bulkDelete(Array.isArray(webs) ? webs : []);
+    return { ok: true, deleted };
+  }
+
+  // Đưa lô trở lại hàng đợi quét (nếu một đợt bị bóp hàng loạt làm chúng rơi sang "cần dọn" oan).
+  @Post('bulk-retry')
+  async bulkRetry(@Body('webs') webs: string[]) {
+    const reset = await this.svc.bulkRetry(Array.isArray(webs) ? webs : []);
+    return { ok: true, reset };
+  }
+
+  // Quét 1 domain theo yêu cầu (nút ⟳ từng dòng) — đồng bộ, trả kết quả ngay. Khai báo TRƯỚC @Put(':web').
+  @Post(':web/detect')
+  detectOne(@Param('web') web: string) {
+    return this.svc.detectOne(web);
   }
 
   @Put(':web')

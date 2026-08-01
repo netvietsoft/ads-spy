@@ -31,6 +31,17 @@ const SORT_EXPR: Record<string, string> = {
   note: "NULLIF(TRIM(al.note),'')",
 };
 
+// Domain còn đáng quét HTTP: chưa có kết luận, DNS chưa chết, chưa thử quá 3 lần.
+const QUEUE_COND = 'al.aff_checked_at IS NULL AND (al.dns_ok IS NULL OR al.dns_ok = 1) AND COALESCE(al.aff_try_count,0) < 3';
+// Cần dọn: DNS chết, hoặc thử đủ 3 lần vẫn không ra kết luận.
+const JUNK_COND = 'al.dns_ok = 0 OR (al.aff_checked_at IS NULL AND COALESCE(al.aff_try_count,0) >= 3)';
+const FILTER_WHERE: Record<string, string> = {
+  all: '',
+  aff: "WHERE al.aff_status = 'yes'",
+  unscanned: `WHERE ${QUEUE_COND}`,
+  junk: `WHERE ${JUNK_COND}`,
+};
+
 export interface AffLibSnapshot {
   web: string;
   shop_name: string | null;
@@ -66,6 +77,12 @@ export class AffLibMysql {
     await this.ensureColumn(pool, 'aff_status', 'aff_status VARCHAR(16)');
     await this.ensureColumn(pool, 'aff_platform', 'aff_platform VARCHAR(40)');
     await this.ensureColumn(pool, 'aff_checked_at', 'aff_checked_at BIGINT');
+    // Dọn domain chết: trước đây fetch lỗi bị bỏ qua im lặng nên không phân biệt được "chưa quét lần nào"
+    // với "đã thử 10 lần đều chết" → domain rác nằm mãi trong hàng đợi. dns_ok tách rác bằng DNS (ms, khỏi proxy).
+    await this.ensureColumn(pool, 'dns_ok', 'dns_ok TINYINT');
+    await this.ensureColumn(pool, 'aff_try_count', 'aff_try_count INT DEFAULT 0');
+    await this.ensureColumn(pool, 'aff_last_error', 'aff_last_error VARCHAR(255)');
+    await this.ensureColumn(pool, 'aff_last_try_at', 'aff_last_try_at BIGINT');
   }
 
   private async ensureColumn(pool: any, col: string, ddl: string): Promise<void> {
@@ -175,12 +192,14 @@ export class AffLibMysql {
     await pool.query(`UPDATE aff_library SET ${cols.join(', ')} WHERE web=?`, [...vals, web]);
   }
 
-  async listRows(o?: { page?: number; pageSize?: number; affOnly?: boolean; sort?: string; dir?: string }): Promise<{ items: any[]; total: number; page: number; pageSize: number; sort: string; dir: string }> {
+  async listRows(o?: { page?: number; pageSize?: number; affOnly?: boolean; filter?: string; sort?: string; dir?: string }): Promise<{ items: any[]; total: number; page: number; pageSize: number; sort: string; dir: string; filter: string }> {
     await this.ensureTables(); // DB mới (vd prod chưa sync bao giờ) → bảng aff_library/aff_domain_traffic chưa tồn tại → tạo trước, tránh 500
     const pool = await this.sh.getPool();
     const page = Math.max(1, Number(o?.page) || 1);
     const pageSize = Math.min(500, Math.max(1, Number(o?.pageSize) || 100));
-    const where = o?.affOnly ? "WHERE al.aff_status = 'yes'" : '';
+    // affOnly là tham số cũ (checkbox trước đây) — vẫn nhận để không phá caller/bookmark cũ.
+    const filter = FILTER_WHERE[String(o?.filter || '')] !== undefined ? String(o?.filter) : o?.affOnly ? 'aff' : 'all';
+    const where = FILTER_WHERE[filter];
     const sort = SORT_EXPR[String(o?.sort || '')] ? String(o?.sort) : 'rev_month';
     const dir = String(o?.dir || '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const expr = SORT_EXPR[sort];
@@ -199,7 +218,7 @@ export class AffLibMysql {
        LIMIT ? OFFSET ?`,
       [pageSize, (page - 1) * pageSize],
     );
-    return { items: rows as any[], total, page, pageSize, sort, dir: dir.toLowerCase() };
+    return { items: rows as any[], total, page, pageSize, sort, dir: dir.toLowerCase(), filter };
   }
 
   // (A) Đồng bộ shop affiliate_status='yes' từ Local DB vào aff_library. Trả số shop đã đồng bộ.
@@ -253,8 +272,72 @@ export class AffLibMysql {
   // (B) Hàng chưa phát hiện affiliate (aff_checked_at NULL) — hàng đợi cho job detect.
   async rowsToDetect(limit = 500): Promise<string[]> {
     const pool = await this.sh.getPool();
-    const [rows] = await pool.query('SELECT web FROM aff_library WHERE aff_checked_at IS NULL LIMIT ?', [Math.min(2000, Math.max(1, limit))]);
+    const [rows] = await pool.query(`SELECT al.web FROM aff_library al WHERE ${QUEUE_COND} LIMIT ?`, [Math.min(2000, Math.max(1, limit))]);
     return (rows as any[]).map((r) => r.web);
+  }
+
+  // Quét HTTP thất bại: +1 lần thử, ghi lỗi cuối. Đủ 3 lần thì QUEUE_COND tự loại nó ra khỏi hàng đợi
+  // (trước đây lỗi bị bỏ qua im lặng nên domain chết quay lại hàng đợi vô hạn).
+  async markTryFailed(web: string, error: string): Promise<void> {
+    const pool = await this.sh.getPool();
+    await pool.query(
+      'UPDATE aff_library SET aff_try_count = COALESCE(aff_try_count,0) + 1, aff_last_error = ?, aff_last_try_at = ? WHERE web = ?',
+      [String(error || 'unknown').slice(0, 255), Date.now(), web],
+    );
+  }
+
+  // Quét lại 1 domain do người dùng bấm → xoá lịch sử lỗi để nó có cơ hội sạch.
+  async resetTry(web: string): Promise<void> {
+    const pool = await this.sh.getPool();
+    await pool.query('UPDATE aff_library SET aff_try_count = 0, aff_last_error = NULL, dns_ok = NULL WHERE web = ?', [web]);
+  }
+
+  // Đưa cả lô trở lại hàng đợi (nút "Thử lại" ở danh sách cần dọn) — để một đợt bị bóp hàng loạt không
+  // khoá cứng kho: xoá try_count + dns_ok là chúng vào lại QUEUE_COND.
+  async resetTryBulk(webs: string[]): Promise<number> {
+    if (!webs.length) return 0;
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query('UPDATE aff_library SET aff_try_count = 0, aff_last_error = NULL, dns_ok = NULL WHERE web IN (?)', [webs]);
+    return Number((r as any).affectedRows) || 0;
+  }
+
+  async rowsToDnsCheck(limit = 5000): Promise<string[]> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query('SELECT web FROM aff_library WHERE dns_ok IS NULL LIMIT ?', [Math.min(20000, Math.max(1, limit))]);
+    return (rows as any[]).map((r) => r.web);
+  }
+
+  async countToDetect(): Promise<number> {
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query(`SELECT COUNT(*) n FROM aff_library al WHERE ${QUEUE_COND}`);
+    return Number((r as any[])[0].n) || 0;
+  }
+
+  async countDnsPending(): Promise<number> {
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query('SELECT COUNT(*) n FROM aff_library WHERE dns_ok IS NULL');
+    return Number((r as any[])[0].n) || 0;
+  }
+
+  // Ghi kết quả DNS theo lô (1 query/lô thay vì 1 query/domain — 5.6k dòng thành vài query).
+  async setDnsBulk(alive: string[], dead: { web: string; error: string }[]): Promise<void> {
+    const pool = await this.sh.getPool();
+    const now = Date.now();
+    if (alive.length) {
+      await pool.query('UPDATE aff_library SET dns_ok = 1, aff_last_error = NULL WHERE web IN (?)', [alive]);
+    }
+    for (const d of dead) {
+      await pool.query('UPDATE aff_library SET dns_ok = 0, aff_last_error = ?, aff_last_try_at = ? WHERE web = ?', [
+        String(d.error).slice(0, 255), now, d.web,
+      ]);
+    }
+  }
+
+  async deleteRows(webs: string[]): Promise<number> {
+    if (!webs.length) return 0;
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query('DELETE FROM aff_library WHERE web IN (?)', [webs]);
+    return Number((r as any).affectedRows) || 0;
   }
 
   // Ghi kết quả phát hiện. Không đè join_url/aff_platform người dùng/đồng bộ đã có.
