@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ShMysql } from '../shophunter/sh.mysql';
 import { AffLibMysql } from './afflib.mysql';
 import { checkShopAffiliate } from '../shophunter/affiliate.client';
@@ -32,23 +32,40 @@ export class AffLibDetect {
   }
 
   // Quét 1 domain theo yêu cầu người dùng (nút ⟳ trên từng dòng). Đồng bộ, KHÔNG dùng state của job nền.
-  async detectOne(web: string): Promise<{ web: string; aff_status: string; aff_platform: string | null; join_url: string | null }> {
+  async detectOne(web: string, getOverride?: (url: string, headers?: any) => Promise<{ status: number; body: string }>): Promise<{ web: string; aff_status: string; aff_platform: string | null; join_url: string | null }> {
     await this.db.ensureTables();
     await this.db.resetTry(web); // bấm tay = cho domain cơ hội sạch, bỏ lịch sử lỗi/dns cũ
     const proxies = (await this.sh.listProxiesFull(true).catch(() => []))
       .filter((r: any) => (r.type || 'http') === 'http')
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
-    const get = proxies.length ? makeProxiedGet(() => proxies) : shopifyHttp.get;
-    try {
-      const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
-      if (r.status === 'ratelimited') throw new Error('Bị giới hạn (ratelimited) — thử lại sau ít phút');
-      await this.db.setDetect(web, r.status, r.via, r.link);
-      return { web, aff_status: r.status, aff_platform: r.via ?? null, join_url: r.link ?? null };
-    } catch (e: any) {
-      const msg = String(e?.code || e?.message || 'lỗi không rõ');
-      await this.db.markTryFailed(web, msg);
-      throw new Error(`Quét ${web} thất bại: ${msg}`);
+    const get = getOverride || (proxies.length ? makeProxiedGet(() => proxies) : shopifyHttp.get);
+    // Bị bóp thì thử lại 1 lần: đây là 1 domain do người dùng bấm, và thực tế lần 2 thường qua
+    // (keppifitness.com bị 'ratelimited' 2 lần liền rồi gọi lại là ra 'app · GoAffPro').
+    let last = 'lỗi không rõ';
+    let limited = false; // true = chưa kết luận được (đáng thử lại) → 503; false = lỗi thật → 502
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
+        if (r.status !== 'ratelimited') {
+          await this.db.setDetect(web, r.status, r.via, r.link);
+          return { web, aff_status: r.status, aff_platform: r.via ?? null, join_url: r.link ?? null };
+        }
+        last = r.error || 'ratelimited'; // mã lỗi gốc (ETIMEDOUT / HTTP 429…) — trước đây bị nuốt trong client
+        if (attempt < 2) await new Promise((r2) => setTimeout(r2, 1500));
+        limited = true;
+      } catch (e: any) {
+        // Chỉ tới đây khi lỗi NGOÀI checkShopAffiliate (vd lỗi DB) — client tự catch lỗi mạng rồi trả 'ratelimited'.
+        last = String(e?.code || e?.message || 'lỗi không rõ');
+        limited = false;
+        break;
+      }
     }
+    await this.db.markTryFailed(web, last);
+    // PHẢI là HttpException: `throw new Error(...)` bị Nest trả 500 kèm body "Internal server error",
+    // FE mất hẳn thông báo và người dùng chỉ thấy "Lỗi 500" — không biết là bị bóp hay domain chết.
+    throw limited
+      ? new ServiceUnavailableException(`Quét ${web} không kết luận được sau 2 lần thử (${last}). Đợi ít phút rồi bấm lại, hoặc thêm proxy trong Cài đặt.`)
+      : new BadGatewayException(`Quét ${web} thất bại: ${last}`);
   }
 
   async start(limit = 500): Promise<DetectState> {
@@ -98,7 +115,7 @@ export class AffLibDetect {
           // Chưa kết luận (bị bóp / timeout / TLS lạ) → KHÔNG ghi aff_status (không đánh 'blocked' oan),
           // nhưng VẪN tính là một lần thử: nếu không tính, domain sống-mà-hỏng nằm hàng đợi vĩnh viễn —
           // đúng bệnh "quét mãi không hết". Đủ 3 lần thì sang "cần dọn" để người dùng quyết (có nút thử lại).
-          await this.db.markTryFailed(web, 'ratelimited').catch(() => {});
+          await this.db.markTryFailed(web, r.error || 'ratelimited').catch(() => {});
         } else {
           await this.db.setDetect(web, r.status, r.via, r.link);
           if (r.status === 'yes' || r.status === 'app') this.state.found++;

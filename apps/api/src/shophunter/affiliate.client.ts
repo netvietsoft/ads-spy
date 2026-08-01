@@ -7,7 +7,9 @@ export interface AffiliateHit { link: string; via: string }
 // 'yes' = có link cổng công khai bấm vào được; 'app' = phát hiện app affiliate đã cài nhưng KHÔNG lần ra link công khai
 // (merchant không đặt link trên trang chủ); 'no' = không dấu hiệu; 'blocked' = shop chặn/chết (401/403/404/password);
 // 'ratelimited' = Shopify bóp IP (429) → KHÔNG kết luận được, phải THỬ LẠI sau (đừng lưu 'blocked' oan).
-export interface AffiliateResult { status: 'yes' | 'app' | 'no' | 'blocked' | 'ratelimited'; link: string | null; via: string | null }
+// `error` = mã lỗi gốc khi không kết luận được (ETIMEDOUT, ECONNRESET, HTTP 429…). Trước đây lỗi bị nuốt
+// trong catch nên bên gọi chỉ thấy 'ratelimited' và không biết vì sao — Aff Library cần nó cho cột "Lý do".
+export interface AffiliateResult { status: 'yes' | 'app' | 'no' | 'blocked' | 'ratelimited'; link: string | null; via: string | null; error?: string }
 
 // App affiliate đã cài (marker trong HTML/script trang chủ) — tín hiệu CÓ chương trình, dù không tìm ra link.
 const APP_INSTALLED: { sign: RegExp; via: string }[] = [
@@ -107,11 +109,11 @@ export async function checkShopAffiliate(
     home = await get(`https://${domain}/`, HEADERS);
   } catch (e: any) {
     // Chỉ coi là 'blocked' (chết thật) khi host không tồn tại/không có server; còn timeout/reset (throttle) → 'ratelimited' (thử lại).
-    const code = e?.code || '';
-    if (code === 'ENOTFOUND' || code === 'ECONNREFUSED' || code === 'ERR_TLS_CERT_ALTNAME_INVALID') return { status: 'blocked', link: null, via: null };
-    return { status: 'ratelimited', link: null, via: null };
+    const code = String(e?.code || e?.message || 'fetch-error');
+    if (code === 'ENOTFOUND' || code === 'ECONNREFUSED' || code === 'ERR_TLS_CERT_ALTNAME_INVALID') return { status: 'blocked', link: null, via: null, error: code };
+    return { status: 'ratelimited', link: null, via: null, error: code };
   }
-  if (home.status === 429) return { status: 'ratelimited', link: null, via: null }; // Shopify bóp IP → thử lại sau, đừng kết luận
+  if (home.status === 429) return { status: 'ratelimited', link: null, via: null, error: 'HTTP 429' }; // Shopify bóp IP → thử lại sau, đừng kết luận
   if ([401, 403, 404].includes(home.status)) return { status: 'blocked', link: null, via: null };
 
   const hits = findAffiliateHits(home.body, domain);
