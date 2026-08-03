@@ -110,6 +110,13 @@ pm2 status ads-spy-api ads-spy-web
 > Nếu chỉ đổi **backend** (không đụng `schema.prisma`) có thể bỏ qua bước
 > `prisma migrate deploy`/`prisma generate` — chỉ cần khi deploy lần đầu hoặc có migration mới
 > (xem mục 6).
+>
+> ⚠️ **Ngoại lệ quan trọng: `npm ci` / `npm install`.** Prisma client được generate vào
+> `node_modules/.prisma/client`, nên bất kỳ lệnh cài lại dependency (đặc biệt `npm ci` — xoá sạch
+> `node_modules`) đều **xoá mất client** → API crash lúc boot với `@prisma/client did not initialize
+> yet`, PM2 restart loop, mọi `/api/*` ra 502 (xem mục 9). Từ nay `apps/api` có
+> `"postinstall": "prisma generate"` nên mọi `npm ci`/`npm install` tự generate lại; chỉ khi cài bằng
+> `--ignore-scripts` mới phải chạy tay `npm --workspace @gas/api exec prisma generate`.
 
 ## 4. Quy tắc bắt buộc khi deploy (không được bỏ qua)
 
@@ -123,7 +130,11 @@ pm2 status ads-spy-api ads-spy-web
    refresh trình duyệt (Ctrl+Shift+R).** Không purge → Cloudflare giữ HTML/chunk cũ → vẫn lỗi
    `ChunkLoadError` dù server đã đúng.
 4. `NEXT_PUBLIC_API_ORIGIN` được Next.js **nhúng lúc build** (biến build-time, không phải runtime) —
-   phải đặt đúng giá trị **trước khi** `npm run build` cho web, không sửa được sau khi đã build.
+   phải đặt đúng giá trị **trước khi** `npm run build` cho web, không sửa được sau khi đã build. Giá
+   trị prod nay nằm trong `apps/web/.env.production` (đã commit — chỉ là URL công khai) nên mọi
+   `next build` trên server tự đúng dù quên `export`. Kiểm nhanh sau build:
+   `grep -o 'http[^"]*api/:path\*' apps/web/.next/routes-manifest.json` → phải ra
+   `https://api.dpboss.pet/api/:path*`, nếu ra `localhost:3100` là build đã lỗi (mọi `/api/*` sẽ 500).
 
 ## 5. nginx + routing
 
@@ -199,6 +210,14 @@ free -h                                             # RAM — crawl + MySQL nặ
   6).
 - **502 khi cào lớn** → kiểm `free -h` (RAM) + `pm2 logs ads-spy-api`; việc nặng (harvest/enrich/
   catalog ShopHunter) chạy nền, tránh gọi API đồng bộ nặng trực tiếp.
+- **MỌI `/api/*` ra 502 (kể cả `/api/auth/me`), trang thường vẫn mở được** → `ads-spy-api` chết,
+  không phải lỗi FE. Chuỗi thật: nginx `dpboss.pet` → Next :3062 → rewrite `/api/*` →
+  `https://api.dpboss.pet` → nginx → :8075 **đã chết** → nginx trả 502, Next chuyển nguyên 502 về
+  browser. Xem `pm2 logs ads-spy-api --lines 30 --nostream`:
+  - `@prisma/client did not initialize yet` → vừa `npm ci`/`npm install` mà thiếu generate (xem ghi
+    chú ở mục 3.2). Fix: `npm --workspace @gas/api exec prisma generate && pm2 restart ads-spy-api`.
+  - Phân biệt với FE build sai origin: build sai (`localhost:3100`) cho **500**, không phải 502 —
+    thấy 502 tức là `routes-manifest.json` vẫn đúng, lỗi nằm ở API.
 
 ## 10. Kế hoạch (chưa triển khai) — SaaS
 

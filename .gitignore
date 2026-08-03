@@ -1,11 +1,16 @@
 node_modules/
 dist/
 .next/
+.next-dev/
 .pw-profile/
 *.db
 *.db-journal
 *.log
-.env
+# Secret: chặn MỌI .env* ở mọi cấp (repo PUBLIC — `.env` một mình để hở .env.local chứa API key).
+# Trừ 2 file KHÔNG phải secret dưới đây (chỉ chứa URL công khai / placeholder).
+.env*
+!.env.example
+!apps/web/.env.production
 .superpowers/
 *.tsbuildinfo
 Screen shoot/
@@ -16,3 +21,6 @@ logs/
 
 # Dump DB tải về (884MB+) — repo PUBLIC, tuyệt đối không commit. Xem docs/11-restart-stack.md.
 downloads/
+
+# graphify knowledge graph (artifact, build lại bằng `graphify update .`)
+graphify-out/

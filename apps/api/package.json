@@ -9,6 +9,7 @@
     "test": "jest",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate",
     "fb:login": "node scripts/fb-login.mjs",
     "seed:admin": "node scripts/create-admin.mjs",
     "seed:catalog": "node scripts/seed-catalog.mjs"
