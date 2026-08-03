@@ -25,6 +25,13 @@ export class AffnetController {
   @Get('aff/nets')
   nets() { return this.svc.netSummaries(); }
 
+  // Quét lại 1 net: host về pending + reset poll discovery. Job nền (fetchStep/discoverStep) sẽ xử tiếp.
+  @Post('aff/nets/:net/rescan')
+  async rescanNet(@Param('net') net: string) {
+    const r = await this.svc.rescanNet(net);
+    return { ok: true, ...r };
+  }
+
   @Delete('aff/nets/:net')
   async delNet(@Param('net') net: string) { await this.svc.deleteNet(net); return { ok: true }; }
 

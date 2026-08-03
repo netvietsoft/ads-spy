@@ -135,6 +135,10 @@ export class AffnetService {
     return this.db.netSummaries();
   }
 
+  rescanNet(net: string): Promise<{ hosts: number }> {
+    return this.db.rescanNet(this.normalizeNet(net));
+  }
+
   async deleteNet(net: string): Promise<void> {
     await this.db.deleteNet(net);
   }

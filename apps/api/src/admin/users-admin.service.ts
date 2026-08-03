@@ -60,6 +60,18 @@ export class UsersAdminService {
     return safe(u);
   }
 
+  // Admin đặt lại mật khẩu cho user. Đặt xong REVOKE hết session của user đó — nếu không, phiên cũ vẫn
+  // dùng được thì việc đổi mật khẩu chẳng chặn được ai.
+  async setPassword(id: number, password: string) {
+    const p = String(password || '');
+    if (p.length < 8) throw new BadRequestException('Mật khẩu tối thiểu 8 ký tự');
+    const u = await this.prisma.user.findUnique({ where: { id } });
+    if (!u) throw new BadRequestException('Không tìm thấy user');
+    await this.users.setPassword(id, p);
+    await this.sessions.revokeAllForUser(id);
+    return { ok: true };
+  }
+
   async setStatus(id: number, status: string, actorId: number) {
     if (!STATUSES.includes(status)) throw new BadRequestException('status không hợp lệ');
     if ((status === 'banned' || status === 'disabled') && id === actorId) throw new BadRequestException('Không thể tự khóa chính mình');

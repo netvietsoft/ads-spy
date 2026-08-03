@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { ShProxy, shProxies, shAddProxies, shTestAllProxies, shTestProxy, shUpdateProxy, shDeleteProxy } from '../api';
+import { useIsMobile } from '../useIsMobile';
 
 export function ProxyPanel() {
+  const isMobile = useIsMobile(); // ≤760px → mỗi proxy 1 thẻ thay bảng 6 cột
   const [list, setList] = useState<ShProxy[]>([]);
   const [text, setText] = useState('');
   const [msg, setMsg] = useState('');
@@ -59,6 +61,32 @@ export function ProxyPanel() {
         <button type="button" className="srcbtn" disabled={busy} onClick={testAll}>Test tất cả</button>
         {msg && <span style={{ fontSize: 13 }}>{msg}</span>}
       </div>
+      {isMobile ? (
+        /* Mobile: mỗi proxy 1 thẻ — bảng 6 cột với host:port:user:pass rất dễ vỡ trên điện thoại. */
+        <div className="localcards">
+          {list.map((p, i) => (
+            <div className="fbcard localcard" key={p.id}>
+              <div className="fbpage" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 13, overflowWrap: 'anywhere' }}>{i + 1}. {p.host}:{p.port}</span>
+                <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: 12 }}>
+                  <input type="checkbox" checked={p.enabled} onChange={() => toggle(p)} title="Bật/Tắt dùng proxy này" /> Bật
+                </label>
+              </div>
+              <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <span>{p.type}</span>
+                {p.username ? <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{p.username}</span> : null}
+                <span>{statusCell(p)}</span>
+              </div>
+              <div className="fbfoot" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button type="button" className="srcbtn" onClick={() => testOne(p.id)}>Test</button>
+                <button type="button" className="srcbtn" onClick={() => edit(p)}>Sửa</button>
+                <button type="button" className="srcbtn" onClick={() => del(p.id)}>Xóa</button>
+              </div>
+            </div>
+          ))}
+          {!list.length && <p style={{ textAlign: 'center', opacity: 0.6, padding: 16 }}>Chưa có proxy — dán vào ô trên rồi bấm "Thêm proxy".</p>}
+        </div>
+      ) : (
       <table className="localtbl">
         <thead><tr><th>#</th><th>Server / IP</th><th>Loại</th><th>Trạng thái</th><th>Bật</th><th>Sửa / Xóa</th></tr></thead>
         <tbody>
@@ -79,6 +107,7 @@ export function ProxyPanel() {
           {!list.length && <tr><td colSpan={6} style={{ textAlign: 'center', opacity: 0.6, padding: 16 }}>Chưa có proxy — dán vào ô trên rồi bấm "Thêm proxy".</td></tr>}
         </tbody>
       </table>
+      )}
     </div>
   );
 }

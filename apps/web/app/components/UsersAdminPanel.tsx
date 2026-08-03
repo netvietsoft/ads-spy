@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { adminUsers, adminUpdateUser, adminUserAction, adminModules, adminGrantPlan, adminUserSubs, adminRevokeSub, adminCreateUser } from '../api';
+import { adminUsers, adminUpdateUser, adminUserAction, adminModules, adminGrantPlan, adminUserSubs, adminRevokeSub, adminCreateUser, adminSetUserPassword } from '../api';
+import { useIsMobile } from '../useIsMobile';
 
 const usd = (c?: number | null) => (c == null ? '—' : `$${(c / 100).toFixed(2)}`);
 const fmt = (d?: string) => (d ? new Date(d).toLocaleDateString('vi-VN') : '');
 
 export function UsersAdminPanel() {
+  const isMobile = useIsMobile(); // ≤760px → mỗi user 1 thẻ thay bảng 7 cột
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [data, setData] = useState<any>(null);
@@ -26,6 +28,15 @@ export function UsersAdminPanel() {
 
   const act = async (id: number, action: 'ban' | 'disable' | 'activate') => {
     try { await adminUserAction(id, action); load(); } catch (e: any) { alert(e.message); }
+  };
+
+  // Admin đặt lại mật khẩu: BE revoke hết session của user đó nên phiên cũ hết dùng được.
+  const changePassword = async (id: number, email: string) => {
+    const p = prompt(`Mật khẩu mới cho ${email} (tối thiểu 8 ký tự):`);
+    if (p == null) return;
+    if (p.trim().length < 8) { alert('Mật khẩu tối thiểu 8 ký tự.'); return; }
+    try { await adminSetUserPassword(id, p.trim()); alert(`Đã đổi mật khẩu cho ${email}. Mọi phiên đăng nhập cũ của user này đã bị thu hồi.`); }
+    catch (e: any) { alert(e.message); }
   };
   const saveEdit = async () => {
     try { await adminUpdateUser(edit.id, { name: edit.name, phone: edit.phone, role: edit.role, status: edit.status }); setEdit(null); load(); }
@@ -55,6 +66,33 @@ export function UsersAdminPanel() {
       {err && <div className="error">{err}</div>}
       {data && (
         <>
+          {isMobile ? (
+            /* Mobile: mỗi user 1 thẻ (bảng 7 cột không đọc được trên điện thoại), cùng kiểu thẻ Local DB. */
+            <div className="localcards" style={{ marginTop: 12 }}>
+              {data.items.map((u: any) => (
+                <div className="fbcard localcard" key={u.id}>
+                  <div className="fbpage" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>{u.email}</span>
+                    <span className="badge-local">{u.role}</span>
+                  </div>
+                  <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {u.name ? <span><b>Tên</b> {u.name}</span> : null}
+                    {u.phone ? <span><b>ĐT</b> {u.phone}</span> : null}
+                    <span><b>Trạng thái</b> {u.status}</span>
+                    <span><b>Ngày ĐK</b> {fmt(u.createdAt)}</span>
+                  </div>
+                  <div className="fbfoot" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button className="ghost" onClick={() => setEdit({ ...u })}>Sửa</button>
+                    <button className="ghost" onClick={() => changePassword(u.id, u.email)}>Đổi mật khẩu</button>
+                    {u.status !== 'banned' && <button className="ghost" onClick={() => act(u.id, 'ban')}>Ban</button>}
+                    {u.status !== 'disabled' && <button className="ghost" onClick={() => act(u.id, 'disable')}>Xóa</button>}
+                    {u.status !== 'active' && <button className="ghost" onClick={() => act(u.id, 'activate')}>Kích hoạt</button>}
+                  </div>
+                </div>
+              ))}
+              {!data.items.length && <p className="hint">Không có user nào.</p>}
+            </div>
+          ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="localtbl" style={{ width: '100%', marginTop: 12 }}>
               <thead><tr><th>Email</th><th>Tên</th><th>ĐT</th><th>Role</th><th>Trạng thái</th>{/* TODO(saas): tạm ẩn cột Gói */}<th>Ngày ĐK</th><th></th></tr></thead>
@@ -66,6 +104,7 @@ export function UsersAdminPanel() {
                     <td>{fmt(u.createdAt)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <button className="ghost" onClick={() => setEdit({ ...u })}>Sửa</button>
+                      <button className="ghost" onClick={() => changePassword(u.id, u.email)}>Đổi mật khẩu</button>
                       {u.status !== 'banned' && <button className="ghost" onClick={() => act(u.id, 'ban')}>Ban</button>}
                       {u.status !== 'disabled' && <button className="ghost" onClick={() => act(u.id, 'disable')}>Xóa</button>}
                       {u.status !== 'active' && <button className="ghost" onClick={() => act(u.id, 'activate')}>Kích hoạt</button>}
@@ -78,6 +117,8 @@ export function UsersAdminPanel() {
               </tbody>
             </table>
           </div>
+          )}
+          {/* Hàng phân trang dùng chung cho cả thẻ (mobile) và bảng (desktop). */}
           <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
             <button className="ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>←</button>
             <span>Trang {data.page} · {data.total} user</span>

@@ -337,7 +337,7 @@ export function AffLibraryPanel() {
         position: 'sticky', top: 'var(--topbar-h, 135px)', zIndex: 20,
         background: 'var(--bg)', margin: '4px 0 0', padding: '8px 0 10px', borderBottom: '1px solid var(--border)' }}>
         {!detect?.running ? (
-          <button className="srcbtn" onClick={startDetect} disabled={starting}>{starting ? 'Đang khởi động…' : '🔎 Quét phát hiện affiliate (job nền)'}</button>
+          <button className="srcbtn" onClick={startDetect} disabled={starting} title="Job nền: quét phát hiện affiliate cho các domain chưa quét">{starting ? 'Đang khởi động…' : '🔎 scan Affiliate'}</button>
         ) : (
           <>
             <span>Đang phát hiện: <b>{detect.done}/{detect.total}</b> · thấy aff: <b style={{ color: '#16a34a' }}>{detect.found}</b>{detect.current ? ` · ${detect.current}` : ''}{detect.noProxy ? ' · ⚠ không proxy (dễ bị chặn)' : ''}</span>
@@ -345,11 +345,11 @@ export function AffLibraryPanel() {
           </>
         )}
         <button className="srcbtn" onClick={runDnsCheck} disabled={busy || loading} title="Phân giải DNS toàn kho (~ms/domain, không cần proxy) — domain không tồn tại sẽ vào danh sách cần dọn">
-          {busy && dns ? '⏳ Đang lọc DNS…' : '🧹 Lọc domain chết (DNS)'}
+          {busy && dns ? '⏳ Đang lọc DNS…' : '🧹 Scan DBS'}
         </button>
         {dns && <span style={{ opacity: 0.75 }}>{dns}</span>}
         <button className="srcbtn" onClick={runTrafficFill} disabled={busy || loading} title="Lấy Traffic/Bounce/Time từ AITDK cho các dòng còn trống (50 domain mỗi lần gọi)">
-          {busy && traf ? '⏳ Đang lấy traffic…' : '📊 Điền traffic thiếu'}
+          {busy && traf ? '⏳ Đang lấy traffic…' : '📊 Scan Traffic'}
         </button>
         {traf && <span style={{ opacity: 0.75 }}>{traf}</span>}
         {scanMsg && <span style={{ color: scanning ? '#6b7280' : '#16a34a', fontWeight: 600 }}>{scanMsg}</span>}

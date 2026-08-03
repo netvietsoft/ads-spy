@@ -17,6 +17,7 @@ import {
   fbReport,
   fbSearch,
 } from '../api';
+import { useIsMobile } from '../useIsMobile';
 import { FbModal } from './FbModal';
 import { Favorites } from './Favorites';
 import { Paginator, paginate } from './Paginator';
@@ -74,6 +75,7 @@ function FbCard({ ad, onOpen }: { ad: FbAd; onOpen: () => void }) {
 }
 
 export function FacebookPanel() {
+  const isMobile = useIsMobile(); // ≤760px → lịch sử tìm hiện dạng thẻ
   const [tab, setTab] = useState<'search' | 'report' | 'posts'>('search');
   const [q, setQ] = useState('');
   const [country, setCountry] = useState('ALL'); // mặc định: tất cả quốc gia
@@ -599,7 +601,22 @@ export function FacebookPanel() {
           <h3 style={{ color: 'var(--muted)', fontSize: 13, textTransform: 'uppercase' }}>
             Lịch sử tìm Facebook
           </h3>
-          {history.map((h) => (
+          {/* Mobile: mỗi lượt tìm 1 thẻ — dòng .item nhồi query + số ads + ngày trên một hàng, trên điện thoại bị bóp. */}
+          {isMobile ? (
+            <div className="localcards">
+              {history.map((h) => (
+                <div key={h.id} className="fbcard localcard" onClick={() => openSaved(h.id, h.query)}
+                     style={{ cursor: 'pointer' }} title="Xem lại dữ liệu đã lưu (không chạy lại Chromium)">
+                  <div className="fbpage" style={{ fontWeight: 600, fontSize: 14, overflowWrap: 'anywhere' }}>{h.query}</div>
+                  <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <span><b>Nước</b> {h.country}</span>
+                    <span><b>Ads</b> {h.adCount}</span>
+                  </div>
+                  <div className="fbfoot" style={{ fontSize: 12, opacity: 0.7 }}>{new Date(h.createdAt).toLocaleString('vi-VN')}</div>
+                </div>
+              ))}
+            </div>
+          ) : history.map((h) => (
             <div
               key={h.id}
               className="item"

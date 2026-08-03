@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affPrograms, affSaveTraffic, AffNetRow, AffProgramRow, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { affNets, affAddNets, affDeleteNet, affRescanNet, affTrafficRefresh, affPrograms, affSaveTraffic, AffNetRow, AffProgramRow, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
 
 // 2 job nền lo việc quét net (dùng chung hàng đợi cho MỌI net, không theo từng net).
@@ -60,12 +60,32 @@ function useIsMobile(bp = 760) {
   return m;
 }
 
-function NetRowCard({ n, active, onSelect, onDelete }: { n: AffNetRow; active: boolean; onSelect: () => void; onDelete: () => void }) {
+// Sort số liệu cho danh sách net (client-side: netSummaries trả hết 1 lần).
+type NetSortKey = 'net' | 'discovered' | 'checked' | 'active' | 'pending' | 'polls';
+const NET_SORTS: { key: NetSortKey; label: string }[] = [
+  { key: 'active', label: 'Sống nhiều nhất' }, { key: 'discovered', label: 'Phát hiện nhiều nhất' },
+  { key: 'checked', label: 'Đã quét nhiều nhất' }, { key: 'pending', label: 'Còn chờ nhiều nhất' },
+  { key: 'polls', label: 'Poll nhiều nhất' }, { key: 'net', label: 'Tên net (A→Z)' },
+];
+
+// Sort kết quả dự án — khớp whitelist PROGRAM_SORTS ở BE (đã thêm cột số liệu visits/bounce/time).
+const PROGRAM_SORTS: { key: string; label: string }[] = [
+  { key: 'fetched', label: 'Mới quét nhất' }, { key: 'visits', label: 'Traffic/tháng ↓' },
+  { key: 'pct', label: '%commit ↓' }, { key: 'bounce', label: 'Bounce ↓' }, { key: 'time', label: 'Time-on-site ↓' },
+  { key: 'cookie', label: 'Cookie ↓' }, { key: 'payout', label: 'Payout ↓' },
+  { key: 'name', label: 'Tên dự án (A→Z)' }, { key: 'web', label: 'Web (A→Z)' },
+];
+
+function NetRowCard({ n, active, onSelect, onDelete, onRescan, rescanning }: { n: AffNetRow; active: boolean; onSelect: () => void; onDelete: () => void; onRescan: () => void; rescanning: boolean }) {
   return (
     <div className="fbcard localcard" onClick={onSelect} style={{ cursor: 'pointer', borderColor: active ? 'var(--accent)' : undefined }}>
-      <div className="fbpage" style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-        <span>{n.net} <span className="badge-local">{n.platform}</span></span>
-        <button className="ghost danger" onClick={(e) => { e.stopPropagation(); onDelete(); }}>Xoá</button>
+      <div className="fbpage" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+        {/* Mobile: bỏ badge 'generic' — nhãn mặc định cho net không rõ nền tảng, chỉ chiếm chỗ. */}
+        <span>{n.net}{n.platform && n.platform !== 'generic' ? <> <span className="badge-local">{n.platform}</span></> : null}</span>
+        <span style={{ display: 'inline-flex', gap: 6 }}>
+          <button className="ghost" title="Quét lại net này" onClick={(e) => { e.stopPropagation(); onRescan(); }} disabled={rescanning}>{rescanning ? '⏳' : '⟳'}</button>
+          <button className="ghost danger" onClick={(e) => { e.stopPropagation(); onDelete(); }}>Xoá</button>
+        </span>
       </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <span>Phát hiện <b>{n.discovered.toLocaleString()}</b></span>
@@ -81,7 +101,7 @@ function NetRowCard({ n, active, onSelect, onDelete }: { n: AffNetRow; active: b
   );
 }
 
-function ProgramRowCard({ p, onEdit }: { p: AffProgramRow; onEdit: (web: string) => void }) {
+function ProgramRowCard({ p, onEdit, onRefresh, refreshing }: { p: AffProgramRow; onEdit: (web: string) => void; onRefresh: (web: string) => void; refreshing: boolean }) {
   const site = siteUrl(p.web);
   return (
     <div className="fbcard localcard">
@@ -95,7 +115,13 @@ function ProgramRowCard({ p, onEdit }: { p: AffProgramRow; onEdit: (web: string)
         <span>Traffic/th <b>{fmtVisits(p.traffic_visits)}</b></span>
         <span>Bounce <b>{fmtBounce(p.traffic_bounce)}</b></span>
         <span>Time <b>{fmtDur(p.traffic_duration_sec)}</b></span>
-        {p.web && <button className="ghost" onClick={() => onEdit(p.web!)}>✎ Traffic</button>}
+        {/* Mobile: chỉ icon, bỏ chữ "Traffic", căn lề phải. ⟳ = lấy lại traffic từ AITDK. */}
+        {p.web && (
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+            <button className="ghost" title="Lấy lại traffic (AITDK)" onClick={() => onRefresh(p.web!)} disabled={refreshing}>{refreshing ? '⏳' : '⟳'}</button>
+            <button className="ghost" title="Nhập/sửa traffic (dán từ extension)" onClick={() => onEdit(p.web!)}>✎</button>
+          </span>
+        )}
       </div>
       {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8 }}>{p.notes}</div>}
       <div className="fbfoot" style={{ gap: 10, flexWrap: 'wrap' }}>
@@ -112,6 +138,9 @@ export function AffnetPanel() {
   const [nets, setNets] = useState<AffNetRow[]>([]);
   const [netsErr, setNetsErr] = useState<string | null>(null);
   const [activeNet, setActiveNet] = useState<string | null>(null);
+  const [netSort, setNetSort] = useState<NetSortKey>('active');
+  const [rescanning, setRescanning] = useState<string | null>(null); // net đang quét lại
+  const [refreshing, setRefreshing] = useState<string | null>(null); // web đang lấy lại traffic
 
   const [importText, setImportText] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -207,6 +236,26 @@ export function AffnetPanel() {
     refreshNets();
   };
 
+  // Quét lại net: host về "chờ quét" + reset poll. Dữ liệu cũ KHÔNG mất, job nền quét đè dần.
+  const doRescan = async (net: string) => {
+    if (!confirm(`Quét lại net "${net}"? Toàn bộ host sẽ được quét lại từ đầu (dữ liệu cũ vẫn giữ, job nền cập nhật dần).`)) return;
+    setRescanning(net); setNetsErr(null);
+    try { const r = await affRescanNet(net); setImportMsg(`Đã đưa ${r.hosts.toLocaleString()} host của ${net} vào lại hàng đợi quét.`); refreshNets(); }
+    catch (e) { setNetsErr((e as Error).message); }
+    setRescanning(null);
+  };
+
+  // Lấy lại traffic (AITDK) cho 1 domain — dùng chung endpoint traffic/search, tự lưu vào aff_domain_traffic.
+  const doRefreshTraffic = async (web: string) => {
+    setRefreshing(web); setErr(null);
+    try { await affTrafficRefresh([web]); setReloadTick((t) => t + 1); } // tải lại để số traffic mới hiện lên
+    catch (e) { setErr(`Lấy traffic ${web} thất bại: ${(e as Error).message}`); }
+    setRefreshing(null);
+  };
+
+  // Sort số liệu cho danh sách net (client-side).
+  const sortedNets = [...nets].sort((a, b) => (netSort === 'net' ? a.net.localeCompare(b.net) : (b[netSort] as number) - (a[netSort] as number)));
+
   // Mở/đóng ô nhập traffic.
   const openEdit = (web: string) => { setEditWeb(web); setEditText(''); setEditMsg(null); };
   const closeEdit = () => { if (!editBusy) { setEditWeb(null); setEditText(''); setEditMsg(null); } };
@@ -268,15 +317,14 @@ export function AffnetPanel() {
         Dán mỗi dòng 1 domain mạng affiliate (vd <code>editgpt.getrewardful.com</code> → nhập <code>getrewardful.com</code>) → hệ thống tự dò subdomain và quét nền. Quét 1 net có thể mất vài giờ, số liệu dưới đây luôn là <b>tạm thời</b> (đang quét dần), tự làm mới mỗi 10 giây.
       </p>
 
-      <div className="proxybox">
-        <textarea rows={3} style={{ width: '100%' }} placeholder="Mỗi dòng 1 domain net, vd:&#10;getrewardful.com&#10;partnerstack.com"
+      {/* Ô nhập + nút Thêm net CÙNG 1 HÀNG (mobile thì xuống dòng cho đủ chỗ gõ). */}
+      <div className="proxybox" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <textarea rows={3} style={{ flex: isMobile ? '1 1 100%' : '1 1 420px', minWidth: 0 }} placeholder="Mỗi dòng 1 domain net, vd:&#10;getrewardful.com&#10;partnerstack.com"
           value={importText} onChange={(e) => setImportText(e.target.value)} disabled={importBusy} />
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6 }}>
-          <button className="srcbtn active" onClick={doImport} disabled={importBusy || !importText.trim()}>
-            {importBusy ? <span className="spinner" /> : 'Thêm net'}
-          </button>
-          {importMsg && <span className="hint" style={{ margin: 0 }}>{importMsg}</span>}
-        </div>
+        <button className="srcbtn active" onClick={doImport} disabled={importBusy || !importText.trim()}>
+          {importBusy ? <span className="spinner" /> : 'Thêm net'}
+        </button>
+        {importMsg && <span className="hint" style={{ margin: 0, alignSelf: 'center' }}>{importMsg}</span>}
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0 0', flexWrap: 'wrap' }}>
@@ -292,10 +340,19 @@ export function AffnetPanel() {
 
       {netsErr && <div className="err">{netsErr}</div>}
 
+      {/* Menu sort số liệu cho danh sách net — nets tải hết 1 lần nên sort ngay ở client. */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '10px 0 0', flexWrap: 'wrap', fontSize: 13 }}>
+        <span className="hint" style={{ margin: 0 }}>Sắp xếp net:</span>
+        <select value={netSort} onChange={(e) => setNetSort(e.target.value as NetSortKey)}
+                style={{ padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', fontFamily: 'inherit', fontSize: 13 }}>
+          {NET_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
+      </div>
+
       {isMobile ? (
         <div className="localcards">
-          {nets.length === 0 ? <p className="hint">Chưa có net nào — thêm ở ô trên.</p>
-            : nets.map((n) => <NetRowCard key={n.net} n={n} active={activeNet === n.net} onSelect={() => selectNet(n.net)} onDelete={() => doDelete(n.net)} />)}
+          {sortedNets.length === 0 ? <p className="hint">Chưa có net nào — thêm ở ô trên.</p>
+            : sortedNets.map((n) => <NetRowCard key={n.net} n={n} active={activeNet === n.net} onSelect={() => selectNet(n.net)} onDelete={() => doDelete(n.net)} onRescan={() => doRescan(n.net)} rescanning={rescanning === n.net} />)}
         </div>
       ) : (
         <div className="localtbl-scroll" style={{ marginTop: 10 }}>
@@ -306,7 +363,7 @@ export function AffnetPanel() {
               <th></th>
             </tr></thead>
             <tbody>
-              {nets.map((n) => (
+              {sortedNets.map((n) => (
                 <tr key={n.net} onClick={() => selectNet(n.net)} style={{ cursor: 'pointer', background: activeNet === n.net ? 'var(--panel-2)' : undefined }}>
                   <td>{n.net}<div style={{ opacity: 0.6, fontSize: 11 }}>{n.platform}</div></td>
                   <td>{n.discovered.toLocaleString()}</td>
@@ -315,7 +372,10 @@ export function AffnetPanel() {
                   <td>{n.pending.toLocaleString()}</td>
                   <td>{n.polls}</td>
                   {BUCKET_COLS.map((b) => <td key={b.key}>{n.buckets[b.key] || 0}</td>)}
-                  <td><button className="ghost danger" onClick={(e) => { e.stopPropagation(); doDelete(n.net); }}>Xoá</button></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <button className="ghost" title="Quét lại net này" onClick={(e) => { e.stopPropagation(); doRescan(n.net); }} disabled={rescanning === n.net}>{rescanning === n.net ? '⏳' : '⟳'}</button>{' '}
+                    <button className="ghost danger" onClick={(e) => { e.stopPropagation(); doDelete(n.net); }}>Xoá</button>
+                  </td>
                 </tr>
               ))}
               {nets.length === 0 && (
@@ -348,6 +408,10 @@ export function AffnetPanel() {
                 onKeyDown={(e) => { if (e.key === 'Enter') applyQ(); }} />
               {(q || qInput) && <button className="srcbtn" onClick={() => { setQInput(''); setQ(''); setPage(1); }}>✕</button>}
             </span>
+            {/* Menu sort theo SỐ LIỆU — trên mobile không bấm được header bảng nên đây là cách duy nhất để sort. */}
+            <select className="fbselect" value={sort} onChange={(e) => { setSort(e.target.value); setDir(e.target.value === 'name' || e.target.value === 'web' ? 'asc' : 'desc'); setPage(1); }} title="Sắp xếp kết quả">
+              {PROGRAM_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
             {loading && <span className="spinner" />}
             <button className="srcbtn" style={{ marginLeft: 'auto' }} onClick={exportExcel} disabled={data.total === 0}
               title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel`}>⬇ Xuất Excel</button>
@@ -359,7 +423,7 @@ export function AffnetPanel() {
           {isMobile ? (
             <div className="localcards">
               {data.rows.length === 0 && !loading ? <p className="hint">Không có dự án khớp bộ lọc.</p>
-                : data.rows.map((p) => <ProgramRowCard key={p.slug} p={p} onEdit={openEdit} />)}
+                : data.rows.map((p) => <ProgramRowCard key={p.slug} p={p} onEdit={openEdit} onRefresh={doRefreshTraffic} refreshing={refreshing === p.web} />)}
             </div>
           ) : (
             <div className="localtbl-scroll">
@@ -394,7 +458,12 @@ export function AffnetPanel() {
                         </td>
                         <td>{fmtBounce(p.traffic_bounce)}</td>
                         <td>{fmtDur(p.traffic_duration_sec)}</td>
-                        <td>{p.web ? <button className="ghost" title="Nhập/sửa traffic (dán từ extension)" onClick={() => openEdit(p.web!)}>✎</button> : '—'}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{p.web ? (
+                          <>
+                            <button className="ghost" title="Lấy lại traffic (AITDK)" onClick={() => doRefreshTraffic(p.web!)} disabled={refreshing === p.web}>{refreshing === p.web ? '⏳' : '⟳'}</button>{' '}
+                            <button className="ghost" title="Nhập/sửa traffic (dán từ extension)" onClick={() => openEdit(p.web!)}>✎</button>
+                          </>
+                        ) : '—'}</td>
                       </tr>
                     );
                   })}

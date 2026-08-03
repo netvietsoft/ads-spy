@@ -749,6 +749,17 @@ export async function affLibDetectOne(web: string): Promise<{ web: string; aff_s
 export async function affLibTrafficFill(limit = 50): Promise<{ filled: number; remaining: number; error?: string }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/traffic-fill`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
 }
+// Quét lại 1 net: host về "chờ quét" + reset poll discovery, job nền xử tiếp.
+export async function affRescanNet(net: string): Promise<{ ok: boolean; hosts: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff/nets/${encodeURIComponent(net)}/rescan`, { method: 'POST' }));
+}
+// Lấy lại traffic (AITDK) cho 1 hoặc nhiều domain — dùng chung endpoint traffic/search, save=true tự upsert.
+export async function affTrafficRefresh(webs: string[]): Promise<{ traffic: Record<string, unknown> }> {
+  return jsonOrThrow(await fetch(`${API}/api/traffic/search`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ domains: webs, history: false, save: true }),
+  }));
+}
 export async function affLibBulkDelete(webs: string[]): Promise<{ ok: boolean; deleted: number }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/bulk-delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ webs }) }));
 }
@@ -825,6 +836,12 @@ export async function adminUpdateUser(id: number, body: any) {
 export async function adminUserAction(id: number, action: 'ban' | 'disable' | 'activate') {
   const r = await fetch(`/api/admin/users/${id}/${action}`, { method: 'POST' });
   if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi thao tác');
+  return r.json();
+}
+// Admin đặt lại mật khẩu cho user (self-signup đang tắt nên user không tự đổi được). BE revoke hết session.
+export async function adminSetUserPassword(id: number, password: string) {
+  const r = await fetch(`/api/admin/users/${id}/password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi đổi mật khẩu');
   return r.json();
 }
 export async function adminCreateUser(body: { email: string; password: string; name?: string; role?: string }) {

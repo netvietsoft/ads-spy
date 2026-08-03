@@ -11,6 +11,10 @@ import { AffNet, AffHostRow, AffProgram, NetSummary, DiscoveredHost, ProxyOpt } 
 // không qualify sẽ ném lỗi "Column 'web' in order clause is ambiguous".
 const PROGRAM_SORTS: Record<string, string> = {
   pct: 'p.commission_pct', name: 'p.program_name', web: 'p.web', fetched: 'p.fetched_at', slug: 'p.slug',
+  // Cột SỐ LIỆU (t. = aff_domain_traffic đã LEFT JOIN) — cho menu "sort theo số liệu" ở FE, nhất là trên
+  // mobile nơi không bấm được header bảng.
+  visits: 't.visits', bounce: 't.bounce_rate', time: 't.visit_duration_sec',
+  cookie: 'p.cookie_days', payout: 'p.payout_threshold',
 };
 
 // Cơ chế "no hoà" (docs/superpowers/specs/2026-07-28-affiliate-net-crawler-design.md §"Cơ chế no hoà").
@@ -189,6 +193,16 @@ export class AffnetMysql {
        FROM aff_net ORDER BY net`,
     );
     return (rows as any[]).map(rowToAffNet);
+  }
+
+  // Quét lại 1 net: trả toàn bộ host của net về "chờ quét" (checked_at NULL) để fetchStep fetch lại, và
+  // reset discover_polls để discoverStep đi tìm subdomain mới. KHÔNG xoá aff_program đang có — fetch lại sẽ
+  // upsert đè, nên dữ liệu cũ vẫn xem được trong lúc quét.
+  async rescanNet(net: string): Promise<{ hosts: number }> {
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query('UPDATE aff_host SET checked_at = NULL WHERE net = ?', [net]);
+    await pool.query('UPDATE aff_net SET discover_polls = 0, discover_last_new = NULL WHERE net = ?', [net]);
+    return { hosts: Number((r as any).affectedRows) || 0 };
   }
 
   // Xoá sạch 1 net: aff_program → aff_host → aff_net (thứ tự để không mồ côi dữ liệu con).

@@ -23,6 +23,12 @@ export class UsersAdminController {
     return this.users.updateProfile(Number(id), b || {}, u.id);
   }
 
+  // Admin đặt lại mật khẩu cho user (self-signup đang tắt, user không tự đổi được).
+  @Post(':id/password')
+  setPassword(@Param('id') id: string, @Body('password') password: string) {
+    return this.users.setPassword(Number(id), password);
+  }
+
   @Post(':id/ban')
   ban(@Param('id') id: string, @CurrentUser() u: any) { return this.users.setStatus(Number(id), 'banned', u.id); }
   @Post(':id/disable')
