@@ -21,6 +21,7 @@ const SORT_EXPR: Record<string, string> = {
   rev_week: revUsd('rev_week'),
   rev_total: revUsd('rev_total'),
   sku: 'al.sku',
+  updated_at: 'al.updated_at',
   join_url: "NULLIF(TRIM(al.join_url),'')",
   commission_pct: 'al.commission_pct',
   traffic_visits: 't.visits',
@@ -222,6 +223,22 @@ export class AffLibMysql {
       [pageSize, (page - 1) * pageSize],
     );
     return { items: rows as any[], total, page, pageSize, sort, dir: dir.toLowerCase(), filter };
+  }
+
+  // Lấy ĐÚNG các dòng theo danh sách web (cùng shape với listRows để FE hiện được ngay).
+  // Dùng cho "Thêm domain (Quét shop)": chỉ trả domain vừa nhập, không trả trang 1 của cả kho.
+  async rowsByWebs(webs: string[]): Promise<any[]> {
+    if (!webs.length) return [];
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      `SELECT al.*, t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce,
+              t.visit_duration_sec AS traffic_duration_sec, t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at
+       FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
+       WHERE al.web IN (?)
+       ORDER BY al.updated_at DESC, al.web ASC`,
+      [webs],
+    );
+    return rows as any[];
   }
 
   // (A) Đồng bộ shop affiliate_status='yes' từ Local DB vào aff_library. Trả số shop đã đồng bộ.

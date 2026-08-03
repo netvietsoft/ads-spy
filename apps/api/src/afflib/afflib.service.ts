@@ -48,7 +48,11 @@ export class AffLibService {
       // Điền traffic ngay cho domain vừa dán (chỉ domain DNS còn sống) — khỏi phải bấm thêm bước nào.
       await this.fillTrafficFor(v ? v.alive : domains).catch(() => {});
     }
-    return this.db.listRows({ page: 1 }); // domain mới (aff_checked_at NULL) sẽ được job detect phát hiện affiliate
+    // Trả ĐÚNG các domain vừa nhập, KHÔNG trả trang 1 của cả kho: trước đây trả listRows({page:1}) nên bấm
+    // "Thêm domain" xong bảng nhảy về đầu kho, nhìn như vừa quét lại toàn bộ. Domain mới (aff_checked_at NULL)
+    // vẫn được job detect quét affiliate sau.
+    const items = await this.db.rowsByWebs(domains);
+    return { items, total: items.length, page: 1, pageSize: items.length || 1, scanned: domains.length };
   }
 
   async rows(o?: { page?: number; pageSize?: number; affOnly?: boolean; filter?: string; sort?: string; dir?: string }): Promise<any> {

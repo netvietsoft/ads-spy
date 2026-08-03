@@ -21,6 +21,8 @@ describe('AffLibService', () => {
       listRows: jest.fn(async () => captured),
       setDnsBulk: jest.fn(),
       markTrafficTried: jest.fn(),
+      // scan() nay trả ĐÚNG các domain vừa nhập (rowsByWebs) thay vì trang 1 của cả kho.
+      rowsByWebs: jest.fn(async (webs: string[]) => captured.filter((s) => webs.includes(s.web))),
     } as any;
     // scan() nay còn kiểm DNS rồi điền traffic cho domain vừa dán → stub TrafficService, đừng gọi AITDK thật.
     const traffic = { search: jest.fn(async () => ({ traffic: {}, whois: {} })) } as any;
@@ -33,6 +35,9 @@ describe('AffLibService', () => {
     expect(db.prefillFromProgram).toHaveBeenCalledWith('nike.com');
     expect(traffic.search).toHaveBeenCalled(); // dán domain mới → tự điền traffic luôn
     expect(db.setDnsBulk).toHaveBeenCalled();
+    // Chỉ trả domain vừa nhập — không phải trang 1 của cả kho (trước đây gọi listRows({page:1})).
+    expect(db.rowsByWebs).toHaveBeenCalledWith(['nike.com', 'unknown-shop.com']);
+    expect(db.listRows).not.toHaveBeenCalled();
   });
 
   it('update: null cột số được TRUYỀN (để xoá), không bị nuốt thành undefined', async () => {

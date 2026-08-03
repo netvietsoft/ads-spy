@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
 import { toUsd } from '../currency';
@@ -44,11 +45,21 @@ const COLS: { label: string; key?: string }[] = [
   { label: 'Link đăng ký', key: 'join_url' }, { label: '%commit', key: 'commission_pct' },
   { label: 'Traffic/th', key: 'traffic_visits' }, { label: 'Bounce', key: 'traffic_bounce' },
   { label: 'Time', key: 'traffic_duration_sec' }, { label: 'Payout', key: 'payout' },
-  { label: 'Cookie', key: 'cookie_days' }, { label: 'Note', key: 'note' }, { label: '' },
+  { label: 'Cookie', key: 'cookie_days' }, { label: 'Note', key: 'note' },
+  { label: 'Update Time', key: 'updated_at' }, { label: '' },
 ];
+
+// Thời điểm dòng được quét/sửa gần nhất (updated_at). Ngắn gọn dd/mm HH:mm, hover ra đủ ngày giờ.
+function updTime(ms?: number | null): { text: string; full: string } {
+  if (!ms) return { text: '—', full: '' };
+  const d = new Date(Number(ms));
+  const p = (n: number) => String(n).padStart(2, '0');
+  return { text: `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`, full: d.toLocaleString('vi-VN') };
+}
 const DEFAULT_SORT: { key: string; dir: AffLibDir } = { key: 'rev_month', dir: 'desc' };
 
 export function AffLibraryPanel() {
+  const router = useRouter();
   const [domains, setDomains] = useState('');
   const [items, setItems] = useState<AffLibRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -104,7 +115,12 @@ export function AffLibraryPanel() {
 
   const scan = async () => {
     setLoading(true); setErr(null);
-    try { const r = await affLibScan(domains); setItems(r.items); setTotal(r.total); setPage(1); setSort(DEFAULT_SORT); } // /scan trả thứ tự mặc định → mũi tên sort phải khớp
+    // Chỉ quét những domain vừa nhập: BE trả đúng các dòng đó → hiện riêng kết quả, KHÔNG tải lại cả kho.
+    try {
+      const r = await affLibScan(domains);
+      setItems(r.items); setTotal(r.total); setPage(1); setSort(DEFAULT_SORT);
+      setScanMsg(`Đã quét ${r.items.length} domain vừa nhập — đang hiện riêng kết quả. Đổi bộ lọc để xem lại cả kho.`);
+    }
     catch (e) { setErr((e as Error).message); }
     setLoading(false);
   };
@@ -215,6 +231,15 @@ export function AffLibraryPanel() {
     } catch (e) { setErr((e as Error).message); }
     setBusy(false);
   };
+  // Bấm khoảng trắng trên dòng → mở chi tiết shop. Chỉ mở được khi có shop_id (domain chưa có trong DB thì
+  // không có shop nào để mở). Bỏ qua nếu bấm vào link/nút/ô tick — một guard thay vì stopPropagation khắp nơi.
+  const openShop = (e: ReactMouseEvent, r: AffLibRow) => {
+    if (!r.shop_id) return;
+    if ((e.target as HTMLElement).closest('a,button,input,select,textarea')) return;
+    const href = `/shop/${encodeURIComponent(r.shop_id)}`;
+    if (e.metaKey || e.ctrlKey || e.shiftKey) window.open(href, '_blank');
+    else router.push(href);
+  };
   const toggleSel = (web: string) => setSel((s) => { const n = new Set(s); if (n.has(web)) n.delete(web); else n.add(web); return n; });
   const toggleAll = () => setSel((s) => (s.size === items.length ? new Set<string>() : new Set(items.map((x) => x.web))));
 
@@ -242,7 +267,8 @@ export function AffLibraryPanel() {
   return (
     <div style={{ padding: '8px 4px' }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 10 }}>
-        <textarea value={domains} onChange={(e) => setDomains(e.target.value)} placeholder={'Dán domain MỚI để phát hiện affiliate (mỗi dòng 1)\nvd:\nwritesonic.com\nallbirds.com'} style={{ flex: '1 1 300px', minHeight: 74, padding: 10, borderRadius: 9, border: '1px solid #d1d5db', fontSize: 14, fontFamily: 'inherit' }} />
+        {/* 30% chiều rộng — bảng 16 cột mới là phần chính, ô dán domain không cần chiếm hết hàng. */}
+        <textarea value={domains} onChange={(e) => setDomains(e.target.value)} placeholder={'Dán domain MỚI để phát hiện affiliate (mỗi dòng 1)\nvd:\nwritesonic.com\nallbirds.com'} style={{ flex: '0 0 30%', maxWidth: '30%', minHeight: 74, padding: 10, borderRadius: 9, border: '1px solid #d1d5db', fontSize: 14, fontFamily: 'inherit' }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button className="srcbtn active" onClick={scan} disabled={loading}>{loading ? 'Đang…' : '➕ Thêm domain (Quét shop)'}</button>
           <button className="srcbtn" onClick={sync} disabled={busy} title="Kéo shop affiliate_status='yes' từ Local DB vào kho">⤵ Đồng bộ có-aff (Local DB)</button>
@@ -311,7 +337,10 @@ export function AffLibraryPanel() {
           </tr></thead>
           <tbody>
             {items.map((r) => (
-              <tr key={r.web} style={junkMode && sel.has(r.web) ? { background: '#fef2f2' } : undefined}>
+              <tr key={r.web}
+                  onClick={(e) => openShop(e, r)}
+                  title={r.shop_id ? 'Bấm để mở chi tiết shop (Ctrl+bấm: tab mới)' : 'Domain chưa có trong DB — không có chi tiết shop'}
+                  style={{ ...(junkMode && sel.has(r.web) ? { background: '#fef2f2' } : {}), cursor: r.shop_id ? 'pointer' : 'default' }}>
                 {junkMode && (
                   <td style={td}>
                     <input type="checkbox" checked={sel.has(r.web)} onChange={() => toggleSel(r.web)} />
@@ -336,6 +365,7 @@ export function AffLibraryPanel() {
                 <td style={td}>{r.payout ?? '—'}</td>
                 <td style={td}>{r.cookie_days == null ? '—' : r.cookie_days + 'd'}</td>
                 <td style={{ ...td, whiteSpace: 'normal', maxWidth: 140 }}>{r.note || '—'}</td>
+                <td style={td} title={updTime(r.updated_at).full}>{updTime(r.updated_at).text}</td>
                 <td style={td}>
                   <button className="srcbtn" title="Quét affiliate domain này ngay (quét lại nếu đã quét) — xoay qua tối đa 10 proxy, mất 3-10s"
                           onClick={() => detectRow(r.web)} disabled={busy || !!scanning} style={{ padding: '2px 8px' }}>

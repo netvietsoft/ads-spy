@@ -719,6 +719,7 @@ export interface AffLibRow {
   join_url?: string | null; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string | null;
   aff_status?: string | null; aff_platform?: string | null;
   dns_ok?: number | null; aff_try_count?: number | null; aff_last_error?: string | null;
+  created_at?: number | null; updated_at?: number | null;
   traffic_visits?: number | null; traffic_bounce?: number | null; traffic_duration_sec?: number | null; traffic_rank?: number | null;
 }
 export type AffLibDir = 'asc' | 'desc';
