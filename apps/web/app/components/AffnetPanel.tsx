@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affRescanNet, affTrafficRefresh, affPrograms, affSaveTraffic, AffNetRow, AffProgramRow, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { affNets, affAddNets, affDeleteNet, affRescanNet, affTrafficRefresh, affNetTrafficFill, affPrograms, affSaveTraffic, AffNetRow, AffProgramRow, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
 
 // 2 job nền lo việc quét net (dùng chung hàng đợi cho MỌI net, không theo từng net).
@@ -32,7 +32,8 @@ function siteUrl(web: string | null): string | null {
 
 // Định dạng traffic để hiển thị (DB lưu SỐ thật để sắp/lọc được).
 const fmtVisits = (n: number | null) => (n == null ? '—' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n));
-const fmtBounce = (n: number | null) => (n == null ? '—' : n + '%');
+// API AITDK trả full precision (38.29426744639906) → làm tròn 1 số, không thì cột không đọc được.
+const fmtBounce = (n: number | null) => (n == null ? '—' : `${Math.round(n * 10) / 10}%`);
 const fmtDur = (s: number | null) => {
   if (s == null) return '—';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -158,6 +159,8 @@ export function AffnetPanel() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [reloadTick, setReloadTick] = useState(0);
+  const [netTrafBusy, setNetTrafBusy] = useState(false);
+  const [netTrafMsg, setNetTrafMsg] = useState<string | null>(null);
   const reqRef = useRef(0);
 
   // Ô nhập traffic (dán khối từ extension) cho 1 domain (web).
@@ -251,6 +254,27 @@ export function AffnetPanel() {
     try { await affTrafficRefresh([web]); setReloadTick((t) => t + 1); } // tải lại để số traffic mới hiện lên
     catch (e) { setErr(`Lấy traffic ${web} thất bại: ${(e as Error).message}`); }
     setRefreshing(null);
+  };
+
+  // Scan traffic cho TOÀN BỘ web của net đang xem — AITDK mỗi lô 50, lặp tới khi hết.
+  // Dừng khi AITDK báo lỗi (thiếu key/hết quota) hoặc khi `remaining` không giảm (lô toàn domain
+  // AITDK không có dữ liệu — BE đã đánh dấu đã thử nên lô sau sẽ khác).
+  const runNetTraffic = async () => {
+    if (!activeNet || netTrafBusy) return;
+    setNetTrafBusy(true); setErr(null); setNetTrafMsg('Đang lấy traffic…');
+    try {
+      let filled = 0, prev = Infinity;
+      for (;;) {
+        const r = await affNetTrafficFill(activeNet);
+        filled += r.filled;
+        setNetTrafMsg(`Đã điền ${filled.toLocaleString()}${r.remaining ? ` · còn ${r.remaining.toLocaleString()}` : ''}`);
+        if (r.error) { setErr(`Traffic: ${r.error}`); break; }
+        if (!r.remaining || r.remaining >= prev) break;
+        prev = r.remaining;
+      }
+      setReloadTick((t) => t + 1); // tải lại để 3 cột traffic mới hiện lên
+    } catch (e) { setErr((e as Error).message); setNetTrafMsg(null); }
+    setNetTrafBusy(false);
   };
 
   // Sort số liệu cho danh sách net (client-side).
@@ -388,9 +412,17 @@ export function AffnetPanel() {
 
       {activeNet && (
         <>
-          <h3 style={{ margin: '20px 0 8px', fontSize: 14, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Dự án của {activeNet}
-          </h3>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '20px 0 8px' }}>
+            <h3 style={{ margin: 0, fontSize: 14, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Dự án của {activeNet}
+            </h3>
+            {/* Scan traffic cả net: điền traffic cho MỌI web của net còn trống (không phải từng dòng một). */}
+            <button className="srcbtn" onClick={runNetTraffic} disabled={netTrafBusy}
+              title={`Lấy traffic (AITDK) cho toàn bộ web của ${activeNet} còn thiếu`}>
+              {netTrafBusy ? '⏳ Đang scan traffic…' : '📊 Scan traffic'}
+            </button>
+            {netTrafMsg && <span className="hint" style={{ margin: 0 }}>{netTrafMsg}</span>}
+          </div>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
             <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>%commit:&nbsp;

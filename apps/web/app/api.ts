@@ -760,6 +760,12 @@ export async function affTrafficRefresh(webs: string[]): Promise<{ traffic: Reco
     body: JSON.stringify({ domains: webs, history: false, save: true }),
   }));
 }
+// Scan traffic cho TOÀN BỘ web của 1 net — mỗi lần 1 lô 50, remaining > 0 → gọi tiếp.
+export async function affNetTrafficFill(net: string, limit = 50): Promise<{ webs: number; filled: number; remaining: number; error?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff/nets/${encodeURIComponent(net)}/traffic-fill`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }),
+  }));
+}
 export async function affLibBulkDelete(webs: string[]): Promise<{ ok: boolean; deleted: number }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/bulk-delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ webs }) }));
 }

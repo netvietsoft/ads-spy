@@ -4,10 +4,11 @@ import { AffnetMysql } from './affnet.mysql';
 import { AffnetFetch, joinUrlOf } from './affnet.fetch';
 import { discoverNet } from './affnet.discovery';
 import { parseTrafficPaste } from './affnet.traffic';
+import { TrafficService } from '../traffic/traffic.service';
 
 @Injectable()
 export class AffnetService {
-  constructor(private readonly db: AffnetMysql, private readonly fetch: AffnetFetch) {}
+  constructor(private readonly db: AffnetMysql, private readonly fetch: AffnetFetch, private readonly traffic: TrafficService) {}
 
   // Giống normalizeDomain của search.service.ts: bỏ scheme, bỏ www., cắt tại '/', lowercase.
   normalizeNet(raw: string): string {
@@ -137,6 +138,20 @@ export class AffnetService {
 
   rescanNet(net: string): Promise<{ hosts: number }> {
     return this.db.rescanNet(this.normalizeNet(net));
+  }
+
+  // Scan traffic cho TOÀN BỘ web trong 1 net (AITDK batch 50/lần → gọi lặp từ FE theo `remaining`).
+  // Trả `error` thay vì throw để FE hiện lý do rồi dừng (thiếu AITDK_SECRET_KEY, hết quota…).
+  async fillNetTraffic(net: string, limit = 50): Promise<{ webs: number; filled: number; remaining: number; error?: string }> {
+    const n = this.normalizeNet(net);
+    const webs = await this.db.websMissingTraffic(n, limit);
+    if (!webs.length) return { webs: 0, filled: 0, remaining: 0 };
+    try {
+      const r = await this.traffic.search(webs, false, true); // save=true → tự upsert aff_domain_traffic
+      return { webs: webs.length, filled: Object.keys(r.traffic).length, remaining: await this.db.countWebsMissingTraffic(n) };
+    } catch (e) {
+      return { webs: webs.length, filled: 0, remaining: await this.db.countWebsMissingTraffic(n), error: (e as Error).message };
+    }
   }
 
   async deleteNet(net: string): Promise<void> {

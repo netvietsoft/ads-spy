@@ -32,6 +32,12 @@ export class AffnetController {
     return { ok: true, ...r };
   }
 
+  // Scan traffic cho toàn bộ web trong 1 net — mỗi lần 1 lô 50, trả `remaining` để FE gọi tiếp.
+  @Post('aff/nets/:net/traffic-fill')
+  netTrafficFill(@Param('net') net: string, @Body('limit') limit: number) {
+    return this.svc.fillNetTraffic(net, Number(limit) || 50);
+  }
+
   @Delete('aff/nets/:net')
   async delNet(@Param('net') net: string) { await this.svc.deleteNet(net); return { ok: true }; }
 

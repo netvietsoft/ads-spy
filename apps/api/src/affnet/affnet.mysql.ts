@@ -195,6 +195,31 @@ export class AffnetMysql {
     return (rows as any[]).map(rowToAffNet);
   }
 
+  // Web trong 1 net còn THIẾU traffic (chưa có dòng trong aff_domain_traffic). DISTINCT vì nhiều dự án có
+  // thể cùng 1 web. Dùng cho nút "Scan traffic" của cả dự án.
+  async websMissingTraffic(net: string, limit = 50): Promise<string[]> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      `SELECT DISTINCT p.web FROM aff_program p
+         LEFT JOIN aff_domain_traffic t ON t.web = p.web COLLATE utf8mb4_unicode_ci
+        WHERE p.net = ? AND p.web IS NOT NULL AND p.web <> '' AND t.web IS NULL
+        LIMIT ?`,
+      [net, Math.min(200, Math.max(1, limit))],
+    );
+    return (rows as any[]).map((r) => r.web);
+  }
+
+  async countWebsMissingTraffic(net: string): Promise<number> {
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query(
+      `SELECT COUNT(DISTINCT p.web) n FROM aff_program p
+         LEFT JOIN aff_domain_traffic t ON t.web = p.web COLLATE utf8mb4_unicode_ci
+        WHERE p.net = ? AND p.web IS NOT NULL AND p.web <> '' AND t.web IS NULL`,
+      [net],
+    );
+    return Number((r as any[])[0].n) || 0;
+  }
+
   // Quét lại 1 net: trả toàn bộ host của net về "chờ quét" (checked_at NULL) để fetchStep fetch lại, và
   // reset discover_polls để discoverStep đi tìm subdomain mới. KHÔNG xoá aff_program đang có — fetch lại sẽ
   // upsert đè, nên dữ liệu cũ vẫn xem được trong lúc quét.

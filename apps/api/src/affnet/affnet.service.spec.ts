@@ -25,6 +25,9 @@ const mkDb = () => ({
   upsertDomainTraffic: jest.fn().mockResolvedValue(undefined),
   getDomainTraffic: jest.fn().mockResolvedValue(null),
 });
+// AffnetService nay nhận thêm TrafficService (cho nút "Scan traffic" của cả net) — stub, không gọi AITDK thật.
+const mkTraffic = () => ({ search: jest.fn().mockResolvedValue({ traffic: {}, whois: {} }) });
+
 const mkFetch = (lanes = 1) => ({
   fetchCampaign: jest.fn(), probeFake: jest.fn().mockResolvedValue({ len: 1, hash: 'h' }),
   setProxies: jest.fn().mockResolvedValue(undefined),
@@ -32,7 +35,7 @@ const mkFetch = (lanes = 1) => ({
 });
 
 describe('normalizeNet + platformOf', () => {
-  const s = new AffnetService(mkDb() as any, mkFetch() as any);
+  const s = new AffnetService(mkDb() as any, mkFetch() as any, mkTraffic() as any);
   it.each([
     ['https://www.GetRewardful.com/signup', 'getrewardful.com'],
     ['  getrewardful.com  ', 'getrewardful.com'],
@@ -49,7 +52,7 @@ describe('importNets', () => {
   it('tách nhiều dòng, chuẩn hoá, bỏ trùng và bỏ dòng rỗng/rác', async () => {
     const db = mkDb();
     db.upsertNets.mockResolvedValue(2);
-    const s = new AffnetService(db as any, mkFetch() as any);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
     const r = await s.importNets('https://www.getrewardful.com/\ngetrewardful.com\n\ntapfiliate.com\nkhong-phai-domain');
     expect(db.upsertNets).toHaveBeenCalledWith([
       { net: 'getrewardful.com', platform: 'rewardful' },
@@ -68,7 +71,7 @@ describe('discoverStep — FIX 4: 1 nguồn discovery lỗi KHÔNG được tín
     db.pickNetToPoll.mockResolvedValue({ net: 'getrewardful.com' });
     db.upsertHosts.mockResolvedValue(3);
     mockedDiscoverNet.mockResolvedValue({ hosts: [{ slug: 'a', sources: ['x'] }], failed: [] });
-    const s = new AffnetService(db as any, mkFetch() as any);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
     await s.discoverStep({ paceMs: 0 });
     expect(db.markPolled).toHaveBeenCalledWith('getrewardful.com', 3);
   });
@@ -78,7 +81,7 @@ describe('discoverStep — FIX 4: 1 nguồn discovery lỗi KHÔNG được tín
     db.pickNetToPoll.mockResolvedValue({ net: 'getrewardful.com' });
     db.upsertHosts.mockResolvedValue(0);
     mockedDiscoverNet.mockResolvedValue({ hosts: [], failed: ['subdomain.center'] });
-    const s = new AffnetService(db as any, mkFetch() as any);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
     await s.discoverStep({ paceMs: 0 });
     expect(db.markPolled).toHaveBeenCalledWith('getrewardful.com', 0, true);
   });
@@ -92,7 +95,7 @@ describe('fetchStep', () => {
     db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 10, fakeHash: 'h' });
     db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
     f.fetchCampaign.mockResolvedValue({ outcome: 'active', parsed: { commissionPct: 30, web: 'editgpt.app' }, termsText: 'T' });
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     const r = await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(r.active).toBe(1);
     expect(db.upsertProgram).toHaveBeenCalledTimes(1);
@@ -105,7 +108,7 @@ describe('fetchStep', () => {
     db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' });
     db.takeHostsToCheck.mockResolvedValue([host('x')]);
     f.fetchCampaign.mockResolvedValue({ outcome: 'blocked', parsed: null, termsText: null });
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     const r = await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(r.blocked).toBe(1);
     expect(db.bumpHostTries).toHaveBeenCalledWith('getrewardful.com', 'x');
@@ -119,7 +122,7 @@ describe('fetchStep', () => {
     db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
     f.probeFake.mockResolvedValue({ len: 5, hash: 'abc' });
     f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(f.probeFake).toHaveBeenCalledWith('getrewardful.com');
     expect(db.setFakeBaseline).toHaveBeenCalledWith('getrewardful.com', 5, 'abc');
@@ -133,7 +136,7 @@ describe('fetchStep', () => {
     const db = mkDb(); const f = mkFetch();
     db.pickNetToFetch.mockResolvedValue({ net: 'getrewardful.com', platform: 'rewardful', fakeCheckedAt: null, fakeLen: null, fakeHash: null });
     db.takeHostsToCheck.mockResolvedValue([]);
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(f.probeFake).not.toHaveBeenCalled();
     expect(db.setFakeBaseline).not.toHaveBeenCalled();
@@ -146,7 +149,7 @@ describe('fetchStep', () => {
     let probeAt = 0, fetchAt = 0;
     f.probeFake.mockImplementation(async () => { probeAt = Date.now(); return { len: 5, hash: 'abc' }; });
     f.fetchCampaign.mockImplementation(async () => { fetchAt = Date.now(); return { outcome: 'notfound', parsed: null, termsText: null }; });
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     await s.fetchStep({ batch: 5, paceMs: 200 });
     expect(fetchAt - probeAt).toBeGreaterThanOrEqual(190); // dung sai nhỏ cho jitter đồng hồ hệ thống
   }, 10000);
@@ -157,7 +160,7 @@ describe('fetchStep', () => {
     db.takeHostsToCheck.mockResolvedValue([host('editgpt')]);
     f.probeFake.mockResolvedValue({ len: 20, hash: 'new-hash' });
     f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(f.probeFake).toHaveBeenCalledWith('getrewardful.com');
     expect(db.setFakeBaseline).toHaveBeenCalledWith('getrewardful.com', 20, 'new-hash');
@@ -166,7 +169,7 @@ describe('fetchStep', () => {
   it('không còn host chờ ở mọi net → pickNetToFetch null → trả net=null (job sẽ nghỉ)', async () => {
     const db = mkDb();
     db.pickNetToFetch.mockResolvedValue(null);
-    const s = new AffnetService(db as any, mkFetch() as any);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
     expect((await s.fetchStep({ batch: 5, paceMs: 0 })).net).toBeNull();
   });
 
@@ -178,7 +181,7 @@ describe('fetchStep', () => {
     db.takeHostsToCheck.mockResolvedValue([host('realslug')]);
     f.probeFake.mockRejectedValue(new Error('net::ERR_NAME_NOT_RESOLVED'));
     f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     const r = await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(f.fetchCampaign).toHaveBeenCalledTimes(1);          // vẫn quét host dù probeFake ném
     expect(db.setFakeBaseline).not.toHaveBeenCalled();          // probeFake fail → không đặt baseline
@@ -197,7 +200,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
     db.listHttpProxies.mockResolvedValue(pool);
     db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([]);
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(db.listHttpProxies).toHaveBeenCalled();
     expect(f.setProxies).toHaveBeenCalledWith(pool);
@@ -209,7 +212,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
     db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([host('a')]);
     f.fetchCampaign.mockResolvedValue({ outcome: 'active', parsed: { commissionPct: 10 }, termsText: 'T' });
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     const r = await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(f.setProxies).toHaveBeenCalledWith([]);
     expect(r.lanes).toBe(1);
@@ -220,7 +223,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
     const db = mkDb(); const f = mkFetch(2);
     db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([]);
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     expect((await s.fetchStep({ batch: 5, paceMs: 0, concurrency: 5 })).lanes).toBe(2);
   });
 
@@ -229,7 +232,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
     db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([host('a')]);
     f.fetchCampaign.mockRejectedValue(new Error('net::ERR_PROXY_CONNECTION_FAILED'));
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     const r = await s.fetchStep({ batch: 5, paceMs: 0 });
     expect(r.laneErrors).toBe(1);
     expect(r.blocked).toBe(0);              // proxy hỏng ≠ Cloudflare chặn — đếm riêng để chẩn đoán đúng
@@ -242,7 +245,7 @@ describe('fetchStep — proxy xoay dùng chung (Settings → Proxy)', () => {
     db.pickNetToFetch.mockResolvedValue(net1);
     db.takeHostsToCheck.mockResolvedValue([host('a'), host('b'), host('c'), host('d')]);
     f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
-    const s = new AffnetService(db as any, f as any);
+    const s = new AffnetService(db as any, f as any, mkTraffic() as any);
     const r = await s.fetchStep({ batch: 10, paceMs: 0, concurrency: 2 });
     expect(r.checked).toBe(4);
     const slugs = f.fetchCampaign.mock.calls.map((c: any[]) => c[1]).sort();
@@ -257,7 +260,7 @@ describe('saveTraffic — lưu traffic dán tay theo domain', () => {
 
   it('dán khối text từ extension → parse rồi lưu theo domain đã chuẩn hoá', async () => {
     const db = mkDb();
-    const s = new AffnetService(db as any, mkFetch() as any);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
     await s.saveTraffic({ web: 'editgpt.app', text: PANEL });
     expect(db.upsertDomainTraffic).toHaveBeenCalledWith('editgpt.app', {
       visits: 42670000, bounceRate: 40.64, visitDurationSec: 265, globalRank: 781, note: null,
@@ -266,7 +269,7 @@ describe('saveTraffic — lưu traffic dán tay theo domain', () => {
 
   it('số gõ tay override số đã parse từ text', async () => {
     const db = mkDb();
-    const s = new AffnetService(db as any, mkFetch() as any);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
     await s.saveTraffic({ web: 'editgpt.app', text: PANEL, visits: 999 });
     expect(db.upsertDomainTraffic).toHaveBeenCalledWith('editgpt.app', {
       visits: 999, bounceRate: 40.64, visitDurationSec: 265, globalRank: 781, note: null,
@@ -275,14 +278,14 @@ describe('saveTraffic — lưu traffic dán tay theo domain', () => {
 
   it('web được chuẩn hoá giống hệt cách lưu web của chương trình (bỏ scheme/www/path, lowercase)', async () => {
     const db = mkDb();
-    const s = new AffnetService(db as any, mkFetch() as any);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
     await s.saveTraffic({ web: 'https://WWW.Editgpt.app/', visits: 100 });
     expect(db.upsertDomainTraffic).toHaveBeenCalledWith('editgpt.app', expect.any(Object));
   });
 
   it('dán RÁC (parse ra toàn null, không note) → KHÔNG ghi dòng rác, không gọi upsert', async () => {
     const db = mkDb();
-    const s = new AffnetService(db as any, mkFetch() as any);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
     await s.saveTraffic({ web: 'editgpt.app', text: 'xin chào không có số nào cả' });
     expect(db.upsertDomainTraffic).not.toHaveBeenCalled();
     expect(db.getDomainTraffic).toHaveBeenCalledWith('editgpt.app');
