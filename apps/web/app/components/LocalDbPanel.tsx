@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { shLocalShops, shLocalProducts, shLocalFilters, shLocalSuggest, ShLocalResult, shAssetProxy, shShopSite, shProductUrl, shFavShops, shLocalExportUrl } from '../api';
 import { toUsd } from '../currency';
+import { useIsMobile } from '../useIsMobile';
 import { ShLogo } from './ShLogo';
 import { CategoryPicker } from './CategoryPicker';
 
@@ -47,17 +48,7 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_badge', label: '' },
 ];
 
-// Mobile: dưới 760px hiện dạng THẺ (khỏi vỡ bảng nhiều cột). matchMedia (SSR-safe: false lúc đầu).
-function useIsMobile(bp = 760) {
-  const [m, setM] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${bp}px)`);
-    const on = () => setM(mq.matches); on();
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, [bp]);
-  return m;
-}
+// useIsMobile chuyển sang ../useIsMobile để Aff Library / Affiliate Nets dùng chung (cùng nhu cầu thẻ mobile).
 
 // Thẻ 1 shop (mobile) — mirror hàng bảng: logo/tên/url + DT ngày/tuần/tháng + FB/Ads/SKU/nước + badge + update.
 function ShopRowCard({ s, fav, catNames }: { s: any; fav: boolean; catNames: Record<string, string> }) {

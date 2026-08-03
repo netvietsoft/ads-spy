@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
 import { toUsd } from '../currency';
+import { useIsMobile } from '../useIsMobile';
 
 const money = (n?: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('en-US'));
 const usdNum = (n?: number | null, cur?: string | null) => (n == null ? null : (toUsd(n, cur || 'USD') as number));
@@ -46,20 +47,72 @@ const COLS: { label: string; key?: string }[] = [
   { label: 'Traffic/th', key: 'traffic_visits' }, { label: 'Bounce', key: 'traffic_bounce' },
   { label: 'Time', key: 'traffic_duration_sec' }, { label: 'Payout', key: 'payout' },
   { label: 'Cookie', key: 'cookie_days' }, { label: 'Note', key: 'note' },
-  { label: 'Update Time', key: 'updated_at' }, { label: '' },
+  { label: 'Update', key: 'updated_at' }, { label: '' },
 ];
 
-// Thời điểm dòng được quét/sửa gần nhất (updated_at). Ngắn gọn dd/mm HH:mm, hover ra đủ ngày giờ.
-function updTime(ms?: number | null): { text: string; full: string } {
-  if (!ms) return { text: '—', full: '' };
+// Thời điểm dòng được quét/sửa gần nhất (updated_at), tách 2 dòng: ngày ở trên, giờ ở dưới.
+function updTime(ms?: number | null): { date: string; time: string } | null {
+  if (!ms) return null;
   const d = new Date(Number(ms));
   const p = (n: number) => String(n).padStart(2, '0');
-  return { text: `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`, full: d.toLocaleString('vi-VN') };
+  return { date: `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`, time: `${p(d.getHours())}:${p(d.getMinutes())}` };
 }
 const DEFAULT_SORT: { key: string; dir: AffLibDir } = { key: 'rev_month', dir: 'desc' };
 
+// Thẻ 1 dòng cho mobile (≤760px) — bảng 16 cột không thể đọc trên điện thoại. Cùng kiểu thẻ với Local DB
+// (class fbcard/localcard) để 2 trang nhìn như một. Bấm thẻ mở chi tiết shop nếu domain có trong DB.
+function AffLibCard({ r, onDetect, onEdit, onTraffic, onDel, scanning }: {
+  r: AffLibRow; onDetect: () => void; onEdit: () => void; onTraffic: () => void; onDel: () => void; scanning: boolean;
+}) {
+  const cur = r.currency;
+  const u = updTime(r.updated_at);
+  return (
+    <div className="fbcard localcard" onClick={() => { if (r.shop_id) window.open(`/shop/${encodeURIComponent(r.shop_id)}`, '_blank'); }}
+         style={{ cursor: r.shop_id ? 'pointer' : 'default' }}>
+      <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{r.shop_name || r.web}</span>
+        {affBadge(r)}
+      </div>
+      <div className="fbbody" style={{ fontSize: 12, opacity: 0.75 }}>
+        <a href={`https://${r.web}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: '#2563eb' }}>{r.web}</a>
+        {!r.found && <span style={{ marginLeft: 6, color: '#e0a800' }}>(ngoài DB)</span>}
+      </div>
+      <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span><b>Tháng</b> {usd(r.rev_month, cur)}</span>
+        <span><b>Tuần</b> {usd(r.rev_week, cur)}</span>
+        <span><b>Ngày</b> {usd(r.rev_day, cur)}</span>
+        <span><b>SKU</b> {r.sku ?? '—'}</span>
+      </div>
+      <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span><b>Traffic</b> {numfmt(r.traffic_visits)}</span>
+        <span><b>Bounce</b> {bounce(r.traffic_bounce)}</span>
+        <span><b>Time</b> {dur(r.traffic_duration_sec)}</span>
+      </div>
+      {(r.commission_pct != null || r.payout != null || r.cookie_days != null || r.join_url) && (
+        <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {r.commission_pct != null && <span><b>%commit</b> {pct(r.commission_pct)}</span>}
+          {r.payout != null && <span><b>Payout</b> {r.payout}</span>}
+          {r.cookie_days != null && <span><b>Cookie</b> {r.cookie_days}d</span>}
+          {r.join_url && <a href={r.join_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: '#2563eb' }}>link đăng ký</a>}
+        </div>
+      )}
+      {r.note && <div className="fbbody" style={{ fontSize: 12 }}>{r.note}</div>}
+      <div className="fbfoot" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex', gap: 6 }}>
+          <button className="srcbtn" title="Quét affiliate domain này" onClick={onDetect} disabled={scanning} style={{ padding: '2px 8px' }}>{scanning ? '⏳' : '⟳'}</button>
+          <button className="srcbtn" title="Sửa affiliate" onClick={onEdit} style={{ padding: '2px 8px' }}>✎</button>
+          <button className="srcbtn" title="Dán traffic" onClick={onTraffic} style={{ padding: '2px 8px' }}>📊</button>
+          <button className="srcbtn" title="Xoá" onClick={onDel} style={{ padding: '2px 8px' }}>🗑</button>
+        </span>
+        {u && <span className="fbplat" style={{ marginLeft: 'auto', textAlign: 'right', fontSize: 11, opacity: 0.7 }}>{u.date}<br />{u.time}</span>}
+      </div>
+    </div>
+  );
+}
+
 export function AffLibraryPanel() {
   const router = useRouter();
+  const isMobile = useIsMobile(); // ≤760px → hiện thẻ thay bảng (16 cột không đọc được trên điện thoại)
   const [domains, setDomains] = useState('');
   const [items, setItems] = useState<AffLibRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -267,12 +320,13 @@ export function AffLibraryPanel() {
   return (
     <div style={{ padding: '8px 4px' }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 10 }}>
-        {/* 30% chiều rộng — bảng 16 cột mới là phần chính, ô dán domain không cần chiếm hết hàng. */}
-        <textarea value={domains} onChange={(e) => setDomains(e.target.value)} placeholder={'Dán domain MỚI để phát hiện affiliate (mỗi dòng 1)\nvd:\nwritesonic.com\nallbirds.com'} style={{ flex: '0 0 30%', maxWidth: '30%', minHeight: 74, padding: 10, borderRadius: 9, border: '1px solid #d1d5db', fontSize: 14, fontFamily: 'inherit' }} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button className="srcbtn active" onClick={scan} disabled={loading}>{loading ? 'Đang…' : '➕ Thêm domain (Quét shop)'}</button>
-          <button className="srcbtn" onClick={sync} disabled={busy} title="Kéo shop affiliate_status='yes' từ Local DB vào kho">⤵ Đồng bộ có-aff (Local DB)</button>
-          <button className="srcbtn" onClick={exportXlsx} disabled={!items.length}>⬇ Xuất Excel</button>
+        {/* Desktop: 30% (bảng 16 cột mới là phần chính). Mobile: full width — 30% của 390px chỉ còn ~110px, không gõ nổi. */}
+        <textarea value={domains} onChange={(e) => setDomains(e.target.value)} placeholder={'Dán domain MỚI để phát hiện affiliate (mỗi dòng 1)\nvd:\nwritesonic.com\nallbirds.com'}
+                  style={{ flex: isMobile ? '1 1 100%' : '0 0 30%', maxWidth: isMobile ? '100%' : '30%', minHeight: 74, padding: 10, borderRadius: 9, border: '1px solid #d1d5db', fontSize: 14, fontFamily: 'inherit' }} />
+        {/* 2 nút cùng hàng; Xuất Excel chuyển xuống hàng phân trang */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="srcbtn active" onClick={scan} disabled={loading} title="Quét các domain vừa dán ở ô bên cạnh">{loading ? 'Đang…' : 'Scan now'}</button>
+          <button className="srcbtn" onClick={sync} disabled={busy} title="Kéo shop affiliate_status='yes' từ Local DB vào kho">Syn DB</button>
         </div>
       </div>
 
@@ -315,6 +369,16 @@ export function AffLibraryPanel() {
       </div>
       {err && <div className="err" style={{ marginBottom: 8 }}>{err}</div>}
 
+      {isMobile ? (
+        <div className="localcards">
+          {items.map((r) => (
+            <AffLibCard key={r.web} r={r} scanning={scanning === r.web}
+                        onDetect={() => detectRow(r.web)} onEdit={() => openEdit(r)}
+                        onTraffic={() => setTraffic({ web: r.web, text: '' })} onDel={() => del(r.web)} />
+          ))}
+          {!items.length && !loading && <div style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Không có dữ liệu.</div>}
+        </div>
+      ) : (
       <div className="afflib-tablewrap">
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead><tr>
@@ -365,7 +429,11 @@ export function AffLibraryPanel() {
                 <td style={td}>{r.payout ?? '—'}</td>
                 <td style={td}>{r.cookie_days == null ? '—' : r.cookie_days + 'd'}</td>
                 <td style={{ ...td, whiteSpace: 'normal', maxWidth: 140 }}>{r.note || '—'}</td>
-                <td style={td} title={updTime(r.updated_at).full}>{updTime(r.updated_at).text}</td>
+                <td style={td}>
+                  {updTime(r.updated_at)
+                    ? <><div>{updTime(r.updated_at)!.date}</div><div style={{ opacity: 0.7 }}>{updTime(r.updated_at)!.time}</div></>
+                    : '—'}
+                </td>
                 <td style={td}>
                   <button className="srcbtn" title="Quét affiliate domain này ngay (quét lại nếu đã quét) — xoay qua tối đa 10 proxy, mất 3-10s"
                           onClick={() => detectRow(r.web)} disabled={busy || !!scanning} style={{ padding: '2px 8px' }}>
@@ -384,17 +452,22 @@ export function AffLibraryPanel() {
           </tbody>
         </table>
       </div>
-
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0' }}>
-          <button className="srcbtn" disabled={page <= 1 || loading} onClick={() => load(page - 1)}>‹ Trước</button>
-          <select value={page} onChange={(e) => load(Number(e.target.value))} disabled={loading} style={selStyle}>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => <option key={p} value={p}>Trang {p}</option>)}
-          </select>
-          <span style={{ opacity: 0.7 }}>/ {totalPages}</span>
-          <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => load(page + 1)}>Sau ›</button>
-        </div>
       )}
+
+      {/* Hàng phân trang — LUÔN hiện vì Xuất Excel nằm ở đây (trước chỉ hiện khi có >1 trang). */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0', flexWrap: 'wrap' }}>
+        {totalPages > 1 && (
+          <>
+            <button className="srcbtn" disabled={page <= 1 || loading} onClick={() => load(page - 1)}>‹ Trước</button>
+            <select value={page} onChange={(e) => load(Number(e.target.value))} disabled={loading} style={selStyle}>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => <option key={p} value={p}>Trang {p}</option>)}
+            </select>
+            <span style={{ opacity: 0.7 }}>/ {totalPages}</span>
+            <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => load(page + 1)}>Sau ›</button>
+          </>
+        )}
+        <button className="srcbtn" onClick={exportXlsx} disabled={!items.length}>⬇ Xuất Excel</button>
+      </div>
 
       {edit && (
         <div onClick={() => setEdit(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
