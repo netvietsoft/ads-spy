@@ -30,10 +30,12 @@ import { AffLibController } from './afflib/afflib.controller';
 import { AffLibService } from './afflib/afflib.service';
 import { AffLibMysql } from './afflib/afflib.mysql';
 import { AffLibDetect } from './afflib/afflib.detect';
+import { TrafficController } from './traffic/traffic.controller';
+import { TrafficService } from './traffic/traffic.service';
 
 @Module({
   imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule, AdminModule],
-  controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController, AffLibController],
-  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetService, AffLibMysql, AffLibDetect, AffLibService],
+  controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController, AffLibController, TrafficController],
+  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetService, AffLibMysql, AffLibDetect, AffLibService, TrafficService],
 })
 export class AppModule {}

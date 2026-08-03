@@ -743,6 +743,11 @@ export async function affLibDnsCheck(limit = 5000): Promise<{ checked: number; a
 export async function affLibDetectOne(web: string): Promise<{ web: string; aff_status: string; aff_platform: string | null; join_url: string | null }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/${encodeURIComponent(web)}/detect`, { method: 'POST' }));
 }
+// Điền traffic (AITDK) cho domain còn trống — mỗi lần 1 lô 50, remaining > 0 → gọi tiếp.
+// `error` = AITDK từ chối (thiếu key / hết quota) → hiện lý do rồi dừng, đừng lặp vô ích.
+export async function affLibTrafficFill(limit = 50): Promise<{ filled: number; remaining: number; error?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/traffic-fill`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
+}
 export async function affLibBulkDelete(webs: string[]): Promise<{ ok: boolean; deleted: number }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/bulk-delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ webs }) }));
 }

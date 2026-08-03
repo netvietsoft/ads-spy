@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AffLibMysql, AffLibSnapshot } from './afflib.mysql';
 import { AffLibDetect } from './afflib.detect';
 import { resolveDomains } from './afflib.dns';
+import { TrafficService } from '../traffic/traffic.service';
 
 // Chuẩn hoá domain (bản sao logic affnet normalizeNet): lowercase, bỏ scheme/www, cắt tại '/'.
 export function normalizeDomain(raw: string): string {
@@ -12,7 +13,7 @@ const numOrNull = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null 
 
 @Injectable()
 export class AffLibService {
-  constructor(private readonly db: AffLibMysql, private readonly detect: AffLibDetect) {}
+  constructor(private readonly db: AffLibMysql, private readonly detect: AffLibDetect, private readonly traffic: TrafficService) {}
 
   async scan(rawList: string): Promise<any> {
     await this.db.ensureTables();
@@ -44,6 +45,8 @@ export class AffLibService {
     if (domains.length) {
       const v = await resolveDomains(domains).catch(() => null);
       if (v) await this.db.setDnsBulk(v.alive, v.dead);
+      // Điền traffic ngay cho domain vừa dán (chỉ domain DNS còn sống) — khỏi phải bấm thêm bước nào.
+      await this.fillTrafficFor(v ? v.alive : domains).catch(() => {});
     }
     return this.db.listRows({ page: 1 }); // domain mới (aff_checked_at NULL) sẽ được job detect phát hiện affiliate
   }
@@ -65,8 +68,42 @@ export class AffLibService {
     return { checked: webs.length, alive: v.alive.length, dead: v.dead.length, unknown: v.unknown.length, remaining: await this.db.countDnsPending() };
   }
 
-  detectOne(web: string) {
-    return this.detect.detectOne(normalizeDomain(web));
+  async detectOne(web: string) {
+    const r = await this.detect.detectOne(normalizeDomain(web));
+    // Quét xong 1 dòng → điền luôn traffic. PHẢI bọc catch: quét affiliate đã thành công và đã lưu,
+    // AITDK lỗi (thiếu key/hết quota) không được làm nút ⟳ báo thất bại. Lỗi traffic hiện ở nút "Điền traffic thiếu".
+    await this.fillTrafficFor([r.web]).catch(() => {});
+    return r;
+  }
+
+  // Điền traffic cho 1 lô domain. AITDK batch 50/lần nên gọi theo lô là rẻ nhất (1 lần gọi ~1s cho 50 domain).
+  // BỌC try/catch: AITDK lỗi/hết quota/thiếu key KHÔNG được làm gãy việc quét — traffic chỉ là dữ liệu bổ sung.
+  private async fillTrafficFor(webs: string[]): Promise<number> {
+    const list = this.cleanWebs(webs);
+    if (!list.length) return 0;
+    try {
+      const r = await this.traffic.search(list, false, true); // save=true → tự upsert aff_domain_traffic
+      await this.db.markTrafficTried(list);
+      return Object.keys(r.traffic).length;
+    } catch (e) {
+      // Vẫn đánh dấu đã thử để hàng đợi không tắc ở đúng lô này mãi; lỗi trả lên cho caller quyết.
+      await this.db.markTrafficTried(list).catch(() => {});
+      throw e;
+    }
+  }
+
+  // Điền bù cho kho cũ: mỗi lần 1 lô, trả `remaining` để FE gọi tiếp. `error` để FE hiện lý do rồi dừng
+  // (thiếu AITDK_SECRET_KEY, hết quota…) thay vì lặp vô ích.
+  async fillTraffic(limit = 50): Promise<{ filled: number; remaining: number; error?: string }> {
+    await this.db.ensureTables();
+    const webs = await this.db.rowsMissingTraffic(limit);
+    if (!webs.length) return { filled: 0, remaining: 0 };
+    try {
+      const filled = await this.fillTrafficFor(webs);
+      return { filled, remaining: await this.db.countMissingTraffic() };
+    } catch (e) {
+      return { filled: 0, remaining: await this.db.countMissingTraffic(), error: (e as Error).message };
+    }
   }
 
   async bulkDelete(webs: string[]): Promise<number> {
@@ -87,7 +124,9 @@ export class AffLibService {
   }
 
   // (B) Job phát hiện affiliate cho domain chưa kiểm.
-  detectStart() { return this.detect.start(); }
+  // Job nền: sau MỖI LÔ quét xong thì điền traffic cho cả lô (1 lần gọi AITDK cho ~50 domain, không phải
+  // 50 lần). Callback để AffLibDetect không phải biết tới TrafficService.
+  detectStart() { return this.detect.start(500, (webs) => this.fillTrafficFor(webs).then(() => {}).catch(() => {})); }
   detectStatus() { return this.detect.status(); }
   detectStop() { this.detect.stop(); return this.detect.status(); }
 

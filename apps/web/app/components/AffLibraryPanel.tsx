@@ -1,14 +1,16 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
+import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
 import { toUsd } from '../currency';
 
 const money = (n?: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('en-US'));
 const usdNum = (n?: number | null, cur?: string | null) => (n == null ? null : (toUsd(n, cur || 'USD') as number));
 const usd = (n?: number | null, cur?: string | null) => money(usdNum(n, cur));
 const pct = (n?: number | null) => (n == null ? '—' : n + '%');
-const dur = (s?: number | null) => { if (s == null) return '—'; const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; };
+const dur = (s?: number | null) => { if (s == null) return '—'; const m = Math.floor(s / 60); return `${m}:${String(Math.round(s % 60)).padStart(2, '0')}`; };
+// Bounce: API AITDK trả full precision (34.582972737668484) → làm tròn 1 số, không thì cột không đọc được.
+const bounce = (n?: number | null) => (n == null ? '—' : `${Math.round(n * 10) / 10}%`);
 const numfmt = (n?: number | null) => (n == null ? '—' : Number(n).toLocaleString('en-US'));
 
 function affBadge(r: AffLibRow) {
@@ -54,6 +56,7 @@ export function AffLibraryPanel() {
   const [filter, setFilter] = useState<AffLibFilter>('all');
   const [sel, setSel] = useState<Set<string>>(new Set()); // dòng đã tick ở chế độ "cần dọn"
   const [dns, setDns] = useState<string | null>(null); // kết quả lần lọc DNS gần nhất
+  const [traf, setTraf] = useState<string | null>(null); // kết quả lần điền traffic gần nhất
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [pageSize, setPageSize] = useState(20);
   const barRef = useRef<HTMLDivElement>(null);
@@ -165,6 +168,25 @@ export function AffLibraryPanel() {
     setBusy(false);
   };
 
+  // Điền traffic cho các dòng còn trống. Dừng khi hết, khi AITDK báo lỗi, hoặc khi `remaining` không giảm
+  // (lô toàn domain AITDK không có dữ liệu — BE đã đánh dấu đã thử nên vòng sau sẽ sang lô khác).
+  const runTrafficFill = async () => {
+    setBusy(true); setErr(null); setTraf('Đang lấy traffic…');
+    try {
+      let filled = 0, prev = Infinity;
+      for (;;) {
+        const r = await affLibTrafficFill();
+        filled += r.filled;
+        setTraf(`Đã điền ${filled.toLocaleString()}${r.remaining ? ` · còn ${r.remaining.toLocaleString()}` : ''}`);
+        if (r.error) { setErr(`Traffic: ${r.error}`); break; }
+        if (!r.remaining || r.remaining >= prev) break;
+        prev = r.remaining;
+      }
+      await load();
+    } catch (e) { setErr((e as Error).message); setTraf(null); }
+    setBusy(false);
+  };
+
   // Quét 1 domain: cập nhật đúng dòng đó, không tải lại cả trang.
   const detectRow = async (web: string) => {
     setBusy(true); setErr(null);
@@ -239,6 +261,10 @@ export function AffLibraryPanel() {
           {busy && dns ? '⏳ Đang lọc DNS…' : '🧹 Lọc domain chết (DNS)'}
         </button>
         {dns && <span style={{ opacity: 0.75 }}>{dns}</span>}
+        <button className="srcbtn" onClick={runTrafficFill} disabled={busy || loading} title="Lấy Traffic/Bounce/Time từ AITDK cho các dòng còn trống (50 domain mỗi lần gọi)">
+          {busy && traf ? '⏳ Đang lấy traffic…' : '📊 Điền traffic thiếu'}
+        </button>
+        {traf && <span style={{ opacity: 0.75 }}>{traf}</span>}
         <select value={filter} onChange={(e) => changeFilter(e.target.value as AffLibFilter)} disabled={loading} title="Lọc danh sách" style={selStyle}>
           {FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
         </select>
@@ -297,7 +323,7 @@ export function AffLibraryPanel() {
                 <td style={{ ...td, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.join_url ? <a href={r.join_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>link</a> : '—'}</td>
                 <td style={td}>{pct(r.commission_pct)}</td>
                 <td style={td}>{numfmt(r.traffic_visits)}</td>
-                <td style={td}>{r.traffic_bounce == null ? '—' : r.traffic_bounce + '%'}</td>
+                <td style={td}>{bounce(r.traffic_bounce)}</td>
                 <td style={td}>{dur(r.traffic_duration_sec)}</td>
                 <td style={td}>{r.payout ?? '—'}</td>
                 <td style={td}>{r.cookie_days == null ? '—' : r.cookie_days + 'd'}</td>

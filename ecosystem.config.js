@@ -17,6 +17,12 @@ module.exports = {
         // Auth SaaS: APP_BASE_URL https → cookie Secure + link reset/OAuth đúng; COOKIE_DOMAIN chia sẻ cookie web↔api subdomain.
         APP_BASE_URL: process.env.APP_BASE_URL || 'https://dpboss.pet',
         COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || '.dpboss.pet',
+        // Traffic AITDK (Aff Library tự điền Traffic/Bounce/Time). Thiếu key → API trả 503 "Chưa cấu hình
+        // SECRET_KEY", việc quét vẫn chạy bình thường. Set trước khi pm2 start (KHÔNG hardcode — repo public):
+        //   export AITDK_SECRET_KEY='...'
+        AITDK_SECRET_KEY: process.env.AITDK_SECRET_KEY || '',
+        // File proxy riêng cho AITDK (mỗi dòng host:port hoặc host:port:user:pass). Không có → gọi trực tiếp.
+        AITDK_PROXY_FILE: process.env.AITDK_PROXY_FILE || '',
       },
       max_memory_restart: '900M',
       time: true,

@@ -45,6 +45,12 @@ export class AffLibController {
     return this.svc.dnsCheck(Number(limit) || 5000);
   }
 
+  // (D) Điền traffic (AITDK) cho domain còn trống — mỗi lần 1 lô 50, trả `remaining` để FE gọi tiếp.
+  @Post('traffic-fill')
+  trafficFill(@Body('limit') limit: number) {
+    return this.svc.fillTraffic(Number(limit) || 50);
+  }
+
   // Xoá hàng loạt (dọn rác): 1 query cho cả lô thay vì gọi DELETE từng domain.
   @Post('bulk-delete')
   async bulkDelete(@Body('webs') webs: string[]) {

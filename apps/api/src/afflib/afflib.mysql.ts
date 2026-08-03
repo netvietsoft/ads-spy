@@ -83,6 +83,9 @@ export class AffLibMysql {
     await this.ensureColumn(pool, 'aff_try_count', 'aff_try_count INT DEFAULT 0');
     await this.ensureColumn(pool, 'aff_last_error', 'aff_last_error VARCHAR(255)');
     await this.ensureColumn(pool, 'aff_last_try_at', 'aff_last_try_at BIGINT');
+    // Đã thử điền traffic (AITDK) hay chưa. Cần cột riêng vì domain AITDK KHÔNG có dữ liệu sẽ không bao giờ
+    // có dòng trong aff_domain_traffic → nếu chỉ dựa vào JOIN thì lô đầu tắc mãi và cả kho không bao giờ điền xong.
+    await this.ensureColumn(pool, 'traffic_tried_at', 'traffic_tried_at BIGINT');
   }
 
   private async ensureColumn(pool: any, col: string, ddl: string): Promise<void> {
@@ -331,6 +334,30 @@ export class AffLibMysql {
         String(d.error).slice(0, 255), now, d.web,
       ]);
     }
+  }
+
+  // Domain chưa có traffic và chưa thử điền. Bỏ domain DNS chết (sắp bị xoá → không tốn quota AITDK).
+  private static MISSING_TRAFFIC = `FROM aff_library al
+     LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
+     WHERE t.web IS NULL AND al.traffic_tried_at IS NULL AND (al.dns_ok IS NULL OR al.dns_ok = 1)`;
+
+  async rowsMissingTraffic(limit = 50): Promise<string[]> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(`SELECT al.web ${AffLibMysql.MISSING_TRAFFIC} LIMIT ?`, [Math.min(200, Math.max(1, limit))]);
+    return (rows as any[]).map((r) => r.web);
+  }
+
+  async countMissingTraffic(): Promise<number> {
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query(`SELECT COUNT(*) n ${AffLibMysql.MISSING_TRAFFIC}`);
+    return Number((r as any[])[0].n) || 0;
+  }
+
+  // Đánh dấu ĐÃ THỬ cho cả lô, kể cả domain AITDK không có dữ liệu — nếu không, hàng đợi tắc ở lô đầu.
+  async markTrafficTried(webs: string[]): Promise<void> {
+    if (!webs.length) return;
+    const pool = await this.sh.getPool();
+    await pool.query('UPDATE aff_library SET traffic_tried_at = ? WHERE web IN (?)', [Date.now(), webs]);
   }
 
   async deleteRows(webs: string[]): Promise<number> {

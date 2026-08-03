@@ -68,7 +68,8 @@ export class AffLibDetect {
       : new BadGatewayException(`Quét ${web} thất bại: ${last}`);
   }
 
-  async start(limit = 500): Promise<DetectState> {
+  // onBatch: gọi sau mỗi lô quét xong (Aff Library dùng để điền traffic cả lô bằng 1 lần gọi AITDK).
+  async start(limit = 500, onBatch?: (webs: string[]) => Promise<void>): Promise<DetectState> {
     if (this.state.running) return this.status();
     this.state.running = true; // CLAIM cờ ĐỒNG BỘ trước mọi await → 2 request /detect/start chồng nhau không cùng lọt
     try {
@@ -83,7 +84,7 @@ export class AffLibDetect {
       this.state = { running: true, total, done: 0, found: 0, current: null, noProxy, startedAt: Date.now() };
       this.stopFlag = false;
       // chạy nền, KHÔNG await (endpoint trả ngay; FE poll status)
-      this.runAll(get, limit).catch(() => {}).finally(() => { this.state.running = false; this.state.current = null; });
+      this.runAll(get, limit, onBatch).catch(() => {}).finally(() => { this.state.running = false; this.state.current = null; });
       return this.status();
     } catch (e) {
       this.state.running = false; // setup lỗi → nhả cờ, không kẹt running=true mãi
@@ -94,7 +95,7 @@ export class AffLibDetect {
   // Tự lấy lô tiếp cho tới khi hết hàng đợi — trước đây 1 lần bấm chỉ quét 500 domain, kho 5.6k phải bấm 12 lần.
   // `tried` chặn lặp vô hạn: domain lỗi vẫn thoả QUEUE_COND (try_count < 3) nên lô sau sẽ trả lại chính nó;
   // mỗi domain chỉ thử 1 lần trong 1 lần chạy, lần chạy sau mới thử tiếp (đủ 3 lần thì rơi khỏi hàng đợi).
-  private async runAll(get: (url: string, headers?: any) => Promise<{ status: number; body: string }>, batch: number): Promise<void> {
+  private async runAll(get: (url: string, headers?: any) => Promise<{ status: number; body: string }>, batch: number, onBatch?: (webs: string[]) => Promise<void>): Promise<void> {
     const tried = new Set<string>();
     for (;;) {
       if (this.stopFlag) break;
@@ -102,6 +103,8 @@ export class AffLibDetect {
       if (!webs.length) break;
       webs.forEach((w) => tried.add(w));
       await this.run(webs, get);
+      // AITDK nhận 50 domain/lần → chia nhỏ lô quét (500) thành các chùm 50.
+      if (onBatch) for (let i = 0; i < webs.length; i += 50) await onBatch(webs.slice(i, i + 50));
     }
   }
 

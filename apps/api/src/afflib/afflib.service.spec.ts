@@ -19,20 +19,26 @@ describe('AffLibService', () => {
       upsertSnapshot: jest.fn(async (s: any) => captured.push(s)),
       prefillFromProgram: jest.fn(),
       listRows: jest.fn(async () => captured),
+      setDnsBulk: jest.fn(),
+      markTrafficTried: jest.fn(),
     } as any;
+    // scan() nay còn kiểm DNS rồi điền traffic cho domain vừa dán → stub TrafficService, đừng gọi AITDK thật.
+    const traffic = { search: jest.fn(async () => ({ traffic: {}, whois: {} })) } as any;
 
-    await new AffLibService(db, {} as any).scan('nike.com\nunknown-shop.com');
+    await new AffLibService(db, {} as any, traffic).scan('nike.com\nunknown-shop.com');
     const nike = captured.find((s) => s.web === 'nike.com');
     const unk = captured.find((s) => s.web === 'unknown-shop.com');
     expect(nike).toMatchObject({ found: 1, shop_name: 'Nike', rev_day: 10, rev_week: 70, rev_month: 300, sku: 42, rev_total: 999, currency: 'USD', shop_id: 's1' });
     expect(unk).toMatchObject({ found: 0, shop_name: null, rev_month: null, rev_total: null });
     expect(db.prefillFromProgram).toHaveBeenCalledWith('nike.com');
+    expect(traffic.search).toHaveBeenCalled(); // dán domain mới → tự điền traffic luôn
+    expect(db.setDnsBulk).toHaveBeenCalled();
   });
 
   it('update: null cột số được TRUYỀN (để xoá), không bị nuốt thành undefined', async () => {
     let patch: any = null;
     const db = { updateAffiliate: jest.fn(async (_w: string, p: any) => { patch = p; }) } as any;
-    await new AffLibService(db, {} as any).update('https://www.Nike.com', { join_url: '', commission_pct: null, payout: null, cookie_days: null, note: 'x' });
+    await new AffLibService(db, {} as any, {} as any).update('https://www.Nike.com', { join_url: '', commission_pct: null, payout: null, cookie_days: null, note: 'x' });
     expect(db.updateAffiliate).toHaveBeenCalledWith('nike.com', expect.anything());
     expect(patch).toEqual({ join_url: '', note: 'x', commission_pct: null, payout: null, cookie_days: null });
   });
