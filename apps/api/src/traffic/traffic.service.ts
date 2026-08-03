@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'fs';
 import { isAbsolute, resolve } from 'path';
 import { fetch, ProxyAgent } from 'undici';
 import { AffnetMysql } from '../affnet/affnet.mysql';
+import { ShMysql } from '../shophunter/sh.mysql';
 import { TrafficData, TrafficResult } from './traffic.types';
 
 interface ProxyState {
@@ -51,7 +52,7 @@ export class TrafficService {
   private consecutiveProxyFailures = 0;
   private proxyPoolColdUntil = 0;
 
-  constructor(private readonly affnetDb: AffnetMysql) {}
+  constructor(private readonly affnetDb: AffnetMysql, private readonly sh: ShMysql) {}
 
   async search(domains: string[], history = false, save = true): Promise<TrafficResult> {
     const normalized = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
@@ -91,6 +92,7 @@ export class TrafficService {
   private async fetchBatch(domains: string[], history: boolean): Promise<TrafficResult> {
     const secret = process.env.AITDK_SECRET_KEY?.trim();
     if (!secret) throw new ServiceUnavailableException('Chưa cấu hình SECRET_KEY cho API');
+    await this.ensureProxies();
 
     const path = history ? '/api/v1/bulk' : '/api/v1/serp';
     const params: Record<string, string> = history
@@ -189,6 +191,17 @@ export class TrafficService {
     return result;
   }
 
+  // Proxy lấy từ danh sách xoay trong Cài đặt (bảng sh_proxy) — cùng một chỗ quản lý với job quét affiliate,
+  // khỏi phải maintain 2 nguồn. File AITDK_PROXY_FILE chỉ còn là dự phòng khi Cài đặt chưa có proxy nào.
+  private async ensureProxies(): Promise<void> {
+    if (this.proxies) return;
+    const fromDb = await this.sh.listProxiesFull(true).catch(() => [] as any[]);
+    const urls = fromDb
+      .filter((r: any) => (r.type || 'http') === 'http' && r.host && r.port)
+      .map((r: any) => (r.username ? `http://${r.username}:${r.password || ''}@${r.host}:${r.port}` : `http://${r.host}:${r.port}`));
+    this.proxies = urls.length ? urls.map((url) => ({ url, failedUntil: 0 })) : this.loadProxies();
+  }
+
   private loadProxies(): ProxyState[] {
     const configured = process.env.AITDK_PROXY_FILE?.trim();
     const file = configured
@@ -210,7 +223,7 @@ export class TrafficService {
   }
 
   private getAvailableProxies(): ProxyState[] {
-    if (!this.proxies) this.proxies = this.loadProxies();
+    if (!this.proxies) return []; // ensureProxies() nạp trước ở fetchBatch (đọc DB nên phải async)
     if (Date.now() < this.proxyPoolColdUntil) return [];
     return this.proxies.filter((proxy) => proxy.failedUntil <= Date.now());
   }

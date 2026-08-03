@@ -38,12 +38,18 @@ export class AffLibDetect {
     const proxies = (await this.sh.listProxiesFull(true).catch(() => []))
       .filter((r: any) => (r.type || 'http') === 'http')
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
-    const get = getOverride || (proxies.length ? makeProxiedGet(() => proxies) : shopifyHttp.get);
-    // Bị bóp thì thử lại 1 lần: đây là 1 domain do người dùng bấm, và thực tế lần 2 thường qua
-    // (keppifitness.com bị 'ratelimited' 2 lần liền rồi gọi lại là ra 'app · GoAffPro').
+    // 429 là theo TỪNG IP: cùng lúc, keppifitness.com qua proxy port 46517 ra 'app' nhưng 3 proxy khác đều
+    // 429. makeProxiedGet lại chọn proxy NGẪU NHIÊN mỗi lần gọi → thử 2 lần chỉ ~44% gặp proxy còn tốt.
+    // Nên ở đây xoay qua TỪNG proxy KHÁC NHAU (tối đa 5), mỗi lần thử một IP mới thay vì bốc ngẫu nhiên.
+    const shuffled = proxies.map((p) => p).sort(() => Math.random() - 0.5);
+    // Đo thật: allbirds.com chỉ 2/15 proxy qua được → thử 5 proxy chỉ ~57% trúng, thử 10 lên ~90%.
+    // Bấm tay là 1 domain và người dùng đang chờ, nên chấp nhận tối đa ~8s để đổi lấy tỉ lệ thành công.
+    const attempts = getOverride ? 2 : Math.max(2, Math.min(10, shuffled.length || 2));
     let last = 'lỗi không rõ';
     let limited = false; // true = chưa kết luận được (đáng thử lại) → 503; false = lỗi thật → 502
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const one = shuffled.length ? shuffled[(attempt - 1) % shuffled.length] : null;
+      const get = getOverride || (one ? makeProxiedGet(() => [one]) : shopifyHttp.get);
       try {
         const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
         if (r.status !== 'ratelimited') {
@@ -51,8 +57,9 @@ export class AffLibDetect {
           return { web, aff_status: r.status, aff_platform: r.via ?? null, join_url: r.link ?? null };
         }
         last = r.error || 'ratelimited'; // mã lỗi gốc (ETIMEDOUT / HTTP 429…) — trước đây bị nuốt trong client
-        if (attempt < 2) await new Promise((r2) => setTimeout(r2, 1500));
         limited = true;
+        // Có proxy → lần sau là IP KHÁC, khỏi phải chờ. Không proxy → cùng IP, chờ 1.5s mới có nghĩa.
+        if (attempt < attempts) await new Promise((r2) => setTimeout(r2, one ? 250 : 1500));
       } catch (e: any) {
         // Chỉ tới đây khi lỗi NGOÀI checkShopAffiliate (vd lỗi DB) — client tự catch lỗi mạng rồi trả 'ratelimited'.
         last = String(e?.code || e?.message || 'lỗi không rõ');
@@ -63,8 +70,11 @@ export class AffLibDetect {
     await this.db.markTryFailed(web, last);
     // PHẢI là HttpException: `throw new Error(...)` bị Nest trả 500 kèm body "Internal server error",
     // FE mất hẳn thông báo và người dùng chỉ thấy "Lỗi 500" — không biết là bị bóp hay domain chết.
+    // Thông báo phải nói ĐÚNG đã dùng gì: trước đây luôn khuyên "thêm proxy trong Cài đặt" dù đang có 15 proxy
+    // → gửi người dùng đi sai đường. Site chặn theo IP thì phải đổi proxy khác, không phải thêm nữa.
+    const via = shuffled.length ? `đã xoay ${Math.min(attempts, shuffled.length)}/${shuffled.length} proxy trong Cài đặt` : 'KHÔNG có proxy nào trong Cài đặt';
     throw limited
-      ? new ServiceUnavailableException(`Quét ${web} không kết luận được sau 2 lần thử (${last}). Đợi ít phút rồi bấm lại, hoặc thêm proxy trong Cài đặt.`)
+      ? new ServiceUnavailableException(`Quét ${web} không kết luận được (${last}) — ${via}. Site đang chặn các IP này; đợi ít phút rồi bấm lại hoặc thay proxy khác.`)
       : new BadGatewayException(`Quét ${web} thất bại: ${last}`);
   }
 
