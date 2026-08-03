@@ -350,6 +350,19 @@ button.ghost.danger { color: var(--danger); }
   /* Local DB: hàng bảng → thẻ dọc trên mobile (khỏi vỡ bảng nhiều cột) */
   .localcards { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
   .localcards .localcard { gap: 6px; }
+  /* Thẻ /afflibrary: class RIÊNG (không đụng thẻ Local DB/Facebook dùng chung .localcard).
+     .fbplat để màu --muted 11px cho cả dòng → số liệu bị mờ khó đọc. Ở đây đảo vai: NHÃN mờ nhỏ,
+     còn SỐ (bọc trong <b>) thì đen + đậm + to hơn. */
+  .afflibcard .fbplat b { color: var(--text); font-weight: 700; font-size: 12.5px; }
+  /* Icon hành động (⟳ ✎ 📊 🗑) thu nhỏ — 4 nút cỡ mặc định chiếm gần hết chiều ngang thẻ */
+  .afflibcard .lcbtn { padding: 0 5px; font-size: 12px; line-height: 1.7; min-width: 0; }
+  /* Bấm/chạm vào thẻ thì thẻ nhấc lên. :hover chỉ áp cho thiết bị CÓ hover thật (mobile tap
+     hay bị "hover dính" sau khi chạm), còn :active dùng cho mọi thiết bị. */
+  .afflibcard { transition: transform 0.12s ease, box-shadow 0.12s ease; }
+  .afflibcard:active { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+  @media (hover: hover) {
+    .afflibcard:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+  }
   /* Bảng đứng lẻ (report/modal) giữ full-width; nếu quá rộng thì khung cha (overflow:auto) tự cuộn */
   .localtbl { width: 100%; }
 }

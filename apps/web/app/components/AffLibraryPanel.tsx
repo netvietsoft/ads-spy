@@ -24,6 +24,17 @@ function affBadge(r: AffLibRow) {
   return <span style={{ opacity: 0.4 }}>chưa quét</span>;
 }
 
+// Badge affiliate cho THẺ MOBILE: thẻ hẹp nên chuỗi "✓ có link · shopify" ăn hết dòng tiêu đề →
+// rút về đúng 1 ký tự, ý nghĩa đầy đủ nằm ở title. Bản chữ (affBadge) vẫn dùng cho bảng desktop.
+function affBadgeMini(r: AffLibRow) {
+  const p = r.aff_platform ? ` · ${r.aff_platform}` : '';
+  if (r.aff_status === 'yes') return <span title={`Có link affiliate${p}`} style={{ color: '#16a34a', fontWeight: 700 }}>✓</span>;
+  if (r.aff_status === 'app') return <span title={`Có app affiliate, không thấy link${p}`} style={{ color: '#d97706', fontWeight: 700 }}>✓</span>;
+  if (r.aff_status === 'no') return <span title="Không có affiliate" style={{ color: 'var(--muted)' }}>–</span>;
+  if (r.aff_status === 'blocked') return <span title="Site chặn/chết" style={{ color: 'var(--muted)' }}>⊘</span>;
+  return <span title="Chưa quét" style={{ color: 'var(--muted)' }}>○</span>;
+}
+
 interface AffEdit { web: string; join_url: string; commission_pct: string; payout: string; cookie_days: string; note: string }
 
 const FILTERS: { v: AffLibFilter; label: string }[] = [
@@ -67,44 +78,45 @@ function AffLibCard({ r, onDetect, onEdit, onTraffic, onDel, scanning }: {
   const cur = r.currency;
   const u = updTime(r.updated_at);
   return (
-    <div className="fbcard localcard" onClick={() => { if (r.shop_id) window.open(`/shop/${encodeURIComponent(r.shop_id)}`, '_blank'); }}
+    <div className="fbcard localcard afflibcard" onClick={() => { if (r.shop_id) window.open(`/shop/${encodeURIComponent(r.shop_id)}`, '_blank'); }}
          style={{ cursor: r.shop_id ? 'pointer' : 'default' }}>
       <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'baseline', justifyContent: 'space-between' }}>
         <span style={{ fontSize: 14, fontWeight: 600 }}>{r.shop_name || r.web}</span>
-        {affBadge(r)}
+        {affBadgeMini(r)}
       </div>
       <div className="fbbody" style={{ fontSize: 12, opacity: 0.75 }}>
         <a href={`https://${r.web}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: '#2563eb' }}>{r.web}</a>
         {!r.found && <span style={{ marginLeft: 6, color: '#e0a800' }}>(ngoài DB)</span>}
       </div>
+      {/* Nhãn để chữ thường (màu mờ của .fbplat), SỐ bọc <b> → CSS .afflibcard .fbplat b cho đen + đậm */}
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <span><b>Tháng</b> {usd(r.rev_month, cur)}</span>
-        <span><b>Tuần</b> {usd(r.rev_week, cur)}</span>
-        <span><b>Ngày</b> {usd(r.rev_day, cur)}</span>
-        <span><b>SKU</b> {r.sku ?? '—'}</span>
+        <span>Tháng <b>{usd(r.rev_month, cur)}</b></span>
+        <span>Tuần <b>{usd(r.rev_week, cur)}</b></span>
+        <span>Ngày <b>{usd(r.rev_day, cur)}</b></span>
+        <span>SKU <b>{r.sku ?? '—'}</b></span>
       </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <span><b>Traffic</b> {numfmt(r.traffic_visits)}</span>
-        <span><b>Bounce</b> {bounce(r.traffic_bounce)}</span>
-        <span><b>Time</b> {dur(r.traffic_duration_sec)}</span>
+        <span>Traffic <b>{numfmt(r.traffic_visits)}</b></span>
+        <span>Bounce <b>{bounce(r.traffic_bounce)}</b></span>
+        <span>Time <b>{dur(r.traffic_duration_sec)}</b></span>
       </div>
       {(r.commission_pct != null || r.payout != null || r.cookie_days != null || r.join_url) && (
         <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {r.commission_pct != null && <span><b>%commit</b> {pct(r.commission_pct)}</span>}
-          {r.payout != null && <span><b>Payout</b> {r.payout}</span>}
-          {r.cookie_days != null && <span><b>Cookie</b> {r.cookie_days}d</span>}
+          {r.commission_pct != null && <span>%commit <b>{pct(r.commission_pct)}</b></span>}
+          {r.payout != null && <span>Payout <b>{r.payout}</b></span>}
+          {r.cookie_days != null && <span>Cookie <b>{r.cookie_days}d</b></span>}
           {r.join_url && <a href={r.join_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: '#2563eb' }}>link đăng ký</a>}
         </div>
       )}
       {r.note && <div className="fbbody" style={{ fontSize: 12 }}>{r.note}</div>}
       <div className="fbfoot" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex', gap: 6 }}>
-          <button className="srcbtn" title="Quét affiliate domain này" onClick={onDetect} disabled={scanning} style={{ padding: '2px 8px' }}>{scanning ? '⏳' : '⟳'}</button>
-          <button className="srcbtn" title="Sửa affiliate" onClick={onEdit} style={{ padding: '2px 8px' }}>✎</button>
-          <button className="srcbtn" title="Dán traffic" onClick={onTraffic} style={{ padding: '2px 8px' }}>📊</button>
-          <button className="srcbtn" title="Xoá" onClick={onDel} style={{ padding: '2px 8px' }}>🗑</button>
+          <button className="srcbtn lcbtn" title="Quét affiliate domain này" onClick={onDetect} disabled={scanning}>{scanning ? '⏳' : '⟳'}</button>
+          <button className="srcbtn lcbtn" title="Sửa affiliate" onClick={onEdit}>✎</button>
+          <button className="srcbtn lcbtn" title="Dán traffic" onClick={onTraffic}>📊</button>
+          <button className="srcbtn lcbtn" title="Xoá" onClick={onDel}>🗑</button>
         </span>
-        {u && <span className="fbplat" style={{ marginLeft: 'auto', textAlign: 'right', fontSize: 11, opacity: 0.7 }}>{u.date}<br />{u.time}</span>}
+        {u && <span className="fbplat" style={{ marginLeft: 'auto', textAlign: 'right', fontSize: 11 }}>{u.date}<br />{u.time}</span>}
       </div>
     </div>
   );
