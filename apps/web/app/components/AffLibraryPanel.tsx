@@ -57,6 +57,8 @@ export function AffLibraryPanel() {
   const [sel, setSel] = useState<Set<string>>(new Set()); // dòng đã tick ở chế độ "cần dọn"
   const [dns, setDns] = useState<string | null>(null); // kết quả lần lọc DNS gần nhất
   const [traf, setTraf] = useState<string | null>(null); // kết quả lần điền traffic gần nhất
+  const [scanning, setScanning] = useState<string | null>(null); // domain đang quét bằng nút ⟳
+  const [scanMsg, setScanMsg] = useState<string | null>(null); // kết quả quét 1 domain gần nhất
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [pageSize, setPageSize] = useState(20);
   const barRef = useRef<HTMLDivElement>(null);
@@ -187,14 +189,19 @@ export function AffLibraryPanel() {
     setBusy(false);
   };
 
-  // Quét 1 domain: cập nhật đúng dòng đó, không tải lại cả trang.
+  // Quét 1 domain. Mất 3-10s (xoay tới 10 proxy) nên PHẢI có dấu hiệu đang chạy + kết quả:
+  // bấm xong mà im lặng 5 giây thì tưởng như không có gì xảy ra. Và phải load() lại vì server vừa điền
+  // traffic cho dòng đó — vá tại chỗ chỉ có aff_status, 3 cột traffic sẽ không cập nhật.
   const detectRow = async (web: string) => {
-    setBusy(true); setErr(null);
+    setScanning(web); setErr(null); setScanMsg(`Đang quét ${web}…`);
     try {
       const r = await affLibDetectOne(web);
-      setItems((prev) => prev.map((x) => (x.web === web ? { ...x, aff_status: r.aff_status, aff_platform: r.aff_platform, join_url: r.join_url ?? x.join_url } : x)));
-    } catch (e) { setErr((e as Error).message); }
-    setBusy(false);
+      const label = r.aff_status === 'yes' ? '✓ có link' : r.aff_status === 'app' ? 'có app aff (không thấy link)'
+        : r.aff_status === 'no' ? 'không có affiliate' : r.aff_status === 'blocked' ? 'site chặn/chết' : r.aff_status;
+      setScanMsg(`${web} → ${label}${r.aff_platform ? ` · ${r.aff_platform}` : ''}`);
+      await load();
+    } catch (e) { setErr((e as Error).message); setScanMsg(null); }
+    setScanning(null);
   };
 
   const bulk = async (kind: 'del' | 'retry') => {
@@ -265,6 +272,7 @@ export function AffLibraryPanel() {
           {busy && traf ? '⏳ Đang lấy traffic…' : '📊 Điền traffic thiếu'}
         </button>
         {traf && <span style={{ opacity: 0.75 }}>{traf}</span>}
+        {scanMsg && <span style={{ color: scanning ? '#6b7280' : '#16a34a', fontWeight: 600 }}>{scanMsg}</span>}
         <select value={filter} onChange={(e) => changeFilter(e.target.value as AffLibFilter)} disabled={loading} title="Lọc danh sách" style={selStyle}>
           {FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
         </select>
@@ -329,7 +337,10 @@ export function AffLibraryPanel() {
                 <td style={td}>{r.cookie_days == null ? '—' : r.cookie_days + 'd'}</td>
                 <td style={{ ...td, whiteSpace: 'normal', maxWidth: 140 }}>{r.note || '—'}</td>
                 <td style={td}>
-                  <button className="srcbtn" title="Quét affiliate domain này ngay (quét lại nếu đã quét)" onClick={() => detectRow(r.web)} disabled={busy} style={{ padding: '2px 8px' }}>⟳</button>{' '}
+                  <button className="srcbtn" title="Quét affiliate domain này ngay (quét lại nếu đã quét) — xoay qua tối đa 10 proxy, mất 3-10s"
+                          onClick={() => detectRow(r.web)} disabled={busy || !!scanning} style={{ padding: '2px 8px' }}>
+                    {scanning === r.web ? '⏳' : '⟳'}
+                  </button>{' '}
                   <button className="srcbtn" title="Sửa affiliate" onClick={() => openEdit(r)} style={{ padding: '2px 8px' }}>✎</button>{' '}
                   <button className="srcbtn" title="Dán traffic" onClick={() => setTraffic({ web: r.web, text: '' })} style={{ padding: '2px 8px' }}>📊</button>{' '}
                   <button className="srcbtn" title="Xoá" onClick={() => del(r.web)} style={{ padding: '2px 8px' }}>🗑</button>
