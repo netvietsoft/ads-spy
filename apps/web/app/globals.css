@@ -83,8 +83,10 @@ body {
 /* Bảng 15 cột rộng ~1825px, màn 1600px vẫn phải cuộn ngang → GHIM cột Action vào lề phải để nút
    sửa/xoá luôn thấy được, không phải cuộn tới cuối mới bấm được. (.localtbl đã border-collapse:separate
    nên sticky trên ô hoạt động; th vốn đã sticky top nên thêm right là ghim cả 2 chiều.) */
-.localtbl td.actcol { position: sticky; right: 0; z-index: 2; background: var(--panel); box-shadow: -7px 0 8px -7px rgba(0, 0, 0, 0.35); }
-.localtbl th.actcol { right: 0; z-index: 4; box-shadow: inset 0 -1px var(--border), -7px 0 8px -7px rgba(0, 0, 0, 0.35); }
+/* Ranh giới cột ghim: dùng viền 1px thay box-shadow — shadow bị "nhoè/dính" thành vệt đậm khi ô ghim
+   trượt qua các ô khác lúc cuộn ngang, nhất là chỗ giáp thanh cuộn. */
+.localtbl td.actcol { position: sticky; right: 0; z-index: 2; background: var(--panel); border-left: 1px solid var(--border); }
+.localtbl th.actcol { right: 0; z-index: 4; border-left: 1px solid var(--border); }
 /* Giữ hiệu ứng hover của dòng cho cả ô đã ghim (nền solid ở trên sẽ che mất màu hover). */
 .localtbl tbody tr:hover td.actcol { background: color-mix(in srgb, var(--text) 14%, var(--panel)); }
 .afflib-tablewrap { overflow: visible; }

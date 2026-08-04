@@ -2,8 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affRescanNet, affTrafficRefresh, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { affNets, affAddNets, affDeleteNet, affRescanNet, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
+import { TrafficHistoryModal } from './TrafficHistoryModal';
 
 // 2 job nền lo việc quét net (dùng chung hàng đợi cho MỌI net, không theo từng net).
 const SCAN_JOBS = ['affdiscover', 'afffetch'];
@@ -141,8 +142,8 @@ function NetRowCard({ n, active, onSelect, onDelete, onRescan, rescanning }: { n
   );
 }
 
-function HostRowCard({ p, onEdit, onRefresh, refreshing, onEditRow, onDelete, deleting }: {
-  p: AffHostRow; onEdit: (web: string) => void; onRefresh: (web: string) => void; refreshing: boolean;
+function HostRowCard({ p, onHistory, onEditRow, onDelete, deleting }: {
+  p: AffHostRow; onHistory: (web: string) => void;
   onEditRow: () => void; onDelete: () => void; deleting: boolean;
 }) {
   const site = siteUrl(p.web);
@@ -162,15 +163,11 @@ function HostRowCard({ p, onEdit, onRefresh, refreshing, onEditRow, onDelete, de
         <span>Traffic/th <b>{fmtVisits(p.traffic_visits)}</b></span>
         <span>Bounce <b>{fmtBounce(p.traffic_bounce)}</b></span>
         <span>Time <b>{fmtDur(p.traffic_duration_sec)}</b></span>
-        {/* Mobile: chỉ icon, bỏ chữ, căn lề phải. Cùng quy ước với Aff Library:
-            ✎ sửa thông tin · 📊 dán traffic · ⟳ lấy lại traffic · 🗑 xoá domain. */}
+        {/* Mobile: chỉ icon, căn lề phải — ✎ sửa · 📊 cào 12 tháng traffic · 🗑 xoá. */}
         <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
           <button className="ghost" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={onEditRow}>✎</button>
           {p.web && (
-            <>
-              <button className="ghost" title="Nhập/sửa traffic (dán từ extension)" onClick={() => onEdit(p.web!)}>📊</button>
-              <button className="ghost" title="Lấy lại traffic (AITDK)" onClick={() => onRefresh(p.web!)} disabled={refreshing}>{refreshing ? '⏳' : '⟳'}</button>
-            </>
+            <button className="ghost" title="Cào 12 tháng traffic (AITDK) + lưu DB" onClick={() => onHistory(p.web!)}>📊</button>
           )}
           <button className="ghost danger" title="Xoá domain này khỏi net" onClick={onDelete} disabled={deleting}>{deleting ? '⏳' : '🗑'}</button>
         </span>
@@ -196,7 +193,6 @@ export function AffnetPanel() {
   const [netsErr, setNetsErr] = useState<string | null>(null);
   const [netSort, setNetSort] = useState<NetSortKey>('active');
   const [rescanning, setRescanning] = useState<string | null>(null); // net đang quét lại
-  const [refreshing, setRefreshing] = useState<string | null>(null); // web đang lấy lại traffic
 
   const [importText, setImportText] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -224,6 +220,8 @@ export function AffnetPanel() {
   const [editRowBusy, setEditRowBusy] = useState(false);
   const [editRowMsg, setEditRowMsg] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Domain đang mở modal lịch sử 12 tháng (nút 📊) — modal tự cào AITDK + lưu DB.
+  const [histWeb, setHistWeb] = useState<string | null>(null);
 
   // Ô nhập traffic (dán khối từ extension) cho 1 domain (web).
   const [editWeb, setEditWeb] = useState<string | null>(null);
@@ -317,14 +315,6 @@ export function AffnetPanel() {
     try { const r = await affRescanNet(net); setImportMsg(`Đã đưa ${r.hosts.toLocaleString()} host của ${net} vào lại hàng đợi quét.`); refreshNets(); }
     catch (e) { setNetsErr((e as Error).message); }
     setRescanning(null);
-  };
-
-  // Lấy lại traffic (AITDK) cho 1 domain — dùng chung endpoint traffic/search, tự lưu vào aff_domain_traffic.
-  const doRefreshTraffic = async (web: string) => {
-    setRefreshing(web); setErr(null);
-    try { await affTrafficRefresh([web]); setReloadTick((t) => t + 1); } // tải lại để số traffic mới hiện lên
-    catch (e) { setErr(`Lấy traffic ${web} thất bại: ${(e as Error).message}`); }
-    setRefreshing(null);
   };
 
   // Scan traffic cho TOÀN BỘ web của net đang xem — AITDK mỗi lô 50, lặp tới khi hết.
@@ -589,7 +579,7 @@ export function AffnetPanel() {
             <div className="localcards">
               {data.rows.length === 0 && !loading ? <p className="hint">Không có domain khớp bộ lọc.</p>
                 : data.rows.map((p) => (
-                  <HostRowCard key={p.slug} p={p} onEdit={openEdit} onRefresh={doRefreshTraffic} refreshing={refreshing === p.web}
+                  <HostRowCard key={p.slug} p={p} onHistory={setHistWeb}
                     onEditRow={() => { setEdit(toEdit(p)); setEditRowMsg(null); }}
                     onDelete={() => doDeleteHost(p.slug)} deleting={deleting === p.slug} />
                 ))}
@@ -634,18 +624,13 @@ export function AffnetPanel() {
                         <td>{fmtBounce(p.traffic_bounce)}</td>
                         <td>{fmtDur(p.traffic_duration_sec)}</td>
                         <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{p.checked_at ? new Date(p.checked_at).toLocaleDateString('vi-VN') : '—'}</td>
-                        {/* Action — cùng quy ước icon với Aff Library: ✎ sửa thông tin · 📊 dán traffic ·
-                            ⟳ lấy lại traffic · 🗑 xoá. 2 nút traffic chỉ có nghĩa khi dòng đã biết `web`. */}
-                        {/* 4 nút cỡ mặc định làm cột Action rộng quá, nút 🗑 bị đẩy ra ngoài vùng thấy →
-                            dùng .actbtn (nhỏ, gap 4px) và nowrap để cả 4 nút luôn nằm gọn 1 hàng. */}
+                        {/* Action: ✎ sửa thông tin · 📊 cào 12 tháng traffic (chỉ khi biết `web`) · 🗑 xoá.
+                            Bỏ nút ⟳ "lấy lại traffic" — trùng việc với 📊 (nay 📊 cào lại + mở lịch sử). */}
                         <td className="actcol" style={{ whiteSpace: 'nowrap' }}>
                           <span style={{ display: 'inline-flex', gap: 4 }}>
                             <button className="ghost actbtn" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={() => { setEdit(toEdit(p)); setEditRowMsg(null); }}>✎</button>
                             {p.web && (
-                              <>
-                                <button className="ghost actbtn" title="Nhập/sửa traffic (dán từ extension)" onClick={() => openEdit(p.web!)}>📊</button>
-                                <button className="ghost actbtn" title="Lấy lại traffic (AITDK)" onClick={() => doRefreshTraffic(p.web!)} disabled={refreshing === p.web}>{refreshing === p.web ? '⏳' : '⟳'}</button>
-                              </>
+                              <button className="ghost actbtn" title="Cào 12 tháng traffic (AITDK) + lưu DB" onClick={() => setHistWeb(p.web!)}>📊</button>
                             )}
                             <button className="ghost danger actbtn" title="Xoá domain này khỏi net" onClick={() => doDeleteHost(p.slug)} disabled={deleting === p.slug}>{deleting === p.slug ? '⏳' : '🗑'}</button>
                           </span>
@@ -661,6 +646,12 @@ export function AffnetPanel() {
             </div>
           )}
         </>
+      )}
+
+      {/* 📊 — cào 12 tháng traffic + lưu DB (save=true), rồi tải lại bảng để 3 cột traffic đổi theo. */}
+      {histWeb && (
+        <TrafficHistoryModal domain={histWeb} save onClose={() => setHistWeb(null)}
+          onSaved={() => setReloadTick((t) => t + 1)} />
       )}
 
       {/* Form sửa TAY 1 dòng — những thông tin crawler không cào được. Ô để trống = xoá giá trị đó. */}
@@ -696,9 +687,16 @@ export function AffnetPanel() {
               </label>
             </div>
             {editRowMsg && <div className="err" style={{ marginTop: 6 }}>{editRowMsg}</div>}
-            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
               <button className="srcbtn active" onClick={saveEdit} disabled={editRowBusy}>{editRowBusy ? <span className="spinner" /> : 'Lưu'}</button>
               <button className="srcbtn" onClick={() => setEdit(null)} disabled={editRowBusy}>Huỷ</button>
+              {/* Lối vào cho việc DÁN traffic tay — trước đây là 1 icon riêng ở cột Action, nay gom vào
+                  đây để cột Action chỉ còn 3 nút. Dùng khi AITDK không có dữ liệu cho domain. */}
+              {edit.web.trim() && (
+                <button className="srcbtn" style={{ marginLeft: 'auto' }} disabled={editRowBusy}
+                  title="Dán khối Traffic Overview từ extension AITDK cho domain này"
+                  onClick={() => { const w = edit.web.trim(); setEdit(null); openEdit(w); }}>📊 Dán traffic tay</button>
+              )}
             </div>
           </div>
         </div>

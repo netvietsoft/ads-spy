@@ -1,6 +1,8 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { trafficSearch, TrafficData, TrafficResult } from '../api';
+import { formatNumber, formatBounceRate, formatTimeOnSite, formatPages, formatRank } from '../trafficFmt';
+import { TrafficHistoryModal } from './TrafficHistoryModal';
 
 const CHUNK_SIZE = 100;
 
@@ -11,57 +13,6 @@ function parseDomains(text: string): string[] {
       .map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0])
       .filter(Boolean),
   )];
-}
-
-function formatNumber(value: any): string {
-  if (value === null || value === undefined) return 'N/A';
-  try {
-    const num = typeof value === 'string' ? parseInt(value, 10) : value;
-    if (Number.isNaN(num)) return String(value);
-    // Ép 'vi-VN' (946.768.445) thay vì để theo locale máy — máy en-US sẽ ra 946,768,445, lệch với thiết kế.
-    return num.toLocaleString('vi-VN');
-  } catch {
-    return String(value);
-  }
-}
-
-function formatBounceRate(value: number): string {
-  if (value === null || value === undefined) return 'N/A';
-  return `${value.toFixed(1)}%`;
-}
-
-function formatTimeOnSite(value: number | null): string {
-  if (value === null || value === undefined) return 'N/A';
-  return `${Math.round(value)}s`;
-}
-
-function formatPages(value: number | null): string {
-  if (value === null || value === undefined) return 'N/A';
-  return value.toFixed(1);
-}
-
-function formatRank(value: number | null): string {
-  if (value === null || value === undefined) return 'N/A';
-  return `#${value.toLocaleString('vi-VN')}`;
-}
-
-// Chuỗi tháng cho modal lịch sử. Key AITDK là NGÀY ĐẦU THÁNG "YYYY-MM-01" → nhãn "MM/YY".
-// deltaPct so với THÁNG LIỀN TRƯỚC (khác cột "Xu hướng" ở bảng chính: cột đó so tháng đầu vs tháng cuối).
-// Số tháng KHÔNG luôn là 12 — AITDK trả khác nhau theo domain, nên không hardcode 12 ở đâu cả.
-interface MonthPoint { key: string; label: string; visits: number; deltaPct: number | null }
-function monthSeries(mv?: Record<string, number> | null): MonthPoint[] {
-  if (!mv) return [];
-  const keys = Object.keys(mv).sort();
-  return keys.map((k, i) => {
-    const visits = Number(mv[k]) || 0;
-    const prev = i > 0 ? Number(mv[keys[i - 1]]) || 0 : 0;
-    return {
-      key: k,
-      label: `${k.slice(5, 7)}/${k.slice(2, 4)}`,
-      visits,
-      deltaPct: i === 0 || !prev ? null : ((visits - prev) / prev) * 100,
-    };
-  });
 }
 
 function download(content: string, ext: string, mime: string) {
@@ -84,38 +35,10 @@ export function TrafficPanel() {
   const [result, setResult] = useState<TrafficResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  // Modal lịch sử theo tháng (bấm 1 dòng trong bảng kết quả).
+  // Domain đang mở modal lịch sử 12 tháng (bấm 1 dòng ở bảng kết quả).
   const [selected, setSelected] = useState<string | null>(null);
-  const [histLoading, setHistLoading] = useState(false);
-  const [histErr, setHistErr] = useState<string | null>(null);
-  // Lịch sử lấy thêm sau (khi quét không tick "lịch sử 12 tháng") — cache theo domain, khỏi gọi lại.
-  const [histExtra, setHistExtra] = useState<Record<string, TrafficData>>({});
 
   const domainList = useMemo(() => parseDomains(text), [text]);
-
-  // Bấm 1 dòng → mở lịch sử. BE chỉ trả monthly_visits khi history=true, nên nếu lúc quét không tick
-  // thì phải gọi lại RIÊNG domain đó. save=false để không ghi DB thừa (chỉ đang xem).
-  const openHistory = async (domain: string) => {
-    setSelected(domain);
-    setHistErr(null);
-    const cur = histExtra[domain] ?? result?.traffic[domain];
-    if (cur?.monthly_visits && Object.keys(cur.monthly_visits).length > 0) return;
-    setHistLoading(true);
-    try {
-      const r = await trafficSearch([domain], true, false);
-      const d = r.traffic[domain];
-      if (!d) throw new Error('AITDK không trả dữ liệu lịch sử cho domain này');
-      setHistExtra((m) => ({ ...m, [domain]: d }));
-    } catch (e) {
-      // Lỗi phải hiện trong modal, KHÔNG được để trắng: thiếu AITDK_SECRET_KEY → 503, proxy chết → 502.
-      setHistErr((e as Error).message);
-    }
-    setHistLoading(false);
-  };
-
-  const selData = selected ? (histExtra[selected] ?? result?.traffic[selected] ?? null) : null;
-  const selMonths = monthSeries(selData?.monthly_visits);
-  const selMax = Math.max(...selMonths.map((m) => m.visits), 1);
 
   const run = async () => {
     if (!domainList.length || loading) return;
@@ -408,7 +331,7 @@ export function TrafficPanel() {
                   {Object.entries(result.traffic).map(([domain, data]) => (
                     <tr
                       key={domain}
-                      onClick={() => openHistory(domain)}
+                      onClick={() => setSelected(domain)}
                       title="Bấm để xem lịch sử theo tháng"
                       className="cursor-pointer transition-colors hover:bg-gray-50"
                       style={{ cursor: 'pointer' }}
@@ -446,116 +369,14 @@ export function TrafficPanel() {
           </div>
         )}
 
-        {/* Modal lịch sử theo tháng — bấm 1 dòng ở bảng kết quả. */}
+        {/* Modal lịch sử 12 tháng — dùng chung với nút 📊 ở /affnet/{net} (TrafficHistoryModal).
+            initial = bản ghi đã quét; save=false vì lượt quét chính đã ghi DB theo ý người dùng. */}
         {selected && (
-          <div
-            onClick={() => setSelected(null)}
-            className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 py-10"
-          >
-            <div onClick={(e) => e.stopPropagation()} className="w-full max-w-3xl rounded-lg bg-white shadow-xl">
-              <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800">{selected}</h3>
-                  <p className="text-sm text-gray-500">
-                    Tháng gần nhất {selData?.month || 'N/A'}/{selData?.year || 'N/A'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  aria-label="Đóng"
-                  className="rounded-md border border-gray-300 px-3 py-1 text-gray-500 transition-colors hover:bg-gray-50"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="px-6 py-5">
-                {/* 4 thẻ số của tháng gần nhất */}
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {([
-                    ['Visits tháng này', formatNumber(selData?.visits)],
-                    ['Bounce rate', selData ? formatBounceRate(selData.bounce_rate) : 'N/A'],
-                    ['Time on site', selData ? formatTimeOnSite(selData.time_on_site) : 'N/A'],
-                    ['Global rank', selData ? formatRank(selData.global_rank) : 'N/A'],
-                  ] as [string, string][]).map(([label, value]) => (
-                    <div key={label} className="rounded-lg border border-gray-200 px-4 py-3">
-                      <div className="text-sm text-gray-500">{label}</div>
-                      <div className="mt-1 font-mono text-2xl font-bold text-gray-800">{value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <h4 className="mt-6 font-semibold text-gray-800">
-                  Lượt truy cập theo tháng ({selMonths.length} tháng)
-                </h4>
-
-                {histLoading && <p className="mt-3 text-sm text-gray-500">Đang lấy lịch sử theo tháng…</p>}
-                {histErr && (
-                  <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    ❌ {histErr}
-                  </div>
-                )}
-                {!histLoading && !histErr && selMonths.length === 0 && (
-                  <p className="mt-3 text-sm text-gray-500">Domain này không có dữ liệu lịch sử.</p>
-                )}
-
-                {selMonths.length > 0 && (
-                  <>
-                    {/* Biểu đồ cột thuần CSS — repo không có thư viện chart. Chiều cao theo % của tháng
-                        cao nhất, tối thiểu 4% để tháng nhỏ vẫn thấy được vạch. */}
-                    {/* Chiều cao cột là % của khung, nên khung PHẢI có chiều cao thật — h-56 (Tailwind)
-                        không có tác dụng ở đây nên đặt inline 224px, không thì mọi cột cao 0. */}
-                    <div className="mt-3 rounded-lg bg-gray-50 p-4"
-                         style={{ marginTop: 12, background: '#f9fafb', borderRadius: 8, padding: 16 }}>
-                      <div className="flex h-56 items-end gap-2" style={{ display: 'flex', height: 224, alignItems: 'flex-end', gap: 8 }}>
-                        {selMonths.map((m) => (
-                          <div key={m.key} className="flex flex-1 flex-col items-center justify-end gap-2"
-                               style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 6, height: '100%' }}
-                               title={`${m.label}: ${formatNumber(m.visits)}`}>
-                            <div
-                              className="w-full rounded-t bg-blue-600"
-                              style={{
-                                width: '100%', background: '#2563eb', borderRadius: '4px 4px 0 0',
-                                height: `${Math.max((m.visits / selMax) * 100, 4)}%`,
-                              }}
-                            />
-                            <span className="font-mono text-xs text-gray-500" style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>{m.label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <table className="mt-5 w-full text-sm">
-                      <thead className="border-b border-gray-200 text-xs uppercase tracking-wide">
-                        <tr>
-                          <th className="px-2 py-2 text-left font-semibold text-gray-600">Tháng</th>
-                          <th className="px-2 py-2 text-left font-semibold text-gray-600">Visits</th>
-                          <th className="px-2 py-2 text-right font-semibold text-gray-600">So tháng trước</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {selMonths.map((m) => (
-                          <tr key={m.key}>
-                            <td className="px-2 py-2 text-gray-700">{m.label}</td>
-                            <td className="px-2 py-2 font-mono text-gray-800">{formatNumber(m.visits)}</td>
-                            <td
-                              className={`px-2 py-2 text-right font-mono font-semibold ${
-                                m.deltaPct === null ? 'text-gray-400' : m.deltaPct >= 0 ? 'text-green-600' : 'text-red-600'
-                              }`}
-                            >
-                              {m.deltaPct === null
-                                ? '—'
-                                : `${m.deltaPct >= 0 ? '▲' : '▼'} ${Math.abs(m.deltaPct).toFixed(1)}%`}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
+          <TrafficHistoryModal
+            domain={selected}
+            initial={result?.traffic[selected] ?? null}
+            onClose={() => setSelected(null)}
+          />
         )}
       </div>
     </div>
