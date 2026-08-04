@@ -661,6 +661,20 @@ export interface AffProgramRow {
   traffic_visits: number | null; traffic_bounce: number | null;
   traffic_duration_sec: number | null; traffic_rank: number | null; traffic_updated_at: number | null;
 }
+// 1 dòng của trang /affnet/{net}: MỌI domain đã phát hiện (aff_host), các cột chương trình/traffic là
+// NULL với host chưa quét hoặc quét ra không có affiliate. check_status: 'active' | 'inactive' |
+// 'notfound' | 'error' (không phân loại được) | null (chưa quét).
+export interface AffHostRow {
+  net: string; slug: string; first_seen: number; last_seen: number; sources: string;
+  checked_at: number | null; check_status: string | null; check_tries: number;
+  join_url: string | null; program_name: string | null; brand: string | null; web: string | null;
+  commission_pct: number | null; commission_flat: number | null; commission_currency: string | null;
+  cookie_days: number | null; payout_threshold: number | null; notes: string | null;
+  program_status: string | null; fetched_at: number | null;
+  traffic_visits: number | null; traffic_bounce: number | null;
+  traffic_duration_sec: number | null; traffic_rank: number | null; traffic_updated_at: number | null;
+}
+export type AffHostFilter = 'all' | 'active' | 'none' | 'error' | 'pending' | 'scanned';
 export interface AffTrafficRow {
   web: string; visits: number | null; bounce_rate: number | null;
   visit_duration_sec: number | null; global_rank: number | null; note: string | null; updated_at: number | null;
@@ -695,6 +709,23 @@ export async function affPrograms(p: {
   if (p.sort) qs.set('sort', p.sort);
   if (p.dir) qs.set('dir', p.dir);
   return jsonOrThrow(await fetch(`${API}/api/aff/programs?${qs.toString()}`));
+}
+// Trang /affnet/{net}: MỌI domain đã phát hiện của net (không chỉ cái quét ra chương trình).
+export async function affHosts(p: {
+  net: string; filter?: AffHostFilter; q?: string; minPct?: number; maxPct?: number;
+  page?: number; pageSize?: number; sort?: string; dir?: string;
+}): Promise<{ rows: AffHostRow[]; total: number }> {
+  const qs = new URLSearchParams();
+  qs.set('net', p.net);
+  if (p.filter && p.filter !== 'all') qs.set('filter', p.filter);
+  if (p.q) qs.set('q', p.q);
+  if (p.minPct != null) qs.set('minPct', String(p.minPct));
+  if (p.maxPct != null) qs.set('maxPct', String(p.maxPct));
+  if (p.page) qs.set('page', String(p.page));
+  if (p.pageSize) qs.set('pageSize', String(p.pageSize));
+  if (p.sort) qs.set('sort', p.sort);
+  if (p.dir) qs.set('dir', p.dir);
+  return jsonOrThrow(await fetch(`${API}/api/aff/hosts?${qs.toString()}`));
 }
 // Lưu traffic dán tay cho 1 domain (web). Gửi khối text từ extension để backend parse,
 // hoặc số gõ tay (override). Backend chuẩn hoá web + upsert theo domain.

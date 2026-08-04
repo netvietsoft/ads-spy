@@ -285,4 +285,99 @@ describe('AffnetMysql', () => {
       await expect(db.programList({ net: NET, sort: 'web', dir: 'asc', offset: 0, limit: 10 })).resolves.toBeDefined();
     });
   });
+
+  // Trang /affnet/{net} phải thấy ĐỘ PHỦ QUÉT, không chỉ các chương trình tìm được: getrewardful.com có
+  // 1.401 host đã phát hiện nhưng programList chỉ trả 335 dòng.
+  describe('hostList — MỌI domain đã phát hiện của net (trang /affnet/{net})', () => {
+    const P = 'hl-';
+
+    beforeAll(async () => {
+      await db.upsertHosts(NET, [
+        { slug: P + 'co-link', sources: ['s'] },
+        { slug: P + 'khong-co', sources: ['s'] },
+        { slug: P + 'khong-thay', sources: ['s'] },
+        { slug: P + 'chua-quet', sources: ['s'] },
+        { slug: P + 'khong-ro', sources: ['s'] },
+      ]);
+      await db.markHostChecked(NET, P + 'co-link', 'active');
+      await db.markHostChecked(NET, P + 'khong-co', 'inactive');
+      await db.markHostChecked(NET, P + 'khong-thay', 'notfound');
+      await db.markHostChecked(NET, P + 'khong-ro', 'error'); // classify không kết luận được
+      await db.upsertProgram(prog(P + 'co-link', 25));
+    });
+
+    it('trả CẢ host chưa quét lẫn host quét ra KHÔNG có chương trình (programList thì không thấy)', async () => {
+      const { rows, total } = await db.hostList({ net: NET, q: P, offset: 0, limit: 50 });
+      const slugs = rows.map((r: any) => r.slug);
+      expect(slugs).toContain(P + 'co-link');
+      expect(slugs).toContain(P + 'khong-co');
+      expect(slugs).toContain(P + 'khong-thay');
+      expect(slugs).toContain(P + 'chua-quet');
+      expect(slugs).toContain(P + 'khong-ro');
+      expect(total).toBe(5);
+      // Cùng bộ dữ liệu, programList chỉ thấy 1 dòng — chính là lý do phải có hostList.
+      expect((await db.programList({ net: NET, q: P, offset: 0, limit: 50 })).total).toBe(1);
+    });
+
+    it('filter active / none / error / pending / scanned lọc đúng nhóm', async () => {
+      const f = async (filter: string) =>
+        (await db.hostList({ net: NET, q: P, filter, offset: 0, limit: 50 })).rows.map((r: any) => r.slug).sort();
+      expect(await f('active')).toEqual([P + 'co-link']);
+      expect(await f('none')).toEqual([P + 'khong-co', P + 'khong-thay'].sort());
+      expect(await f('error')).toEqual([P + 'khong-ro']);
+      expect(await f('pending')).toEqual([P + 'chua-quet']);
+      expect(await f('scanned')).toEqual([P + 'co-link', P + 'khong-co', P + 'khong-ro', P + 'khong-thay'].sort());
+    });
+
+    // Test BẤT BIẾN: bản đầu của HOST_FILTERS thiếu 'error' → 34/1401 dòng thật của getrewardful.com
+    // không hiện ở BẤT KỲ bộ lọc nào ngoài "tất cả". Test này đỏ ngay nếu thêm giá trị check_status mới
+    // mà quên thêm bộ lọc tương ứng.
+    it('active + none + error + pending PHỦ KÍN "all" (không dòng nào vô hình trên UI)', async () => {
+      const n = async (filter: string) => (await db.hostList({ net: NET, q: P, filter, offset: 0, limit: 1 })).total;
+      const [all, active, none, error, pending] = await Promise.all(
+        ['all', 'active', 'none', 'error', 'pending'].map(n),
+      );
+      expect(active + none + error + pending).toBe(all);
+    });
+
+    it('host chưa quét VẪN ra dòng, cột chương trình/traffic để NULL (LEFT JOIN không loại hàng)', async () => {
+      const { rows } = await db.hostList({ net: NET, q: P + 'chua-quet', offset: 0, limit: 10 });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].check_status).toBeNull();
+      expect(rows[0].program_name).toBeNull();
+      expect(rows[0].traffic_visits).toBeNull();
+    });
+
+    it('filter ngoài whitelist → coi như "all", KHÔNG ném lỗi và KHÔNG lọt SQL vào câu query', async () => {
+      const { total } = await db.hostList({ net: NET, q: P, filter: "x' OR 1=1 --", offset: 0, limit: 50 });
+      expect(total).toBe(5);
+    });
+
+    it('lọc %commit vẫn hoạt động như programList (host không có chương trình bị loại)', async () => {
+      const inRange = async (min?: number, max?: number) =>
+        (await db.hostList({ net: NET, q: P, minPct: min, maxPct: max, offset: 0, limit: 50 })).rows.map((r: any) => r.slug);
+      expect(await inRange(20, 30)).toEqual([P + 'co-link']); // chương trình 25%
+      expect(await inRange(40)).toEqual([]);                  // không chương trình nào ≥ 40%
+    });
+
+    it('sort theo web / visits KHÔNG ném lỗi cột mơ hồ sau 2 LEFT JOIN', async () => {
+      await expect(db.hostList({ net: NET, q: P, sort: 'web', dir: 'asc', offset: 0, limit: 10 })).resolves.toBeDefined();
+      await expect(db.hostList({ net: NET, q: P, sort: 'visits', dir: 'desc', offset: 0, limit: 10 })).resolves.toBeDefined();
+    });
+
+    it('KHÔNG trả terms_text (cột MEDIUMTEXT nặng) dù đã JOIN aff_program', async () => {
+      const { rows } = await db.hostList({ net: NET, q: P, offset: 0, limit: 10 });
+      expect(Object.keys(rows[0])).not.toContain('terms_text');
+    });
+
+    it('phân trang ỔN ĐỊNH khi giá trị sort trùng nhau (tie-breaker h.slug) — không lặp/nhảy dòng', async () => {
+      // visits của cả 5 host đều NULL → thiếu tie-breaker thì thứ tự giữa 2 lượt query là KHÔNG xác định,
+      // trang 2 sẽ lặp lại dòng của trang 1 (đúng lỗi đã gặp ở Aff Library).
+      const p1 = await db.hostList({ net: NET, q: P, sort: 'visits', dir: 'desc', offset: 0, limit: 3 });
+      const p2 = await db.hostList({ net: NET, q: P, sort: 'visits', dir: 'desc', offset: 3, limit: 3 });
+      const all = [...p1.rows, ...p2.rows].map((r: any) => r.slug);
+      expect(all).toHaveLength(5);
+      expect(new Set(all).size).toBe(5);
+    });
+  });
 });

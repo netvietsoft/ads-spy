@@ -162,6 +162,10 @@ export class AffnetService {
     return this.db.programList(q);
   }
 
+  async hostList(q: Parameters<AffnetMysql['hostList']>[0]): Promise<{ rows: any[]; total: number }> {
+    return this.db.hostList({ ...q, net: this.normalizeNet(q.net) });
+  }
+
   async programDetail(net: string, slug: string): Promise<any | null> {
     return this.db.programDetail(net, slug);
   }

@@ -70,6 +70,11 @@ function updTime(ms?: number | null): { date: string; time: string } | null {
 }
 const DEFAULT_SORT: { key: string; dir: AffLibDir } = { key: 'rev_month', dir: 'desc' };
 
+// Sort trên MOBILE: thẻ không có header bảng để bấm nên phải có menu select. Lấy thẳng từ COLS để không
+// bao giờ lệch danh sách cột sort được của desktop. Cột chữ mặc định A→Z, cột số mặc định lớn→bé.
+const SORTABLE = COLS.filter((c) => c.key) as { label: string; key: string }[];
+const TEXT_SORTS = new Set(['join_url', 'note']);
+
 // Thẻ 1 dòng cho mobile (≤760px) — bảng 16 cột không thể đọc trên điện thoại. Cùng kiểu thẻ với Local DB
 // (class fbcard/localcard) để 2 trang nhìn như một. Bấm thẻ mở chi tiết shop nếu domain có trong DB.
 function AffLibCard({ r, onDetect, onEdit, onTraffic, onDel, scanning }: {
@@ -161,6 +166,12 @@ export function AffLibraryPanel() {
   const clickSort = (key: string) => {
     if (loading) return;
     const s: { key: string; dir: AffLibDir } = { key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' };
+    setSort(s); load(1, s);
+  };
+  // Chọn cột từ menu (mobile): đổi cột thì lấy chiều mặc định của cột đó, KHÔNG đảo chiều như clickSort.
+  const sortBy = (key: string) => {
+    if (loading) return;
+    const s: { key: string; dir: AffLibDir } = { key, dir: TEXT_SORTS.has(key) ? 'asc' : 'desc' };
     setSort(s); load(1, s);
   };
   useEffect(() => { load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -349,7 +360,7 @@ export function AffLibraryPanel() {
         position: 'sticky', top: 'var(--topbar-h, 135px)', zIndex: 20,
         background: 'var(--bg)', margin: '4px 0 0', padding: '8px 0 10px', borderBottom: '1px solid var(--border)' }}>
         {!detect?.running ? (
-          <button className="srcbtn" onClick={startDetect} disabled={starting} title="Job nền: quét phát hiện affiliate cho các domain chưa quét">{starting ? 'Đang khởi động…' : '🔎 scan Affiliate'}</button>
+          <button className="srcbtn" onClick={startDetect} disabled={starting} title="Job nền: quét phát hiện affiliate cho các domain chưa quét">{starting ? 'Đang khởi động…' : 'scan Affiliate'}</button>
         ) : (
           <>
             <span>Đang phát hiện: <b>{detect.done}/{detect.total}</b> · thấy aff: <b style={{ color: '#16a34a' }}>{detect.found}</b>{detect.current ? ` · ${detect.current}` : ''}{detect.noProxy ? ' · ⚠ không proxy (dễ bị chặn)' : ''}</span>
@@ -357,17 +368,29 @@ export function AffLibraryPanel() {
           </>
         )}
         <button className="srcbtn" onClick={runDnsCheck} disabled={busy || loading} title="Phân giải DNS toàn kho (~ms/domain, không cần proxy) — domain không tồn tại sẽ vào danh sách cần dọn">
-          {busy && dns ? '⏳ Đang lọc DNS…' : '🧹 Scan DBS'}
+          {busy && dns ? 'Đang lọc DNS…' : 'Scan DBS'}
         </button>
         {dns && <span style={{ opacity: 0.75 }}>{dns}</span>}
         <button className="srcbtn" onClick={runTrafficFill} disabled={busy || loading} title="Lấy Traffic/Bounce/Time từ AITDK cho các dòng còn trống (50 domain mỗi lần gọi)">
-          {busy && traf ? '⏳ Đang lấy traffic…' : '📊 Scan Traffic'}
+          {busy && traf ? 'Đang lấy traffic…' : 'Scan Traffic'}
         </button>
         {traf && <span style={{ opacity: 0.75 }}>{traf}</span>}
         {scanMsg && <span style={{ color: scanning ? '#6b7280' : '#16a34a', fontWeight: 600 }}>{scanMsg}</span>}
         <select value={filter} onChange={(e) => changeFilter(e.target.value as AffLibFilter)} disabled={loading} title="Lọc danh sách" style={selStyle}>
           {FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
         </select>
+        {/* Sort CHỈ trên mobile — desktop sort bằng cách bấm header bảng (mũi tên ▲▼). 2 ô: chọn cột +
+            đảo chiều, vì cả 2 chiều đều cần dùng thật (không nhét 32 lựa chọn "cột × chiều" vào 1 select). */}
+        {isMobile && (
+          <>
+            <select value={sort.key} onChange={(e) => sortBy(e.target.value)} disabled={loading} title="Sắp xếp theo" style={selStyle}>
+              {SORTABLE.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+            <button className="srcbtn" onClick={() => clickSort(sort.key)} disabled={loading}
+              title={sort.dir === 'desc' ? 'Đang lớn → bé, bấm để đảo' : 'Đang bé → lớn, bấm để đảo'}
+              style={{ padding: '2px 9px' }}>{sort.dir === 'desc' ? '▼' : '▲'}</button>
+          </>
+        )}
         <select value={pageSize} onChange={(e) => changePageSize(Number(e.target.value))} disabled={loading} title="Số bản ghi mỗi trang" style={selStyle}>
           {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n} bản ghi</option>)}
         </select>

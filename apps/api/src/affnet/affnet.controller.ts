@@ -60,6 +60,24 @@ export class AffnetController {
     });
   }
 
+  // Trang /affnet/{net}: MỌI domain đã phát hiện của net (không chỉ cái có chương trình).
+  @Get('aff/hosts')
+  hosts(
+    @Query('net') net: string, @Query('filter') filter: string, @Query('q') q: string,
+    @Query('minPct') minPct: string, @Query('maxPct') maxPct: string,
+    @Query('page') page: string, @Query('pageSize') pageSize: string,
+    @Query('sort') sort: string, @Query('dir') dir: string,
+  ) {
+    if (!net) throw new BadRequestException('Thiếu tham số net');
+    const size = Math.min(5000, Math.max(1, Number(pageSize) || 50));
+    const p = Math.max(1, Number(page) || 1);
+    return this.svc.hostList({
+      net, filter: filter || undefined, q: q || undefined,
+      minPct: numOrUndef(minPct), maxPct: numOrUndef(maxPct),
+      offset: (p - 1) * size, limit: size, sort, dir,
+    });
+  }
+
   @Get('aff/programs/:net/:slug')
   async program(@Param('net') net: string, @Param('slug') slug: string) {
     const r = await this.svc.programDetail(net, slug);

@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affRescanNet, affTrafficRefresh, affNetTrafficFill, affPrograms, affSaveTraffic, AffNetRow, AffProgramRow, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { affNets, affAddNets, affDeleteNet, affRescanNet, affTrafficRefresh, affNetTrafficFill, affHosts, affSaveTraffic, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
 
 // 2 job nền lo việc quét net (dùng chung hàng đợi cho MỌI net, không theo từng net).
@@ -20,7 +21,8 @@ const BUCKET_COLS: { key: string; label: string }[] = [
 
 const orDash = (v: unknown) => (v == null || v === '' ? '—' : v as any);
 // %commit: ưu tiên phần trăm; không có % nhưng có phí cố định thì hiện phí cố định; không thì —.
-function pctOrFlat(p: AffProgramRow): string {
+// Nhận cấu trúc rời (không buộc kiểu AffProgramRow) để dùng được cho cả dòng host chưa có chương trình.
+function pctOrFlat(p: { commission_pct: number | null; commission_flat: number | null; commission_currency: string | null }): string {
   if (typeof p.commission_pct === 'number') return p.commission_pct + '%';
   if (typeof p.commission_flat === 'number') return p.commission_flat.toLocaleString() + (p.commission_currency ? ' ' + p.commission_currency : '') + ' (cố định)';
   return '—';
@@ -69,13 +71,34 @@ const NET_SORTS: { key: NetSortKey; label: string }[] = [
   { key: 'polls', label: 'Poll nhiều nhất' }, { key: 'net', label: 'Tên net (A→Z)' },
 ];
 
-// Sort kết quả dự án — khớp whitelist PROGRAM_SORTS ở BE (đã thêm cột số liệu visits/bounce/time).
-const PROGRAM_SORTS: { key: string; label: string }[] = [
-  { key: 'fetched', label: 'Mới quét nhất' }, { key: 'visits', label: 'Traffic/tháng ↓' },
+// Sort danh sách domain của 1 net — khớp whitelist HOST_SORTS ở BE (affnet.mysql.ts).
+// Menu select này CHỈ hiện trên mobile; desktop sort bằng cách bấm header bảng (mũi tên ▲▼).
+const HOST_SORTS: { key: string; label: string; asc?: boolean }[] = [
+  { key: 'domain', label: 'Domain (A→Z)', asc: true }, { key: 'checked', label: 'Mới quét nhất' },
+  { key: 'status', label: 'Trạng thái', asc: true }, { key: 'visits', label: 'Traffic/tháng ↓' },
   { key: 'pct', label: '%commit ↓' }, { key: 'bounce', label: 'Bounce ↓' }, { key: 'time', label: 'Time-on-site ↓' },
   { key: 'cookie', label: 'Cookie ↓' }, { key: 'payout', label: 'Payout ↓' },
-  { key: 'name', label: 'Tên dự án (A→Z)' }, { key: 'web', label: 'Web (A→Z)' },
+  { key: 'name', label: 'Tên dự án (A→Z)', asc: true }, { key: 'web', label: 'Web (A→Z)', asc: true },
 ];
+// Cột sort mặc định tăng dần (tên/domain) — số liệu thì mặc định giảm dần.
+const ASC_FIRST = new Set(HOST_SORTS.filter((s) => s.asc).map((s) => s.key));
+
+// Bộ lọc trạng thái — 4 nhóm đầu PHỦ KÍN "tất cả" (BE có test bất biến canh việc này), nên không
+// domain nào bị ẩn khỏi mọi bộ lọc.
+const HOST_FILTERS: { v: AffHostFilter; label: string }[] = [
+  { v: 'all', label: 'Tất cả domain' }, { v: 'active', label: 'Có chương trình' },
+  { v: 'none', label: 'Quét rồi, không có' }, { v: 'error', label: 'Không phân loại được' },
+  { v: 'pending', label: 'Chưa quét' },
+];
+
+// Trạng thái quét 1 domain. 'error' = classify không kết luận được (không phải sự cố hệ thống).
+function hostBadge(h: AffHostRow) {
+  if (h.check_status === 'active') return <span style={{ color: '#16a34a', fontWeight: 600 }} title="Có chương trình affiliate">✓ có</span>;
+  if (h.check_status === 'inactive') return <span style={{ opacity: 0.5 }} title="Trang có nhưng chương trình đã tắt">tắt</span>;
+  if (h.check_status === 'notfound') return <span style={{ opacity: 0.5 }} title="Không có trang chương trình">không có</span>;
+  if (h.check_status === 'error') return <span style={{ color: '#d97706' }} title="Quét được nhưng không phân loại được nội dung">không rõ</span>;
+  return <span style={{ opacity: 0.4 }} title={`Chưa quét${h.check_tries ? ` (đã thử ${h.check_tries} lần, có thể đang bị chặn)` : ''}`}>chưa quét</span>;
+}
 
 function NetRowCard({ n, active, onSelect, onDelete, onRescan, rescanning }: { n: AffNetRow; active: boolean; onSelect: () => void; onDelete: () => void; onRescan: () => void; rescanning: boolean }) {
   return (
@@ -102,11 +125,15 @@ function NetRowCard({ n, active, onSelect, onDelete, onRescan, rescanning }: { n
   );
 }
 
-function ProgramRowCard({ p, onEdit, onRefresh, refreshing }: { p: AffProgramRow; onEdit: (web: string) => void; onRefresh: (web: string) => void; refreshing: boolean }) {
+function HostRowCard({ p, onEdit, onRefresh, refreshing }: { p: AffHostRow; onEdit: (web: string) => void; onRefresh: (web: string) => void; refreshing: boolean }) {
   const site = siteUrl(p.web);
   return (
     <div className="fbcard localcard">
-      <div className="fbpage">{orDash(p.program_name)}<div style={{ opacity: 0.6, fontSize: 11 }}>{p.slug}</div></div>
+      {/* Dòng tiêu đề: tên chương trình nếu có, không thì chính domain — kèm badge trạng thái quét. */}
+      <div className="fbpage" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+        <span>{p.program_name || p.slug}<div style={{ opacity: 0.6, fontSize: 11 }}>{p.slug}</div></span>
+        {hostBadge(p)}
+      </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <span><b className="rev">{pctOrFlat(p)}</b></span>
         <span>Cookie {p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</span>
@@ -126,7 +153,8 @@ function ProgramRowCard({ p, onEdit, onRefresh, refreshing }: { p: AffProgramRow
       </div>
       {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8 }}>{p.notes}</div>}
       <div className="fbfoot" style={{ gap: 10, flexWrap: 'wrap' }}>
-        <a className="dl" href={p.join_url} target="_blank" rel="noreferrer">↗ Link tham gia</a>
+        {/* Host chưa quét / không có chương trình thì không có join_url — đừng render link rỗng. */}
+        {p.join_url && <a className="dl" href={p.join_url} target="_blank" rel="noreferrer">↗ Link tham gia</a>}
         {site && <a className="dl" href={site} target="_blank" rel="noreferrer">{p.web}</a>}
       </div>
     </div>
@@ -135,10 +163,13 @@ function ProgramRowCard({ p, onEdit, onRefresh, refreshing }: { p: AffProgramRow
 
 export function AffnetPanel() {
   const isMobile = useIsMobile();
+  // Net đang xem lấy từ URL: /affnet → danh sách net; /affnet/{net} → trang riêng của net đó.
+  // Route thật do app/[...slug]/page.tsx (catch-all) phục vụ, page.tsx map mọi path /affnet* về panel này.
+  const pathname = usePathname();
+  const activeNet = decodeURIComponent((pathname || '').replace(/^\/affnet\/?/, '').split('/')[0] || '') || null;
 
   const [nets, setNets] = useState<AffNetRow[]>([]);
   const [netsErr, setNetsErr] = useState<string | null>(null);
-  const [activeNet, setActiveNet] = useState<string | null>(null);
   const [netSort, setNetSort] = useState<NetSortKey>('active');
   const [rescanning, setRescanning] = useState<string | null>(null); // net đang quét lại
   const [refreshing, setRefreshing] = useState<string | null>(null); // web đang lấy lại traffic
@@ -147,14 +178,15 @@ export function AffnetPanel() {
   const [importBusy, setImportBusy] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
 
-  const [data, setData] = useState<{ rows: AffProgramRow[]; total: number }>({ rows: [], total: 0 });
+  const [data, setData] = useState<{ rows: AffHostRow[]; total: number }>({ rows: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [filter, setFilter] = useState<AffHostFilter>('all');
   const [minPct, setMinPct] = useState<number | null>(null);
   const [maxPct, setMaxPct] = useState<number | null>(null);
   const [q, setQ] = useState('');
   const [qInput, setQInput] = useState('');
-  const [sort, setSort] = useState('fetched');
+  const [sort, setSort] = useState('domain');
   const [dir, setDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -204,25 +236,35 @@ export function AffnetPanel() {
     if (!activeNet) { setData({ rows: [], total: 0 }); return; }
     const myReq = ++reqRef.current;
     setLoading(true); setErr(null);
-    affPrograms({ net: activeNet, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page, pageSize, sort, dir })
+    affHosts({ net: activeNet, filter, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page, pageSize, sort, dir })
       .then((r) => { if (myReq === reqRef.current) setData(r); })
       .catch((e) => { if (myReq === reqRef.current) setErr((e as Error).message); })
       .finally(() => { if (myReq === reqRef.current) setLoading(false); });
-  }, [activeNet, minPct, maxPct, q, page, pageSize, sort, dir, reloadTick]);
+  }, [activeNet, filter, minPct, maxPct, q, page, pageSize, sort, dir, reloadTick]);
 
-  // Đổi net → xoá ngay dữ liệu net cũ (đừng để bảng hiện "Dự án của X" nhưng vẫn còn dòng của net trước, dù chỉ trong lúc chờ fetch mới).
-  const selectNet = (net: string) => {
-    setActiveNet(net); setPage(1);
-    setMinPct(null); setMaxPct(null); setQ(''); setQInput('');
-    setData({ rows: [], total: 0 });
-  };
+  // Chi tiết net mở TAB MỚI theo URL riêng (/affnet/{net}) — không còn hiện inline dưới bảng net.
+  const openNet = (net: string) => window.open(`/affnet/${encodeURIComponent(net)}`, '_blank');
 
+  // Thêm net = BẮT ĐẦU QUÉT net đó luôn: bật 2 job nền rồi kick chạy ngay, khỏi phải bấm "Bắt đầu quét"
+  // riêng. Net mới có discover_polled_at NULL nên pickNetToPoll ưu tiên nó trước (xem affnet.mysql).
   const doImport = async () => {
     if (!importText.trim() || importBusy) return;
     setImportBusy(true); setImportMsg(null);
     try {
       const r = await affAddNets(importText);
-      setImportMsg(`Đã thêm ${r.imported} net (bỏ qua ${r.skipped})`);
+      let msg = `Đã thêm ${r.imported} net (bỏ qua ${r.skipped})`;
+      if (r.imported > 0) {
+        try {
+          for (const n of SCAN_JOBS) await shToggleJob(n, true);
+          for (const n of SCAN_JOBS) await shRunJobOnce(n).catch(() => {});
+          await refreshScan();
+          msg += ' — đã bắt đầu quét';
+        } catch (e) {
+          // Thêm net ĐÃ THÀNH CÔNG rồi; bật job lỗi thì chỉ cảnh báo, đừng báo như thêm net thất bại.
+          msg += ` — nhưng chưa bật được quét: ${(e as Error).message}`;
+        }
+      }
+      setImportMsg(msg);
       setImportText('');
       refreshNets();
     } catch (e) {
@@ -235,7 +277,6 @@ export function AffnetPanel() {
   const doDelete = async (net: string) => {
     if (!confirm(`Xoá net "${net}"? Toàn bộ dữ liệu đã quét của net này sẽ mất.`)) return;
     await affDeleteNet(net);
-    if (activeNet === net) setActiveNet(null);
     refreshNets();
   };
 
@@ -303,14 +344,16 @@ export function AffnetPanel() {
 
   const exportExcel = async () => {
     if (!activeNet) return;
-    const r = await affPrograms({ net: activeNet, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page: 1, pageSize: 5000, sort, dir });
-    // Giới hạn 1 lượt lấy tối đa 5000 dòng — net nào có hơn 5000 dự án sống thì file bị cắt, phải báo rõ (không âm thầm xuất thiếu).
+    const r = await affHosts({ net: activeNet, filter, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page: 1, pageSize: 5000, sort, dir });
+    // Giới hạn 1 lượt lấy tối đa 5000 dòng — net nào có hơn 5000 domain thì file bị cắt, phải báo rõ (không âm thầm xuất thiếu).
     if (r.rows.length < r.total) {
       alert(`Chỉ xuất được ${r.rows.length.toLocaleString()} / ${r.total.toLocaleString()} dòng (giới hạn 5000 dòng/lần) — file KHÔNG có đủ toàn bộ dữ liệu đã lọc.`);
     }
     const sheetRows = r.rows.map((p) => ({
-      'Tên dự án': p.program_name || p.slug,
-      'Link tham gia': p.join_url,
+      Domain: p.slug,
+      'Trạng thái': p.check_status || 'chưa quét',
+      'Tên dự án': p.program_name || '',
+      'Link tham gia': p.join_url || '',
       Web: p.web || '',
       '%commit': pctOrFlat(p),
       Note: p.notes || '',
@@ -323,33 +366,43 @@ export function AffnetPanel() {
     }));
     const ws = XLSX.utils.json_to_sheet(sheetRows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Dự án');
+    XLSX.utils.book_append_sheet(wb, ws, 'Domain');
     XLSX.writeFile(wb, `affnet-${activeNet}.xlsx`);
   };
 
   const clickSort = (k: string) => {
     if (sort === k) setDir(dir === 'desc' ? 'asc' : 'desc');
-    else { setSort(k); setDir('desc'); }
+    else { setSort(k); setDir(ASC_FIRST.has(k) ? 'asc' : 'desc'); }
     setPage(1);
   };
-  const arrow = (k: string) => (sort === k ? (dir === 'desc' ? ' ↓' : ' ↑') : '');
+  // Desktop sort = bấm header. Mũi tên ▼/▲ chỉ cột đang sort; cột sort được thì hiện ▼ mờ để biết bấm được.
+  const arrow = (k: string) => (sort === k
+    ? <span style={{ color: '#2563eb' }}>{dir === 'desc' ? ' ▼' : ' ▲'}</span>
+    : <span style={{ opacity: 0.25 }}> ▼</span>);
+  const th = (k: string, label: string) => (
+    <th onClick={() => clickSort(k)} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }} title="Bấm để sắp xếp">{label}{arrow(k)}</th>
+  );
   const applyQ = () => { setQ(qInput.trim()); setPage(1); };
 
   return (
     <div style={{ marginTop: 12 }}>
+      {!activeNet && (
+      <>
       <p className="hint">
-        Dán mỗi dòng 1 domain mạng affiliate (vd <code>editgpt.getrewardful.com</code> → nhập <code>getrewardful.com</code>) → hệ thống tự dò subdomain và quét nền. Quét 1 net có thể mất vài giờ, số liệu dưới đây luôn là <b>tạm thời</b> (đang quét dần), tự làm mới mỗi 10 giây.
+        Dán mỗi dòng 1 domain mạng affiliate (vd <code>editgpt.getrewardful.com</code> → nhập <code>getrewardful.com</code>) → hệ thống tự dò subdomain và <b>quét ngay</b>. Quét 1 net có thể mất vài giờ, số liệu dưới đây luôn là <b>tạm thời</b> (đang quét dần), tự làm mới mỗi 10 giây. Bấm 1 net để mở trang riêng của net đó (tab mới).
       </p>
 
-      {/* Ô nhập + nút Thêm net CÙNG 1 HÀNG (mobile thì xuống dòng cho đủ chỗ gõ). */}
-      <div className="proxybox" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <textarea rows={3} style={{ flex: isMobile ? '1 1 100%' : '1 1 420px', minWidth: 0 }} placeholder="Mỗi dòng 1 domain net, vd:&#10;getrewardful.com&#10;partnerstack.com"
+      {/* Ô nhập + nút Thêm net CÙNG 1 HÀNG kể cả trên mobile: nowrap + textarea co được (min-width:0),
+          nút không co (flex-shrink:0). Trước đây mobile để flex 1 1 100% nên nút bị đẩy xuống dòng dưới. */}
+      <div className="proxybox" style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'nowrap' }}>
+        <textarea rows={isMobile ? 2 : 3} style={{ flex: '1 1 auto', minWidth: 0 }} placeholder="Mỗi dòng 1 domain net, vd:&#10;getrewardful.com&#10;partnerstack.com"
           value={importText} onChange={(e) => setImportText(e.target.value)} disabled={importBusy} />
-        <button className="srcbtn active" onClick={doImport} disabled={importBusy || !importText.trim()}>
+        <button className="srcbtn active" style={{ flex: '0 0 auto', whiteSpace: 'nowrap', alignSelf: 'stretch' }}
+          onClick={doImport} disabled={importBusy || !importText.trim()}>
           {importBusy ? <span className="spinner" /> : 'Thêm net'}
         </button>
-        {importMsg && <span className="hint" style={{ margin: 0, alignSelf: 'center' }}>{importMsg}</span>}
       </div>
+      {importMsg && <p className="hint" style={{ margin: '6px 0 0' }}>{importMsg}</p>}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0 0', flexWrap: 'wrap' }}>
         <button className={scanOn ? 'srcbtn' : 'srcbtn active'} onClick={toggleScan} disabled={scanBusy || scanOn == null}>
@@ -376,7 +429,7 @@ export function AffnetPanel() {
       {isMobile ? (
         <div className="localcards">
           {sortedNets.length === 0 ? <p className="hint">Chưa có net nào — thêm ở ô trên.</p>
-            : sortedNets.map((n) => <NetRowCard key={n.net} n={n} active={activeNet === n.net} onSelect={() => selectNet(n.net)} onDelete={() => doDelete(n.net)} onRescan={() => doRescan(n.net)} rescanning={rescanning === n.net} />)}
+            : sortedNets.map((n) => <NetRowCard key={n.net} n={n} active={false} onSelect={() => openNet(n.net)} onDelete={() => doDelete(n.net)} onRescan={() => doRescan(n.net)} rescanning={rescanning === n.net} />)}
         </div>
       ) : (
         <div className="localtbl-scroll" style={{ marginTop: 10 }}>
@@ -388,7 +441,7 @@ export function AffnetPanel() {
             </tr></thead>
             <tbody>
               {sortedNets.map((n) => (
-                <tr key={n.net} onClick={() => selectNet(n.net)} style={{ cursor: 'pointer', background: activeNet === n.net ? 'var(--panel-2)' : undefined }}>
+                <tr key={n.net} onClick={() => openNet(n.net)} style={{ cursor: 'pointer' }} title={`Mở trang riêng của ${n.net} (tab mới)`}>
                   <td>{n.net}<div style={{ opacity: 0.6, fontSize: 11 }}>{n.platform}</div></td>
                   <td>{n.discovered.toLocaleString()}</td>
                   <td>{n.checked.toLocaleString()}</td>
@@ -410,21 +463,33 @@ export function AffnetPanel() {
         </div>
       )}
 
+      </>
+      )}
+
       {activeNet && (
         <>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '20px 0 8px' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '4px 0 8px' }}>
+            <a className="dl" href="/affnet" style={{ fontSize: 13 }}>← Tất cả net</a>
             <h3 style={{ margin: 0, fontSize: 14, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Dự án của {activeNet}
             </h3>
             {/* Scan traffic cả net: điền traffic cho MỌI web của net còn trống (không phải từng dòng một). */}
             <button className="srcbtn" onClick={runNetTraffic} disabled={netTrafBusy}
               title={`Lấy traffic (AITDK) cho toàn bộ web của ${activeNet} còn thiếu`}>
-              {netTrafBusy ? '⏳ Đang scan traffic…' : '📊 Scan traffic'}
+              {netTrafBusy ? '⏳ Đang scan traffic…' : 'Scan traffic'}
             </button>
             {netTrafMsg && <span className="hint" style={{ margin: 0 }}>{netTrafMsg}</span>}
           </div>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Liệt kê <b>toàn bộ domain đã phát hiện</b> của net này (kể cả domain quét rồi không có affiliate và
+            domain chưa quét) — dùng ô lọc để xem riêng từng nhóm.
+          </p>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
+            {/* Lọc trạng thái quét — 4 nhóm phủ kín "tất cả". */}
+            <select className="fbselect" value={filter} onChange={(e) => { setFilter(e.target.value as AffHostFilter); setPage(1); }} title="Lọc theo trạng thái quét">
+              {HOST_FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
+            </select>
             <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>%commit:&nbsp;
               <input className="fbselect" style={{ width: 64 }} inputMode="numeric" placeholder="từ"
                 defaultValue={minPct ?? ''} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
@@ -435,15 +500,19 @@ export function AffnetPanel() {
                 onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v); if (n !== maxPct) { setMaxPct(Number.isFinite(n as number) ? n : null); setPage(1); } }} />
             </label>
             <span style={{ display: 'inline-flex', gap: 4 }}>
-              <input className="fbselect" placeholder="Tìm tên dự án…" value={qInput}
+              <input className="fbselect" placeholder="Tìm domain / tên dự án…" value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') applyQ(); }} />
               {(q || qInput) && <button className="srcbtn" onClick={() => { setQInput(''); setQ(''); setPage(1); }}>✕</button>}
             </span>
-            {/* Menu sort theo SỐ LIỆU — trên mobile không bấm được header bảng nên đây là cách duy nhất để sort. */}
-            <select className="fbselect" value={sort} onChange={(e) => { setSort(e.target.value); setDir(e.target.value === 'name' || e.target.value === 'web' ? 'asc' : 'desc'); setPage(1); }} title="Sắp xếp kết quả">
-              {PROGRAM_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
+            {/* Sort: CHỈ mobile mới có menu select (không bấm được header bảng). Desktop dùng mũi tên ▲▼ ở header. */}
+            {isMobile && (
+              <select className="fbselect" value={sort}
+                onChange={(e) => { const k = e.target.value; setSort(k); setDir(ASC_FIRST.has(k) ? 'asc' : 'desc'); setPage(1); }}
+                title="Sắp xếp">
+                {HOST_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            )}
             {loading && <span className="spinner" />}
             <button className="srcbtn" style={{ marginLeft: 'auto' }} onClick={exportExcel} disabled={data.total === 0}
               title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel`}>⬇ Xuất Excel</button>
@@ -454,23 +523,26 @@ export function AffnetPanel() {
 
           {isMobile ? (
             <div className="localcards">
-              {data.rows.length === 0 && !loading ? <p className="hint">Không có dự án khớp bộ lọc.</p>
-                : data.rows.map((p) => <ProgramRowCard key={p.slug} p={p} onEdit={openEdit} onRefresh={doRefreshTraffic} refreshing={refreshing === p.web} />)}
+              {data.rows.length === 0 && !loading ? <p className="hint">Không có domain khớp bộ lọc.</p>
+                : data.rows.map((p) => <HostRowCard key={p.slug} p={p} onEdit={openEdit} onRefresh={doRefreshTraffic} refreshing={refreshing === p.web} />)}
             </div>
           ) : (
             <div className="localtbl-scroll">
               <table className="localtbl">
                 <thead><tr>
-                  <th onClick={() => clickSort('name')} style={{ cursor: 'pointer' }}>Tên dự án{arrow('name')}</th>
+                  {th('domain', 'Domain')}
+                  {th('status', 'Trạng thái')}
+                  {th('name', 'Tên dự án')}
                   <th>Link tham gia</th>
-                  <th onClick={() => clickSort('web')} style={{ cursor: 'pointer' }}>Web{arrow('web')}</th>
-                  <th onClick={() => clickSort('pct')} style={{ cursor: 'pointer' }}>%commit{arrow('pct')}</th>
+                  {th('web', 'Web')}
+                  {th('pct', '%commit')}
                   <th>Note</th>
-                  <th>Cookie</th>
-                  <th>Payout</th>
-                  <th>Traffic/tháng</th>
-                  <th>Bounce</th>
-                  <th>Time-on-site</th>
+                  {th('cookie', 'Cookie')}
+                  {th('payout', 'Payout')}
+                  {th('visits', 'Traffic/tháng')}
+                  {th('bounce', 'Bounce')}
+                  {th('time', 'Time-on-site')}
+                  {th('checked', 'Quét lúc')}
                   <th></th>
                 </tr></thead>
                 <tbody>
@@ -478,8 +550,10 @@ export function AffnetPanel() {
                     const site = siteUrl(p.web);
                     return (
                       <tr key={p.slug}>
-                        <td className="wrap" style={{ maxWidth: '26ch' }}>{orDash(p.program_name)}<div style={{ opacity: 0.6, fontSize: 11 }}>{p.slug}</div></td>
-                        <td><a href={p.join_url} target="_blank" rel="noreferrer">↗ Tham gia</a></td>
+                        <td className="wrap" style={{ maxWidth: '22ch' }}>{p.slug}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>{hostBadge(p)}</td>
+                        <td className="wrap" style={{ maxWidth: '26ch' }}>{orDash(p.program_name)}</td>
+                        <td>{p.join_url ? <a href={p.join_url} target="_blank" rel="noreferrer">↗ Tham gia</a> : '—'}</td>
                         <td>{site ? <a href={site} target="_blank" rel="noreferrer">{p.web}</a> : '—'}</td>
                         <td className="rev">{pctOrFlat(p)}</td>
                         <td className="wrap" style={{ maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
@@ -490,6 +564,7 @@ export function AffnetPanel() {
                         </td>
                         <td>{fmtBounce(p.traffic_bounce)}</td>
                         <td>{fmtDur(p.traffic_duration_sec)}</td>
+                        <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{p.checked_at ? new Date(p.checked_at).toLocaleDateString('vi-VN') : '—'}</td>
                         <td style={{ whiteSpace: 'nowrap' }}>{p.web ? (
                           <>
                             <button className="ghost" title="Lấy lại traffic (AITDK)" onClick={() => doRefreshTraffic(p.web!)} disabled={refreshing === p.web}>{refreshing === p.web ? '⏳' : '⟳'}</button>{' '}
@@ -500,7 +575,7 @@ export function AffnetPanel() {
                     );
                   })}
                   {data.rows.length === 0 && !loading && (
-                    <tr><td colSpan={11} className="hint">Không có dự án khớp bộ lọc.</td></tr>
+                    <tr><td colSpan={14} className="hint">Không có domain khớp bộ lọc.</td></tr>
                   )}
                 </tbody>
               </table>

@@ -17,6 +17,30 @@ const PROGRAM_SORTS: Record<string, string> = {
   cookie: 'p.cookie_days', payout: 'p.payout_threshold',
 };
 
+// Cột sort hợp lệ cho hostList (trang /affnet/{net} — liệt kê MỌI domain đã phát hiện, không chỉ cái
+// có chương trình). h. = aff_host, p. = aff_program, t. = aff_domain_traffic — phải qualify vì slug/web
+// trùng tên giữa các bảng sau JOIN.
+const HOST_SORTS: Record<string, string> = {
+  domain: 'h.slug', found: 'h.first_seen', checked: 'h.checked_at', status: 'h.check_status',
+  name: 'p.program_name', web: 'p.web', pct: 'p.commission_pct',
+  cookie: 'p.cookie_days', payout: 'p.payout_threshold',
+  visits: 't.visits', bounce: 't.bounce_rate', time: 't.visit_duration_sec',
+};
+
+// Bộ lọc trạng thái host. check_status thực tế nhận 5 giá trị: 'active' | 'inactive' | 'notfound' |
+// 'error' (classify KHÔNG kết luận được — affnet.classify.ts, không phải crash) | NULL (chưa quét).
+// Host BỊ CHẶN không được markHostChecked (xem fetchStep) nên vẫn nằm ở nhóm 'pending' để được quét lại.
+// ⚠️ active + none + error + pending PHẢI phủ kín 'all' — bỏ sót 1 giá trị là dòng đó vô hình trên UI
+// (bản đầu thiếu 'error' làm ẩn 34/1401 dòng của getrewardful.com). Có test bất biến canh việc này.
+const HOST_FILTERS: Record<string, string> = {
+  all: '',
+  active: "h.check_status = 'active'",
+  none: "h.check_status IN ('inactive','notfound')",
+  error: "h.check_status = 'error'",
+  pending: 'h.checked_at IS NULL',
+  scanned: 'h.checked_at IS NOT NULL',
+};
+
 // Cơ chế "no hoà" (docs/superpowers/specs/2026-07-28-affiliate-net-crawler-design.md §"Cơ chế no hoà").
 // Ngưỡng 1 lượt poll bị coi là "gần như không tìm thấy gì thêm" (đo thật: +500 → +365 → +275 → +200, giảm dần rõ).
 export const DRY_THRESHOLD = 5;
@@ -489,6 +513,57 @@ export class AffnetMysql {
       [...params, q.limit, q.offset],
     );
     const [cnt] = await pool.query(`SELECT COUNT(*) AS n FROM aff_program p ${whereSql}`, params);
+    return { rows: rows as any[], total: Number((cnt as any[])[0].n) || 0 };
+  }
+
+  // Trang /affnet/{net}: liệt kê MỌI domain đã phát hiện của net (aff_host), KHÔNG chỉ cái quét ra
+  // chương trình. Với getrewardful.com là 1.401 dòng thay vì 335 — thấy được cả độ phủ quét.
+  // 2 LEFT JOIN đều theo KHOÁ CHÍNH của bảng phải (aff_program PK (net,slug); aff_domain_traffic PK web)
+  // nên KHÔNG nhân dòng — count dùng chung JOIN được, số total vẫn đúng.
+  async hostList(q: {
+    net: string; filter?: string; q?: string; minPct?: number; maxPct?: number;
+    offset: number; limit: number; sort?: string; dir?: string;
+  }): Promise<{ rows: any[]; total: number }> {
+    const pool = await this.sh.getPool();
+    const where: string[] = ['h.net = ?'];
+    const params: any[] = [q.net];
+    const cond = HOST_FILTERS[q.filter || 'all'];
+    if (cond) where.push(cond);
+    // Lọc %commit giữ nguyên như programList (FE có ô "từ → đến"). Host chưa quét có commission_pct
+    // NULL nên tự bị loại khi lọc theo khoảng — đúng ý: đang tìm chương trình theo mức hoa hồng.
+    if (q.minPct != null && q.maxPct != null) {
+      where.push('p.commission_pct BETWEEN ? AND ?');
+      params.push(q.minPct, q.maxPct);
+    } else if (q.minPct != null) {
+      where.push('p.commission_pct >= ?');
+      params.push(q.minPct);
+    } else if (q.maxPct != null) {
+      where.push('p.commission_pct <= ?');
+      params.push(q.maxPct);
+    }
+    if (q.q) {
+      where.push('(h.slug LIKE ? OR p.program_name LIKE ? OR p.web LIKE ?)');
+      params.push('%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%');
+    }
+    const whereSql = 'WHERE ' + where.join(' AND ');
+    // Tie-breaker h.slug: thiếu nó thì 2 dòng cùng giá trị sort có thứ tự KHÔNG xác định giữa các lượt
+    // query → phân trang lặp/nhảy dòng (đúng lỗi đã gặp ở Aff Library).
+    const orderBy = `${buildOrderBy(q.sort || 'domain', q.dir || 'asc', HOST_SORTS, 'domain')}, h.slug ASC`;
+    const joins = `FROM aff_host h
+       LEFT JOIN aff_program p ON p.net = h.net AND p.slug = h.slug
+       LEFT JOIN aff_domain_traffic t ON t.web = p.web`;
+    // Không SELECT p.terms_text (MEDIUMTEXT) — chỉ programDetail được kéo cột đó.
+    const [rows] = await pool.query(
+      `SELECT h.net, h.slug, h.first_seen, h.last_seen, h.sources, h.checked_at, h.check_status, h.check_tries,
+              p.join_url, p.program_name, p.brand, p.web, p.commission_pct, p.commission_flat,
+              p.commission_currency, p.cookie_days, p.payout_threshold, p.notes,
+              p.status AS program_status, p.fetched_at,
+              t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce, t.visit_duration_sec AS traffic_duration_sec,
+              t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at
+       ${joins} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      [...params, q.limit, q.offset],
+    );
+    const [cnt] = await pool.query(`SELECT COUNT(*) AS n ${joins} ${whereSql}`, params);
     return { rows: rows as any[], total: Number((cnt as any[])[0].n) || 0 };
   }
 
