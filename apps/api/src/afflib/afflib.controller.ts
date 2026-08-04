@@ -16,7 +16,7 @@ export class AffLibController {
     return this.svc.rows({ page: Number(page) || 1, pageSize: Number(pageSize) || 100, affOnly: affOnly === '1' || affOnly === 'true', filter, sort, dir });
   }
 
-  // (A) Đồng bộ shop có aff ('yes') từ Local DB → aff_library.
+  // (A) Đồng bộ shop có aff từ Local DB → aff_library. Lấy cả 'yes' và 'app'.
   @Post('sync-localdb')
   async syncLocaldb() {
     const synced = await this.svc.sync();

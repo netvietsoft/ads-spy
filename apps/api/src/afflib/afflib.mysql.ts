@@ -38,7 +38,9 @@ const QUEUE_COND = 'al.aff_checked_at IS NULL AND (al.dns_ok IS NULL OR al.dns_o
 const JUNK_COND = 'al.dns_ok = 0 OR (al.aff_checked_at IS NULL AND COALESCE(al.aff_try_count,0) >= 3)';
 const FILTER_WHERE: Record<string, string> = {
   all: '',
-  aff: "WHERE al.aff_status = 'yes'",
+  // 'app' CŨNG là có affiliate (có app affiliate nhưng chưa dò ra link) → phải nằm trong bộ lọc "có aff",
+  // không thì 4.264 shop 'app' của Local DB bị ẩn khỏi màn hình.
+  aff: "WHERE al.aff_status IN ('yes','app')",
   unscanned: `WHERE ${QUEUE_COND}`,
   junk: `WHERE ${JUNK_COND}`,
 };
@@ -241,15 +243,17 @@ export class AffLibMysql {
     return rows as any[];
   }
 
-  // (A) Đồng bộ shop affiliate_status='yes' từ Local DB vào aff_library. Trả số shop đã đồng bộ.
-  async syncFromLocalDbYes(): Promise<number> {
+  // (A) Đồng bộ shop CÓ AFFILIATE từ Local DB vào aff_library. Trả số shop đã đồng bộ.
+  // Lấy CẢ 'yes' (đã ra link) LẪN 'app' (có app affiliate, chưa dò ra link) — đo trên DB thật: 9.895 'yes'
+  // + 4.264 'app', trước đây 4.264 dòng 'app' bị bỏ ngoài hoàn toàn.
+  async syncFromLocalDbAff(): Promise<number> {
     await this.ensureTables();
-    await this.ensureShopIndex(); // index affiliate_status → WHERE 'yes' tra tức thì thay vì full-scan 872MB
+    await this.ensureShopIndex(); // index affiliate_status → WHERE IN ('yes','app') tra tức thì thay vì full-scan 872MB
     const pool = await this.sh.getPool();
     // Rút thẳng field cần bằng JSON_EXTRACT trong SQL — KHÔNG kéo cả cột raw (LONGTEXT ~18KB/shop × 9.9k ≈ 178MB
     // truyền về + JSON.parse 9.9k lần) → sync nhanh hơn nhiều. rev_total để null (SUM daily quá đắt; bổ sung khi cần).
     const [rows] = await pool.query(
-      `SELECT ${WEB_EXPR} AS web, shop_id, storefront_currency, affiliate_link,
+      `SELECT ${WEB_EXPR} AS web, shop_id, storefront_currency, affiliate_link, affiliate_status,
               JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_title')) AS shop_title,
               JSON_UNQUOTE(JSON_EXTRACT(raw, '$.shop_name')) AS shop_name,
               JSON_EXTRACT(raw, '$.day_current_period_revenue') AS rev_day,
@@ -257,7 +261,7 @@ export class AffLibMysql {
               JSON_EXTRACT(raw, '$.month_current_period_revenue') AS rev_month,
               JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')) AS raw_currency,
               JSON_EXTRACT(raw, '$.sku_count') AS sku
-       FROM sh_shop s WHERE affiliate_status = 'yes'`,
+       FROM sh_shop s WHERE affiliate_status IN ('yes','app')`,
     );
     const now = Date.now();
     const list = rows as any[];
@@ -270,7 +274,10 @@ export class AffLibMysql {
         // 17 cột: web,shop_name,shop_id,currency,rev_day,rev_week,rev_month,rev_total,sku,found,synced_at,join_url,aff_status,aff_platform,aff_checked_at,created_at,updated_at
         return [web, r.shop_title || r.shop_name || null, String(r.shop_id), r.storefront_currency || r.raw_currency || null,
           num(r.rev_day), num(r.rev_week), num(r.rev_month), null, num(r.sku),
-          1, now, r.affiliate_link || null, 'yes', platformOfLink(r.affiliate_link || ''), now, now, now];
+          // Ghi ĐÚNG status của shop, không hardcode 'yes'. Dòng 'app' có affiliate_link RỖNG (đo thật:
+          // cả 4.264 dòng đều rỗng) → join_url null, platformOfLink('') tự trả null.
+          1, now, r.affiliate_link || null, r.affiliate_status === 'app' ? 'app' : 'yes',
+          platformOfLink(r.affiliate_link || ''), now, now, now];
       }).filter(Boolean) as any[][];
       if (!tuples.length) continue;
       const ph = tuples.map(() => `(${Array(17).fill('?').join(',')})`).join(',');
@@ -280,7 +287,9 @@ export class AffLibMysql {
          ON DUPLICATE KEY UPDATE shop_name=VALUES(shop_name), shop_id=VALUES(shop_id), currency=VALUES(currency),
            rev_day=VALUES(rev_day), rev_week=VALUES(rev_week), rev_month=VALUES(rev_month), rev_total=VALUES(rev_total),
            sku=VALUES(sku), found=1, synced_at=VALUES(synced_at),
-           join_url=COALESCE(join_url, VALUES(join_url)), aff_status='yes',
+           join_url=COALESCE(join_url, VALUES(join_url)),
+           -- KHÔNG hạ cấp: dòng đã 'yes' (đã dò ra link) mà Local DB nói 'app' thì GIỮ 'yes'.
+           aff_status=IF(aff_status='yes','yes',VALUES(aff_status)),
            aff_platform=COALESCE(aff_platform, VALUES(aff_platform)), aff_checked_at=VALUES(aff_checked_at), updated_at=VALUES(updated_at)`,
         tuples.flat(),
       );

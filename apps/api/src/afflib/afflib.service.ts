@@ -122,9 +122,9 @@ export class AffLibService {
     return Array.from(new Set((webs || []).map(normalizeDomain).filter(Boolean))).slice(0, 1000);
   }
 
-  // (A) Đồng bộ shop có aff ('yes') từ Local DB.
+  // (A) Đồng bộ shop có aff từ Local DB — CẢ 'yes' lẫn 'app' (có app affiliate, chưa dò ra link).
   sync(): Promise<number> {
-    return this.db.syncFromLocalDbYes();
+    return this.db.syncFromLocalDbAff();
   }
 
   // (B) Job phát hiện affiliate cho domain chưa kiểm.
