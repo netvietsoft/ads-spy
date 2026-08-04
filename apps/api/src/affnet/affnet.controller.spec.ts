@@ -76,6 +76,37 @@ describe('AffnetController.hosts', () => {
     expect(svc.hostList).toHaveBeenLastCalledWith(expect.objectContaining({ minPct: 10, maxPct: 30 }));
   });
 
+  it('PUT aff/hosts/:net/:slug — chỉ truyền field CÓ trong body (field vắng mặt không bị ghi NULL đè)', async () => {
+    const svc = { updateHost: jest.fn().mockResolvedValue(undefined) };
+    await ctrl(svc).updateHost('n.com', 'abc', { payoutThreshold: '50' });
+    const patch = svc.updateHost.mock.calls[0][2];
+    expect(patch).toEqual({ payoutThreshold: 50 });          // KHÔNG có notes/cookieDays/web…
+  });
+
+  it('PUT — số rác → null (không để NaN xuống SQL); chuỗi rỗng → null', async () => {
+    const svc = { updateHost: jest.fn().mockResolvedValue(undefined) };
+    await ctrl(svc).updateHost('n.com', 'abc', { cookieDays: 'abc', notes: '   ' });
+    expect(svc.updateHost.mock.calls[0][2]).toEqual({ cookieDays: null, notes: null });
+  });
+
+  it('PUT — web được chuẩn hoá (bỏ scheme/www/đường dẫn, lowercase)', async () => {
+    const svc = { updateHost: jest.fn().mockResolvedValue(undefined) };
+    await ctrl(svc).updateHost('n.com', 'abc', { web: 'HTTPS://www.Foo.COM/pricing?a=1' });
+    expect(svc.updateHost.mock.calls[0][2]).toEqual({ web: 'foo.com' });
+  });
+
+  it('PUT — body rỗng → BadRequestException (đừng gọi DB vô ích)', async () => {
+    const svc = { updateHost: jest.fn() };
+    await expect(ctrl(svc).updateHost('n.com', 'abc', {})).rejects.toThrow(BadRequestException);
+    expect(svc.updateHost).not.toHaveBeenCalled();
+  });
+
+  it('DELETE aff/hosts/:net/:slug → gọi svc.deleteHost đúng tham số', async () => {
+    const svc = { deleteHost: jest.fn().mockResolvedValue(undefined) };
+    expect(await ctrl(svc).deleteHost('n.com', 'abc')).toEqual({ ok: true });
+    expect(svc.deleteHost).toHaveBeenCalledWith('n.com', 'abc');
+  });
+
   it('filter/q rỗng → undefined (không lọc), có giá trị thì truyền nguyên', async () => {
     const svc = mk();
     await ctrl(svc).hosts('n.com', '' as any, '' as any, u, u, u, u, u, u);

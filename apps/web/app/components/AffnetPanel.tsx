@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affRescanNet, affTrafficRefresh, affNetTrafficFill, affHosts, affSaveTraffic, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { affNets, affAddNets, affDeleteNet, affRescanNet, affTrafficRefresh, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
 
 // 2 job nền lo việc quét net (dùng chung hàng đợi cho MỌI net, không theo từng net).
@@ -91,6 +91,22 @@ const HOST_FILTERS: { v: AffHostFilter; label: string }[] = [
   { v: 'pending', label: 'Chưa quét' },
 ];
 
+// Form sửa tay 1 dòng: giữ mọi field ở dạng string để ô input điều khiển được, chuyển số ở BE.
+interface HostEdit {
+  slug: string; programName: string; web: string; joinUrl: string;
+  commissionPct: string; cookieDays: string; payoutThreshold: string; notes: string;
+}
+const toEdit = (h: AffHostRow): HostEdit => ({
+  slug: h.slug,
+  programName: h.program_name ?? '',
+  web: h.web ?? '',
+  joinUrl: h.join_url ?? '',
+  commissionPct: h.commission_pct == null ? '' : String(h.commission_pct),
+  cookieDays: h.cookie_days == null ? '' : String(h.cookie_days),
+  payoutThreshold: h.payout_threshold == null ? '' : String(h.payout_threshold),
+  notes: h.notes ?? '',
+});
+
 // Trạng thái quét 1 domain. 'error' = classify không kết luận được (không phải sự cố hệ thống).
 function hostBadge(h: AffHostRow) {
   if (h.check_status === 'active') return <span style={{ color: '#16a34a', fontWeight: 600 }} title="Có chương trình affiliate">✓ có</span>;
@@ -125,7 +141,10 @@ function NetRowCard({ n, active, onSelect, onDelete, onRescan, rescanning }: { n
   );
 }
 
-function HostRowCard({ p, onEdit, onRefresh, refreshing }: { p: AffHostRow; onEdit: (web: string) => void; onRefresh: (web: string) => void; refreshing: boolean }) {
+function HostRowCard({ p, onEdit, onRefresh, refreshing, onEditRow, onDelete, deleting }: {
+  p: AffHostRow; onEdit: (web: string) => void; onRefresh: (web: string) => void; refreshing: boolean;
+  onEditRow: () => void; onDelete: () => void; deleting: boolean;
+}) {
   const site = siteUrl(p.web);
   return (
     <div className="fbcard localcard">
@@ -143,13 +162,18 @@ function HostRowCard({ p, onEdit, onRefresh, refreshing }: { p: AffHostRow; onEd
         <span>Traffic/th <b>{fmtVisits(p.traffic_visits)}</b></span>
         <span>Bounce <b>{fmtBounce(p.traffic_bounce)}</b></span>
         <span>Time <b>{fmtDur(p.traffic_duration_sec)}</b></span>
-        {/* Mobile: chỉ icon, bỏ chữ "Traffic", căn lề phải. ⟳ = lấy lại traffic từ AITDK. */}
-        {p.web && (
-          <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
-            <button className="ghost" title="Lấy lại traffic (AITDK)" onClick={() => onRefresh(p.web!)} disabled={refreshing}>{refreshing ? '⏳' : '⟳'}</button>
-            <button className="ghost" title="Nhập/sửa traffic (dán từ extension)" onClick={() => onEdit(p.web!)}>✎</button>
-          </span>
-        )}
+        {/* Mobile: chỉ icon, bỏ chữ, căn lề phải. Cùng quy ước với Aff Library:
+            ✎ sửa thông tin · 📊 dán traffic · ⟳ lấy lại traffic · 🗑 xoá domain. */}
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+          <button className="ghost" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={onEditRow}>✎</button>
+          {p.web && (
+            <>
+              <button className="ghost" title="Nhập/sửa traffic (dán từ extension)" onClick={() => onEdit(p.web!)}>📊</button>
+              <button className="ghost" title="Lấy lại traffic (AITDK)" onClick={() => onRefresh(p.web!)} disabled={refreshing}>{refreshing ? '⏳' : '⟳'}</button>
+            </>
+          )}
+          <button className="ghost danger" title="Xoá domain này khỏi net" onClick={onDelete} disabled={deleting}>{deleting ? '⏳' : '🗑'}</button>
+        </span>
       </div>
       {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8 }}>{p.notes}</div>}
       <div className="fbfoot" style={{ gap: 10, flexWrap: 'wrap' }}>
@@ -194,6 +218,12 @@ export function AffnetPanel() {
   const [netTrafBusy, setNetTrafBusy] = useState(false);
   const [netTrafMsg, setNetTrafMsg] = useState<string | null>(null);
   const reqRef = useRef(0);
+
+  // Form sửa TAY 1 dòng (cột Action) — những thông tin crawler không cào được.
+  const [edit, setEdit] = useState<HostEdit | null>(null);
+  const [editRowBusy, setEditRowBusy] = useState(false);
+  const [editRowMsg, setEditRowMsg] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   // Ô nhập traffic (dán khối từ extension) cho 1 domain (web).
   const [editWeb, setEditWeb] = useState<string | null>(null);
@@ -316,6 +346,40 @@ export function AffnetPanel() {
       setReloadTick((t) => t + 1); // tải lại để 3 cột traffic mới hiện lên
     } catch (e) { setErr((e as Error).message); setNetTrafMsg(null); }
     setNetTrafBusy(false);
+  };
+
+  // Lưu form sửa tay. GỬI ĐỦ 7 field (kể cả field để trống → null) vì đây là form "sửa cả dòng":
+  // xoá trắng 1 ô phải thật sự xoá được giá trị, không thể coi ô trống là "không đổi".
+  const saveEdit = async () => {
+    if (!edit || !activeNet || editRowBusy) return;
+    setEditRowBusy(true); setEditRowMsg(null);
+    try {
+      await affUpdateHost(activeNet, edit.slug, {
+        programName: edit.programName.trim() || null,
+        web: edit.web.trim() || null,
+        joinUrl: edit.joinUrl.trim(),
+        commissionPct: edit.commissionPct.trim() || null,
+        cookieDays: edit.cookieDays.trim() || null,
+        payoutThreshold: edit.payoutThreshold.trim() || null,
+        notes: edit.notes.trim() || null,
+      });
+      setEdit(null);
+      setReloadTick((t) => t + 1);
+    } catch (e) {
+      setEditRowMsg((e as Error).message);
+    }
+    setEditRowBusy(false);
+  };
+
+  // Xoá 1 domain khỏi net. Nói rõ trong confirm là discovery có thể phát hiện lại ở lượt poll sau —
+  // đừng để người dùng tưởng đã xoá vĩnh viễn.
+  const doDeleteHost = async (slug: string) => {
+    if (!activeNet) return;
+    if (!confirm(`Xoá domain "${slug}" khỏi net ${activeNet}?\n\nLưu ý: lượt dò subdomain sau có thể phát hiện lại domain này và nó sẽ quay lại ở trạng thái "chưa quét".`)) return;
+    setDeleting(slug); setErr(null);
+    try { await affDeleteHost(activeNet, slug); setReloadTick((t) => t + 1); }
+    catch (e) { setErr(`Xoá ${slug} thất bại: ${(e as Error).message}`); }
+    setDeleting(null);
   };
 
   // Sort số liệu cho danh sách net (client-side).
@@ -524,7 +588,11 @@ export function AffnetPanel() {
           {isMobile ? (
             <div className="localcards">
               {data.rows.length === 0 && !loading ? <p className="hint">Không có domain khớp bộ lọc.</p>
-                : data.rows.map((p) => <HostRowCard key={p.slug} p={p} onEdit={openEdit} onRefresh={doRefreshTraffic} refreshing={refreshing === p.web} />)}
+                : data.rows.map((p) => (
+                  <HostRowCard key={p.slug} p={p} onEdit={openEdit} onRefresh={doRefreshTraffic} refreshing={refreshing === p.web}
+                    onEditRow={() => { setEdit(toEdit(p)); setEditRowMsg(null); }}
+                    onDelete={() => doDeleteHost(p.slug)} deleting={deleting === p.slug} />
+                ))}
             </div>
           ) : (
             <div className="localtbl-scroll">
@@ -543,7 +611,7 @@ export function AffnetPanel() {
                   {th('bounce', 'Bounce')}
                   {th('time', 'Time-on-site')}
                   {th('checked', 'Quét lúc')}
-                  <th></th>
+                  <th className="actcol" style={{ whiteSpace: 'nowrap' }}>Action</th>
                 </tr></thead>
                 <tbody>
                   {data.rows.map((p) => {
@@ -556,7 +624,8 @@ export function AffnetPanel() {
                         <td>{p.join_url ? <a href={p.join_url} target="_blank" rel="noreferrer">↗ Tham gia</a> : '—'}</td>
                         <td>{site ? <a href={site} target="_blank" rel="noreferrer">{p.web}</a> : '—'}</td>
                         <td className="rev">{pctOrFlat(p)}</td>
-                        <td className="wrap" style={{ maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
+                        {/* minWidth: 15 cột + nhiều cột nowrap làm Note bị bóp còn ~1 chữ/dòng → dòng cao vọt. */}
+                        <td className="wrap" style={{ minWidth: '16ch', maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
                         <td>{p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</td>
                         <td>{orDash(p.payout_threshold)}</td>
                         <td title={p.traffic_updated_at ? 'Cập nhật ' + new Date(p.traffic_updated_at).toLocaleDateString('vi-VN') + (isSubWeb(p.web) ? ' · số của domain gốc' : '') : (isSubWeb(p.web) ? 'số của domain gốc' : undefined)}>
@@ -565,12 +634,22 @@ export function AffnetPanel() {
                         <td>{fmtBounce(p.traffic_bounce)}</td>
                         <td>{fmtDur(p.traffic_duration_sec)}</td>
                         <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{p.checked_at ? new Date(p.checked_at).toLocaleDateString('vi-VN') : '—'}</td>
-                        <td style={{ whiteSpace: 'nowrap' }}>{p.web ? (
-                          <>
-                            <button className="ghost" title="Lấy lại traffic (AITDK)" onClick={() => doRefreshTraffic(p.web!)} disabled={refreshing === p.web}>{refreshing === p.web ? '⏳' : '⟳'}</button>{' '}
-                            <button className="ghost" title="Nhập/sửa traffic (dán từ extension)" onClick={() => openEdit(p.web!)}>✎</button>
-                          </>
-                        ) : '—'}</td>
+                        {/* Action — cùng quy ước icon với Aff Library: ✎ sửa thông tin · 📊 dán traffic ·
+                            ⟳ lấy lại traffic · 🗑 xoá. 2 nút traffic chỉ có nghĩa khi dòng đã biết `web`. */}
+                        {/* 4 nút cỡ mặc định làm cột Action rộng quá, nút 🗑 bị đẩy ra ngoài vùng thấy →
+                            dùng .actbtn (nhỏ, gap 4px) và nowrap để cả 4 nút luôn nằm gọn 1 hàng. */}
+                        <td className="actcol" style={{ whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-flex', gap: 4 }}>
+                            <button className="ghost actbtn" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={() => { setEdit(toEdit(p)); setEditRowMsg(null); }}>✎</button>
+                            {p.web && (
+                              <>
+                                <button className="ghost actbtn" title="Nhập/sửa traffic (dán từ extension)" onClick={() => openEdit(p.web!)}>📊</button>
+                                <button className="ghost actbtn" title="Lấy lại traffic (AITDK)" onClick={() => doRefreshTraffic(p.web!)} disabled={refreshing === p.web}>{refreshing === p.web ? '⏳' : '⟳'}</button>
+                              </>
+                            )}
+                            <button className="ghost danger actbtn" title="Xoá domain này khỏi net" onClick={() => doDeleteHost(p.slug)} disabled={deleting === p.slug}>{deleting === p.slug ? '⏳' : '🗑'}</button>
+                          </span>
+                        </td>
                       </tr>
                     );
                   })}
@@ -582,6 +661,47 @@ export function AffnetPanel() {
             </div>
           )}
         </>
+      )}
+
+      {/* Form sửa TAY 1 dòng — những thông tin crawler không cào được. Ô để trống = xoá giá trị đó. */}
+      {edit && (
+        <div onClick={() => { if (!editRowBusy) setEdit(null); }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 12 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius, 8px)', padding: 16, width: 'min(560px, 94vw)', maxHeight: '86vh', overflow: 'auto' }}>
+            <h3 style={{ marginTop: 0 }}>Sửa <code>{edit.slug}</code></h3>
+            <p className="hint" style={{ marginTop: 0 }}>
+              Nhập những thông tin crawler <b>không đọc được</b> từ trang chương trình (payout, cookie, ghi
+              chú…). Để trống 1 ô = xoá giá trị đó. Lượt quét lại sẽ <b>không</b> ghi đè các số bạn tự nhập.
+            </p>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {([
+                ['programName', 'Tên dự án', 'text', 'vd: Friends of Wizer'],
+                ['web', 'Web (domain của dự án)', 'text', 'vd: wizer-training.com — điền để lấy được traffic'],
+                ['joinUrl', 'Link tham gia', 'text', 'https://…'],
+                ['commissionPct', '%commit', 'numeric', 'vd: 30'],
+                ['cookieDays', 'Cookie (ngày)', 'numeric', 'vd: 90'],
+                ['payoutThreshold', 'Payout (ngưỡng trả)', 'numeric', 'vd: 50'],
+              ] as [keyof HostEdit, string, string, string][]).map(([k, label, mode, ph]) => (
+                <label key={k} style={{ fontSize: 13, display: 'grid', gap: 3 }}>
+                  {label}
+                  <input className="fbselect" style={{ width: '100%' }} value={edit[k]} placeholder={ph}
+                    inputMode={mode === 'numeric' ? 'numeric' : undefined} disabled={editRowBusy}
+                    onChange={(e) => setEdit({ ...edit, [k]: e.target.value })} />
+                </label>
+              ))}
+              <label style={{ fontSize: 13, display: 'grid', gap: 3 }}>
+                Ghi chú
+                <textarea rows={3} style={{ width: '100%' }} value={edit.notes} disabled={editRowBusy}
+                  placeholder="Điều kiện riêng, cách thanh toán, người liên hệ…"
+                  onChange={(e) => setEdit({ ...edit, notes: e.target.value })} />
+              </label>
+            </div>
+            {editRowMsg && <div className="err" style={{ marginTop: 6 }}>{editRowMsg}</div>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+              <button className="srcbtn active" onClick={saveEdit} disabled={editRowBusy}>{editRowBusy ? <span className="spinner" /> : 'Lưu'}</button>
+              <button className="srcbtn" onClick={() => setEdit(null)} disabled={editRowBusy}>Huỷ</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {editWeb && (

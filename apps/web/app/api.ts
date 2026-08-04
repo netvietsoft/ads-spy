@@ -727,6 +727,20 @@ export async function affHosts(p: {
   if (p.dir) qs.set('dir', p.dir);
   return jsonOrThrow(await fetch(`${API}/api/aff/hosts?${qs.toString()}`));
 }
+// Sửa TAY 1 dòng trên /affnet/{net}: thông tin crawler không cào được. Chỉ gửi field muốn đổi —
+// field không gửi thì backend giữ nguyên (gửi null tường minh mới là xoá).
+export async function affUpdateHost(net: string, slug: string, patch: {
+  programName?: string | null; web?: string | null; joinUrl?: string;
+  commissionPct?: string | number | null; cookieDays?: string | number | null;
+  payoutThreshold?: string | number | null; notes?: string | null;
+}): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff/hosts/${encodeURIComponent(net)}/${encodeURIComponent(slug)}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch),
+  }));
+}
+export async function affDeleteHost(net: string, slug: string): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff/hosts/${encodeURIComponent(net)}/${encodeURIComponent(slug)}`, { method: 'DELETE' }));
+}
 // Lưu traffic dán tay cho 1 domain (web). Gửi khối text từ extension để backend parse,
 // hoặc số gõ tay (override). Backend chuẩn hoá web + upsert theo domain.
 export async function affSaveTraffic(payload: {

@@ -1,5 +1,5 @@
 // REST cho tab Affiliate Nets. Prefix '/api' đã đặt global trong main.ts nên path ở đây là 'aff/...'.
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { AffnetService } from './affnet.service';
 
 // FIX 11: minPct/maxPct trước đây chỉ chặn chuỗi RỖNG — ?minPct=abc lọt qua thành Number('abc')=NaN, rơi
@@ -76,6 +76,29 @@ export class AffnetController {
       minPct: numOrUndef(minPct), maxPct: numOrUndef(maxPct),
       offset: (p - 1) * size, limit: size, sort, dir,
     });
+  }
+
+  // Sửa TAY 1 dòng của trang /affnet/{net}. Chỉ nhận các field crawler không cào được + vài field hay
+  // parse sai. Field nào KHÔNG có trong body thì giữ nguyên (không ghi NULL đè).
+  @Put('aff/hosts/:net/:slug')
+  async updateHost(@Param('net') net: string, @Param('slug') slug: string, @Body() body: any) {
+    const patch: Record<string, unknown> = {};
+    if (body?.programName !== undefined) patch.programName = String(body.programName || '').trim() || null;
+    if (body?.web !== undefined) patch.web = String(body.web || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] || null;
+    if (body?.joinUrl !== undefined) patch.joinUrl = String(body.joinUrl || '').trim();
+    if (body?.commissionPct !== undefined) patch.commissionPct = numOrUndef(String(body.commissionPct ?? '')) ?? null;
+    if (body?.cookieDays !== undefined) patch.cookieDays = numOrUndef(String(body.cookieDays ?? '')) ?? null;
+    if (body?.payoutThreshold !== undefined) patch.payoutThreshold = numOrUndef(String(body.payoutThreshold ?? '')) ?? null;
+    if (body?.notes !== undefined) patch.notes = String(body.notes || '').trim().slice(0, 2000) || null;
+    if (!Object.keys(patch).length) throw new BadRequestException('Không có field nào để sửa');
+    await this.svc.updateHost(net, slug, patch);
+    return { ok: true };
+  }
+
+  @Delete('aff/hosts/:net/:slug')
+  async deleteHost(@Param('net') net: string, @Param('slug') slug: string) {
+    await this.svc.deleteHost(net, slug);
+    return { ok: true };
   }
 
   @Get('aff/programs/:net/:slug')

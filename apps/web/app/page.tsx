@@ -256,9 +256,12 @@ export default function Home() {
 
   const pagedCreatives = paginate(creatives, gPage, gSize);
 
-  // Aff Library: bảng 16 cột cần ~1440px → bỏ chặn 1180px của .container (xem .container-wide trong globals.css)
+  // Bảng nhiều cột cần ~1440px → bỏ chặn 1180px của .container (xem .container-wide trong globals.css):
+  // Aff Library (16 cột) và trang 1 net của Affiliate Nets (/affnet/{net}, 15 cột). Riêng /affnet (danh
+  // sách net) giữ bề rộng thường.
+  const wide = source === 'afflib' || /^\/affnet\/.+/.test(pathname || '');
   return (
-    <div className={source === 'afflib' ? 'container container-wide' : 'container'}>
+    <div className={wide ? 'container container-wide' : 'container'}>
       {source === 'facebook' && <FacebookPanel />}
       {source === 'tiktok' && <TiktokPanel />}
       {source === 'shophunter' && <ShopHunterPanel />}

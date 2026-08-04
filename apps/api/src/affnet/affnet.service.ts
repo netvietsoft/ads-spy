@@ -166,6 +166,20 @@ export class AffnetService {
     return this.db.hostList({ ...q, net: this.normalizeNet(q.net) });
   }
 
+  // Sửa tay 1 dòng (thông tin crawler không cào được). joinUrlOf = link tham gia mặc định của net/slug,
+  // dùng khi host chưa có dòng aff_program mà phải tạo mới (cột join_url NOT NULL).
+  async updateHost(net: string, slug: string, patch: Parameters<AffnetMysql['updateHostFields']>[2]): Promise<void> {
+    const n = this.normalizeNet(net);
+    if (!n || !slug) throw new BadRequestException('Thiếu net hoặc slug');
+    await this.db.updateHostFields(n, slug, patch, joinUrlOf(n, slug));
+  }
+
+  async deleteHost(net: string, slug: string): Promise<void> {
+    const n = this.normalizeNet(net);
+    if (!n || !slug) throw new BadRequestException('Thiếu net hoặc slug');
+    await this.db.deleteHost(n, slug);
+  }
+
   async programDetail(net: string, slug: string): Promise<any | null> {
     return this.db.programDetail(net, slug);
   }

@@ -370,6 +370,65 @@ describe('AffnetMysql', () => {
       expect(Object.keys(rows[0])).not.toContain('terms_text');
     });
 
+    // Sửa tay + xoá 1 dòng (cột Action trên trang /affnet/{net}).
+    describe('updateHostFields / deleteHost', () => {
+      const JU = (slug: string) => `https://${NET}/signup/${slug}`; // đóng vai joinUrlOf của service
+
+      it('host CHƯA có dòng chương trình → tạo mới, join_url lấy mặc định (cột NOT NULL)', async () => {
+        const S = P + 'chua-quet';
+        await db.updateHostFields(NET, S, { payoutThreshold: 50, notes: 'ghi chú tay' }, JU(S));
+        const { rows } = await db.hostList({ net: NET, q: S, offset: 0, limit: 5 });
+        expect(Number(rows[0].payout_threshold)).toBe(50);
+        expect(rows[0].notes).toBe('ghi chú tay');
+        expect(rows[0].join_url).toBe(JU(S)); // không có join_url trong patch → dùng mặc định
+        expect(rows[0].check_status).toBeNull(); // KHÔNG đổi kết quả quét thật
+      });
+
+      it('patch từng phần: key vắng mặt GIỮ NGUYÊN, không bị ghi NULL đè', async () => {
+        const S = P + 'chua-quet';
+        await db.updateHostFields(NET, S, { cookieDays: 90 }, JU(S));
+        const { rows } = await db.hostList({ net: NET, q: S, offset: 0, limit: 5 });
+        expect(Number(rows[0].cookie_days)).toBe(90);
+        expect(Number(rows[0].payout_threshold)).toBe(50); // từ lần sửa trước, còn nguyên
+        expect(rows[0].notes).toBe('ghi chú tay');
+      });
+
+      it('truyền null TƯỜNG MINH thì xoá được giá trị (khác với key vắng mặt)', async () => {
+        const S = P + 'chua-quet';
+        await db.updateHostFields(NET, S, { notes: null }, JU(S));
+        const { rows } = await db.hostList({ net: NET, q: S, offset: 0, limit: 5 });
+        expect(rows[0].notes).toBeNull();
+        expect(Number(rows[0].cookie_days)).toBe(90); // key khác không bị ảnh hưởng
+      });
+
+      // Đây là bảo vệ QUAN TRỌNG nhất của tính năng: parser hầu như không đọc ra payout/cookie/notes nên
+      // lượt quét lại trả NULL. Nếu upsertProgram ghi thẳng VALUES() thì dữ liệu nhập tay bị XOÁ SẠCH.
+      it('crawler quét lại (upsertProgram) KHÔNG xoá payout/cookie/notes/web đã nhập tay', async () => {
+        const S = P + 'giu-tay';
+        await db.upsertHosts(NET, [{ slug: S, sources: ['s'] }]);
+        await db.markHostChecked(NET, S, 'active');
+        await db.upsertProgram(prog(S, 10));                       // crawler lần 1
+        await db.updateHostFields(NET, S, { payoutThreshold: 77, cookieDays: 45, notes: 'tay' }, JU(S));
+
+        // Crawler lần 2 parse KHÔNG ra 3 mục đó (đúng thực tế) → prog() trả cookieDays/payoutThreshold/notes = null
+        await db.upsertProgram(prog(S, 20));
+        const { rows } = await db.hostList({ net: NET, q: S, offset: 0, limit: 5 });
+        expect(Number(rows[0].payout_threshold)).toBe(77);
+        expect(Number(rows[0].cookie_days)).toBe(45);
+        expect(rows[0].notes).toBe('tay');
+        expect(Number(rows[0].commission_pct)).toBe(20); // %commit crawler parse ĐƯỢC thì vẫn cập nhật
+      });
+
+      it('deleteHost xoá cả dòng host lẫn dòng chương trình', async () => {
+        const S = P + 'giu-tay';
+        await db.deleteHost(NET, S);
+        expect((await db.hostList({ net: NET, q: S, offset: 0, limit: 5 })).total).toBe(0);
+        const pool = await sh.getPool();
+        const [pr] = await pool.query('SELECT 1 FROM aff_program WHERE net = ? AND slug = ?', [NET, S]);
+        expect(pr as any[]).toHaveLength(0);
+      });
+    });
+
     it('phân trang ỔN ĐỊNH khi giá trị sort trùng nhau (tie-breaker h.slug) — không lặp/nhảy dòng', async () => {
       // visits của cả 5 host đều NULL → thiếu tie-breaker thì thứ tự giữa 2 lượt query là KHÔNG xác định,
       // trang 2 sẽ lặp lại dòng của trang 1 (đúng lỗi đã gặp ở Aff Library).

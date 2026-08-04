@@ -406,10 +406,17 @@ export class AffnetMysql {
           commission_currency, commission_scope, commission_raw, cookie_days, payout_threshold, notes, terms_text, status, fetched_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON DUPLICATE KEY UPDATE join_url = VALUES(join_url), program_name = VALUES(program_name), brand = VALUES(brand),
-          web = VALUES(web), commission_pct = VALUES(commission_pct), commission_flat = VALUES(commission_flat),
+          commission_pct = VALUES(commission_pct), commission_flat = VALUES(commission_flat),
           commission_currency = VALUES(commission_currency), commission_scope = VALUES(commission_scope),
-          commission_raw = VALUES(commission_raw), cookie_days = VALUES(cookie_days), payout_threshold = VALUES(payout_threshold),
-          notes = VALUES(notes), terms_text = VALUES(terms_text), status = VALUES(status), fetched_at = VALUES(fetched_at)`,
+          commission_raw = VALUES(commission_raw),
+          -- 4 cột NHẬP TAY ĐƯỢC (updateHostFields): parser thường không đọc ra nên lượt quét lại hay trả
+          -- NULL. Ghi thẳng VALUES() sẽ XOÁ MẤT thứ người dùng tự nhập. COALESCE = quét ra gì thì cập nhật,
+          -- không ra gì thì GIỮ giá trị đang có. Đổi lại: chương trình bỏ hẳn 1 mục thì giá trị cũ còn lưu.
+          web = COALESCE(VALUES(web), web),
+          cookie_days = COALESCE(VALUES(cookie_days), cookie_days),
+          payout_threshold = COALESCE(VALUES(payout_threshold), payout_threshold),
+          notes = COALESCE(VALUES(notes), notes),
+          terms_text = VALUES(terms_text), status = VALUES(status), fetched_at = VALUES(fetched_at)`,
       [p.net, p.slug, p.joinUrl, programName, brand, web, p.commissionPct, p.commissionFlat,
         p.commissionCurrency, p.commissionScope, p.commissionRaw, p.cookieDays, p.payoutThreshold, p.notes, p.termsText, p.status, p.fetchedAt],
     );
@@ -565,6 +572,50 @@ export class AffnetMysql {
     );
     const [cnt] = await pool.query(`SELECT COUNT(*) AS n ${joins} ${whereSql}`, params);
     return { rows: rows as any[], total: Number((cnt as any[])[0].n) || 0 };
+  }
+
+  // Sửa TAY 1 dòng trên trang /affnet/{net}: những thông tin crawler không cào được (payout, cookie,
+  // ghi chú…). Chỉ ghi các key CÓ MẶT trong patch — key vắng mặt giữ nguyên, khác với upsertProgram
+  // (crawler) ghi đè cả hàng.
+  // Host chưa có dòng aff_program (quét ra không có chương trình / chưa quét) thì TẠO MỚI, nên join_url
+  // NOT NULL phải có giá trị: service truyền joinUrlOf(net, slug) làm mặc định.
+  async updateHostFields(net: string, slug: string, patch: {
+    joinUrl?: string; programName?: string | null; web?: string | null;
+    commissionPct?: number | null; cookieDays?: number | null; payoutThreshold?: number | null; notes?: string | null;
+  }, defaultJoinUrl: string): Promise<void> {
+    const pool = await this.sh.getPool();
+    const map: [string, unknown][] = [];
+    if ('programName' in patch) map.push(['program_name', this.clampVarchar(patch.programName ?? null)]);
+    if ('web' in patch) map.push(['web', this.clampVarchar(patch.web ?? null)]);
+    if ('joinUrl' in patch) map.push(['join_url', patch.joinUrl || defaultJoinUrl]);
+    if ('commissionPct' in patch) map.push(['commission_pct', patch.commissionPct ?? null]);
+    if ('cookieDays' in patch) map.push(['cookie_days', patch.cookieDays ?? null]);
+    if ('payoutThreshold' in patch) map.push(['payout_threshold', patch.payoutThreshold ?? null]);
+    if ('notes' in patch) map.push(['notes', patch.notes ?? null]);
+    if (!map.length) return;
+
+    const cols = map.map(([c]) => c);
+    const vals = map.map(([, v]) => v);
+    // join_url luôn phải có mặt ở INSERT (NOT NULL); nếu patch không đụng tới thì thêm giá trị mặc định.
+    const insCols = cols.includes('join_url') ? cols : [...cols, 'join_url'];
+    const insVals = cols.includes('join_url') ? vals : [...vals, defaultJoinUrl];
+    // fetched_at NOT NULL — với dòng nhập tay thì đây là "lúc ghi dữ liệu này", KHÔNG cập nhật khi UPDATE
+    // để giữ đúng nghĩa "lần quét gần nhất".
+    await pool.query(
+      `INSERT INTO aff_program (net, slug, ${insCols.join(', ')}, fetched_at)
+       VALUES (?, ?, ${insCols.map(() => '?').join(', ')}, ?)
+       ON DUPLICATE KEY UPDATE ${cols.map((c) => `${c} = VALUES(${c})`).join(', ')}`,
+      [net, slug, ...insVals, Date.now()],
+    );
+  }
+
+  // Xoá 1 domain khỏi net: bỏ cả dòng host lẫn dòng chương trình của nó.
+  // ⚠️ Discovery có thể phát hiện LẠI domain này ở lượt poll sau (upsertHosts) → dòng sẽ quay lại ở trạng
+  // thái "chưa quét". Muốn xoá vĩnh viễn cần cờ ẩn riêng, hiện chưa có.
+  async deleteHost(net: string, slug: string): Promise<void> {
+    const pool = await this.sh.getPool();
+    await pool.query('DELETE FROM aff_program WHERE net = ? AND slug = ?', [net, slug]);
+    await pool.query('DELETE FROM aff_host WHERE net = ? AND slug = ?', [net, slug]);
   }
 
   // Query chi tiết DUY NHẤT có terms_text (MEDIUMTEXT) — dùng cho trang chi tiết 1 chương trình.
