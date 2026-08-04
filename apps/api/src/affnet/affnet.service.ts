@@ -5,10 +5,47 @@ import { AffnetFetch, joinUrlOf } from './affnet.fetch';
 import { discoverNet } from './affnet.discovery';
 import { parseTrafficPaste } from './affnet.traffic';
 import { TrafficService } from '../traffic/traffic.service';
+import { AffnetGoaffpro, GOAFFPRO_NET, parseGoaffpro, joinUrlOfGoaffpro } from './affnet.goaffpro';
 
 @Injectable()
 export class AffnetService {
-  constructor(private readonly db: AffnetMysql, private readonly fetch: AffnetFetch, private readonly traffic: TrafficService) {}
+  constructor(
+    private readonly db: AffnetMysql,
+    private readonly fetch: AffnetFetch,
+    private readonly traffic: TrafficService,
+    private readonly goaffpro?: AffnetGoaffpro,
+  ) {}
+
+  // Nhánh cho net kiểu API (goaffpro): lấy 1 trang store từ /v1/public/sites rồi ghi thẳng host+program.
+  // KHÔNG probeFake (net này không có trang catch-all slug.net nên fingerprint vô nghĩa) và KHÔNG cần
+  // proxy/Playwright. Con trỏ offset lưu ở KV để lượt sau đi tiếp; hết danh sách thì quay về 0 để làm mới.
+  private async fetchStepGoaffpro(net: string, batch: number): Promise<{
+    net: string; checked: number; active: number; inactive: number; notfound: number; blocked: number; laneErrors: number; lanes: number;
+  }> {
+    const out = { net, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes: 1 };
+    if (!this.goaffpro) return out;
+    const offset = await this.db.getNetOffset(net);
+    const { stores, count } = await this.goaffpro.page(batch, offset);
+    if (!stores.length) { await this.db.setNetOffset(net, 0); return out; } // hết trang → vòng lại đầu
+    // Ghi host trước (aff_host là nguồn của "đã phát hiện"), slug = Store ID số — bền qua thời gian.
+    await this.db.upsertHosts(net, stores.map((s) => ({ slug: String(s.id), sources: ['goaffpro-api'] })));
+    const now = Date.now();
+    for (const s of stores) {
+      const slug = String(s.id);
+      await this.db.upsertProgram({
+        ...parseGoaffpro(s), net, slug,
+        joinUrl: joinUrlOfGoaffpro(s),
+        termsText: null,           // API không trả điều khoản — không có gì để lưu
+        status: 'active', fetchedAt: now,
+      });
+      await this.db.markHostChecked(net, slug, 'active');
+      out.checked++; out.active++;
+    }
+    // count = tổng store; cộng dồn offset, vượt tổng thì quay về 0.
+    const next = offset + stores.length;
+    await this.db.setNetOffset(net, count > 0 && next >= count ? 0 : next);
+    return out;
+  }
 
   // Giống normalizeDomain của search.service.ts: bỏ scheme, bỏ www., cắt tại '/', lowercase.
   normalizeNet(raw: string): string {
@@ -17,7 +54,10 @@ export class AffnetService {
   }
 
   platformOf(net: string): string {
-    return net === 'getrewardful.com' ? 'rewardful' : 'generic';
+    if (net === 'getrewardful.com') return 'rewardful';
+    // goaffpro lấy dữ liệu bằng API JSON công khai, KHÔNG dò subdomain + mở trang như rewardful.
+    if (net === GOAFFPRO_NET) return 'goaffpro';
+    return 'generic';
   }
 
   async importNets(text: string): Promise<{ imported: number; skipped: number }> {
@@ -73,6 +113,8 @@ export class AffnetService {
     if (!n) return out; // không net nào còn host chờ → job nghỉ (out.net = null)
     out.net = n.net;
     await this.db.markNetFetched(n.net); // đẩy net này xuống cuối hàng đợi → net khác được lượt sau
+    // Rẽ nhánh theo platform TRƯỚC probeFake: net kiểu API không có trang catch-all để lấy fingerprint.
+    if (n.platform === 'goaffpro') return this.fetchStepGoaffpro(n.net, cfg.batch);
     const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
     if (!hosts.length) return out; // race hiếm (host vừa bị lượt khác lấy) → bỏ lượt
     // Token của net (nếu có) — đọc ĐÚNG 1 LẦN/lượt rồi dùng cho cả lô, khỏi đọc lại từng host.

@@ -284,6 +284,7 @@ export class AffnetMysql {
       `SELECT net, platform, enabled, note, discover_polled_at, discover_polls, discover_last_new,
               fake_len, fake_hash, fake_checked_at
        FROM aff_net WHERE enabled = 1
+         AND platform <> 'goaffpro'
          AND ${NET_ELIGIBLE_SQL}
        ORDER BY discover_polled_at IS NOT NULL, discover_polled_at LIMIT 1`,
       [DRY_ROUNDS_TO_SATURATE, cutoff],
@@ -357,7 +358,13 @@ export class AffnetMysql {
       `SELECT net, platform, enabled, note, discover_polled_at, discover_polls, discover_last_new,
               fake_len, fake_hash, fake_checked_at
        FROM aff_net n
-       WHERE enabled = 1 AND EXISTS (SELECT 1 FROM aff_host h WHERE h.net = n.net AND h.checked_at IS NULL)
+       WHERE enabled = 1 AND (
+         -- Net kiểu API (goaffpro) LUÔN đủ điều kiện: nó đi phân trang qua catalogue (22.485 store) chứ
+         -- không dựa vào "host chờ". Thiếu vế này thì nó chạy ĐÚNG 0 LẦN: ban đầu 0 host, mà mỗi lượt
+         -- adapter lại markHostChecked ngay cho mọi host vừa ghi → không bao giờ có host checked_at NULL.
+         n.platform = 'goaffpro'
+         OR EXISTS (SELECT 1 FROM aff_host h WHERE h.net = n.net AND h.checked_at IS NULL)
+       )
        ORDER BY fetch_polled_at IS NOT NULL, fetch_polled_at LIMIT 1`,
     );
     const r = (rows as any[])[0];
@@ -482,6 +489,18 @@ export class AffnetMysql {
 
   async clearNetCred(net: string): Promise<void> {
     await this.sh.setSetting(this.credKey(net), '');
+  }
+
+  // Con trỏ phân trang cho net kiểu API (goaffpro: 22.485 store, lấy 100/lượt nên cần nhớ đã tới đâu).
+  // Dùng chung KV cấu hình — không đáng thêm cột vào aff_net cho 1 con số.
+  async getNetOffset(net: string): Promise<number> {
+    const v = await this.sh.getSetting(`affnet:offset:${net}`);
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  }
+
+  async setNetOffset(net: string, offset: number): Promise<void> {
+    await this.sh.setSetting(`affnet:offset:${net}`, String(Math.max(0, Math.floor(offset) || 0)));
   }
 
   // Ghi lịch sử theo tháng (LŨY TIẾN). Nhận map key 'YYYY-MM-01' (AITDK) hoặc 'YYYY-MM' → chuẩn hoá về

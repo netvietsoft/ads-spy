@@ -28,6 +28,9 @@ const mkDb = () => ({
   getNetCred: jest.fn().mockResolvedValue(null),
   setNetCred: jest.fn().mockResolvedValue(true),
   clearNetCred: jest.fn().mockResolvedValue(undefined),
+  // Con trỏ phân trang cho net kiểu API (goaffpro).
+  getNetOffset: jest.fn().mockResolvedValue(0),
+  setNetOffset: jest.fn().mockResolvedValue(undefined),
 });
 // AffnetService nay nhận thêm TrafficService (cho nút "Scan traffic" của cả net) — stub, không gọi AITDK thật.
 const mkTraffic = () => ({ search: jest.fn().mockResolvedValue({ traffic: {}, whois: {} }) });
@@ -53,6 +56,64 @@ describe('normalizeNet + platformOf', () => {
 });
 
 // Token theo net — net phải đăng nhập mới xem được dự án (vd goaffpro.com).
+// goaffpro: net kiểu API — fetchStep phải rẽ nhánh, KHÔNG probeFake, và nhớ con trỏ phân trang.
+describe('fetchStep nhánh goaffpro', () => {
+  const store = (id: number) => ({ id, name: 'S' + id, website: `s${id}.com`, currency: 'USD', affiliatePortal: `s${id}.goaffpro.com`, cookieDuration: 604800, areRegistrationsOpen: 1, isApprovedAutomatically: 1, commission: { type: 'percentage', amount: 10, on: 'product' } });
+  const mk = (page: any, offset = 0) => {
+    const db = mkDb(); const f = mkFetch();
+    db.pickNetToFetch.mockResolvedValue({ net: 'goaffpro.com', platform: 'goaffpro', fakeCheckedAt: null, fakeLen: null, fakeHash: null });
+    db.getNetOffset = jest.fn().mockResolvedValue(offset);
+    db.setNetOffset = jest.fn().mockResolvedValue(undefined);
+    const go = { page: jest.fn().mockResolvedValue(page) };
+    return { db, f, go, svc: new AffnetService(db as any, f as any, mkTraffic() as any, go as any) };
+  };
+
+  it('ghi host + program từ API, slug = Store ID, KHÔNG gọi probeFake/fetchCampaign', async () => {
+    const { db, f, go, svc } = mk({ stores: [store(111), store(222)], count: 1000 });
+    const r = await svc.fetchStep({ batch: 100, paceMs: 0 });
+    expect(go.page).toHaveBeenCalledWith(100, 0);
+    expect(f.probeFake).not.toHaveBeenCalled();       // net này không có trang catch-all → probe vô nghĩa
+    expect(f.fetchCampaign).not.toHaveBeenCalled();   // không mở trang bằng Playwright
+    expect(db.upsertHosts).toHaveBeenCalledWith('goaffpro.com', [
+      { slug: '111', sources: ['goaffpro-api'] }, { slug: '222', sources: ['goaffpro-api'] },
+    ]);
+    expect(db.upsertProgram).toHaveBeenCalledTimes(2);
+    expect(db.upsertProgram.mock.calls[0][0]).toMatchObject({
+      net: 'goaffpro.com', slug: '111', web: 's111.com', commissionPct: 10, cookieDays: 7,
+      joinUrl: 'https://s111.goaffpro.com/create-account', status: 'active', termsText: null,
+    });
+    expect(db.markHostChecked).toHaveBeenCalledWith('goaffpro.com', '111', 'active');
+    expect(r).toMatchObject({ net: 'goaffpro.com', checked: 2, active: 2 });
+  });
+
+  it('con trỏ offset cộng dồn theo số store lấy được', async () => {
+    const { db, svc } = mk({ stores: [store(1), store(2), store(3)], count: 1000 }, 200);
+    await svc.fetchStep({ batch: 100, paceMs: 0 });
+    expect(db.setNetOffset).toHaveBeenCalledWith('goaffpro.com', 203);
+  });
+
+  it('tới cuối danh sách → offset quay về 0 để làm mới vòng sau', async () => {
+    const { db, svc } = mk({ stores: [store(1)], count: 100 }, 99);
+    await svc.fetchStep({ batch: 100, paceMs: 0 });
+    expect(db.setNetOffset).toHaveBeenCalledWith('goaffpro.com', 0);
+  });
+
+  it('trang rỗng → offset về 0, không ghi gì', async () => {
+    const { db, svc } = mk({ stores: [], count: 500 }, 500);
+    const r = await svc.fetchStep({ batch: 100, paceMs: 0 });
+    expect(db.setNetOffset).toHaveBeenCalledWith('goaffpro.com', 0);
+    expect(db.upsertProgram).not.toHaveBeenCalled();
+    expect(r.checked).toBe(0);
+  });
+
+  it('platformOf: goaffpro.com → goaffpro, net khác vẫn generic/rewardful', () => {
+    const s = new AffnetService(mkDb() as any, mkFetch() as any, mkTraffic() as any);
+    expect(s.platformOf('goaffpro.com')).toBe('goaffpro');
+    expect(s.platformOf('getrewardful.com')).toBe('rewardful');
+    expect(s.platformOf('tapfiliate.com')).toBe('generic');
+  });
+});
+
 describe('token theo net', () => {
   it('netTokenStatus KHÔNG trả token gốc, chỉ preview 4 ký tự đầu/cuối', async () => {
     const db = mkDb();
