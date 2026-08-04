@@ -80,6 +80,11 @@ body {
 /* Nút icon trong cột Action của bảng nhiều cột (/affnet/{net} có 15 cột): cỡ mặc định làm cột phình ra,
    nút cuối bị đẩy khỏi vùng thấy. Thu nhỏ để 4 nút gọn trong 1 hàng. */
 .actbtn { padding: 2px 6px; font-size: 13px; line-height: 1.4; min-width: 0; }
+/* Cột Action: icon TRẦN — bỏ viền + nền của `button.ghost`, vì 3-4 icon cạnh nhau trông như 3-4 khối
+   xám chen chúc. Dùng 2 class (0,2,0) nên thắng `button.ghost` (0,1,1) mà không cần !important. */
+.actbtn.flat { background: none; border: 0; border-radius: 0; padding: 2px 4px; font-size: 15px; }
+.actbtn.flat:hover:not(:disabled) { background: none; filter: brightness(1.35); }
+.actbtn.flat:disabled { opacity: 0.45; }
 /* Bảng 15 cột rộng ~1825px, màn 1600px vẫn phải cuộn ngang → GHIM cột Action vào lề phải để nút
    sửa/xoá luôn thấy được, không phải cuộn tới cuối mới bấm được. (.localtbl đã border-collapse:separate
    nên sticky trên ô hoạt động; th vốn đã sticky top nên thêm right là ghim cả 2 chiều.) */
@@ -394,6 +399,23 @@ button.ghost.danger { color: var(--danger); }
   @media (hover: hover) {
     .afflibcard:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
   }
+  /* Thẻ /affnet/{net} — class RIÊNG, không đụng .localcard dùng chung với Local DB/Facebook.
+     13px cho CẢ thẻ (.fbplat mặc định 11px muted nên phải đè cả dòng lẫn <b>), số liệu đen đậm. */
+  .affnetcard { font-size: 13px; transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease; }
+  .affnetcard .fbplat, .affnetcard .fbfoot, .affnetcard .fbbody { font-size: 13px; }
+  .affnetcard .fbplat b { color: var(--text); font-weight: 700; font-size: 13px; }
+  /* Icon hành động thu nhỏ + trần — 4 nút cỡ mặc định chiếm gần hết chiều ngang thẻ. */
+  .affnetcard .lcbtn { background: none; border: 0; padding: 0 5px; font-size: 15px; line-height: 1.7; min-width: 0; }
+  .affnetcard .lcbtn:disabled { opacity: 0.45; }
+  /* Chạm vào thẻ thì thẻ nhấc lên. :hover CHỈ cho thiết bị có hover thật (mobile tap hay bị "hover
+     dính" sau khi chạm), :active dùng cho mọi thiết bị. */
+  .affnetcard:active { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+  @media (hover: hover) {
+    .affnetcard:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+  }
+  /* Thẻ vừa bấm: GIỮ trạng thái nhấc + đổi màu viền cho nổi (khác :active chỉ có lúc đang giữ tay). */
+  .affnetcard.sel { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+
   /* Bảng đứng lẻ (report/modal) giữ full-width; nếu quá rộng thì khung cha (overflow:auto) tự cuộn */
   .localtbl { width: 100%; }
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { AffLibMysql, AffLibSnapshot } from './afflib.mysql';
 import { AffLibDetect } from './afflib.detect';
 import { resolveDomains } from './afflib.dns';
@@ -72,6 +72,28 @@ export class AffLibService {
       err: got ? null : 'shophunter_chua_co_du_lieu',
     });
     return got ? 'revved' : 'fail';
+  }
+
+  // Rescan doanh thu ĐÚNG 1 domain (nút ⟳ từng dòng ở /affnet/{net}). Khác revScan/revScanNet: KHÔNG đi
+  // qua hàng đợi và KHÔNG lọc theo rev_scan_at/shopify — người dùng bấm tay thì họ muốn thử lại chính
+  // domain đó, kể cả domain đã bị chấm đỏ trước đây (nhận diện có thể sai vì lúc đó mạng bị bóp).
+  async revScanWeb(web: string): Promise<{ web: string; kind: 'revved' | 'shopify' | 'notShopify' | 'fail'; error?: string }> {
+    await this.db.ensureTables();
+    const w = normalizeDomain(web);
+    if (!w) throw new BadRequestException('Thiếu domain');
+    // Domain của net có thể CHƯA nằm trong aff_library; setRevScanned là UPDATE nên không có dòng là
+    // ghi trượt, mọi thứ im lặng không đổi. Tạo dòng trống trước rồi mới quét.
+    await this.db.ensureWeb(w);
+    const row = (await this.db.rowsByWebs([w]))[0] || {};
+    try {
+      const kind = await this.revScanOne({ web: w, shop_id: row.shop_id ?? null, shopify: row.shopify ?? null });
+      return { web: w, kind };
+    } catch (e) {
+      // Ghi rev_scan_at kèm lý do để không tắc hàng đợi, nhưng KHÔNG ghi shopify (xem revScanOne):
+      // lỗi mạng mà chấm đỏ là loại trừ oan vĩnh viễn.
+      await this.db.setRevScanned(w, { err: (e as Error).message }).catch(() => {});
+      return { web: w, kind: 'fail', error: (e as Error).message };
+    }
   }
 
   // Scan Revenue giới hạn trong 1 NET (nút ở /affnet/{net}) — dùng LẠI revScanOne, cùng quy tắc

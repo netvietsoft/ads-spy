@@ -85,6 +85,13 @@ export class AffLibController {
     return this.svc.detectOne(web);
   }
 
+  // Rescan doanh thu ĐÚNG 1 domain (nút ⟳ ở /affnet/{net}) — người dùng bấm tay nên bỏ qua hàng đợi
+  // và bỏ qua cả điều kiện loại trừ: họ muốn thử lại chính domain đó, kể cả domain từng bị chấm đỏ.
+  @Post(':web/rev-scan')
+  revScanWeb(@Param('web') web: string) {
+    return this.svc.revScanWeb(web);
+  }
+
   @Put(':web')
   async update(@Param('web') web: string, @Body() body: any) {
     await this.svc.update(web, body || {});

@@ -195,6 +195,17 @@ export class AffLibMysql {
     return Number((r as any).affectedRows) || 0;
   }
 
+  // Tạo dòng trống cho 1 domain nếu chưa có. Cần vì setRevScanned/updateAffiliate đều là UPDATE — gọi
+  // trên domain chưa có trong kho thì ghi trượt, không lỗi mà cũng không đổi gì (bẫy im lặng).
+  async ensureWeb(web: string): Promise<void> {
+    const pool = await this.sh.getPool();
+    const now = Date.now();
+    await pool.query(
+      'INSERT IGNORE INTO aff_library (web, found, created_at, updated_at) VALUES (?, 0, ?, ?)',
+      [web, now, now],
+    );
+  }
+
   // Hàng đợi Scan Revenue giới hạn trong 1 NET: các domain (aff_program.web của net đó) đang thiếu doanh thu.
   async rowsToRevScanByNet(net: string, limit = 20): Promise<{ web: string; shop_id: string | null; shopify: number | null }[]> {
     const pool = await this.sh.getPool();

@@ -673,7 +673,8 @@ export interface AffHostRow {
   program_status: string | null; fetched_at: number | null;
   // Doanh thu lấy từ Aff Library theo domain (LEFT JOIN aff_library) — null nếu domain không có trong kho.
   // rev_* lưu TIỀN GỐC của shop, phải nhân tỉ giá bằng rev_currency khi hiển thị.
-  rev_month?: number | null; rev_total?: number | null; rev_currency?: string | null; shopify?: number | null;
+  // shop_id có = domain ĐÃ được index vào danh sách shop trong local DB → mở được /shop/{shop_id}.
+  rev_month?: number | null; rev_total?: number | null; rev_currency?: string | null; shopify?: number | null; shop_id?: string | null;
   traffic_visits: number | null; traffic_bounce: number | null;
   traffic_duration_sec: number | null; traffic_rank: number | null; traffic_updated_at: number | null;
 }
@@ -799,6 +800,11 @@ export async function affLibRevScan(limit = 20): Promise<{ scanned: number; revv
 }
 // Scan Revenue giới hạn trong 1 NET (nút ở /affnet/{net}) — cùng logic với nút ở /afflibrary,
 // chỉ khác phạm vi: các domain của net đó đang thiếu doanh thu.
+// Rescan doanh thu ĐÚNG 1 domain (nút ⟳ từng dòng ở /affnet/{net}) — bỏ qua hàng đợi, thử lại kể cả
+// domain từng bị chấm đỏ.
+export async function affLibRevScanOne(web: string): Promise<{ web: string; kind: 'revved' | 'shopify' | 'notShopify' | 'fail'; error?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/${encodeURIComponent(web)}/rev-scan`, { method: 'POST' }));
+}
 export async function affLibRevScanNet(net: string, limit = 20): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/rev-scan-net`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ net, limit }),

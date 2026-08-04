@@ -59,6 +59,9 @@ describe('AffLibService', () => {
         countToRevScan: jest.fn(async () => 0),
         sumDailyRevenue: jest.fn(async () => 5000),
         setRevScanned: jest.fn(async (web: string, p: any) => { saved.push({ web, ...p }); }),
+        // revScanWeb (nút ⟳ 1 dòng) đi đường riêng: tạo dòng trống rồi đọc lại chính domain đó.
+        ensureWeb: jest.fn(async () => {}),
+        rowsByWebs: jest.fn(async () => rows),
         saved,
       } as any;
     };
@@ -106,6 +109,29 @@ describe('AffLibService', () => {
       expect(db.saved[0]).toMatchObject({ web: 'd.com' });
       expect('shopify' in db.saved[0]).toBe(false);
       expect(db.saved).toHaveLength(1);                    // dừng ngay ở domain lỗi, không thử tiếp vô ích
+    });
+
+    // Nút ⟳ từng dòng ở /affnet/{net}. Domain của net thường CHƯA có trong aff_library, mà setRevScanned
+    // là UPDATE → không tạo dòng trước thì mọi ghi đều trượt, không lỗi mà cũng không đổi gì (bẫy im lặng).
+    describe('revScanWeb (1 domain, bấm tay)', () => {
+      it('tạo dòng trong kho TRƯỚC khi quét, rồi ghi doanh thu bình thường', async () => {
+        const db = mkDb([{ web: 'z.com', shop_id: 's3', shopify: null }]);
+        const sh = { checkDomain: jest.fn(), syncShopRevenue: jest.fn(async () => 'ok') } as any;
+        const r = await new AffLibService(db, {} as any, {} as any, sh, shDb()).revScanWeb('https://WWW.Z.com/abc');
+        expect(db.ensureWeb).toHaveBeenCalledWith('z.com');            // chuẩn hoá domain trước khi tạo
+        expect(db.rowsByWebs).toHaveBeenCalledWith(['z.com']);
+        expect(r).toMatchObject({ web: 'z.com', kind: 'revved' });
+        expect(db.saved[0]).toMatchObject({ web: 'z.com', shopId: 's3', revMonth: 30 });
+      });
+
+      it('quét lỗi → trả kind=fail kèm lý do, KHÔNG ném lỗi ra ngoài và KHÔNG chấm đỏ oan', async () => {
+        const db = mkDb([{ web: 'z.com', shop_id: null, shopify: 0 }]);
+        const sh = { checkDomain: jest.fn(async () => { throw new Error('ShopHunter đang giới hạn'); }), syncShopRevenue: jest.fn() } as any;
+        const r = await new AffLibService(db, {} as any, {} as any, sh, shDb()).revScanWeb('z.com');
+        expect(r.kind).toBe('fail');
+        expect(r.error).toMatch(/giới hạn/);
+        expect('shopify' in db.saved[0]).toBe(false);                   // lỗi mạng KHÔNG được ghi shopify
+      });
     });
 
     it('ShopHunter chưa có dữ liệu chart → ghi lý do, KHÔNG ghi rev_month bừa', async () => {

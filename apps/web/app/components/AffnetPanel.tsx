@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affRescanNet, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, affLibRevScanNet, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { affNets, affAddNets, affDeleteNet, affRescanNet, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, affLibRevScanNet, affLibRevScanOne, trafficSearch, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
 import { TrafficHistoryModal } from './TrafficHistoryModal';
 import { toUsd } from '../currency';
@@ -114,6 +114,27 @@ const toEdit = (h: AffHostRow): HostEdit => ({
   notes: h.notes ?? '',
 });
 
+// Chấm Shopify trước domain — CHỈ hiện khi đã có kết luận (shopify null = chưa scan revenue thì không
+// vẽ gì, đừng để người dùng tưởng "chưa quét" là "không phải Shopify").
+//  · xanh = là Shopify VÀ đã được index vào danh sách shop trong local DB (có shop_id) → mở /shop/{id}.
+//  · xanh nhạt = nhận là Shopify nhưng chưa ra shop_id (job sau thử lại).
+//  · đỏ = kết luận KHÔNG phải Shopify → đã loại khỏi hàng đợi scan revenue.
+function shopDot(h: AffHostRow) {
+  if (h.shopify == null && !h.shop_id) return null;
+  const red = h.shopify === 0 && !h.shop_id;
+  const indexed = !!h.shop_id;
+  return (
+    <span aria-hidden style={{
+      display: 'inline-block', width: 8, height: 8, borderRadius: '50%', marginRight: 6, flex: '0 0 auto',
+      background: red ? '#e0384f' : '#16a34a', opacity: red || indexed ? 1 : 0.45,
+    }} title={red ? 'Không phải Shopify — đã loại khỏi hàng đợi scan revenue'
+      : indexed ? 'Shopify — đã lưu vào danh sách shop ở local DB, bấm để xem chi tiết shop'
+      : 'Shopify nhưng chưa lấy được Shop ID'} />
+  );
+}
+// URL chi tiết shop trong local DB. Không có shop_id = chưa index → không có gì để mở.
+const shopHref = (h: AffHostRow) => (h.shop_id ? `/shop/${encodeURIComponent(String(h.shop_id))}` : null);
+
 // Trạng thái quét 1 domain. 'error' = classify không kết luận được (không phải sự cố hệ thống).
 function hostBadge(h: AffHostRow) {
   if (h.check_status === 'active') return <span style={{ color: '#16a34a', fontWeight: 600 }} title="Có chương trình affiliate">✓ có</span>;
@@ -148,16 +169,27 @@ function NetRowCard({ n, active, onSelect, onDelete, onRescan, rescanning }: { n
   );
 }
 
-function HostRowCard({ p, onHistory, onEditRow, onDelete, deleting }: {
-  p: AffHostRow; onHistory: (web: string) => void;
-  onEditRow: () => void; onDelete: () => void; deleting: boolean;
+function HostRowCard({ p, sel, onSelect, onHistory, onEditRow, onRescan, onDelete, deleting, rescanning }: {
+  p: AffHostRow; sel: boolean; onSelect: () => void; onHistory: (web: string) => void;
+  onEditRow: () => void; onRescan: () => void; onDelete: () => void; deleting: boolean; rescanning: boolean;
 }) {
   const site = siteUrl(p.web);
+  const shop = shopHref(p);
+  // Chạm vào KHOẢNG TRẮNG của thẻ: luôn đánh dấu thẻ (đổi viền cho nổi), và nếu domain đã được index
+  // vào danh sách shop thì mở chi tiết shop ở TAB MỚI — mở cùng tab thì mất chỗ đang xem trong danh
+  // sách 22.000 dòng. Nút/link con tự stopPropagation nên không kích hoạt cái này.
+  const tap = () => { onSelect(); if (shop) window.open(shop, '_blank', 'noopener'); };
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
   return (
-    <div className="fbcard localcard">
+    <div className={'fbcard localcard affnetcard' + (sel ? ' sel' : '')} onClick={tap}
+         style={{ cursor: shop ? 'pointer' : 'default' }}
+         title={shop ? 'Chạm để xem chi tiết shop trong local DB' : undefined}>
       {/* Dòng tiêu đề: tên chương trình nếu có, không thì chính domain — kèm badge trạng thái quét. */}
       <div className="fbpage" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-        <span>{p.program_name || p.slug}<div style={{ opacity: 0.6, fontSize: 11 }}>{p.slug}</div></span>
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>{shopDot(p)}{p.program_name || p.slug}</span>
+          <div style={{ opacity: 0.6, fontSize: 11, overflowWrap: 'anywhere' }}>{p.slug}</div>
+        </span>
         {hostBadge(p)}
       </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -170,20 +202,27 @@ function HostRowCard({ p, onHistory, onEditRow, onDelete, deleting }: {
         <span>Traffic/th <b>{fmtVisits(p.traffic_visits)}</b></span>
         <span>Bounce <b>{fmtBounce(p.traffic_bounce)}</b></span>
         <span>Time <b>{fmtDur(p.traffic_duration_sec)}</b></span>
-        {/* Mobile: chỉ icon, căn lề phải — ✎ sửa · 📊 cào 12 tháng traffic · 🗑 xoá. */}
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
-          <button className="ghost" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={onEditRow}>✎</button>
-          {p.web && (
-            <button className="ghost" title="Cào 12 tháng traffic (AITDK) + lưu DB" onClick={() => onHistory(p.web!)}>📊</button>
-          )}
-          <button className="ghost danger" title="Xoá domain này khỏi net" onClick={onDelete} disabled={deleting}>{deleting ? '⏳' : '🗑'}</button>
-        </span>
       </div>
       {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8 }}>{p.notes}</div>}
       <div className="fbfoot" style={{ gap: 10, flexWrap: 'wrap' }}>
         {/* Host chưa quét / không có chương trình thì không có join_url — đừng render link rỗng. */}
-        {p.join_url && <a className="dl" href={p.join_url} target="_blank" rel="noreferrer">↗ Link tham gia</a>}
-        {site && <a className="dl" href={site} target="_blank" rel="noreferrer">{p.web}</a>}
+        {p.join_url && <a className="dl" href={p.join_url} target="_blank" rel="noreferrer" onClick={stop}>↗ Link tham gia</a>}
+        {site && <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={stop}>{p.web}</a>}
+      </div>
+      {/* Icon hành động ở DÒNG CUỐI CÙNG, căn lề phải — trước đây nằm chung dòng traffic nên bị chen. */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, marginTop: 2 }}>
+        {p.web && (
+          <button className="ghost lcbtn" title="Rescan lại doanh thu + traffic của domain này"
+                  onClick={(e) => { stop(e); onRescan(); }} disabled={rescanning}>{rescanning ? '⏳' : '⟳'}</button>
+        )}
+        <button className="ghost lcbtn" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)"
+                onClick={(e) => { stop(e); onEditRow(); }}>✎</button>
+        {p.web && (
+          <button className="ghost lcbtn" title="Cào 12 tháng traffic (AITDK) + lưu DB"
+                  onClick={(e) => { stop(e); onHistory(p.web!); }}>📊</button>
+        )}
+        <button className="ghost danger lcbtn" title="Xoá domain này khỏi net"
+                onClick={(e) => { stop(e); onDelete(); }} disabled={deleting}>{deleting ? '⏳' : '🗑'}</button>
       </div>
     </div>
   );
@@ -231,6 +270,8 @@ export function AffnetPanel() {
   const [deleting, setDeleting] = useState<string | null>(null);
   // Domain đang mở modal lịch sử 12 tháng (nút 📊) — modal tự cào AITDK + lưu DB.
   const [histWeb, setHistWeb] = useState<string | null>(null);
+  const [rowRescan, setRowRescan] = useState<string | null>(null);  // slug đang rescan (nút ⟳)
+  const [selCard, setSelCard] = useState<string | null>(null);      // slug thẻ vừa chạm (mobile)
 
   // Ô nhập traffic (dán khối từ extension) cho 1 domain (web).
   const [editWeb, setEditWeb] = useState<string | null>(null);
@@ -379,6 +420,25 @@ export function AffnetPanel() {
     try { await affDeleteHost(activeNet, slug); setReloadTick((t) => t + 1); }
     catch (e) { setErr(`Xoá ${slug} thất bại: ${(e as Error).message}`); }
     setDeleting(null);
+  };
+
+  // Nút ⟳ từng dòng: rescan CẢ doanh thu VÀ traffic của đúng 1 domain. Chạy 2 việc song song vì chúng
+  // độc lập (ShopHunter vs AITDK); một bên lỗi thì bên kia vẫn ghi được, nên dùng allSettled chứ không
+  // để 1 lỗi làm mất cả lượt. Báo lỗi ra `err` nhưng vẫn tải lại bảng để thấy phần đã thành công.
+  const rescanRow = async (slug: string, web: string) => {
+    if (rowRescan) return;
+    setRowRescan(slug); setErr(null);
+    const [rev, traf] = await Promise.allSettled([
+      affLibRevScanOne(web),
+      trafficSearch([web], true, true), // history=true + save=true: ghi luôn 12 tháng vào DB
+    ]);
+    const bad: string[] = [];
+    if (rev.status === 'rejected') bad.push('doanh thu: ' + (rev.reason as Error).message);
+    else if (rev.value.error) bad.push('doanh thu: ' + rev.value.error);
+    if (traf.status === 'rejected') bad.push('traffic: ' + (traf.reason as Error).message);
+    if (bad.length) setErr(`Rescan ${web} — ${bad.join(' · ')}`);
+    setRowRescan(null);
+    setReloadTick((t) => t + 1);
   };
 
   // Scan Revenue cho các domain CỦA NET này — cùng khuôn lặp với runNetTraffic. Dừng khi hết hàng đợi,
@@ -589,20 +649,22 @@ export function AffnetPanel() {
                 defaultValue={maxPct ?? ''} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                 onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v); if (n !== maxPct) { setMaxPct(Number.isFinite(n as number) ? n : null); setPage(1); } }} />
             </label>
-            <span style={{ display: 'inline-flex', gap: 4 }}>
+            {/* Ô tìm domain và menu sort đi LIỀN nhau trong cùng 1 nhóm flex: để rời ra ngoài thì trên
+                mobile chúng bị wrap tách sang 2 dòng khác nhau, menu sort không còn nằm ngay sau domain. */}
+            <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
               <input className="fbselect" placeholder="Tìm domain / tên dự án…" value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') applyQ(); }} />
               {(q || qInput) && <button className="srcbtn" onClick={() => { setQInput(''); setQ(''); setPage(1); }}>✕</button>}
+              {/* Sort: CHỈ mobile mới có menu select (không bấm được header bảng). Desktop dùng mũi tên ▲▼ ở header. */}
+              {isMobile && (
+                <select className="fbselect" value={sort}
+                  onChange={(e) => { const k = e.target.value; setSort(k); setDir(ASC_FIRST.has(k) ? 'asc' : 'desc'); setPage(1); }}
+                  title="Sắp xếp">
+                  {HOST_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+              )}
             </span>
-            {/* Sort: CHỈ mobile mới có menu select (không bấm được header bảng). Desktop dùng mũi tên ▲▼ ở header. */}
-            {isMobile && (
-              <select className="fbselect" value={sort}
-                onChange={(e) => { const k = e.target.value; setSort(k); setDir(ASC_FIRST.has(k) ? 'asc' : 'desc'); setPage(1); }}
-                title="Sắp xếp">
-                {HOST_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
-            )}
             {loading && <span className="spinner" />}
             <button className="srcbtn" style={{ marginLeft: 'auto' }} onClick={exportExcel} disabled={data.total === 0}
               title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel`}>⬇ Xuất Excel</button>
@@ -616,7 +678,9 @@ export function AffnetPanel() {
               {data.rows.length === 0 && !loading ? <p className="hint">Không có domain khớp bộ lọc.</p>
                 : data.rows.map((p) => (
                   <HostRowCard key={p.slug} p={p} onHistory={setHistWeb}
+                    sel={selCard === p.slug} onSelect={() => setSelCard(p.slug)}
                     onEditRow={() => { setEdit(toEdit(p)); setEditRowMsg(null); }}
+                    onRescan={() => { if (p.web) void rescanRow(p.slug, p.web); }} rescanning={rowRescan === p.slug}
                     onDelete={() => doDeleteHost(p.slug)} deleting={deleting === p.slug} />
                 ))}
             </div>
@@ -643,13 +707,21 @@ export function AffnetPanel() {
                 <tbody>
                   {data.rows.map((p) => {
                     const site = siteUrl(p.web);
+                    const shop = shopHref(p);
                     return (
-                      <tr key={p.slug}>
-                        <td className="wrap" style={{ maxWidth: '22ch' }}>{p.slug}</td>
+                      // Bấm vào KHOẢNG TRẮNG của dòng (không phải link/nút — chúng tự stopPropagation) mở
+                      // chi tiết shop ở tab mới, chỉ khi domain đã được index vào local DB (có shop_id).
+                      <tr key={p.slug} onClick={shop ? () => window.open(shop, '_blank', 'noopener') : undefined}
+                          style={shop ? { cursor: 'pointer' } : undefined}
+                          title={shop ? 'Bấm để xem chi tiết shop trong local DB' : undefined}>
+                        <td className="wrap" style={{ maxWidth: '22ch' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center' }}>{shopDot(p)}{p.slug}</span>
+                        </td>
                         <td style={{ whiteSpace: 'nowrap' }}>{hostBadge(p)}</td>
                         <td className="wrap" style={{ maxWidth: '26ch' }}>{orDash(p.program_name)}</td>
-                        <td>{p.join_url ? <a href={p.join_url} target="_blank" rel="noreferrer">↗ Tham gia</a> : '—'}</td>
-                        <td>{site ? <a href={site} target="_blank" rel="noreferrer">{p.web}</a> : '—'}</td>
+                        {/* stopPropagation: <tr> cũng mở tab mới → không chặn là bấm link ra ĐÚNG 2 tab. */}
+                        <td>{p.join_url ? <a href={p.join_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>↗ Tham gia</a> : '—'}</td>
+                        <td>{site ? <a href={site} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{p.web}</a> : '—'}</td>
                         <td className="rev">{pctOrFlat(p)}</td>
                         {/* DT tháng lấy từ Aff Library theo domain. rev_month lưu TIỀN GỐC → phải đổi USD
                             bằng rev_currency, không thì shop VND/JPY trông như to gấp trăm lần. */}
@@ -666,15 +738,20 @@ export function AffnetPanel() {
                         <td>{fmtBounce(p.traffic_bounce)}</td>
                         <td>{fmtDur(p.traffic_duration_sec)}</td>
                         <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{p.checked_at ? new Date(p.checked_at).toLocaleDateString('vi-VN') : '—'}</td>
-                        {/* Action: ✎ sửa thông tin · 📊 cào 12 tháng traffic (chỉ khi biết `web`) · 🗑 xoá.
-                            Bỏ nút ⟳ "lấy lại traffic" — trùng việc với 📊 (nay 📊 cào lại + mở lịch sử). */}
+                        {/* Action (icon TRẦN, class .flat bỏ viền+nền): ⟳ rescan doanh thu+traffic ·
+                            ✎ sửa thông tin · 📊 cào 12 tháng traffic (chỉ khi biết `web`) · 🗑 xoá.
+                            Mọi nút stopPropagation vì cả <tr> đã là vùng bấm mở chi tiết shop. */}
                         <td className="actcol" style={{ whiteSpace: 'nowrap' }}>
-                          <span style={{ display: 'inline-flex', gap: 4 }}>
-                            <button className="ghost actbtn" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={() => { setEdit(toEdit(p)); setEditRowMsg(null); }}>✎</button>
+                          <span style={{ display: 'inline-flex', gap: 2 }}>
                             {p.web && (
-                              <button className="ghost actbtn" title="Cào 12 tháng traffic (AITDK) + lưu DB" onClick={() => setHistWeb(p.web!)}>📊</button>
+                              <button className="ghost actbtn flat" title="Rescan lại doanh thu + traffic của domain này"
+                                      onClick={(e) => { e.stopPropagation(); void rescanRow(p.slug, p.web!); }} disabled={rowRescan === p.slug}>{rowRescan === p.slug ? '⏳' : '⟳'}</button>
                             )}
-                            <button className="ghost danger actbtn" title="Xoá domain này khỏi net" onClick={() => doDeleteHost(p.slug)} disabled={deleting === p.slug}>{deleting === p.slug ? '⏳' : '🗑'}</button>
+                            <button className="ghost actbtn flat" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={(e) => { e.stopPropagation(); setEdit(toEdit(p)); setEditRowMsg(null); }}>✎</button>
+                            {p.web && (
+                              <button className="ghost actbtn flat" title="Cào 12 tháng traffic (AITDK) + lưu DB" onClick={(e) => { e.stopPropagation(); setHistWeb(p.web!); }}>📊</button>
+                            )}
+                            <button className="ghost danger actbtn flat" title="Xoá domain này khỏi net" onClick={(e) => { e.stopPropagation(); doDeleteHost(p.slug); }} disabled={deleting === p.slug}>{deleting === p.slug ? '⏳' : '🗑'}</button>
                           </span>
                         </td>
                       </tr>

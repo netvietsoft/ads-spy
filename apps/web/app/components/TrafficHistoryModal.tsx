@@ -3,6 +3,7 @@
 // Markup viết bằng class Tailwind nên div gốc PHẢI có class `trafficpanel` (globals.css bù phần
 // preflight đã tắt: border-style + border-collapse) — không có thì mọi viền/kẻ bảng vô hình.
 import { useEffect, useState } from 'react';
+import { useIsMobile } from '../useIsMobile';
 import { trafficSearch, trafficHistory, TrafficData } from '../api';
 import { formatNumber, formatBounceRate, formatTimeOnSite, formatRank, monthSeries } from '../trafficFmt';
 
@@ -26,6 +27,7 @@ export function TrafficHistoryModal({ domain, initial, save, onClose, onSaved }:
   /** Gọi sau khi cào+lưu xong, để trang gọi tự tải lại số liệu. */
   onSaved?: () => void;
 }) {
+  const isMobile = useIsMobile();
   const [data, setData] = useState<TrafficData | null>(initial ?? null);
   const [dbMonths, setDbMonths] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -62,29 +64,35 @@ export function TrafficHistoryModal({ domain, initial, save, onClose, onSaved }:
 
   return (
     <div className="trafficpanel" onClick={onClose}
-         style={{ position: 'fixed', inset: 0, zIndex: 1000, overflowY: 'auto', background: 'rgba(0,0,0,0.5)', padding: '40px 16px' }}>
+         style={{ position: 'fixed', inset: 0, zIndex: 1000, overflowY: 'auto', background: 'rgba(0,0,0,0.5)', padding: isMobile ? '12px 8px' : '40px 16px' }}>
       <div onClick={(e) => e.stopPropagation()}
            style={{ maxWidth: 768, margin: '0 auto', background: '#fff', borderRadius: 8, boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
-        <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4">
-          <div>
-            <h3 className="text-xl font-bold text-gray-800">{domain}</h3>
-            <p className="text-sm text-gray-500">Tháng gần nhất {data?.month || 'N/A'}/{data?.year || 'N/A'}</p>
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200"
+             style={{ padding: isMobile ? '10px 12px' : '16px 24px' }}>
+          <div style={{ minWidth: 0 }}>
+            <h3 className="font-bold text-gray-800" style={{ fontSize: isMobile ? 15 : 20, overflowWrap: 'anywhere' }}>{domain}</h3>
+            <p className="text-gray-500" style={{ fontSize: isMobile ? 11 : 14 }}>Tháng gần nhất {data?.month || 'N/A'}/{data?.year || 'N/A'}</p>
           </div>
           <button onClick={onClose} aria-label="Đóng"
                   className="rounded-md border border-gray-300 px-3 py-1 text-gray-500 transition-colors hover:bg-gray-50">✕</button>
         </div>
 
-        <div className="px-6 py-5">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div style={{ padding: isMobile ? '12px' : '20px 24px' }}>
+          {/* 4 thẻ số: 2 HÀNG × 2 CỘT. KHÔNG dùng class `grid` của Tailwind — globals.css (media mobile)
+              có `.fbgrid, .grid { grid-template-columns: minmax(0,1fr) !important }`, `!important` thắng cả
+              grid-cols-2 LẪN inline style, nên trên mobile 4 thẻ bị xếp 1 cột và phình hết bề rộng.
+              Đặt grid bằng inline style + KHÔNG mang class `grid` là cách duy nhất không bị đè. */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? 8 : 12 }}>
             {([
               ['Visits tháng này', formatNumber(data?.visits)],
               ['Bounce rate', data ? formatBounceRate(data.bounce_rate) : 'N/A'],
               ['Time on site', data ? formatTimeOnSite(data.time_on_site) : 'N/A'],
               ['Global rank', data ? formatRank(data.global_rank) : 'N/A'],
             ] as [string, string][]).map(([label, value]) => (
-              <div key={label} className="rounded-lg border border-gray-200 px-4 py-3">
-                <div className="text-sm text-gray-500">{label}</div>
-                <div className="mt-1 font-mono text-2xl font-bold text-gray-800">{value}</div>
+              <div key={label} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: isMobile ? '8px 10px' : '12px 16px', minWidth: 0 }}>
+                <div style={{ fontSize: isMobile ? 11 : 14, color: '#6b7280' }}>{label}</div>
+                {/* Số dài (1.350.437) trên mobile phải co lại, không thì tràn ra ngoài thẻ. */}
+                <div style={{ marginTop: 2, fontFamily: 'monospace', fontWeight: 700, color: '#1f2937', fontSize: isMobile ? 16 : 24, overflowWrap: 'anywhere' }}>{value}</div>
               </div>
             ))}
           </div>
@@ -101,15 +109,18 @@ export function TrafficHistoryModal({ domain, initial, save, onClose, onSaved }:
             <>
               {/* Chiều cao cột là % của khung nên khung PHẢI có chiều cao thật (đặt inline, không dựa
                   vào utility h-56) — thiếu là mọi cột cao 0. */}
-              <div style={{ marginTop: 12, background: '#f9fafb', borderRadius: 8, padding: 16 }}>
-                <div style={{ display: 'flex', height: 224, alignItems: 'flex-end', gap: 8 }}>
+              {/* Nhãn tháng (monospace 10-11px ≈ 33px) KHÔNG co được, nên 12 cột trên mobile đẩy flex rộng
+                  hơn khung và tràn ra ngoài modal. Cho khung cuộn ngang + đặt bề rộng tối thiểu mỗi cột:
+                  tràn thì cuộn trong khung, không phá layout trang. */}
+              <div style={{ marginTop: 12, background: '#f9fafb', borderRadius: 8, padding: isMobile ? 10 : 16, overflowX: 'auto' }}>
+                <div style={{ display: 'flex', height: isMobile ? 160 : 224, alignItems: 'flex-end', gap: isMobile ? 5 : 8, minWidth: isMobile ? months.length * 34 : undefined }}>
                   {months.map((m) => (
                     <div key={m.key} title={`${m.label}: ${formatNumber(m.visits)}`}
                          className="flex flex-1 flex-col items-center justify-end gap-2"
-                         style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 6, height: '100%' }}>
+                         style={{ flex: '1 0 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 6, height: '100%', minWidth: isMobile ? 29 : undefined }}>
                       <div className="w-full rounded-t bg-blue-600"
                            style={{ width: '100%', background: '#2563eb', borderRadius: '4px 4px 0 0', height: `${Math.max((m.visits / max) * 100, 4)}%` }} />
-                      <span style={{ fontSize: 11, color: '#6b7280', fontFamily: 'monospace' }}>{m.label}</span>
+                      <span style={{ fontSize: isMobile ? 10 : 11, color: '#6b7280', fontFamily: 'monospace' }}>{m.label}</span>
                     </div>
                   ))}
                 </div>
