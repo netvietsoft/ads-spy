@@ -3,8 +3,18 @@
 // Markup viết bằng class Tailwind nên div gốc PHẢI có class `trafficpanel` (globals.css bù phần
 // preflight đã tắt: border-style + border-collapse) — không có thì mọi viền/kẻ bảng vô hình.
 import { useEffect, useState } from 'react';
-import { trafficSearch, TrafficData } from '../api';
+import { trafficSearch, trafficHistory, TrafficData } from '../api';
 import { formatNumber, formatBounceRate, formatTimeOnSite, formatRank, monthSeries } from '../trafficFmt';
+
+// Trộn lịch sử: DB (lũy tiến, có thể > 12 tháng) + 12 tháng vừa cào (mới hơn nên THẮNG).
+// Chuẩn hoá key về 'YYYY-MM' vì AITDK trả 'YYYY-MM-01' còn DB trả 'YYYY-MM' — không chuẩn hoá thì
+// cùng 1 tháng bị đếm thành 2 cột.
+function mergeMonths(db?: Record<string, number> | null, fresh?: Record<string, number> | null): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(db || {})) out[String(k).slice(0, 7)] = Number(v) || 0;
+  for (const [k, v] of Object.entries(fresh || {})) out[String(k).slice(0, 7)] = Number(v) || 0;
+  return out;
+}
 
 export function TrafficHistoryModal({ domain, initial, save, onClose, onSaved }: {
   domain: string;
@@ -17,14 +27,19 @@ export function TrafficHistoryModal({ domain, initial, save, onClose, onSaved }:
   onSaved?: () => void;
 }) {
   const [data, setData] = useState<TrafficData | null>(initial ?? null);
+  const [dbMonths, setDbMonths] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    // Đã có đủ 12 tháng và không cần ghi DB → khỏi gọi lại, đỡ đốt quota AITDK.
-    const has = initial?.monthly_visits && Object.keys(initial.monthly_visits).length > 0;
-    if (has && !save) { setData(initial!); return; }
     let alive = true;
+    // Lịch sử LŨY TIẾN trong DB — luôn đọc, kể cả khi đã có 12 tháng từ lượt quét, vì DB có thể giữ
+    // nhiều tháng hơn cửa sổ 12 tháng của AITDK. Lỗi ở đây KHÔNG chặn phần còn lại.
+    trafficHistory(domain).then((r) => { if (alive) setDbMonths(r.months || {}); }).catch(() => {});
+
+    // Đã có đủ 12 tháng và không cần ghi DB → khỏi gọi lại AITDK, đỡ đốt quota.
+    const has = initial?.monthly_visits && Object.keys(initial.monthly_visits).length > 0;
+    if (has && !save) { setData(initial!); return () => { alive = false; }; }
     setLoading(true); setErr(null);
     trafficSearch([domain], true, !!save)
       .then((r) => {
@@ -32,6 +47,8 @@ export function TrafficHistoryModal({ domain, initial, save, onClose, onSaved }:
         const d = r.traffic[domain];
         if (!d) throw new Error('AITDK không trả dữ liệu cho domain này');
         setData(d);
+        // Vừa ghi thêm tháng vào DB → đọc lại để chart hiện đủ cả lịch sử cũ.
+        if (save) trafficHistory(domain).then((h) => { if (alive) setDbMonths(h.months || {}); }).catch(() => {});
         onSaved?.();
       })
       // Lỗi PHẢI hiện trong modal, không được để trắng: thiếu AITDK_SECRET_KEY → 503, proxy chết → 502.
@@ -40,7 +57,7 @@ export function TrafficHistoryModal({ domain, initial, save, onClose, onSaved }:
     return () => { alive = false; };
   }, [domain]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const months = monthSeries(data?.monthly_visits);
+  const months = monthSeries(mergeMonths(dbMonths, data?.monthly_visits));
   const max = Math.max(...months.map((m) => m.visits), 1);
 
   return (

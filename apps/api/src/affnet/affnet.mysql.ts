@@ -186,6 +186,18 @@ export class AffnetMysql {
       note VARCHAR(255) NULL,
       updated_at BIGINT
     )`);
+
+    // Lịch sử traffic THEO THÁNG, LŨY TIẾN. AITDK chỉ trả cửa sổ 12 tháng gần nhất; mỗi lần cào lại thì
+    // upsert từng tháng vào đây nên tháng cũ Ở LẠI VĨNH VIỄN kể cả khi cửa sổ 12 tháng đã trượt qua
+    // → lịch sử dài dần theo thời gian (cào 2 năm liền thì có ~24 tháng).
+    // month kiểu CHAR(7) 'YYYY-MM' (chuẩn hoá từ key 'YYYY-MM-01' của AITDK) — 1 dòng / 1 tháng / 1 domain.
+    await pool.query(`CREATE TABLE IF NOT EXISTS aff_domain_traffic_month (
+      web VARCHAR(255) NOT NULL,
+      month CHAR(7) NOT NULL,
+      visits BIGINT NULL,
+      updated_at BIGINT,
+      PRIMARY KEY (web, month)
+    )`);
   }
 
   // Thêm net mới; net đã có thì chỉ cập nhật platform (không nhân đôi). Trả SỐ NET MỚI thêm.
@@ -442,6 +454,35 @@ export class AffnetMysql {
     const pool = await this.sh.getPool();
     const [rows] = await pool.query(`SELECT web, visits, bounce_rate, visit_duration_sec, global_rank, note, updated_at FROM aff_domain_traffic WHERE web = ?`, [web]);
     return (rows as any[])[0] || null;
+  }
+
+  // Ghi lịch sử theo tháng (LŨY TIẾN). Nhận map key 'YYYY-MM-01' (AITDK) hoặc 'YYYY-MM' → chuẩn hoá về
+  // 'YYYY-MM'. Tháng đã có thì CẬP NHẬT số mới (AITDK hay chỉnh lại tháng gần nhất), tháng cũ không bị
+  // xoá bao giờ → cửa sổ 12 tháng trượt qua vẫn giữ được lịch sử dài.
+  async upsertDomainMonths(web: string, months: Record<string, number | null | undefined>): Promise<number> {
+    const rows = Object.entries(months || {})
+      .map(([k, v]) => [web, String(k).slice(0, 7), v == null ? null : Number(v)] as [string, string, number | null])
+      .filter(([, m, v]) => /^\d{4}-\d{2}$/.test(m) && v != null && Number.isFinite(v as number));
+    if (!rows.length) return 0;
+    const pool = await this.sh.getPool();
+    const now = Date.now();
+    const ph = rows.map(() => '(?,?,?,?)').join(',');
+    await pool.query(
+      `INSERT INTO aff_domain_traffic_month (web, month, visits, updated_at) VALUES ${ph}
+       ON DUPLICATE KEY UPDATE visits=VALUES(visits), updated_at=VALUES(updated_at)`,
+      rows.flatMap(([w, m, v]) => [w, m, v, now]),
+    );
+    return rows.length;
+  }
+
+  // Toàn bộ lịch sử tháng đã tích được của 1 domain — key 'YYYY-MM', tăng dần theo thời gian.
+  async getDomainMonths(web: string): Promise<Record<string, number>> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      'SELECT month, visits FROM aff_domain_traffic_month WHERE web = ? ORDER BY month ASC', [web]);
+    const out: Record<string, number> = {};
+    for (const r of rows as any[]) out[r.month] = Number(r.visits) || 0;
+    return out;
   }
 
   // Bậc %commit — biểu thức DUY NHẤT, dùng ở đây và không lặp lại ở nơi khác.

@@ -811,6 +811,10 @@ export async function affNetTrafficFill(net: string, limit = 50): Promise<{ webs
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }),
   }));
 }
+// Lịch sử tháng đã TÍCH trong DB của 1 domain (key 'YYYY-MM') — có thể nhiều hơn 12 tháng AITDK trả về.
+export async function trafficHistory(web: string): Promise<{ web: string; months: Record<string, number> }> {
+  return jsonOrThrow(await fetch(`${API}/api/traffic/history?web=${encodeURIComponent(web)}`));
+}
 export async function affLibBulkDelete(webs: string[]): Promise<{ ok: boolean; deleted: number }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/bulk-delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ webs }) }));
 }

@@ -76,17 +76,29 @@ export class TrafficService {
     }
 
     if (save) {
-      await Promise.all(Object.entries(merged.traffic).map(([web, data]) =>
-        this.affnetDb.upsertDomainTraffic(normalizeDomain(web), {
+      await Promise.all(Object.entries(merged.traffic).flatMap(([web, data]) => {
+        const w = normalizeDomain(web);
+        const jobs = [this.affnetDb.upsertDomainTraffic(w, {
           visits: data.visits,
           bounceRate: data.bounce_rate,
           visitDurationSec: data.time_on_site,
           globalRank: data.global_rank,
-        }),
-      ));
+        })];
+        // Lịch sử theo tháng chỉ có khi history=true. Lưu LŨY TIẾN vào bảng riêng: AITDK chỉ trả cửa sổ
+        // 12 tháng, không lưu thì mỗi lần cào lại là mất hết tháng đã trượt ra ngoài cửa sổ.
+        if (data.monthly_visits && Object.keys(data.monthly_visits).length) {
+          jobs.push(this.affnetDb.upsertDomainMonths(w, data.monthly_visits).then(() => undefined));
+        }
+        return jobs;
+      }));
     }
 
     return merged;
+  }
+
+  // Toàn bộ lịch sử tháng đã tích được của 1 domain (có thể NHIỀU HƠN 12 tháng của AITDK).
+  async monthsOf(web: string): Promise<Record<string, number>> {
+    return this.affnetDb.getDomainMonths(normalizeDomain(web));
   }
 
   private async fetchBatch(domains: string[], history: boolean): Promise<TrafficResult> {
