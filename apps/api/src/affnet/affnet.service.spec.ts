@@ -24,6 +24,10 @@ const mkDb = () => ({
   listHttpProxies: jest.fn().mockResolvedValue([]),
   upsertDomainTraffic: jest.fn().mockResolvedValue(undefined),
   getDomainTraffic: jest.fn().mockResolvedValue(null),
+  // fetchStep nay đọc token của net (net phải đăng nhập mới xem được dự án) — mặc định không có token.
+  getNetCred: jest.fn().mockResolvedValue(null),
+  setNetCred: jest.fn().mockResolvedValue(true),
+  clearNetCred: jest.fn().mockResolvedValue(undefined),
 });
 // AffnetService nay nhận thêm TrafficService (cho nút "Scan traffic" của cả net) — stub, không gọi AITDK thật.
 const mkTraffic = () => ({ search: jest.fn().mockResolvedValue({ traffic: {}, whois: {} }) });
@@ -45,6 +49,69 @@ describe('normalizeNet + platformOf', () => {
   it('getrewardful.com → platform rewardful, net khác → generic', () => {
     expect(s.platformOf('getrewardful.com')).toBe('rewardful');
     expect(s.platformOf('tapfiliate.com')).toBe('generic');
+  });
+});
+
+// Token theo net — net phải đăng nhập mới xem được dự án (vd goaffpro.com).
+describe('token theo net', () => {
+  it('netTokenStatus KHÔNG trả token gốc, chỉ preview 4 ký tự đầu/cuối', async () => {
+    const db = mkDb();
+    db.getNetCred = jest.fn().mockResolvedValue({ kind: 'bearer', token: 'eyJabcdefghijklmnop1234', updatedAt: 111 });
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
+    const st = await s.netTokenStatus('goaffpro.com');
+    expect(st).toMatchObject({ has: true, kind: 'bearer', updatedAt: 111 });
+    expect(st.preview).toBe('eyJa…1234 (23 ký tự)');
+    expect(JSON.stringify(st)).not.toContain('eyJabcdefghijklmnop1234'); // token gốc TUYỆT ĐỐI không ra FE
+  });
+
+  it('chưa có token → { has: false }, không có preview', async () => {
+    const db = mkDb();
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
+    expect(await s.netTokenStatus('x.com')).toEqual({ has: false });
+  });
+
+  it('setNetToken: chuẩn hoá net, chặn token rỗng, và BÁO LỖI khi ghi không thành công', async () => {
+    const db = mkDb();
+    db.setNetCred = jest.fn().mockResolvedValue(true);
+    const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
+    await s.setNetToken('https://WWW.GoAffPro.com/', ' tok ', 'bearer');
+    expect(db.setNetCred).toHaveBeenCalledWith('goaffpro.com', { kind: 'bearer', token: 'tok', loginUrl: undefined });
+    await expect(s.setNetToken('goaffpro.com', '   ', 'bearer')).rejects.toThrow(/Chưa dán token/);
+    // setSetting NUỐT lỗi → setNetCred trả false; phải NÉM để UI không báo "đã lưu" oan.
+    db.setNetCred = jest.fn().mockResolvedValue(false);
+    await expect(s.setNetToken('goaffpro.com', 'tok', 'bearer')).rejects.toThrow(/Không ghi được token/);
+  });
+
+  it('fetchStep TRUYỀN token của net xuống fetchCampaign; không có token thì truyền null', async () => {
+    const host = { net: 'goaffpro.com', slug: 'a', firstSeen: 1, lastSeen: 1, sources: 's', checkedAt: null, checkStatus: null, checkTries: 0 };
+    const mk = (cred: any) => {
+      const db = mkDb(); const f = mkFetch();
+      db.pickNetToFetch.mockResolvedValue({ net: 'goaffpro.com', platform: 'generic', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' });
+      db.takeHostsToCheck.mockResolvedValue([host]);
+      db.getNetCred = jest.fn().mockResolvedValue(cred);
+      f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
+      return { db, f };
+    };
+    const withTok = mk({ kind: 'bearer', token: 'tok', updatedAt: 1 });
+    await new AffnetService(withTok.db as any, withTok.f as any, mkTraffic() as any).fetchStep({ batch: 5, paceMs: 0 });
+    expect(withTok.f.fetchCampaign.mock.calls[0][4]).toMatchObject({ kind: 'bearer', token: 'tok' });
+
+    const noTok = mk(null);
+    await new AffnetService(noTok.db as any, noTok.f as any, mkTraffic() as any).fetchStep({ batch: 5, paceMs: 0 });
+    expect(noTok.f.fetchCampaign.mock.calls[0][4]).toBeNull();
+    // Đọc cred ĐÚNG 1 LẦN/lượt, không phải mỗi host
+    expect(noTok.db.getNetCred).toHaveBeenCalledTimes(1);
+  });
+
+  it('lỗi đọc token KHÔNG làm chết cả lượt fetch', async () => {
+    const db = mkDb(); const f = mkFetch();
+    db.pickNetToFetch.mockResolvedValue({ net: 'n.com', platform: 'generic', fakeCheckedAt: 1, fakeLen: 1, fakeHash: 'h' });
+    db.takeHostsToCheck.mockResolvedValue([{ net: 'n.com', slug: 'a', firstSeen: 1, lastSeen: 1, sources: 's', checkedAt: null, checkStatus: null, checkTries: 0 }]);
+    db.getNetCred = jest.fn().mockRejectedValue(new Error('prisma down'));
+    f.fetchCampaign.mockResolvedValue({ outcome: 'notfound', parsed: null, termsText: null });
+    const r = await new AffnetService(db as any, f as any, mkTraffic() as any).fetchStep({ batch: 5, paceMs: 0 });
+    expect(r.checked).toBe(1);
+    expect(f.fetchCampaign.mock.calls[0][4]).toBeNull();
   });
 });
 

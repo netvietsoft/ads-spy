@@ -75,6 +75,8 @@ export class AffnetService {
     await this.db.markNetFetched(n.net); // đẩy net này xuống cuối hàng đợi → net khác được lượt sau
     const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
     if (!hosts.length) return out; // race hiếm (host vừa bị lượt khác lấy) → bỏ lượt
+    // Token của net (nếu có) — đọc ĐÚNG 1 LẦN/lượt rồi dùng cho cả lô, khỏi đọc lại từng host.
+    const auth = await this.db.getNetCred(n.net).catch(() => null);
 
     // probeFake: net KHÔNG có wildcard subdomain (vd affiliatly.com → NXDOMAIN) làm probeFake NÉM LỖI. TRƯỚC đây
     // lỗi này văng ra làm CHẾT cả fetchStep → chặn đứng MỌI net phía sau (chỉ net quét trước đó có dữ liệu). BẮT
@@ -100,7 +102,7 @@ export class AffnetService {
         const h = hosts[i];
         let r: { outcome: string; parsed: any; termsText: string | null };
         try {
-          r = await this.fetch.fetchCampaign(n.net, h.slug, fake, lane);
+          r = await this.fetch.fetchCampaign(n.net, h.slug, fake, lane, auth);
         } catch (e) {
           // Proxy chết / lỗi mạng của LÀN này → coi như CHƯA BIẾT (đừng kết luận), khai tử làn này,
           // các làn khác chạy tiếp. Đếm riêng để biết proxy hỏng chứ không phải Cloudflare chặn.
@@ -172,6 +174,30 @@ export class AffnetService {
     const n = this.normalizeNet(net);
     if (!n || !slug) throw new BadRequestException('Thiếu net hoặc slug');
     await this.db.updateHostFields(n, slug, patch, joinUrlOf(n, slug));
+  }
+
+  // ---- Token theo net ----
+  // Trạng thái KHÔNG trả token gốc ra FE — chỉ 4 ký tự đầu/cuối để người dùng nhận ra mình dán cái nào.
+  async netTokenStatus(net: string): Promise<{ has: boolean; kind?: string; updatedAt?: number; preview?: string }> {
+    const c = await this.db.getNetCred(this.normalizeNet(net));
+    if (!c) return { has: false };
+    const t = c.token;
+    return {
+      has: true, kind: c.kind, updatedAt: c.updatedAt,
+      preview: t.length > 12 ? `${t.slice(0, 4)}…${t.slice(-4)} (${t.length} ký tự)` : `${t.length} ký tự`,
+    };
+  }
+
+  async setNetToken(net: string, token: string, kind: 'bearer' | 'cookie', loginUrl?: string): Promise<void> {
+    const n = this.normalizeNet(net);
+    if (!n) throw new BadRequestException('Thiếu net');
+    if (!token.trim()) throw new BadRequestException('Chưa dán token');
+    const ok = await this.db.setNetCred(n, { kind, token: token.trim(), loginUrl: loginUrl?.trim() || undefined });
+    if (!ok) throw new BadRequestException('Không ghi được token vào cấu hình (thử lại)');
+  }
+
+  async clearNetToken(net: string): Promise<void> {
+    await this.db.clearNetCred(this.normalizeNet(net));
   }
 
   async deleteHost(net: string, slug: string): Promise<void> {

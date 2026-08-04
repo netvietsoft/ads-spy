@@ -4,6 +4,7 @@ import { ShJob, shJobs, shToggleJob, shRunJobOnce, shSetJobConfig } from '../api
 import { ProxyPanel } from './ProxyPanel';
 import { ShTokenBox } from './ShTokenBox';
 import { FbCookieBox } from './FbCookieBox';
+import { AffnetTokenBox } from './AffnetTokenBox';
 
 const STATUS_VI: Record<string, string> = { ok: 'OK', idle: 'Nghỉ (hết việc)', blocked: 'Bị chặn', no_proxy: 'Thiếu proxy', running: 'Đang chạy' };
 const CFG_LABEL: Record<string, string> = {
@@ -106,6 +107,7 @@ export function SettingsPanel() {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 340px', minWidth: 0 }}><ShTokenBox /></div>
         <div style={{ flex: '1 1 340px', minWidth: 0 }}><FbCookieBox /></div>
+        <div style={{ flex: '1 1 340px', minWidth: 0 }}><AffnetTokenBox /></div>
       </div>
       <h3 style={{ margin: '18px 0 4px' }}>⚙️ Cài đặt — Job nền</h3>
       <p style={{ fontSize: 13, opacity: 0.7 }}>Bật/tắt và theo dõi log các job. harvest chạy theo lịch (cron); enrich/catalog chạy nền liên tục khi bật. Bấm <b>Chạy ngay</b> để chạy 1 lượt liền, không đợi lịch.</p>

@@ -2,7 +2,7 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
+import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, affLibRevScan, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
 import { toUsd } from '../currency';
 import { useIsMobile } from '../useIsMobile';
 
@@ -35,11 +35,27 @@ function affBadgeMini(r: AffLibRow) {
   return <span title="Chưa quét" style={{ color: 'var(--muted)' }}>○</span>;
 }
 
+// Chấm trước domain, cho biết kết quả Scan Revenue:
+//  xanh = Shopify (job nền sẽ cào lại doanh thu) · đỏ = KHÔNG phải Shopify (loại trừ vĩnh viễn)
+//  không có chấm = chưa kiểm bao giờ.
+function shopifyDot(r: AffLibRow) {
+  if (r.shopify === 1) {
+    return <span title={`Shopify — sẽ cào lại doanh thu${r.rev_scan_err ? ` (lần cuối: ${r.rev_scan_err})` : ''}`}
+                 style={{ color: '#16a34a', marginRight: 4 }}>●</span>;
+  }
+  if (r.shopify === 0) {
+    return <span title={`Không phải Shopify — không scan doanh thu nữa${r.rev_scan_err ? ` (${r.rev_scan_err})` : ''}`}
+                 style={{ color: '#e0384f', marginRight: 4 }}>●</span>;
+  }
+  return null;
+}
+
 interface AffEdit { web: string; join_url: string; commission_pct: string; payout: string; cookie_days: string; note: string }
 
 const FILTERS: { v: AffLibFilter; label: string }[] = [
   { v: 'all', label: 'tất cả' }, { v: 'aff', label: 'chỉ web có aff' },
   { v: 'unscanned', label: 'chưa quét' }, { v: 'junk', label: 'cần dọn' },
+  { v: 'norev', label: 'thiếu doanh thu' }, { v: 'notshopify', label: 'không phải Shopify' },
 ];
 
 // Lý do một dòng bị coi là "cần dọn" — suy từ dns_ok / aff_try_count / aff_last_error do BE trả về.
@@ -90,6 +106,7 @@ function AffLibCard({ r, onDetect, onEdit, onTraffic, onDel, scanning }: {
         {affBadgeMini(r)}
       </div>
       <div className="fbbody" style={{ fontSize: 12, opacity: 0.75 }}>
+        {shopifyDot(r)}
         <a href={`https://${r.web}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: '#2563eb' }}>{r.web}</a>
         {!r.found && <span style={{ marginLeft: 6, color: '#e0a800' }}>(ngoài DB)</span>}
       </div>
@@ -138,6 +155,7 @@ export function AffLibraryPanel() {
   const [sel, setSel] = useState<Set<string>>(new Set()); // dòng đã tick ở chế độ "cần dọn"
   const [dns, setDns] = useState<string | null>(null); // kết quả lần lọc DNS gần nhất
   const [traf, setTraf] = useState<string | null>(null); // kết quả lần điền traffic gần nhất
+  const [rev, setRev] = useState<string | null>(null);   // kết quả lần Scan Revenue gần nhất
   const [scanning, setScanning] = useState<string | null>(null); // domain đang quét bằng nút ⟳
   const [scanMsg, setScanMsg] = useState<string | null>(null); // kết quả quét 1 domain gần nhất
   const [sort, setSort] = useState(DEFAULT_SORT);
@@ -262,6 +280,25 @@ export function AffLibraryPanel() {
     setBusy(false);
   };
 
+  // Scan Revenue: cùng khuôn lặp với runTrafficFill — dừng khi hết hàng đợi, khi BE báo `error`
+  // (ShopHunter bị bóp), hoặc khi `remaining` không giảm (chống lặp vô hạn).
+  const runRevScan = async () => {
+    setBusy(true); setErr(null); setRev('Đang cào doanh thu…');
+    try {
+      let revved = 0, shopify = 0, notShopify = 0, prev = Infinity;
+      for (;;) {
+        const r = await affLibRevScan();
+        revved += r.revved; shopify += r.shopify; notShopify += r.notShopify;
+        setRev(`Có doanh thu ${revved.toLocaleString()} · shopify chưa ra id ${shopify} · không phải shopify ${notShopify}${r.remaining ? ` · còn ${r.remaining.toLocaleString()}` : ''}`);
+        if (r.error) { setErr(`Scan Revenue: ${r.error}`); break; }
+        if (!r.remaining || r.remaining >= prev) break;
+        prev = r.remaining;
+      }
+      await load();
+    } catch (e) { setErr((e as Error).message); setRev(null); }
+    setBusy(false);
+  };
+
   // Điền traffic cho các dòng còn trống. Dừng khi hết, khi AITDK báo lỗi, hoặc khi `remaining` không giảm
   // (lô toàn domain AITDK không có dữ liệu — BE đã đánh dấu đã thử nên vòng sau sẽ sang lô khác).
   const runTrafficFill = async () => {
@@ -375,6 +412,13 @@ export function AffLibraryPanel() {
           {busy && traf ? 'Đang lấy traffic…' : 'Scan Traffic'}
         </button>
         {traf && <span style={{ opacity: 0.75 }}>{traf}</span>}
+        {/* Scan Revenue — đặt NGAY SAU Scan Traffic theo yêu cầu. Nhắm domain THIẾU doanh thu tháng
+            (đo thật 1.204 dòng), không phải "ngoài DB" (chỉ 2 dòng). */}
+        <button className="srcbtn" onClick={runRevScan} disabled={busy || loading}
+          title="Domain thiếu doanh thu: nhận diện Shopify (ShopHunter + probe) → lấy shop_id → cào doanh thu. Không phải Shopify thì đánh dấu đỏ và loại khỏi hàng đợi.">
+          {busy && rev ? 'Đang cào doanh thu…' : 'Scan Revenue'}
+        </button>
+        {rev && <span style={{ opacity: 0.75 }}>{rev}</span>}
         {scanMsg && <span style={{ color: scanning ? '#6b7280' : '#16a34a', fontWeight: 600 }}>{scanMsg}</span>}
         <select value={filter} onChange={(e) => changeFilter(e.target.value as AffLibFilter)} disabled={loading} title="Lọc danh sách" style={selStyle}>
           {FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
@@ -447,6 +491,7 @@ export function AffLibraryPanel() {
                 )}
                 <td style={{ ...td, whiteSpace: 'normal', maxWidth: 220 }}>
                   <div style={{ fontWeight: 600 }}>{r.shop_name || <span style={{ color: '#9ca3af' }}>—</span>}</div>
+                  <span style={{ fontSize: 12 }}>{shopifyDot(r)}</span>
                   <a href={`https://${r.web}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#2563eb' }}>{r.web}</a>
                   {!r.found && <span style={{ marginLeft: 6, fontSize: 11, color: '#e0a800' }}>(ngoài DB)</span>}
                 </td>

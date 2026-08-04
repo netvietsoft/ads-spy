@@ -51,6 +51,13 @@ export class AffLibController {
     return this.svc.fillTraffic(Number(limit) || 50);
   }
 
+  // (E) Scan Revenue: domain THIẾU doanh thu tháng → nhận diện Shopify rồi cào doanh thu.
+  // ⚠️ PHẢI đứng TRƯỚC các route ':web' bên dưới, không thì 'rev-scan' bị bắt như một domain.
+  @Post('rev-scan')
+  revScan(@Body('limit') limit: number) {
+    return this.svc.revScan(Number(limit) || 20);
+  }
+
   // Xoá hàng loạt (dọn rác): 1 query cho cả lô thay vì gọi DELETE từng domain.
   @Post('bulk-delete')
   async bulkDelete(@Body('webs') webs: string[]) {

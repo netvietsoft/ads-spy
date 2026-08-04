@@ -7,8 +7,9 @@ import { shopifyHttp } from './shopify.client';
 import { makeProxiedGet, ProxyForGet } from './shopify.proxy-get';
 import { isGlobalBlock } from './sh.harvest.util';
 import { AffnetService } from '../affnet/affnet.service';
+import { AffLibService } from '../afflib/afflib.service';
 
-export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh', 'affdiscover', 'afffetch'] as const;
+export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh', 'affdiscover', 'afffetch', 'afflibrev'] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 const DESC: Record<JobName, string> = {
@@ -20,6 +21,7 @@ const DESC: Record<JobName, string> = {
   importenrich: 'Enrich item đã import (mục Import): lấy detail/doanh thu → sh_shop/sh_product. Chạy liên tục cho hết hàng chờ. Cần token.',
   refresh: 'Làm mới shop CŨ (detail harvest quá "Cũ hơn" ngày), ưu tiên DOANH THU cao→thấp → lấy lại detail/similar/top-products/chart + doanh thu. Cần token.',
   affdiscover: 'Phát hiện dự án (subdomain) của các net affiliate qua 4 nguồn passive-DNS miễn phí. Poll LẶP để tích luỹ — nguồn chính trả mẫu ngẫu nhiên mỗi lần.',
+  afflibrev: 'Scan Revenue cho domain trong Aff Library còn THIẾU doanh thu tháng: nhận diện Shopify (ShopHunter + probe storefront) → lấy shop_id → cào doanh thu. Domain kết luận KHÔNG phải Shopify bị loại trừ vĩnh viễn. Cào lại sau staleDays ngày.',
   afffetch: 'Mở từng trang campaign bằng Chromium (chờ Cloudflare) → lấy %hoa hồng/web/điều khoản. Xoay proxy dùng chung (Cài đặt → Proxy): mỗi proxy 1 làn IP, giãn 10s/làn. Không proxy → 1 làn trực tiếp (chậm hơn).',
 };
 
@@ -39,6 +41,7 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   refresh: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, staleDays: 7, activeStart: 8, activeEnd: 23 },
   affdiscover: { paceMs: 8000, daily: 200, activeStart: 0, activeEnd: 24 },
   afffetch: { batch: 30, paceMs: 10000, daily: 3000, concurrency: 3, activeStart: 0, activeEnd: 24 },
+  afflibrev: { batch: 20, daily: 500, paceMs: 1500, staleDays: 1, activeStart: 0, activeEnd: 24 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
 const CFG_BOUNDS: Record<string, [number, number]> = {
@@ -59,7 +62,7 @@ export interface JobView {
 @Injectable()
 export class ShJobsService implements OnModuleInit {
   private readonly logger = new Logger('ShJobs');
-  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank(), affdiscover: this.blank(), afffetch: this.blank() };
+  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank(), affdiscover: this.blank(), afffetch: this.blank(), afflibrev: this.blank() };
   private catalogProxies: ProxyForGet[] = [];
   private origShopifyGet: typeof shopifyHttp.get | null = null;
 
@@ -68,6 +71,7 @@ export class ShJobsService implements OnModuleInit {
     private readonly mysql: ShMysql,
     private readonly harvest: ShHarvestService,
     private readonly affnet: AffnetService,
+    private readonly afflib: AffLibService,
   ) {}
 
   private blank(): JobMem { return { running: false, lastRunAt: null, lastStatus: null, stats: {} }; }
@@ -75,7 +79,7 @@ export class ShJobsService implements OnModuleInit {
   private sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
   async onModuleInit(): Promise<void> {
-    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'affdiscover', 'afffetch'] as JobName[]) {
+    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'affdiscover', 'afffetch', 'afflibrev'] as JobName[]) {
       try { if (await this.isEnabled(name)) this.start(name); } catch { /* MySQL/Prisma chưa sẵn sàng — bỏ qua, bật lại từ web */ }
     }
   }
@@ -213,8 +217,10 @@ export class ShJobsService implements OnModuleInit {
     }
   }
 
-  private needsProxy(name: JobName): boolean { return name === 'catalog' || name === 'affiliate' || name === 'productrev'; }
-  private anyProxyJobRunning(): boolean { return this.mem.catalog.running || this.mem.affiliate.running || this.mem.productrev.running; }
+  // afflibrev cũng cần proxy: bước nhận diện Shopify đi qua seam shopifyHttp.get (probe /meta.json),
+  // không mượn proxy xoay thì dễ bị chặn như job catalog/affiliate.
+  private needsProxy(name: JobName): boolean { return name === 'catalog' || name === 'affiliate' || name === 'productrev' || name === 'afflibrev'; }
+  private anyProxyJobRunning(): boolean { return this.mem.catalog.running || this.mem.affiliate.running || this.mem.productrev.running || this.mem.afflibrev.running; }
 
   // Đồng bộ giá+DT 1 sản phẩm (từ web) qua PROXY xoay (storefront chặn IP datacenter). Mượn seam proxy, khôi phục nếu không có loop proxy chạy.
   async syncProductPriceRevenueViaProxy(shopId: string, productId: string) {
@@ -268,7 +274,29 @@ export class ShJobsService implements OnModuleInit {
     if (name === 'refresh') return this.stepRefresh(force);
     if (name === 'affdiscover') return this.stepAffDiscover(force);
     if (name === 'afffetch') return this.stepAffFetch(force);
+    if (name === 'afflibrev') return this.stepAffLibRev(force);
     return this.stepEnrich();
+  }
+
+  // Scan Revenue cho Aff Library: domain thiếu doanh thu → nhận diện Shopify → cào doanh thu.
+  // "Ngày khác cào lại" = staleDays: revScan nhận staleMs nên domain đã thử được lấy lại sau đó.
+  private async stepAffLibRev(force = false): Promise<{ pace: number }> {
+    const cfg = await this.getJobCfg('afflibrev');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.afflibrev.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('afflibrev');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.afflibrev.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: Awaited<ReturnType<AffLibService['revScan']>>;
+    try { r = await this.afflib.revScan(cfg.batch, Math.max(1, cfg.staleDays) * 24 * 3600000); }
+    catch (e) { this.mem.afflibrev.lastStatus = 'error'; await this.mysql.appendJobLog('afflibrev', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, r.scanned).catch(() => {});
+    this.mem.afflibrev.lastRunAt = Date.now();
+    this.mem.afflibrev.stats = { quet: r.scanned, ra_doanh_thu: r.revved, shopify: r.shopify, khong_shopify: r.notShopify, con_lai: r.remaining };
+    // revScan trả `error` (không throw) khi ShopHunter bị bóp → nghỉ dài, đừng đập tiếp.
+    if (r.error) { this.mem.afflibrev.lastStatus = 'blocked'; await this.mysql.appendJobLog('afflibrev', 'warn', `Dừng lô: ${r.error}`).catch(() => {}); return { pace: BLOCK_MS }; }
+    if (!r.scanned) { this.mem.afflibrev.lastStatus = 'idle'; await this.mysql.appendJobLog('afflibrev', 'info', 'Không còn domain nào thiếu doanh thu; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    this.mem.afflibrev.lastStatus = 'ok';
+    await this.mysql.appendJobLog('afflibrev', 'info', `Quét ${r.scanned}: +${r.revved} có doanh thu, ${r.shopify} shopify chưa ra id, ${r.notShopify} không phải shopify; còn ${r.remaining}`).catch(() => {});
+    return { pace: cfg.paceMs };
   }
 
   // Làm mới shop CŨ theo doanh thu: detail harvest quá staleDays → lấy lại detail/similar/top/chart + doanh thu. Cần token.

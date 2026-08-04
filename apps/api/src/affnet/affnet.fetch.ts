@@ -81,10 +81,21 @@ export class AffnetFetch implements OnModuleDestroy {
   }
 
   // Mở 1 trang trên LÀN chỉ định, chờ challenge Cloudflare tự giải, trả snapshot. Luôn đóng page (tránh rò RAM).
-  async loadSnapshot(url: string, lane = 0): Promise<PageSnapshot> {
+  // `auth` (tuỳ chọn): token của net cần đăng nhập mới xem được dự án.
+  // ⚠️ CHỈ đặt header ở CẤP PAGE, KHÔNG bake vào BrowserContext: context là LÀN IP dùng chung cho MỌI net
+  // và được giữ nguyên có chủ ý để không mất cookie cf_clearance (xem getLane). Dựng lại context / addCookies
+  // để nhét token sẽ phá cookie Cloudflare của tất cả net. Page luôn close() ở finally nên header không rò
+  // sang net khác.
+  async loadSnapshot(url: string, lane = 0, auth?: { kind: 'bearer' | 'cookie'; token: string } | null): Promise<PageSnapshot> {
     const ctx = await this.getLane(lane);
     let page = await ctx.newPage();
     try {
+      if (auth?.token) {
+        const h: Record<string, string> = auth.kind === 'cookie'
+          ? { cookie: auth.token }
+          : { authorization: /^bearer /i.test(auth.token) ? auth.token : `Bearer ${auth.token}` };
+        await page.setExtraHTTPHeaders(h).catch(() => undefined);
+      }
       let resp;
       try {
         resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
@@ -138,14 +149,18 @@ export class AffnetFetch implements OnModuleDestroy {
     return result;
   }
 
-  async fetchCampaign(net: string, slug: string, fake: FakeBaseline, lane?: number): Promise<{
+  // `auth` đặt SAU CÙNG và tuỳ chọn để không đổi chữ ký với caller cũ (affnet.fetch.spec.ts).
+  async fetchCampaign(net: string, slug: string, fake: FakeBaseline, lane?: number, auth?: { kind: 'bearer' | 'cookie'; token: string } | null): Promise<{
     outcome: FetchOutcome; parsed: ParsedProgram | null; termsText: string | null;
   }> {
     // KHÔNG forward lane khi caller không truyền (giữ loadSnapshot được gọi với ĐÚNG 1 tham số url
     // trong trường hợp mặc định) — nếu luôn ép lane=0 thì mock loadSnapshot trong test luôn nhận 2 tham số
     // (url, 0), làm sai lệch test kiểm tra "mở trang gốc" (toHaveBeenCalledWith chỉ 1 tham số).
+    // Cũng chỉ truyền `auth` khi THẬT SỰ có token, vì lý do trên.
     const url = rootUrlOf(net, slug);
-    const snap = lane === undefined ? await this.loadSnapshot(url) : await this.loadSnapshot(url, lane);
+    const snap = lane === undefined
+      ? (auth?.token ? await this.loadSnapshot(url, 0, auth) : await this.loadSnapshot(url))
+      : (auth?.token ? await this.loadSnapshot(url, lane, auth) : await this.loadSnapshot(url, lane));
     const outcome = classifyPage(snap, fake);
     if (outcome !== 'active') return { outcome, parsed: null, termsText: null };
     return { outcome, parsed: parseRewardful(snap.text), termsText: snap.text.slice(0, 200000) };

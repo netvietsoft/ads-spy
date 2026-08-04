@@ -456,6 +456,34 @@ export class AffnetMysql {
     return (rows as any[])[0] || null;
   }
 
+  // ---- Token đăng nhập theo TỪNG NET ----
+  // Một số net (goaffpro.com…) chỉ cho xem danh sách dự án SAU KHI đăng nhập, nên cần token riêng.
+  // Lưu ở KV cấu hình (Prisma FbSetting) như mọi secret khác của repo (shophunter_refresh_token,
+  // google_proxy, job:<name>:cfg) — KHÔNG thêm cột vào aff_net, vì netSummaries trả cả bảng đó ra FE,
+  // token sẽ bị lộ trong payload.
+  private credKey(net: string): string { return `affnet:cred:${net}`; }
+
+  async getNetCred(net: string): Promise<{ kind: 'bearer' | 'cookie'; token: string; loginUrl?: string; updatedAt: number } | null> {
+    const raw = await this.sh.getSetting(this.credKey(net));
+    if (!raw) return null;
+    try {
+      const c = JSON.parse(raw);
+      return c && c.token ? c : null;
+    } catch { return null; }
+  }
+
+  // ⚠️ setSetting NUỐT lỗi (sh.mysql.ts:1785) → phải đọc lại để biết có ghi được thật hay không,
+  // không thì UI báo "đã lưu" trong khi DB chưa có gì.
+  async setNetCred(net: string, cred: { kind: 'bearer' | 'cookie'; token: string; loginUrl?: string }): Promise<boolean> {
+    const val = JSON.stringify({ ...cred, updatedAt: Date.now() });
+    await this.sh.setSetting(this.credKey(net), val);
+    return (await this.sh.getSetting(this.credKey(net))) === val;
+  }
+
+  async clearNetCred(net: string): Promise<void> {
+    await this.sh.setSetting(this.credKey(net), '');
+  }
+
   // Ghi lịch sử theo tháng (LŨY TIẾN). Nhận map key 'YYYY-MM-01' (AITDK) hoặc 'YYYY-MM' → chuẩn hoá về
   // 'YYYY-MM'. Tháng đã có thì CẬP NHẬT số mới (AITDK hay chỉnh lại tháng gần nhất), tháng cũ không bị
   // xoá bao giờ → cửa sổ 12 tháng trượt qua vẫn giữ được lịch sử dài.

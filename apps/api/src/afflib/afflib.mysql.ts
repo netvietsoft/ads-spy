@@ -36,6 +36,13 @@ const SORT_EXPR: Record<string, string> = {
 const QUEUE_COND = 'al.aff_checked_at IS NULL AND (al.dns_ok IS NULL OR al.dns_ok = 1) AND COALESCE(al.aff_try_count,0) < 3';
 // Cần dọn: DNS chết, hoặc thử đủ 3 lần vẫn không ra kết luận.
 const JUNK_COND = 'al.dns_ok = 0 OR (al.aff_checked_at IS NULL AND COALESCE(al.aff_try_count,0) >= 3)';
+// Hàng đợi Scan Revenue: THIẾU doanh thu tháng, chưa bị kết luận "không phải Shopify", DNS chưa chết,
+// và LẦN NÀY chưa thử. `rev_scan_at IS NULL` là điều kiện then chốt để `remaining` giảm đơn điệu — vòng
+// for(;;) của FE dựa vào đó mà dừng (đúng bài học traffic_tried_at ở dưới).
+// Nhắm `rev_month IS NULL` (đo thật: 1.204 dòng) chứ KHÔNG phải found=0 ("ngoài DB" chỉ có 2 dòng).
+const REV_QUEUE_COND = 'al.rev_month IS NULL AND (al.shopify IS NULL OR al.shopify = 1) AND (al.dns_ok IS NULL OR al.dns_ok = 1) AND al.rev_scan_at IS NULL';
+// Hàng đợi cho JOB NỀN: giống trên nhưng cho phép cào lại sau `staleMs` ("ngày khác cào lại doanh thu").
+const REV_JOB_COND = 'al.rev_month IS NULL AND (al.shopify IS NULL OR al.shopify = 1) AND (al.dns_ok IS NULL OR al.dns_ok = 1) AND (al.rev_scan_at IS NULL OR al.rev_scan_at < ?)';
 const FILTER_WHERE: Record<string, string> = {
   all: '',
   // 'app' CŨNG là có affiliate (có app affiliate nhưng chưa dò ra link) → phải nằm trong bộ lọc "có aff",
@@ -43,6 +50,9 @@ const FILTER_WHERE: Record<string, string> = {
   aff: "WHERE al.aff_status IN ('yes','app')",
   unscanned: `WHERE ${QUEUE_COND}`,
   junk: `WHERE ${JUNK_COND}`,
+  norev: `WHERE ${REV_QUEUE_COND}`,
+  // Danh sách loại trừ: đã kết luận KHÔNG phải Shopify → không scan doanh thu lại nữa.
+  notshopify: 'WHERE al.shopify = 0',
 };
 
 export interface AffLibSnapshot {
@@ -89,6 +99,12 @@ export class AffLibMysql {
     // Đã thử điền traffic (AITDK) hay chưa. Cần cột riêng vì domain AITDK KHÔNG có dữ liệu sẽ không bao giờ
     // có dòng trong aff_domain_traffic → nếu chỉ dựa vào JOIN thì lô đầu tắc mãi và cả kho không bao giờ điền xong.
     await this.ensureColumn(pool, 'traffic_tried_at', 'traffic_tried_at BIGINT');
+    // Scan Revenue: shopify 1=Shopify (chấm xanh, còn cào lại) · 0=KHÔNG phải Shopify (chấm đỏ, loại
+    // trừ vĩnh viễn) · NULL=chưa kiểm. rev_scan_at ghi KỂ CẢ KHI THẤT BẠI để hàng đợi không tắc ở lô đầu.
+    await this.ensureColumn(pool, 'shopify', 'shopify TINYINT');
+    await this.ensureColumn(pool, 'shopify_checked_at', 'shopify_checked_at BIGINT');
+    await this.ensureColumn(pool, 'rev_scan_at', 'rev_scan_at BIGINT');
+    await this.ensureColumn(pool, 'rev_scan_err', 'rev_scan_err VARCHAR(255)');
   }
 
   private async ensureColumn(pool: any, col: string, ddl: string): Promise<void> {
@@ -119,6 +135,52 @@ export class AffLibMysql {
     const [r] = await pool.query('SELECT SUM(revenue) s FROM sh_shop_revenue_daily WHERE shop_id = ?', [shopId]);
     const s = (r as any[])[0]?.s;
     return s == null ? null : Number(s);
+  }
+
+  // ---- Scan Revenue: hàng đợi domain thiếu doanh thu ----
+  // staleMs != null → dùng REV_JOB_COND (job nền được cào lại sau `staleMs`); null → REV_QUEUE_COND
+  // (nút FE: mỗi domain đúng 1 lượt/1 lần bấm, để `remaining` giảm đơn điệu).
+  async rowsToRevScan(limit = 20, staleMs?: number): Promise<{ web: string; shop_id: string | null; shopify: number | null }[]> {
+    const pool = await this.sh.getPool();
+    const where = staleMs == null ? REV_QUEUE_COND : REV_JOB_COND;
+    const params: any[] = staleMs == null ? [] : [Date.now() - staleMs];
+    const [rows] = await pool.query(
+      `SELECT al.web, al.shop_id, al.shopify FROM aff_library al WHERE ${where}
+       ORDER BY al.shop_id IS NULL, al.updated_at DESC, al.web ASC LIMIT ?`,
+      [...params, Math.max(1, Math.min(200, limit))],
+    );
+    return rows as any[];
+  }
+
+  async countToRevScan(staleMs?: number): Promise<number> {
+    const pool = await this.sh.getPool();
+    const where = staleMs == null ? REV_QUEUE_COND : REV_JOB_COND;
+    const params: any[] = staleMs == null ? [] : [Date.now() - staleMs];
+    const [r] = await pool.query(`SELECT COUNT(*) n FROM aff_library al WHERE ${where}`, params);
+    return Number((r as any[])[0].n) || 0;
+  }
+
+  // Ghi kết quả 1 lượt scan revenue. LUÔN set rev_scan_at (kể cả thất bại) để domain rời hàng đợi.
+  // Chỉ ghi các field CÓ MẶT trong patch → không xoá số cũ khi lần này không lấy được.
+  async setRevScanned(web: string, patch: {
+    shopify?: 0 | 1 | null; shopId?: string | null; currency?: string | null;
+    revDay?: number | null; revWeek?: number | null; revMonth?: number | null; revTotal?: number | null;
+    err?: string | null;
+  }): Promise<void> {
+    const pool = await this.sh.getPool();
+    const now = Date.now();
+    const set: string[] = ['rev_scan_at = ?', 'updated_at = ?'];
+    const val: any[] = [now, now];
+    const put = (sql: string, v: any) => { set.push(sql); val.push(v); };
+    if ('shopify' in patch) { put('shopify = ?', patch.shopify ?? null); put('shopify_checked_at = ?', now); }
+    if (patch.shopId) put('shop_id = ?', String(patch.shopId));
+    if (patch.currency) put('currency = ?', patch.currency);
+    if (patch.revDay != null) put('rev_day = ?', patch.revDay);
+    if (patch.revWeek != null) put('rev_week = ?', patch.revWeek);
+    if (patch.revMonth != null) put('rev_month = ?', patch.revMonth);
+    if (patch.revTotal != null) put('rev_total = ?', patch.revTotal);
+    put('rev_scan_err = ?', patch.err ? String(patch.err).slice(0, 250) : null);
+    await pool.query(`UPDATE aff_library SET ${set.join(', ')} WHERE web = ?`, [...val, web]);
   }
 
   // Tìm shop CHÍNH XÁC theo domain (khớp url đã chuẩn hoá trong SQL), không phụ thuộc xếp hạng doanh thu.

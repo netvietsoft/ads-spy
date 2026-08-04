@@ -3,6 +3,8 @@ import { AffLibMysql, AffLibSnapshot } from './afflib.mysql';
 import { AffLibDetect } from './afflib.detect';
 import { resolveDomains } from './afflib.dns';
 import { TrafficService } from '../traffic/traffic.service';
+import { ShService, summarizeShopChart } from '../shophunter/sh.service';
+import { ShMysql } from '../shophunter/sh.mysql';
 
 // Chuẩn hoá domain (bản sao logic affnet normalizeNet): lowercase, bỏ scheme/www, cắt tại '/'.
 export function normalizeDomain(raw: string): string {
@@ -13,7 +15,87 @@ const numOrNull = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null 
 
 @Injectable()
 export class AffLibService {
-  constructor(private readonly db: AffLibMysql, private readonly detect: AffLibDetect, private readonly traffic: TrafficService) {}
+  constructor(
+    private readonly db: AffLibMysql,
+    private readonly detect: AffLibDetect,
+    private readonly traffic: TrafficService,
+    private readonly shSvc: ShService,
+    private readonly shDb: ShMysql,
+  ) {}
+
+  // ---- Scan Revenue ----
+  // 1 domain: nhận diện Shopify (nếu chưa biết) rồi cào doanh thu. LUÔN ghi rev_scan_at qua setRevScanned
+  // để domain rời hàng đợi, kể cả khi thất bại — không thì lô đầu tắc mãi.
+  // Nhận diện dùng ShService.checkDomain: nó đã gói sẵn CẢ HAI đường (ShopHunter trackShop /
+  // findShopIdByDomain → probe storefront /meta.json + marker HTML), nên không viết lại.
+  private async revScanOne(row: { web: string; shop_id: string | null; shopify: number | null }): Promise<'revved' | 'shopify' | 'notShopify' | 'fail'> {
+    const web = row.web;
+    let shopId = row.shop_id ? String(row.shop_id) : '';
+    let markShopify: 0 | 1 | undefined;
+
+    if (!shopId) {
+      const r = await this.shSvc.checkDomain(web, { skipDetailIfFresh: true });
+      if (!r.isShopify) {
+        // KẾT LUẬN CHẮC CHẮN "không phải Shopify" → chấm đỏ, loại trừ vĩnh viễn khỏi hàng đợi.
+        await this.db.setRevScanned(web, { shopify: 0, err: r.reason || 'not_shopify' });
+        return 'notShopify';
+      }
+      markShopify = 1;
+      shopId = (r as any).shopId ? String((r as any).shopId) : '';
+      if (!shopId) {
+        // Là Shopify nhưng chưa ra shop_id (chỉ nhận qua marker HTML) → chấm XANH, job sau thử lại.
+        await this.db.setRevScanned(web, { shopify: 1, err: 'shopify_no_shop_id' });
+        return 'shopify';
+      }
+    }
+
+    await this.shSvc.syncShopRevenue(shopId);
+    // rev_* lưu TIỀN GỐC của shop và FE nhân tỉ giá → PHẢI ghi currency cùng lúc, không thì lệch 20-100×.
+    const [daily, currency, total] = await Promise.all([
+      this.shDb.getRevenueDaily(shopId).catch(() => [] as any[]),
+      this.shDb.getStorefrontCurrency(shopId).catch(() => null),
+      this.db.sumDailyRevenue(shopId).catch(() => null),
+    ]);
+    const s = summarizeShopChart(daily as any[]);
+    const got = (daily as any[]).length > 0;
+    // Có shop_id trong sh_shop = ĐÃ là store Shopify (sh_shop là kho store Shopify của ShopHunter) →
+    // đánh chấm XANH luôn, kể cả khi shop_id có sẵn từ trước nên đã bỏ qua bước nhận diện. Không đánh thì
+    // dòng scan thành công vẫn không có chấm, người dùng không biết nó thuộc nhóm nào.
+    await this.db.setRevScanned(web, {
+      shopify: markShopify ?? 1,
+      shopId,
+      currency: currency || null,
+      revDay: got ? s.dRev : null,
+      revWeek: got ? s.wRev : null,
+      revMonth: got ? s.mRev : null,
+      revTotal: total,
+      err: got ? null : 'shophunter_chua_co_du_lieu',
+    });
+    return got ? 'revved' : 'fail';
+  }
+
+  // 1 lô. Lỗi ShopHunter (bị bóp → 503) thì TRẢ `error` chứ không throw, để FE hiện lý do rồi DỪNG vòng lặp.
+  async revScan(limit = 20, staleMs?: number): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
+    await this.db.ensureTables();
+    const rows = await this.db.rowsToRevScan(limit, staleMs);
+    const out = { scanned: 0, revved: 0, shopify: 0, notShopify: 0, remaining: 0 as number, error: undefined as string | undefined };
+    for (const r of rows) {
+      try {
+        const k = await this.revScanOne(r);
+        out.scanned++;
+        if (k === 'revved') out.revved++;
+        else if (k === 'shopify') out.shopify++;
+        else if (k === 'notShopify') out.notShopify++;
+      } catch (e) {
+        // Vẫn đánh dấu đã thử (KHÔNG ghi shopify — chưa kết luận được) rồi dừng lô: bị bóp thì thử tiếp vô ích.
+        await this.db.setRevScanned(r.web, { err: (e as Error).message }).catch(() => {});
+        out.error = (e as Error).message;
+        break;
+      }
+    }
+    out.remaining = await this.db.countToRevScan(staleMs);
+    return out;
+  }
 
   async scan(rawList: string): Promise<any> {
     await this.db.ensureTables();

@@ -766,10 +766,14 @@ export interface AffLibRow {
   dns_ok?: number | null; aff_try_count?: number | null; aff_last_error?: string | null;
   created_at?: number | null; updated_at?: number | null;
   traffic_visits?: number | null; traffic_bounce?: number | null; traffic_duration_sec?: number | null; traffic_rank?: number | null;
+  // Scan Revenue: shopify 1=Shopify (chấm xanh, còn cào lại) · 0=không phải Shopify (chấm đỏ, loại trừ
+  // vĩnh viễn) · null=chưa kiểm. rev_scan_err = lý do lần cuối, dùng làm tooltip.
+  shopify?: number | null; shopify_checked_at?: number | null; rev_scan_at?: number | null; rev_scan_err?: string | null;
 }
 export type AffLibDir = 'asc' | 'desc';
 // all=tất cả · aff=chỉ có aff · unscanned=còn trong hàng đợi quét · junk=cần dọn (DNS chết / 3 lần lỗi)
-export type AffLibFilter = 'all' | 'aff' | 'unscanned' | 'junk';
+// norev=thiếu doanh thu tháng (hàng đợi Scan Revenue) · notshopify=đã kết luận không phải Shopify (loại trừ)
+export type AffLibFilter = 'all' | 'aff' | 'unscanned' | 'junk' | 'norev' | 'notshopify';
 // sort/dir/filter: BE tự chuẩn hoá (giá trị lạ → mặc định) rồi echo lại giá trị thật đã dùng.
 export interface AffLibPage { items: AffLibRow[]; total: number; page: number; pageSize: number; sort?: string; dir?: AffLibDir; filter?: AffLibFilter }
 export interface AffLibDetectStatus { running: boolean; total: number; done: number; found: number; current: string | null; noProxy: boolean; startedAt: number | null }
@@ -784,6 +788,11 @@ export async function affLibRows(page = 1, pageSize = 100, filter: AffLibFilter 
 // Lọc domain chết bằng DNS (~ms/domain, không cần proxy). remaining > 0 → gọi tiếp cho kho lớn.
 export async function affLibDnsCheck(limit = 5000): Promise<{ checked: number; alive: number; dead: number; unknown: number; remaining: number }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/dns-check`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
+}
+// Scan Revenue 1 lô: domain thiếu doanh thu → nhận diện Shopify rồi cào doanh thu. remaining > 0 → gọi tiếp.
+// `error` = ShopHunter bị bóp → hiện lý do rồi DỪNG, đừng lặp vô ích.
+export async function affLibRevScan(limit = 20): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/rev-scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
 }
 // Quét 1 domain ngay (nút ⟳ từng dòng) — dùng cho cả quét lần đầu và quét lại.
 export async function affLibDetectOne(web: string): Promise<{ web: string; aff_status: string; aff_platform: string | null; join_url: string | null }> {
@@ -804,6 +813,20 @@ export async function affTrafficRefresh(webs: string[]): Promise<{ traffic: Reco
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ domains: webs, history: false, save: true }),
   }));
+}
+// ---- Token đăng nhập theo TỪNG NET (net phải đăng nhập mới xem được dự án, vd goaffpro.com) ----
+// Trạng thái KHÔNG chứa token gốc, chỉ `preview` 4 ký tự đầu/cuối.
+export interface AffNetTokenStatus { has: boolean; kind?: string; updatedAt?: number; preview?: string }
+export async function affNetTokenStatus(net: string): Promise<AffNetTokenStatus> {
+  return jsonOrThrow(await fetch(`${API}/api/aff/nets/${encodeURIComponent(net)}/token`));
+}
+export async function affNetSetToken(net: string, token: string, kind: 'bearer' | 'cookie', loginUrl?: string): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff/nets/${encodeURIComponent(net)}/token`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token, kind, loginUrl }),
+  }));
+}
+export async function affNetClearToken(net: string): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff/nets/${encodeURIComponent(net)}/token`, { method: 'DELETE' }));
 }
 // Scan traffic cho TOÀN BỘ web của 1 net — mỗi lần 1 lô 50, remaining > 0 → gọi tiếp.
 export async function affNetTrafficFill(net: string, limit = 50): Promise<{ webs: number; filled: number; remaining: number; error?: string }> {

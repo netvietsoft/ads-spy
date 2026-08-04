@@ -38,6 +38,26 @@ export class AffnetController {
     return this.svc.fillNetTraffic(net, Number(limit) || 50);
   }
 
+  // Token đăng nhập cho net cần đăng nhập mới xem được dự án (vd goaffpro.com).
+  // ⚠️ Path 'aff/nets/:net/token' cụ thể hơn DELETE 'aff/nets/:net' nên không đụng nhau.
+  @Get('aff/nets/:net/token')
+  netTokenStatus(@Param('net') net: string) {
+    return this.svc.netTokenStatus(net);
+  }
+
+  @Post('aff/nets/:net/token')
+  async setNetToken(@Param('net') net: string, @Body() body: any) {
+    const kind = body?.kind === 'cookie' ? 'cookie' : 'bearer';
+    await this.svc.setNetToken(net, String(body?.token || ''), kind, body?.loginUrl ? String(body.loginUrl) : undefined);
+    return { ok: true, has: true };
+  }
+
+  @Delete('aff/nets/:net/token')
+  async clearNetToken(@Param('net') net: string) {
+    await this.svc.clearNetToken(net);
+    return { ok: true };
+  }
+
   @Delete('aff/nets/:net')
   async delNet(@Param('net') net: string) { await this.svc.deleteNet(net); return { ok: true }; }
 
