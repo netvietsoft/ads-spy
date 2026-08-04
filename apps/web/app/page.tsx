@@ -27,6 +27,7 @@ import { ImportPanel } from './components/ImportPanel';
 import { ReportPanel } from './components/ReportPanel';
 import { AffnetPanel } from './components/AffnetPanel';
 import { AffLibraryPanel } from './components/AffLibraryPanel';
+import { TrafficPanel } from './components/TrafficPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { DashboardPanel } from './components/DashboardPanel';
 import { UsersAdminPanel } from './components/UsersAdminPanel';
@@ -50,11 +51,11 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
-type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'affnet' | 'afflib' | 'settings' | 'dashboard' | 'users' | 'plans';
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'affnet' | 'afflib' | 'traffic' | 'settings' | 'dashboard' | 'users' | 'plans';
 // Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
 const SOURCE_TO_PATH: Record<Source, string> = {
   google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
-  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', settings: '/settings',
+  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', traffic: '/traffic', settings: '/settings',
   dashboard: '/admin/dashboard', users: '/admin/users', plans: '/admin/plans',
 };
 function pathToSource(p: string): Source {
@@ -66,6 +67,7 @@ function pathToSource(p: string): Source {
   if (p.startsWith('/reportlocaldb')) return 'report';
   if (p.startsWith('/afflibrary')) return 'afflib';
   if (p.startsWith('/affnet')) return 'affnet';
+  if (p.startsWith('/traffic')) return 'traffic';
   if (p.startsWith('/import')) return 'import';
   if (p.startsWith('/settings')) return 'settings';
   if (p.startsWith('/admin/users')) return 'users';
@@ -271,6 +273,7 @@ export default function Home() {
       {source === 'report' && <ReportPanel />}
       {source === 'affnet' && <AffnetPanel />}
       {source === 'afflib' && <AffLibraryPanel />}
+      {source === 'traffic' && <TrafficPanel />}
       {source === 'settings' && <SettingsPanel />}
       {source === 'dashboard' && <DashboardPanel />}
       {source === 'users' && <UsersAdminPanel />}

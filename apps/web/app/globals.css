@@ -1,3 +1,22 @@
+/* Bù ĐÚNG phần preflight mà TrafficPanel cần, và CHỈ trong .trafficpanel (không đụng 13 tab kia):
+   - border-width/style: class `border` và `divide-y` của Tailwind chỉ đặt border-WIDTH, còn
+     `border-style: solid` là việc của preflight. Tắt preflight → style vẫn là `none` nên MỌI viền
+     (thẻ số, kẻ bảng) không hiện. Phải set width 0 kèm theo, vì initial border-width là `medium` —
+     chỉ đặt style: solid không kèm width: 0 thì mọi thẻ ăn viền 3px.
+     Khối này PHẢI nằm TRƯỚC @tailwind utilities: cùng độ ưu tiên (1 class), nguồn sau thắng → utility
+     `border` (1px) mới đè được width 0 ở đây.
+   - border-collapse: bảng không có preflight sẽ về `separate` + border-spacing 2px, kẻ bị hở. */
+.trafficpanel *,
+.trafficpanel *::before,
+.trafficpanel *::after { border-width: 0; border-style: solid; }
+.trafficpanel table { border-collapse: collapse; }
+
+/* Tailwind CHỈ nạp `utilities` (base/preflight đã tắt trong tailwind.config.js — bật lên là reset sạch
+   style mặc định của MỌI trang). Đặt ở ĐẦU file để CSS của app bên dưới luôn thắng nếu có class trùng
+   tên: `.grid` (app đặt luôn grid-template-columns) và `.localtbl td.wrap`. Utility này thực chất chỉ
+   dùng cho TrafficPanel (/traffic). */
+@tailwind utilities;
+
 :root {
   --bg: #0b0d12;
   --panel: #141821;

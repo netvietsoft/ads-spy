@@ -936,3 +936,29 @@ export async function adminUserSubs(userId: number) {
 export async function adminRevokeSub(id: number) {
   return jok(await fetch(`/api/admin/subscriptions/${id}/revoke`, { method: 'POST' }), 'Lỗi thu hồi');
 }
+
+// ---- Traffic AITDK (tab /traffic) ----
+// monthly_visits CHỈ có khi history=true (BE đổi sang endpoint bulk) — key là NGÀY ĐẦU THÁNG "YYYY-MM-01".
+export interface TrafficData {
+  visits: number | null;
+  bounce_rate: number;
+  time_on_site: number | null;
+  pages_per_visit: number | null;
+  global_rank: number | null;
+  country_rank: number | null;
+  month: string;
+  year: string;
+  hostname: string;
+  monthly_visits?: Record<string, number>;
+}
+export interface TrafficResult {
+  traffic: Record<string, TrafficData>;
+  whois: Record<string, unknown>;
+}
+export async function trafficSearch(domains: string[], history = false, save = true): Promise<TrafficResult> {
+  return jsonOrThrow(await fetch(`${API}/api/traffic/search`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ domains, history, save }),
+  }));
+}
