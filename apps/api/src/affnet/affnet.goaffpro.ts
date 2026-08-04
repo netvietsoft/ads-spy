@@ -16,8 +16,10 @@ import { ParsedProgram } from './affnet.types';
 
 export const GOAFFPRO_NET = 'goaffpro.com';
 const API = 'https://api.goaffpro.com/v1/public/sites';
-// Đo thật: limit=100 trả đủ 100. Không đẩy cao hơn để tránh bị bóp.
-const MAX_LIMIT = 100;
+// Đo thật (2026-08-04): limit=100 → 100 store/1253ms · limit=250 → 250/919ms · limit=500 → 500/930ms.
+// Trang to KHÔNG chậm hơn (phần lớn thời gian là round-trip), nên 22.482 store = 45 request thay vì 225.
+export const GOAFFPRO_PAGE_LIMIT = 500;
+const MAX_LIMIT = GOAFFPRO_PAGE_LIMIT;
 
 export interface GoaffproStore {
   id: number;

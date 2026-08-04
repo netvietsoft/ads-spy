@@ -5,7 +5,7 @@ import { AffnetFetch, joinUrlOf } from './affnet.fetch';
 import { discoverNet } from './affnet.discovery';
 import { parseTrafficPaste } from './affnet.traffic';
 import { TrafficService } from '../traffic/traffic.service';
-import { AffnetGoaffpro, GOAFFPRO_NET, parseGoaffpro, joinUrlOfGoaffpro } from './affnet.goaffpro';
+import { AffnetGoaffpro, GOAFFPRO_NET, GOAFFPRO_PAGE_LIMIT, parseGoaffpro, joinUrlOfGoaffpro } from './affnet.goaffpro';
 
 @Injectable()
 export class AffnetService {
@@ -16,34 +16,55 @@ export class AffnetService {
     private readonly goaffpro?: AffnetGoaffpro,
   ) {}
 
-  // Nhánh cho net kiểu API (goaffpro): lấy 1 trang store từ /v1/public/sites rồi ghi thẳng host+program.
+  // Nhánh cho net kiểu API (goaffpro): phân trang /v1/public/sites rồi ghi thẳng host+program.
   // KHÔNG probeFake (net này không có trang catch-all slug.net nên fingerprint vô nghĩa) và KHÔNG cần
   // proxy/Playwright. Con trỏ offset lưu ở KV để lượt sau đi tiếp; hết danh sách thì quay về 0 để làm mới.
-  private async fetchStepGoaffpro(net: string, batch: number): Promise<{
-    net: string; checked: number; active: number; inactive: number; notfound: number; blocked: number; laneErrors: number; lanes: number;
+  //
+  // VÌ SAO ĐI NHIỀU TRANG 1 LƯỢT (đo thật 2026-08-04, trước đây đúng 1 trang × batch=30):
+  //  · pickNetToFetch xoay vòng theo fetch_polled_at trên 458 net đang bật → goaffpro được 1 lượt/458 lượt.
+  //  · 30 store/lượt trên catalogue 22.482 store = ~750 vòng ≈ 40 NGÀY. Thực tế prod dừng ở 30 domain.
+  //  · Nhịp batch 30 + paceMs 10s tồn tại cho luồng Chromium-qua-proxy né Cloudflare; net này là API JSON
+  //    trần, limit=500 trả 500 store trong 930ms → cả catalogue chỉ là 45 request.
+  // Chặn trên là NGÂN SÁCH THỜI GIAN, không phải số trang: giữ lượt fetch không chiếm job quá lâu mà vẫn
+  // đi hết catalogue trong 1-2 lượt.
+  private static readonly GOAFFPRO_STEP_BUDGET_MS = 120_000;
+
+  private async fetchStepGoaffpro(net: string): Promise<{
+    net: string; checked: number; active: number; inactive: number; notfound: number; blocked: number;
+    laneErrors: number; lanes: number; quotaCost: number;
   }> {
-    const out = { net, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes: 1 };
+    // quotaCost = SỐ REQUEST đã gọi, không phải số store. Quota ngày của afffetch (3.000) đặt cho số
+    // TRANG Chromium mở được; tính theo store thì 1 lượt goaffpro là hết quota của cả job trong ngày.
+    const out = { net, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes: 1, quotaCost: 0 };
     if (!this.goaffpro) return out;
-    const offset = await this.db.getNetOffset(net);
-    const { stores, count } = await this.goaffpro.page(batch, offset);
-    if (!stores.length) { await this.db.setNetOffset(net, 0); return out; } // hết trang → vòng lại đầu
-    // Ghi host trước (aff_host là nguồn của "đã phát hiện"), slug = Store ID số — bền qua thời gian.
-    await this.db.upsertHosts(net, stores.map((s) => ({ slug: String(s.id), sources: ['goaffpro-api'] })));
-    const now = Date.now();
-    for (const s of stores) {
-      const slug = String(s.id);
-      await this.db.upsertProgram({
-        ...parseGoaffpro(s), net, slug,
+    const deadline = Date.now() + AffnetService.GOAFFPRO_STEP_BUDGET_MS;
+    let offset = await this.db.getNetOffset(net);
+    do {
+      const { stores, count } = await this.goaffpro.page(GOAFFPRO_PAGE_LIMIT, offset);
+      out.quotaCost++;
+      if (!stores.length) { offset = 0; break; }                     // hết trang → vòng lại đầu
+      // Ghi host trước (aff_host là nguồn của "đã phát hiện"), slug = Store ID số — bền qua thời gian.
+      await this.db.upsertHosts(net, stores.map((s) => ({ slug: String(s.id), sources: ['goaffpro-api'] })));
+      // Ghi GỘP cả trang trong 1 statement, không đi từng store: đo thật 1.000 store/190s khi ghi lẻ so với
+      // ~1s khi gộp (xem upsertProgramBulk). Đây mới là nút thắt thật, không phải API (2 request ≈ 2s).
+      const now = Date.now();
+      const slugs = stores.map((s) => String(s.id));
+      await this.db.upsertProgramBulk(stores.map((s) => ({
+        ...parseGoaffpro(s), net, slug: String(s.id),
         joinUrl: joinUrlOfGoaffpro(s),
-        termsText: null,           // API không trả điều khoản — không có gì để lưu
+        termsText: null,             // API không trả điều khoản — không có gì để lưu
         status: 'active', fetchedAt: now,
-      });
-      await this.db.markHostChecked(net, slug, 'active');
-      out.checked++; out.active++;
-    }
-    // count = tổng store; cộng dồn offset, vượt tổng thì quay về 0.
-    const next = offset + stores.length;
-    await this.db.setNetOffset(net, count > 0 && next >= count ? 0 : next);
+      })));
+      await this.db.markHostCheckedBulk(net, slugs, 'active');
+      out.checked += stores.length; out.active += stores.length;
+      // Hết catalogue → offset về 0 và DỪNG lượt này (vòng lại ngay trong cùng lượt chỉ ghi đè thứ vừa ghi).
+      // Hai dấu hiệu ĐỘC LẬP, cố tình không chỉ dựa vào `count`: trang NGẮN hơn limit là dấu hiệu cuối danh
+      // sách không cần count — API bỏ field count (count=0) thì vòng lặp vẫn kết thúc, không chạy tới hết
+      // deadline mà nã request vô ích.
+      offset += stores.length;
+      if (stores.length < GOAFFPRO_PAGE_LIMIT || (count > 0 && offset >= count)) { offset = 0; break; }
+    } while (Date.now() < deadline);
+    await this.db.setNetOffset(net, offset);
     return out;
   }
 
@@ -114,7 +135,7 @@ export class AffnetService {
     out.net = n.net;
     await this.db.markNetFetched(n.net); // đẩy net này xuống cuối hàng đợi → net khác được lượt sau
     // Rẽ nhánh theo platform TRƯỚC probeFake: net kiểu API không có trang catch-all để lấy fingerprint.
-    if (n.platform === 'goaffpro') return this.fetchStepGoaffpro(n.net, cfg.batch);
+    if (n.platform === 'goaffpro') return this.fetchStepGoaffpro(n.net); // cfg.batch không dùng: xem ghi chú ở hàm
     const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
     if (!hosts.length) return out; // race hiếm (host vừa bị lượt khác lấy) → bỏ lượt
     // Token của net (nếu có) — đọc ĐÚNG 1 LẦN/lượt rồi dùng cho cả lô, khỏi đọc lại từng host.

@@ -1,5 +1,6 @@
 // affnet.service.spec.ts — nghiệp vụ. Mock hoàn toàn AffnetMysql + AffnetFetch (không DB, không mạng).
 import { AffnetService } from './affnet.service';
+import { GOAFFPRO_PAGE_LIMIT } from './affnet.goaffpro';
 import { discoverNet } from './affnet.discovery';
 
 // FIX 4: mock discoverNet để test discoverStep phản ứng đúng khi có nguồn discovery lỗi, không phụ thuộc mạng thật.
@@ -20,6 +21,9 @@ const mkDb = () => ({
   markHostChecked: jest.fn().mockResolvedValue(undefined),
   bumpHostTries: jest.fn().mockResolvedValue(undefined),
   upsertProgram: jest.fn().mockResolvedValue(undefined),
+  // Bản ghi GỘP — nhánh goaffpro ghi cả trang trong 1 statement (đo thật: ghi lẻ 1.000 store mất 190s).
+  upsertProgramBulk: jest.fn().mockResolvedValue(undefined),
+  markHostCheckedBulk: jest.fn().mockResolvedValue(undefined),
   netSummaries: jest.fn().mockResolvedValue([]),
   listHttpProxies: jest.fn().mockResolvedValue([]),
   upsertDomainTraffic: jest.fn().mockResolvedValue(undefined),
@@ -59,37 +63,78 @@ describe('normalizeNet + platformOf', () => {
 // goaffpro: net kiểu API — fetchStep phải rẽ nhánh, KHÔNG probeFake, và nhớ con trỏ phân trang.
 describe('fetchStep nhánh goaffpro', () => {
   const store = (id: number) => ({ id, name: 'S' + id, website: `s${id}.com`, currency: 'USD', affiliatePortal: `s${id}.goaffpro.com`, cookieDuration: 604800, areRegistrationsOpen: 1, isApprovedAutomatically: 1, commission: { type: 'percentage', amount: 10, on: 'product' } });
+  // page có thể là 1 trang cố định, HOẶC hàm (limit, offset) → trang, để test phân trang NHIỀU vòng trong
+  // cùng 1 lượt. Trang cố định phải NGẮN hơn GOAFFPRO_PAGE_LIMIT, không thì vòng lặp coi là "còn nữa".
   const mk = (page: any, offset = 0) => {
     const db = mkDb(); const f = mkFetch();
     db.pickNetToFetch.mockResolvedValue({ net: 'goaffpro.com', platform: 'goaffpro', fakeCheckedAt: null, fakeLen: null, fakeHash: null });
     db.getNetOffset = jest.fn().mockResolvedValue(offset);
     db.setNetOffset = jest.fn().mockResolvedValue(undefined);
-    const go = { page: jest.fn().mockResolvedValue(page) };
+    const go = { page: jest.fn(typeof page === 'function' ? page : async () => page) };
     return { db, f, go, svc: new AffnetService(db as any, f as any, mkTraffic() as any, go as any) };
   };
 
   it('ghi host + program từ API, slug = Store ID, KHÔNG gọi probeFake/fetchCampaign', async () => {
     const { db, f, go, svc } = mk({ stores: [store(111), store(222)], count: 1000 });
     const r = await svc.fetchStep({ batch: 100, paceMs: 0 });
-    expect(go.page).toHaveBeenCalledWith(100, 0);
+    // Trang xin theo GOAFFPRO_PAGE_LIMIT (500), KHÔNG theo cfg.batch (30) của luồng Chromium.
+    expect(go.page).toHaveBeenCalledWith(GOAFFPRO_PAGE_LIMIT, 0);
     expect(f.probeFake).not.toHaveBeenCalled();       // net này không có trang catch-all → probe vô nghĩa
     expect(f.fetchCampaign).not.toHaveBeenCalled();   // không mở trang bằng Playwright
     expect(db.upsertHosts).toHaveBeenCalledWith('goaffpro.com', [
       { slug: '111', sources: ['goaffpro-api'] }, { slug: '222', sources: ['goaffpro-api'] },
     ]);
-    expect(db.upsertProgram).toHaveBeenCalledTimes(2);
-    expect(db.upsertProgram.mock.calls[0][0]).toMatchObject({
+    // 1 statement cho CẢ trang, không phải 1 query/store.
+    expect(db.upsertProgramBulk).toHaveBeenCalledTimes(1);
+    expect(db.upsertProgram).not.toHaveBeenCalled();
+    const batch = db.upsertProgramBulk.mock.calls[0][0];
+    expect(batch).toHaveLength(2);
+    expect(batch[0]).toMatchObject({
       net: 'goaffpro.com', slug: '111', web: 's111.com', commissionPct: 10, cookieDays: 7,
       joinUrl: 'https://s111.goaffpro.com/create-account', status: 'active', termsText: null,
     });
-    expect(db.markHostChecked).toHaveBeenCalledWith('goaffpro.com', '111', 'active');
+    expect(db.markHostCheckedBulk).toHaveBeenCalledWith('goaffpro.com', ['111', '222'], 'active');
     expect(r).toMatchObject({ net: 'goaffpro.com', checked: 2, active: 2 });
+  });
+
+  // BUG THẬT (prod dừng ở 30 domain): trước đây 1 lượt = 1 trang × cfg.batch = 30 store. pickNetToFetch xoay
+  // vòng trên 458 net nên goaffpro được 1 lượt/458 lượt → catalogue 22.482 store cần ~750 vòng ≈ 40 ngày.
+  // Nay 1 lượt phân trang LIÊN TỤC tới hết catalogue (hoặc tới hết ngân sách thời gian).
+  it('ĐI HẾT catalogue trong 1 lượt: 2 trang đầy + 1 trang lẻ → 3 request, offset về 0', async () => {
+    const COUNT = GOAFFPRO_PAGE_LIMIT * 2 + 50;
+    const pager = async (limit: number, offset: number) => ({
+      stores: Array.from({ length: Math.min(limit, Math.max(0, COUNT - offset)) }, (_, i) => store(offset + i + 1)),
+      count: COUNT,
+    });
+    const { db, go, svc } = mk(pager);
+    const r = await svc.fetchStep({ batch: 100, paceMs: 0 });
+    expect(go.page).toHaveBeenCalledTimes(3);
+    expect(go.page).toHaveBeenNthCalledWith(2, GOAFFPRO_PAGE_LIMIT, GOAFFPRO_PAGE_LIMIT); // con trỏ cộng dồn giữa vòng
+    expect(r.checked).toBe(COUNT);
+    expect(db.upsertProgramBulk).toHaveBeenCalledTimes(3);   // 1 statement/trang, KHÔNG phải 1/store
+    expect(db.upsertProgramBulk.mock.calls.reduce((n: number, c: any[]) => n + c[0].length, 0)).toBe(COUNT);
+    expect(db.setNetOffset).toHaveBeenLastCalledWith('goaffpro.com', 0); // hết danh sách → vòng sau làm mới
+  });
+
+  // Quota ngày của afffetch (3.000) đặt cho số TRANG Chromium mở được. Tính theo store thì 1 lượt goaffpro
+  // là hết quota của MỌI net khác trong ngày → phải trả số REQUEST.
+  it('quotaCost = số REQUEST, không phải số store', async () => {
+    const pager = async (limit: number, offset: number) => ({
+      stores: Array.from({ length: offset >= limit ? 20 : limit }, (_, i) => store(offset + i + 1)),
+      count: 0, // API bỏ field count → vẫn phải kết thúc nhờ trang ngắn, không nã request tới hết deadline
+    });
+    const { go, svc } = mk(pager);
+    const r: any = await svc.fetchStep({ batch: 100, paceMs: 0 });
+    expect(go.page).toHaveBeenCalledTimes(2);
+    expect(r.checked).toBe(GOAFFPRO_PAGE_LIMIT + 20);
+    expect(r.quotaCost).toBe(2);
   });
 
   it('con trỏ offset cộng dồn theo số store lấy được', async () => {
     const { db, svc } = mk({ stores: [store(1), store(2), store(3)], count: 1000 }, 200);
     await svc.fetchStep({ batch: 100, paceMs: 0 });
-    expect(db.setNetOffset).toHaveBeenCalledWith('goaffpro.com', 203);
+    // Trang ngắn (3 < 500) = cuối danh sách → về 0. Con trỏ giữa vòng vẫn cộng dồn (xem test 250 store ở trên).
+    expect(db.setNetOffset).toHaveBeenCalledWith('goaffpro.com', 0);
   });
 
   it('tới cuối danh sách → offset quay về 0 để làm mới vòng sau', async () => {

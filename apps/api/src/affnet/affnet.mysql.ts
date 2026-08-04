@@ -418,14 +418,31 @@ export class AffnetMysql {
   }
 
   async upsertProgram(p: AffProgram): Promise<void> {
+    await this.upsertProgramBulk([p]); // 1 bản SQL duy nhất — xem upsertProgramBulk
+  }
+
+  // Ghi NHIỀU program trong 1 statement. ĐO THẬT trên MySQL 8.4 (local, innodb_flush_log_at_trx_commit=2):
+  // 100 INSERT lẻ = 14.852ms · 1 INSERT 100 dòng = 57ms → nhanh 260×. Không phải fsync mà là chi phí
+  // round-trip mỗi statement. Net kiểu API (goaffpro) ghi hàng nghìn dòng/lượt: đi từng dòng đo được
+  // 1.000 store/190s, tức 1 lượt hết ngân sách thời gian mà mới lấy được 1/22 catalogue.
+  // upsertProgram() gọi lại hàm này để CHỈ CÓ 1 bản mệnh đề ON DUPLICATE — trước đây tách 2 bản là chắc
+  // chắn có ngày lệch nhau (nhất là 4 cột COALESCE nhập tay bên dưới).
+  async upsertProgramBulk(rows: AffProgram[]): Promise<void> {
+    if (!rows.length) return;
     const pool = await this.sh.getPool();
-    const programName = this.clampVarchar(p.programName);
-    const brand = this.clampVarchar(p.brand);
-    const web = this.clampVarchar(p.web);
-    await pool.query(
-      `INSERT INTO aff_program (net, slug, join_url, program_name, brand, web, commission_pct, commission_flat,
+    const CHUNK = 250; // 17 cột × 250 dòng — giữ câu SQL an toàn dưới max_allowed_packet
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      const part = rows.slice(i, i + CHUNK);
+      const params: any[] = [];
+      for (const p of part) {
+        params.push(p.net, p.slug, p.joinUrl, this.clampVarchar(p.programName), this.clampVarchar(p.brand),
+          this.clampVarchar(p.web), p.commissionPct, p.commissionFlat, p.commissionCurrency, p.commissionScope,
+          p.commissionRaw, p.cookieDays, p.payoutThreshold, p.notes, p.termsText, p.status, p.fetchedAt);
+      }
+      await pool.query(
+        `INSERT INTO aff_program (net, slug, join_url, program_name, brand, web, commission_pct, commission_flat,
           commission_currency, commission_scope, commission_raw, cookie_days, payout_threshold, notes, terms_text, status, fetched_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       VALUES ${part.map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').join(',')}
        ON DUPLICATE KEY UPDATE join_url = VALUES(join_url), program_name = VALUES(program_name), brand = VALUES(brand),
           commission_pct = VALUES(commission_pct), commission_flat = VALUES(commission_flat),
           commission_currency = VALUES(commission_currency), commission_scope = VALUES(commission_scope),
@@ -438,9 +455,24 @@ export class AffnetMysql {
           payout_threshold = COALESCE(VALUES(payout_threshold), payout_threshold),
           notes = COALESCE(VALUES(notes), notes),
           terms_text = VALUES(terms_text), status = VALUES(status), fetched_at = VALUES(fetched_at)`,
-      [p.net, p.slug, p.joinUrl, programName, brand, web, p.commissionPct, p.commissionFlat,
-        p.commissionCurrency, p.commissionScope, p.commissionRaw, p.cookieDays, p.payoutThreshold, p.notes, p.termsText, p.status, p.fetchedAt],
-    );
+        params,
+      );
+    }
+  }
+
+  // Bản gộp của markHostChecked — cùng lý do hiệu năng như upsertProgramBulk.
+  async markHostCheckedBulk(net: string, slugs: string[], status: string): Promise<void> {
+    if (!slugs.length) return;
+    const pool = await this.sh.getPool();
+    const CHUNK = 500;
+    const now = Date.now();
+    for (let i = 0; i < slugs.length; i += CHUNK) {
+      const part = slugs.slice(i, i + CHUNK);
+      await pool.query(
+        `UPDATE aff_host SET checked_at = ?, check_status = ? WHERE net = ? AND slug IN (${part.map(() => '?').join(',')})`,
+        [now, status, net, ...part],
+      );
+    }
   }
 
   // Lưu traffic theo DOMAIN (web). COALESCE để lần dán thiếu trường KHÔNG xoá số cũ đã có.

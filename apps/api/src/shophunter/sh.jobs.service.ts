@@ -368,7 +368,10 @@ export class ShJobsService implements OnModuleInit {
     }
     if (r?.laneErrors) await this.mysql.appendJobLog('afffetch', 'warn', `${r.laneErrors} làn proxy lỗi (proxy chết?) — kiểm ở Cài đặt → Proxy, bấm Test.`).catch(() => {});
     if (!r?.net || !r.checked) { this.mem.afffetch.lastStatus = 'idle'; await this.mysql.appendJobLog('afffetch', 'info', 'Hết dự án cần quét; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
-    await this.mysql.addDailyCount(dk, r.checked).catch(() => {});
+    // quotaCost: net kiểu API (goaffpro) trả SỐ REQUEST đã gọi thay cho số store. Quota `daily` đặt cho số
+    // trang Chromium mở được; tính theo store thì 1 lượt goaffpro (hàng nghìn store) là hết quota cả ngày
+    // của MỌI net khác. Net thường không có field này → vẫn tính theo r.checked như trước.
+    await this.mysql.addDailyCount(dk, r.quotaCost ?? r.checked).catch(() => {});
     if (r.blocked >= r.checked) { this.mem.afffetch.lastStatus = 'blocked'; await this.mysql.appendJobLog('afffetch', 'warn', `Bị chặn cả lượt (${r.blocked}/${r.checked}) trên ${r.lanes} làn; nghỉ rồi thử lại. Thêm proxy ở Cài đặt → Proxy để đỡ bị chặn.`).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.afffetch.lastStatus = 'ok';
     await this.mysql.appendJobLog('afffetch', 'info', `${r.net}: ${r.checked} quét · ${r.active} sống · ${r.inactive} chết · ${r.blocked} chặn · ${r.lanes} làn proxy`).catch(() => {});
