@@ -114,6 +114,25 @@ const toEdit = (h: AffHostRow): HostEdit => ({
   notes: h.notes ?? '',
 });
 
+// Icon hành động vẽ bằng SVG, KHÔNG dùng emoji. 📊 và 🗑 là emoji MÀU (lấy từ font emoji của hệ điều
+// hành) nên iOS render to hơn rõ rệt so với glyph chữ ⟳ / ✎ ở cùng font-size → 4 nút trông lệch cỡ.
+// SVG: cả 4 cùng 15×15, cùng currentColor nên nút xoá vẫn đỏ theo `.danger`.
+const ACT_ICONS: Record<'rescan' | 'edit' | 'chart' | 'trash', React.ReactNode> = {
+  rescan: <><path d="M14 8A6 6 0 1 1 12.24 3.76" /><path d="M12.8 1.4v3.2H9.6" /></>,
+  edit: <><path d="M2.6 13.4l.9-3 7-7 2.1 2.1-7 7-3 .9z" /><path d="M9.6 4.1l2.1 2.1" /></>,
+  chart: <><path d="M2.8 14V9.2" /><path d="M8 14V4.6" /><path d="M13.2 14V7" /></>,
+  trash: <><path d="M2.8 4.6h10.4" /><path d="M6.4 4.6V2.9h3.2v1.7" /><path d="M4.4 4.6l.7 9.1h5.8l.7-9.1" /></>,
+};
+function ActIcon({ k, spin }: { k: keyof typeof ACT_ICONS; spin?: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" width={15} height={15} aria-hidden focusable="false"
+         style={{ display: 'block', animation: spin ? 'spin 0.9s linear infinite' : undefined }}
+         fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      {ACT_ICONS[k]}
+    </svg>
+  );
+}
+
 // Chấm Shopify trước domain — CHỈ hiện khi đã có kết luận (shopify null = chưa scan revenue thì không
 // vẽ gì, đừng để người dùng tưởng "chưa quét" là "không phải Shopify").
 //  · xanh = là Shopify VÀ đã được index vào danh sách shop trong local DB (có shop_id) → mở /shop/{id}.
@@ -204,25 +223,29 @@ function HostRowCard({ p, sel, onSelect, onHistory, onEditRow, onRescan, onDelet
         <span>Time <b>{fmtDur(p.traffic_duration_sec)}</b></span>
       </div>
       {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8 }}>{p.notes}</div>}
-      <div className="fbfoot" style={{ gap: 10, flexWrap: 'wrap' }}>
-        {/* Host chưa quét / không có chương trình thì không có join_url — đừng render link rỗng. */}
-        {p.join_url && <a className="dl" href={p.join_url} target="_blank" rel="noreferrer" onClick={stop}>↗ Link tham gia</a>}
-        {site && <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={stop}>{p.web}</a>}
-      </div>
-      {/* Icon hành động ở DÒNG CUỐI CÙNG, căn lề phải — trước đây nằm chung dòng traffic nên bị chen. */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, marginTop: 2 }}>
-        {p.web && (
-          <button className="ghost lcbtn" title="Rescan lại doanh thu + traffic của domain này"
-                  onClick={(e) => { stop(e); onRescan(); }} disabled={rescanning}>{rescanning ? '⏳' : '⟳'}</button>
-        )}
-        <button className="ghost lcbtn" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)"
-                onClick={(e) => { stop(e); onEditRow(); }}>✎</button>
-        {p.web && (
-          <button className="ghost lcbtn" title="Cào 12 tháng traffic (AITDK) + lưu DB"
-                  onClick={(e) => { stop(e); onHistory(p.web!); }}>📊</button>
-        )}
-        <button className="ghost danger lcbtn" title="Xoá domain này khỏi net"
-                onClick={(e) => { stop(e); onDelete(); }} disabled={deleting}>{deleting ? '⏳' : '🗑'}</button>
+      {/* DÒNG CUỐI: link tham gia + domain bên trái, icon hành động bên phải — gộp 2 dòng thành 1 cho
+          thẻ đỡ dài. minWidth 0 để domain dài co lại chứ không đẩy nhóm icon ra khỏi thẻ. */}
+      <div className="fbfoot" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
+        <span style={{ display: 'flex', gap: 8, minWidth: 0, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          {/* Host chưa quét / không có chương trình thì không có join_url — đừng render link rỗng. */}
+          {p.join_url && <a className="dl" href={p.join_url} target="_blank" rel="noreferrer" onClick={stop}>↗ Tham gia</a>}
+          {site && <a className="dl" href={site} target="_blank" rel="noreferrer" onClick={stop}
+                      style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.web}</a>}
+        </span>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 2, flex: '0 0 auto' }}>
+          {p.web && (
+            <button className="ghost lcbtn" title="Rescan lại doanh thu + traffic của domain này"
+                    onClick={(e) => { stop(e); onRescan(); }} disabled={rescanning}><ActIcon k="rescan" spin={rescanning} /></button>
+          )}
+          <button className="ghost lcbtn" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)"
+                  onClick={(e) => { stop(e); onEditRow(); }}><ActIcon k="edit" /></button>
+          {p.web && (
+            <button className="ghost lcbtn" title="Cào 12 tháng traffic (AITDK) + lưu DB"
+                    onClick={(e) => { stop(e); onHistory(p.web!); }}><ActIcon k="chart" /></button>
+          )}
+          <button className="ghost danger lcbtn" title="Xoá domain này khỏi net"
+                  onClick={(e) => { stop(e); onDelete(); }} disabled={deleting}><ActIcon k="trash" /></button>
+        </span>
       </div>
     </div>
   );
@@ -742,16 +765,16 @@ export function AffnetPanel() {
                             ✎ sửa thông tin · 📊 cào 12 tháng traffic (chỉ khi biết `web`) · 🗑 xoá.
                             Mọi nút stopPropagation vì cả <tr> đã là vùng bấm mở chi tiết shop. */}
                         <td className="actcol" style={{ whiteSpace: 'nowrap' }}>
-                          <span style={{ display: 'inline-flex', gap: 2 }}>
+                          <span style={{ display: 'inline-flex', gap: 2, alignItems: 'center' }}>
                             {p.web && (
                               <button className="ghost actbtn flat" title="Rescan lại doanh thu + traffic của domain này"
-                                      onClick={(e) => { e.stopPropagation(); void rescanRow(p.slug, p.web!); }} disabled={rowRescan === p.slug}>{rowRescan === p.slug ? '⏳' : '⟳'}</button>
+                                      onClick={(e) => { e.stopPropagation(); void rescanRow(p.slug, p.web!); }} disabled={rowRescan === p.slug}><ActIcon k="rescan" spin={rowRescan === p.slug} /></button>
                             )}
-                            <button className="ghost actbtn flat" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={(e) => { e.stopPropagation(); setEdit(toEdit(p)); setEditRowMsg(null); }}>✎</button>
+                            <button className="ghost actbtn flat" title="Sửa thông tin không cào được (payout, cookie, ghi chú…)" onClick={(e) => { e.stopPropagation(); setEdit(toEdit(p)); setEditRowMsg(null); }}><ActIcon k="edit" /></button>
                             {p.web && (
-                              <button className="ghost actbtn flat" title="Cào 12 tháng traffic (AITDK) + lưu DB" onClick={(e) => { e.stopPropagation(); setHistWeb(p.web!); }}>📊</button>
+                              <button className="ghost actbtn flat" title="Cào 12 tháng traffic (AITDK) + lưu DB" onClick={(e) => { e.stopPropagation(); setHistWeb(p.web!); }}><ActIcon k="chart" /></button>
                             )}
-                            <button className="ghost danger actbtn flat" title="Xoá domain này khỏi net" onClick={(e) => { e.stopPropagation(); doDeleteHost(p.slug); }} disabled={deleting === p.slug}>{deleting === p.slug ? '⏳' : '🗑'}</button>
+                            <button className="ghost danger actbtn flat" title="Xoá domain này khỏi net" onClick={(e) => { e.stopPropagation(); doDeleteHost(p.slug); }} disabled={deleting === p.slug}><ActIcon k="trash" /></button>
                           </span>
                         </td>
                       </tr>

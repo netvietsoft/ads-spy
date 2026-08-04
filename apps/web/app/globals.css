@@ -82,7 +82,8 @@ body {
 .actbtn { padding: 2px 6px; font-size: 13px; line-height: 1.4; min-width: 0; }
 /* Cột Action: icon TRẦN — bỏ viền + nền của `button.ghost`, vì 3-4 icon cạnh nhau trông như 3-4 khối
    xám chen chúc. Dùng 2 class (0,2,0) nên thắng `button.ghost` (0,1,1) mà không cần !important. */
-.actbtn.flat { background: none; border: 0; border-radius: 0; padding: 2px 4px; font-size: 15px; }
+/* inline-flex: nội dung là <svg> chứ không phải chữ — không có nó thì baseline chữ đẩy icon lệch xuống. */
+.actbtn.flat { background: none; border: 0; border-radius: 0; padding: 2px 4px; display: inline-flex; align-items: center; }
 .actbtn.flat:hover:not(:disabled) { background: none; filter: brightness(1.35); }
 .actbtn.flat:disabled { opacity: 0.45; }
 /* Bảng 15 cột rộng ~1825px, màn 1600px vẫn phải cuộn ngang → GHIM cột Action vào lề phải để nút
@@ -404,9 +405,12 @@ button.ghost.danger { color: var(--danger); }
   .affnetcard { font-size: 13px; transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease; }
   .affnetcard .fbplat, .affnetcard .fbfoot, .affnetcard .fbbody { font-size: 13px; }
   .affnetcard .fbplat b { color: var(--text); font-weight: 700; font-size: 13px; }
-  /* Icon hành động thu nhỏ + trần — 4 nút cỡ mặc định chiếm gần hết chiều ngang thẻ. */
-  .affnetcard .lcbtn { background: none; border: 0; padding: 0 5px; font-size: 15px; line-height: 1.7; min-width: 0; }
+  /* Icon hành động: nút TRẦN bó sát <svg> 15px. inline-flex vì nội dung là SVG không phải chữ —
+     dựa vào line-height sẽ ra 4 nút cao thấp khác nhau. */
+  .affnetcard .lcbtn { background: none; border: 0; padding: 4px 5px; min-width: 0; display: inline-flex; align-items: center; color: var(--text); }
   .affnetcard .lcbtn:disabled { opacity: 0.45; }
+  /* Dòng cuối gộp link + icon: link co lại (ellipsis) chứ không đẩy nhóm icon ra khỏi thẻ. */
+  .affnetcard .fbfoot .dl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Chạm vào thẻ thì thẻ nhấc lên. :hover CHỈ cho thiết bị có hover thật (mobile tap hay bị "hover
      dính" sau khi chạm), :active dùng cho mọi thiết bị. */
   .affnetcard:active { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
