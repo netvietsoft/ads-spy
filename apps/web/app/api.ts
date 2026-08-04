@@ -671,6 +671,9 @@ export interface AffHostRow {
   commission_pct: number | null; commission_flat: number | null; commission_currency: string | null;
   cookie_days: number | null; payout_threshold: number | null; notes: string | null;
   program_status: string | null; fetched_at: number | null;
+  // Doanh thu lấy từ Aff Library theo domain (LEFT JOIN aff_library) — null nếu domain không có trong kho.
+  // rev_* lưu TIỀN GỐC của shop, phải nhân tỉ giá bằng rev_currency khi hiển thị.
+  rev_month?: number | null; rev_total?: number | null; rev_currency?: string | null; shopify?: number | null;
   traffic_visits: number | null; traffic_bounce: number | null;
   traffic_duration_sec: number | null; traffic_rank: number | null; traffic_updated_at: number | null;
 }
@@ -793,6 +796,13 @@ export async function affLibDnsCheck(limit = 5000): Promise<{ checked: number; a
 // `error` = ShopHunter bị bóp → hiện lý do rồi DỪNG, đừng lặp vô ích.
 export async function affLibRevScan(limit = 20): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/rev-scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
+}
+// Scan Revenue giới hạn trong 1 NET (nút ở /affnet/{net}) — cùng logic với nút ở /afflibrary,
+// chỉ khác phạm vi: các domain của net đó đang thiếu doanh thu.
+export async function affLibRevScanNet(net: string, limit = 20): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/rev-scan-net`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ net, limit }),
+  }));
 }
 // Quét 1 domain ngay (nút ⟳ từng dòng) — dùng cho cả quét lần đầu và quét lại.
 export async function affLibDetectOne(web: string): Promise<{ web: string; aff_status: string; aff_platform: string | null; join_url: string | null }> {

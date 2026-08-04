@@ -41,8 +41,12 @@ const JUNK_COND = 'al.dns_ok = 0 OR (al.aff_checked_at IS NULL AND COALESCE(al.a
 // for(;;) của FE dựa vào đó mà dừng (đúng bài học traffic_tried_at ở dưới).
 // Nhắm `rev_month IS NULL` (đo thật: 1.204 dòng) chứ KHÔNG phải found=0 ("ngoài DB" chỉ có 2 dòng).
 const REV_QUEUE_COND = 'al.rev_month IS NULL AND (al.shopify IS NULL OR al.shopify = 1) AND (al.dns_ok IS NULL OR al.dns_ok = 1) AND al.rev_scan_at IS NULL';
-// Hàng đợi cho JOB NỀN: giống trên nhưng cho phép cào lại sau `staleMs` ("ngày khác cào lại doanh thu").
-const REV_JOB_COND = 'al.rev_month IS NULL AND (al.shopify IS NULL OR al.shopify = 1) AND (al.dns_ok IS NULL OR al.dns_ok = 1) AND (al.rev_scan_at IS NULL OR al.rev_scan_at < ?)';
+// Hàng đợi cho JOB NỀN — KHÁC nút FE ở 2 điểm:
+//  · KHÔNG đòi rev_month IS NULL: shop ĐÃ CÓ doanh thu cũng phải được harvest lại hằng ngày (yêu cầu
+//    "hàng ngày các shop đã có doanh thu sẽ được tự động harvest doanh số về"). Điều kiện là có shop_id
+//    để harvest được, hoặc chưa có doanh thu thì cần nhận diện Shopify trước.
+//  · Cho cào lại sau `staleMs` (cooldown) — chính là cơ chế chặn lặp vô hạn, không cần cột đếm.
+const REV_JOB_COND = '(al.rev_month IS NULL OR al.shop_id IS NOT NULL) AND (al.shopify IS NULL OR al.shopify = 1) AND (al.dns_ok IS NULL OR al.dns_ok = 1) AND (al.rev_scan_at IS NULL OR al.rev_scan_at < ?)';
 const FILTER_WHERE: Record<string, string> = {
   all: '',
   // 'app' CŨNG là có affiliate (có app affiliate nhưng chưa dò ra link) → phải nằm trong bộ lọc "có aff",
@@ -137,6 +141,29 @@ export class AffLibMysql {
     return s == null ? null : Number(s);
   }
 
+  // Bù `rev_total` (DT tổng) cho các dòng còn trống.
+  // Vì sao cần: syncFromLocalDbAff cố ý ghi rev_total=null (SUM từng shop quá đắt), còn Scan Revenue chỉ
+  // chạm dòng rev_month IS NULL → dòng đã có DT tháng thì DT tổng trống mãi. Đo thật: 14.131/14.135 dòng
+  // trống rev_total, trong đó 12.457 dòng ĐÃ có dữ liệu trong sh_shop_revenue_daily — dữ liệu sẵn rồi,
+  // chỉ thiếu bước cộng.
+  // Dùng SUBQUERY TƯƠNG QUAN chứ KHÔNG phải UPDATE...JOIN (SELECT...GROUP BY): bản JOIN treo vì bảng dẫn
+  // xuất không có index (đo thật: GROUP BY toàn bảng 241ms, nhưng UPDATE...JOIN quá 10 phút chưa xong).
+  // Dạng này mỗi dòng là 1 range scan trên PK (shop_id, d) — đo được 1ms/shop.
+  // `limit` để chia lô, tránh giữ lock lâu trên 12k dòng khi job nền đang ghi cùng bảng.
+  async backfillRevTotal(limit = 3000): Promise<number> {
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query(
+      `UPDATE aff_library al
+       SET al.rev_total = (SELECT SUM(d.revenue) FROM sh_shop_revenue_daily d WHERE d.shop_id = al.shop_id),
+           al.updated_at = ?
+       WHERE al.shop_id IS NOT NULL AND al.rev_total IS NULL
+         AND EXISTS (SELECT 1 FROM sh_shop_revenue_daily d2 WHERE d2.shop_id = al.shop_id)
+       LIMIT ?`,
+      [Date.now(), Math.max(1, Math.min(20000, limit))],
+    );
+    return Number((r as any).affectedRows) || 0;
+  }
+
   // ---- Scan Revenue: hàng đợi domain thiếu doanh thu ----
   // staleMs != null → dùng REV_JOB_COND (job nền được cào lại sau `staleMs`); null → REV_QUEUE_COND
   // (nút FE: mỗi domain đúng 1 lượt/1 lần bấm, để `remaining` giảm đơn điệu).
@@ -150,6 +177,47 @@ export class AffLibMysql {
       [...params, Math.max(1, Math.min(200, limit))],
     );
     return rows as any[];
+  }
+
+  // Đưa các domain của 1 net vào aff_library (nếu chưa có). BẮT BUỘC trước khi Scan Revenue theo net:
+  // đo thật getrewardful.com có 210 web mà 0 web nằm trong aff_library → thiếu bước này thì nút "scan
+  // Revenue" của trang net chạy mà KHÔNG được gì (setRevScanned là UPDATE, không tự tạo dòng).
+  // found=0: đây là domain đến từ affnet, chưa chắc có trong Local DB shop.
+  async seedFromNet(net: string): Promise<number> {
+    const pool = await this.sh.getPool();
+    const now = Date.now();
+    const [r] = await pool.query(
+      `INSERT IGNORE INTO aff_library (web, found, created_at, updated_at)
+       SELECT DISTINCT p.web COLLATE utf8mb4_unicode_ci, 0, ?, ?
+       FROM aff_program p WHERE p.net = ? AND p.web IS NOT NULL AND p.web <> ''`,
+      [now, now, net],
+    );
+    return Number((r as any).affectedRows) || 0;
+  }
+
+  // Hàng đợi Scan Revenue giới hạn trong 1 NET: các domain (aff_program.web của net đó) đang thiếu doanh thu.
+  async rowsToRevScanByNet(net: string, limit = 20): Promise<{ web: string; shop_id: string | null; shopify: number | null }[]> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      `SELECT DISTINCT al.web, al.shop_id, al.shopify
+       FROM aff_program p
+       JOIN aff_library al ON al.web = p.web COLLATE utf8mb4_unicode_ci
+       WHERE p.net = ? AND ${REV_QUEUE_COND}
+       ORDER BY al.shop_id IS NULL, al.web ASC LIMIT ?`,
+      [net, Math.max(1, Math.min(200, limit))],
+    );
+    return rows as any[];
+  }
+
+  async countToRevScanByNet(net: string): Promise<number> {
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query(
+      `SELECT COUNT(DISTINCT al.web) n FROM aff_program p
+       JOIN aff_library al ON al.web = p.web COLLATE utf8mb4_unicode_ci
+       WHERE p.net = ? AND ${REV_QUEUE_COND}`,
+      [net],
+    );
+    return Number((r as any[])[0].n) || 0;
   }
 
   async countToRevScan(staleMs?: number): Promise<number> {
@@ -357,6 +425,9 @@ export class AffLibMysql {
       );
       n += tuples.length;
     }
+    // Bù DT tổng ngay sau khi đồng bộ — INSERT ở trên ghi rev_total=null (SUM từng shop quá đắt), nên
+    // nếu không gọi đây thì cột "DT tổng" trên UI trống mãi dù dữ liệu daily đã có.
+    await this.backfillRevTotal().catch(() => 0);
     return n;
   }
 

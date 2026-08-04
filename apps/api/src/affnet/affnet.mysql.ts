@@ -25,6 +25,8 @@ const HOST_SORTS: Record<string, string> = {
   name: 'p.program_name', web: 'p.web', pct: 'p.commission_pct',
   cookie: 'p.cookie_days', payout: 'p.payout_threshold',
   visits: 't.visits', bounce: 't.bounce_rate', time: 't.visit_duration_sec',
+  // Doanh thu tháng lấy từ Aff Library (al.) theo domain — xem LEFT JOIN thứ 3 trong hostList.
+  rev: 'al.rev_month',
 };
 
 // Bộ lọc trạng thái host. check_status thực tế nhận 5 giá trị: 'active' | 'inactive' | 'notfound' |
@@ -644,9 +646,13 @@ export class AffnetMysql {
     // Tie-breaker h.slug: thiếu nó thì 2 dòng cùng giá trị sort có thứ tự KHÔNG xác định giữa các lượt
     // query → phân trang lặp/nhảy dòng (đúng lỗi đã gặp ở Aff Library).
     const orderBy = `${buildOrderBy(q.sort || 'domain', q.dir || 'asc', HOST_SORTS, 'domain')}, h.slug ASC`;
+    // JOIN thứ 3: aff_library theo domain → cột "DT tháng" trên trang net. PK của aff_library là `web`
+    // nên không nhân dòng. COLLATE vì 2 bảng khác collation (aff_library từ migrate cũ) — thiếu là lỗi
+    // "Illegal mix of collations".
     const joins = `FROM aff_host h
        LEFT JOIN aff_program p ON p.net = h.net AND p.slug = h.slug
-       LEFT JOIN aff_domain_traffic t ON t.web = p.web`;
+       LEFT JOIN aff_domain_traffic t ON t.web = p.web
+       LEFT JOIN aff_library al ON al.web = p.web COLLATE utf8mb4_unicode_ci`;
     // Không SELECT p.terms_text (MEDIUMTEXT) — chỉ programDetail được kéo cột đó.
     const [rows] = await pool.query(
       `SELECT h.net, h.slug, h.first_seen, h.last_seen, h.sources, h.checked_at, h.check_status, h.check_tries,
@@ -654,7 +660,8 @@ export class AffnetMysql {
               p.commission_currency, p.cookie_days, p.payout_threshold, p.notes,
               p.status AS program_status, p.fetched_at,
               t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce, t.visit_duration_sec AS traffic_duration_sec,
-              t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at
+              t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at,
+              al.rev_month, al.rev_total, al.currency AS rev_currency, al.shop_id, al.shopify
        ${joins} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, q.limit, q.offset],
     );

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { AffLibService } from './afflib.service';
 
 // Staff-only theo global RolesGuard mặc định (không @Roles → chỉ admin/manager). Không mở cho khách.
@@ -56,6 +56,13 @@ export class AffLibController {
   @Post('rev-scan')
   revScan(@Body('limit') limit: number) {
     return this.svc.revScan(Number(limit) || 20);
+  }
+
+  // Scan Revenue giới hạn trong 1 net (nút ở /affnet/{net}). Cũng phải đứng TRƯỚC các route ':web'.
+  @Post('rev-scan-net')
+  revScanNet(@Body('net') net: string, @Body('limit') limit: number) {
+    if (!net || !String(net).trim()) throw new BadRequestException('Thiếu tham số net');
+    return this.svc.revScanNet(String(net), Number(limit) || 20);
   }
 
   // Xoá hàng loạt (dọn rác): 1 query cho cả lô thay vì gọi DELETE từng domain.

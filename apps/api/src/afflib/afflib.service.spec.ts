@@ -53,6 +53,8 @@ describe('AffLibService', () => {
       const saved: any[] = [];
       return {
         ensureTables: jest.fn(),
+        // revScan bù DT tổng cho cả kho trước khi quét (1 UPDATE, rẻ) — stub để test không cần MySQL.
+        backfillRevTotal: jest.fn(async () => 7),
         rowsToRevScan: jest.fn(async () => rows),
         countToRevScan: jest.fn(async () => 0),
         sumDailyRevenue: jest.fn(async () => 5000),
@@ -69,7 +71,8 @@ describe('AffLibService', () => {
       const r = await new AffLibService(db, {} as any, {} as any, sh, shDb()).revScan(10);
       expect(sh.checkDomain).not.toHaveBeenCalled();       // miễn phí: không gọi ShopHunter để nhận diện
       expect(sh.syncShopRevenue).toHaveBeenCalledWith('s9');
-      expect(r).toMatchObject({ scanned: 1, revved: 1 });
+      expect(r).toMatchObject({ scanned: 1, revved: 1, backfilled: 7 });
+      expect(db.backfillRevTotal).toHaveBeenCalled(); // bù DT tổng: dữ liệu daily có sẵn mà chưa được cộng
       // currency BẮT BUỘC đi kèm: rev_* lưu tiền GỐC, FE nhân tỉ giá → thiếu là lệch 20-100×
       // shopify=1 kể cả khi bỏ qua bước nhận diện: có shop_id trong sh_shop nghĩa là ĐÃ là store Shopify
       // → phải có chấm xanh, không thì dòng scan thành công lại không thuộc nhóm nào.

@@ -2,9 +2,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affRescanNet, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { affNets, affAddNets, affDeleteNet, affRescanNet, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, affLibRevScanNet, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
 import { TrafficHistoryModal } from './TrafficHistoryModal';
+import { toUsd } from '../currency';
 
 // 2 job nền lo việc quét net (dùng chung hàng đợi cho MỌI net, không theo từng net).
 const SCAN_JOBS = ['affdiscover', 'afffetch'];
@@ -37,6 +38,10 @@ function siteUrl(web: string | null): string | null {
 const fmtVisits = (n: number | null) => (n == null ? '—' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(n));
 // API AITDK trả full precision (38.29426744639906) → làm tròn 1 số, không thì cột không đọc được.
 const fmtBounce = (n: number | null) => (n == null ? '—' : `${Math.round(n * 10) / 10}%`);
+// DT tháng: aff_library lưu TIỀN GỐC của shop → đổi sang USD bằng đúng bảng tỉ giá mà /afflibrary dùng,
+// không thì shop VND/JPY hiện to gấp hàng trăm lần shop USD.
+const revUsd = (n?: number | null, cur?: string | null) =>
+  (n == null ? '—' : '$' + Math.round(toUsd(n, cur || 'USD') as number).toLocaleString('en-US'));
 const fmtDur = (s: number | null) => {
   if (s == null) return '—';
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -80,6 +85,7 @@ const HOST_SORTS: { key: string; label: string; asc?: boolean }[] = [
   { key: 'pct', label: '%commit ↓' }, { key: 'bounce', label: 'Bounce ↓' }, { key: 'time', label: 'Time-on-site ↓' },
   { key: 'cookie', label: 'Cookie ↓' }, { key: 'payout', label: 'Payout ↓' },
   { key: 'name', label: 'Tên dự án (A→Z)', asc: true }, { key: 'web', label: 'Web (A→Z)', asc: true },
+  { key: 'rev', label: 'DT tháng ↓' },
 ];
 // Cột sort mặc định tăng dần (tên/domain) — số liệu thì mặc định giảm dần.
 const ASC_FIRST = new Set(HOST_SORTS.filter((s) => s.asc).map((s) => s.key));
@@ -156,6 +162,7 @@ function HostRowCard({ p, onHistory, onEditRow, onDelete, deleting }: {
       </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <span><b className="rev">{pctOrFlat(p)}</b></span>
+        <span>DT tháng <b className="rev">{revUsd(p.rev_month, p.rev_currency)}</b></span>
         <span>Cookie {p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</span>
         <span>Payout {orDash(p.payout_threshold)}</span>
       </div>
@@ -213,6 +220,8 @@ export function AffnetPanel() {
   const [reloadTick, setReloadTick] = useState(0);
   const [netTrafBusy, setNetTrafBusy] = useState(false);
   const [netTrafMsg, setNetTrafMsg] = useState<string | null>(null);
+  const [netRevBusy, setNetRevBusy] = useState(false);
+  const [netRevMsg, setNetRevMsg] = useState<string | null>(null);
   const reqRef = useRef(0);
 
   // Form sửa TAY 1 dòng (cột Action) — những thông tin crawler không cào được.
@@ -370,6 +379,26 @@ export function AffnetPanel() {
     try { await affDeleteHost(activeNet, slug); setReloadTick((t) => t + 1); }
     catch (e) { setErr(`Xoá ${slug} thất bại: ${(e as Error).message}`); }
     setDeleting(null);
+  };
+
+  // Scan Revenue cho các domain CỦA NET này — cùng khuôn lặp với runNetTraffic. Dừng khi hết hàng đợi,
+  // khi BE báo `error` (ShopHunter bị bóp), hoặc khi `remaining` không giảm.
+  const runNetRevenue = async () => {
+    if (!activeNet || netRevBusy) return;
+    setNetRevBusy(true); setErr(null); setNetRevMsg('Đang cào doanh thu…');
+    try {
+      let revved = 0, notShopify = 0, prev = Infinity;
+      for (;;) {
+        const r = await affLibRevScanNet(activeNet);
+        revved += r.revved; notShopify += r.notShopify;
+        setNetRevMsg(`Có doanh thu ${revved.toLocaleString()} · không phải Shopify ${notShopify}${r.remaining ? ` · còn ${r.remaining.toLocaleString()}` : ''}`);
+        if (r.error) { setErr(`Scan Revenue: ${r.error}`); break; }
+        if (!r.remaining || r.remaining >= prev) break;
+        prev = r.remaining;
+      }
+      setReloadTick((t) => t + 1); // tải lại để cột DT tháng đổi theo
+    } catch (e) { setErr((e as Error).message); setNetRevMsg(null); }
+    setNetRevBusy(false);
   };
 
   // Sort số liệu cho danh sách net (client-side).
@@ -532,7 +561,14 @@ export function AffnetPanel() {
               title={`Lấy traffic (AITDK) cho toàn bộ web của ${activeNet} còn thiếu`}>
               {netTrafBusy ? '⏳ Đang scan traffic…' : 'Scan traffic'}
             </button>
+            {/* scan Revenue — cùng logic với nút ở /afflibrary, phạm vi giới hạn trong net này:
+                nhận diện Shopify rồi đồng bộ doanh thu sang, hiện ở cột "DT tháng". */}
+            <button className="srcbtn" onClick={runNetRevenue} disabled={netRevBusy}
+              title={`Cào doanh thu cho domain của ${activeNet}: domain nào là Shopify thì đồng bộ doanh thu sang`}>
+              {netRevBusy ? '⏳ Đang cào doanh thu…' : 'scan Revenue'}
+            </button>
             {netTrafMsg && <span className="hint" style={{ margin: 0 }}>{netTrafMsg}</span>}
+            {netRevMsg && <span className="hint" style={{ margin: 0 }}>{netRevMsg}</span>}
           </div>
           <p className="hint" style={{ marginTop: 0 }}>
             Liệt kê <b>toàn bộ domain đã phát hiện</b> của net này (kể cả domain quét rồi không có affiliate và
@@ -594,6 +630,7 @@ export function AffnetPanel() {
                   <th>Link tham gia</th>
                   {th('web', 'Web')}
                   {th('pct', '%commit')}
+                  {th('rev', 'DT tháng')}
                   <th>Note</th>
                   {th('cookie', 'Cookie')}
                   {th('payout', 'Payout')}
@@ -614,6 +651,11 @@ export function AffnetPanel() {
                         <td>{p.join_url ? <a href={p.join_url} target="_blank" rel="noreferrer">↗ Tham gia</a> : '—'}</td>
                         <td>{site ? <a href={site} target="_blank" rel="noreferrer">{p.web}</a> : '—'}</td>
                         <td className="rev">{pctOrFlat(p)}</td>
+                        {/* DT tháng lấy từ Aff Library theo domain. rev_month lưu TIỀN GỐC → phải đổi USD
+                            bằng rev_currency, không thì shop VND/JPY trông như to gấp trăm lần. */}
+                        <td className="rev" style={{ whiteSpace: 'nowrap' }} title={p.shopify === 1 ? 'Shopify — doanh thu đồng bộ từ Aff Library' : undefined}>
+                          {revUsd(p.rev_month, p.rev_currency)}
+                        </td>
                         {/* minWidth: 15 cột + nhiều cột nowrap làm Note bị bóp còn ~1 chữ/dòng → dòng cao vọt. */}
                         <td className="wrap" style={{ minWidth: '16ch', maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
                         <td>{p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</td>
@@ -639,7 +681,7 @@ export function AffnetPanel() {
                     );
                   })}
                   {data.rows.length === 0 && !loading && (
-                    <tr><td colSpan={14} className="hint">Không có domain khớp bộ lọc.</td></tr>
+                    <tr><td colSpan={15} className="hint">Không có domain khớp bộ lọc.</td></tr>
                   )}
                 </tbody>
               </table>

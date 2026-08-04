@@ -74,9 +74,39 @@ export class AffLibService {
     return got ? 'revved' : 'fail';
   }
 
-  // 1 lô. Lỗi ShopHunter (bị bóp → 503) thì TRẢ `error` chứ không throw, để FE hiện lý do rồi DỪNG vòng lặp.
-  async revScan(limit = 20, staleMs?: number): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
+  // Scan Revenue giới hạn trong 1 NET (nút ở /affnet/{net}) — dùng LẠI revScanOne, cùng quy tắc
+  // chấm xanh/đỏ và cùng cách ghi doanh thu như nút ở /afflibrary.
+  async revScanNet(net: string, limit = 20): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; seeded?: number; error?: string }> {
     await this.db.ensureTables();
+    const n = normalizeDomain(net);
+    // Domain của net thường CHƯA có trong aff_library (đo thật: getrewardful.com 210 web, 0 web trong kho)
+    // → phải đưa vào kho trước, không thì nút này chạy mà không được gì.
+    const seeded = await this.db.seedFromNet(n).catch(() => 0);
+    const rows = await this.db.rowsToRevScanByNet(n, limit);
+    const out = { scanned: 0, revved: 0, shopify: 0, notShopify: 0, remaining: 0 as number, error: undefined as string | undefined };
+    for (const r of rows) {
+      try {
+        const k = await this.revScanOne(r);
+        out.scanned++;
+        if (k === 'revved') out.revved++;
+        else if (k === 'shopify') out.shopify++;
+        else if (k === 'notShopify') out.notShopify++;
+      } catch (e) {
+        await this.db.setRevScanned(r.web, { err: (e as Error).message }).catch(() => {});
+        out.error = (e as Error).message;
+        break;
+      }
+    }
+    out.remaining = await this.db.countToRevScanByNet(n);
+    return { ...out, seeded };
+  }
+
+  // 1 lô. Lỗi ShopHunter (bị bóp → 503) thì TRẢ `error` chứ không throw, để FE hiện lý do rồi DỪNG vòng lặp.
+  async revScan(limit = 20, staleMs?: number): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; backfilled?: number; error?: string }> {
+    await this.db.ensureTables();
+    // Bù DT tổng cho cả kho trước (1 UPDATE...JOIN, rẻ): dữ liệu daily đã có sẵn từ các lần harvest
+    // trước mà chưa được cộng vào aff_library.rev_total.
+    const backfilled = await this.db.backfillRevTotal().catch(() => 0);
     const rows = await this.db.rowsToRevScan(limit, staleMs);
     const out = { scanned: 0, revved: 0, shopify: 0, notShopify: 0, remaining: 0 as number, error: undefined as string | undefined };
     for (const r of rows) {
@@ -94,7 +124,7 @@ export class AffLibService {
       }
     }
     out.remaining = await this.db.countToRevScan(staleMs);
-    return out;
+    return { ...out, backfilled };
   }
 
   async scan(rawList: string): Promise<any> {

@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, affLibRevScan, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
 import { toUsd } from '../currency';
 import { useIsMobile } from '../useIsMobile';
+import { TrafficHistoryModal } from './TrafficHistoryModal';
 
 const money = (n?: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('en-US'));
 const usdNum = (n?: number | null, cur?: string | null) => (n == null ? null : (toUsd(n, cur || 'USD') as number));
@@ -74,7 +75,7 @@ const COLS: { label: string; key?: string }[] = [
   { label: 'Traffic/th', key: 'traffic_visits' }, { label: 'Bounce', key: 'traffic_bounce' },
   { label: 'Time', key: 'traffic_duration_sec' }, { label: 'Payout', key: 'payout' },
   { label: 'Cookie', key: 'cookie_days' }, { label: 'Note', key: 'note' },
-  { label: 'Update', key: 'updated_at' }, { label: '' },
+  { label: 'Update', key: 'updated_at' }, { label: 'Action' },
 ];
 
 // Thời điểm dòng được quét/sửa gần nhất (updated_at), tách 2 dòng: ngày ở trên, giờ ở dưới.
@@ -135,7 +136,7 @@ function AffLibCard({ r, onDetect, onEdit, onTraffic, onDel, scanning }: {
         <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex', gap: 6 }}>
           <button className="srcbtn lcbtn" title="Quét affiliate domain này" onClick={onDetect} disabled={scanning}>{scanning ? '⏳' : '⟳'}</button>
           <button className="srcbtn lcbtn" title="Sửa affiliate" onClick={onEdit}>✎</button>
-          <button className="srcbtn lcbtn" title="Dán traffic" onClick={onTraffic}>📊</button>
+          <button className="srcbtn lcbtn" title="Traffic 12 tháng (AITDK) + lưu DB" onClick={onTraffic}>📊</button>
           <button className="srcbtn lcbtn" title="Xoá" onClick={onDel}>🗑</button>
         </span>
         {u && <span className="fbplat" style={{ marginLeft: 'auto', textAlign: 'right', fontSize: 11 }}>{u.date}<br />{u.time}</span>}
@@ -156,6 +157,8 @@ export function AffLibraryPanel() {
   const [dns, setDns] = useState<string | null>(null); // kết quả lần lọc DNS gần nhất
   const [traf, setTraf] = useState<string | null>(null); // kết quả lần điền traffic gần nhất
   const [rev, setRev] = useState<string | null>(null);   // kết quả lần Scan Revenue gần nhất
+  // Domain đang mở popup lịch sử traffic ≥12 tháng — DÙNG CHUNG component + dữ liệu với /affnet/{net}.
+  const [histWeb, setHistWeb] = useState<string | null>(null);
   const [scanning, setScanning] = useState<string | null>(null); // domain đang quét bằng nút ⟳
   const [scanMsg, setScanMsg] = useState<string | null>(null); // kết quả quét 1 domain gần nhất
   const [sort, setSort] = useState(DEFAULT_SORT);
@@ -453,7 +456,7 @@ export function AffLibraryPanel() {
           {items.map((r) => (
             <AffLibCard key={r.web} r={r} scanning={scanning === r.web}
                         onDetect={() => detectRow(r.web)} onEdit={() => openEdit(r)}
-                        onTraffic={() => setTraffic({ web: r.web, text: '' })} onDel={() => del(r.web)} />
+                        onTraffic={() => setHistWeb(r.web)} onDel={() => del(r.web)} />
           ))}
           {!items.length && !loading && <div style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Không có dữ liệu.</div>}
         </div>
@@ -520,7 +523,10 @@ export function AffLibraryPanel() {
                     {scanning === r.web ? '⏳' : '⟳'}
                   </button>{' '}
                   <button className="srcbtn" title="Sửa affiliate" onClick={() => openEdit(r)} style={{ padding: '2px 8px' }}>✎</button>{' '}
-                  <button className="srcbtn" title="Dán traffic" onClick={() => setTraffic({ web: r.web, text: '' })} style={{ padding: '2px 8px' }}>📊</button>{' '}
+                  {/* 📊 — CÙNG hành vi với nút traffic ở /affnet/{net}: mở popup lịch sử ≥12 tháng, dùng
+                      CHUNG component TrafficHistoryModal và chung dữ liệu (aff_domain_traffic_month).
+                      Việc dán traffic tay chuyển vào form ✎ để cột Action không phình thêm icon. */}
+                  <button className="srcbtn" title="Traffic 12 tháng (AITDK) + lưu DB" onClick={() => setHistWeb(r.web)} style={{ padding: '2px 8px' }}>📊</button>{' '}
                   <button className="srcbtn" title="Xoá" onClick={() => del(r.web)} style={{ padding: '2px 8px' }}>🗑</button>
                 </td>
                 {junkMode && <td style={{ ...td, whiteSpace: 'normal', maxWidth: 220, color: '#b45309' }}>{junkReason(r)}</td>}
@@ -558,12 +564,22 @@ export function AffLibraryPanel() {
             <label style={{ fontSize: 12 }}>Payout<input value={edit.payout} onChange={(e) => setEdit({ ...edit, payout: e.target.value })} inputMode="decimal" style={inp} /></label>
             <label style={{ fontSize: 12 }}>Cookie (ngày)<input value={edit.cookie_days} onChange={(e) => setEdit({ ...edit, cookie_days: e.target.value })} inputMode="numeric" style={inp} /></label>
             <label style={{ fontSize: 12 }}>Note<input value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} style={inp} /></label>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              {/* Lối vào DÁN traffic tay — trước đây là icon 📊 riêng ở cột Action; nay 📊 mở popup
+                  12 tháng nên gom việc dán tay vào đây. Dùng khi AITDK không có dữ liệu cho domain. */}
+              <button className="srcbtn" style={{ marginRight: 'auto' }} title="Dán khối Traffic Overview từ extension AITDK"
+                onClick={() => { const w = edit.web; setEdit(null); setTraffic({ web: w, text: '' }); }}>📊 Dán traffic tay</button>
               <button className="srcbtn" onClick={() => setEdit(null)}>Huỷ</button>
               <button className="srcbtn active" onClick={saveEdit} disabled={busy}>{busy ? '…' : 'Lưu'}</button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Popup lịch sử traffic ≥12 tháng — CÙNG component và CÙNG dữ liệu với /affnet/{net}.
+          save → ghi vào aff_domain_traffic + aff_domain_traffic_month (lũy tiến), rồi tải lại bảng. */}
+      {histWeb && (
+        <TrafficHistoryModal domain={histWeb} save onClose={() => setHistWeb(null)} onSaved={() => { void load(); }} />
       )}
 
       {traffic && (
