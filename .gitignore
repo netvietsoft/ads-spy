@@ -18,9 +18,27 @@ Screen shoot/
 # proxy credentials — KHONG commit
 scripts/proxies.txt
 logs/
+# `scripts/proxies.txt` ở trên có dấu / nên bị anchor vào ROOT → bỏ sót proxy.txt ở thư mục khác.
+# 2 dòng dưới KHÔNG có dấu / nên chặn ở MỌI cấp (đã có 15 dòng user:pass ở
+# apps/web/app/traffictool/proxy.txt và "Traffic tool/proxy.txt").
+proxy.txt
+proxies.txt
 
 # Dump DB tải về (884MB+) — repo PUBLIC, tuyệt đối không commit. Xem docs/11-restart-stack.md.
 downloads/
 
 # graphify knowledge graph (artifact, build lại bằng `graphify update .`)
 graphify-out/
+
+# Thư mục nháp tool traffic Python — chứa proxy.txt (credential) + raw dump ~500KB của 1 lần chạy thử.
+# Bản chính thức đã port sang apps/api/src/traffic/, thư mục này chỉ để tham khảo local.
+Traffic tool/
+
+# Backup zip source của CHÍNH repo này (old/ads-spy-main.zip ~907KB) — binary không diff được,
+# lọt vào history là vĩnh viễn dù có xoá sau.
+old/
+*.zip
+
+# .claude/settings.json: hook PreToolUse tự chạy `graphify hook-guard` mỗi lần Bash/Read.
+# Repo PUBLIC → commit lên là ép mọi người clone về cũng bị chạy lệnh đó. Cấu hình máy cá nhân.
+.claude/settings.json
