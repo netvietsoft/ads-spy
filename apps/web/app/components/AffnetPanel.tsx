@@ -205,10 +205,9 @@ function HostRowCard({ p, sel, onSelect, onHistory, onEditRow, onRescan, onDelet
          title={shop ? 'Chạm để xem chi tiết shop trong local DB' : undefined}>
       {/* Dòng tiêu đề: tên chương trình nếu có, không thì chính domain — kèm badge trạng thái quét. */}
       <div className="fbpage" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
-        <span style={{ minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center' }}>{shopDot(p)}{p.program_name || p.slug}</span>
-          <div style={{ opacity: 0.6, fontSize: 11, overflowWrap: 'anywhere' }}>{p.slug}</div>
-        </span>
+        {/* KHÔNG hiện ID (slug) nữa: nhiều net dùng chính ID làm tên dự án nên dòng dưới lặp y hệt dòng
+            trên (vd goaffpro: "7016832" / "7016832"). Cần ID thì mở form ✎ — nó hiện <code>{slug}</code>. */}
+        <span style={{ minWidth: 0, display: 'inline-flex', alignItems: 'center' }}>{shopDot(p)}{p.program_name || p.slug}</span>
         {hostBadge(p)}
       </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -270,7 +269,9 @@ export function AffnetPanel() {
   const [data, setData] = useState<{ rows: AffHostRow[]; total: number }>({ rows: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [filter, setFilter] = useState<AffHostFilter>('all');
+  // Mặc định 'active' (Có chương trình) chứ không phải 'all': net lớn có hàng chục nghìn domain đã quét
+  // mà không có affiliate (goaffpro.com: 22.486 domain), mở ra thấy toàn dòng rỗng là vô ích.
+  const [filter, setFilter] = useState<AffHostFilter>('active');
   const [minPct, setMinPct] = useState<number | null>(null);
   const [maxPct, setMaxPct] = useState<number | null>(null);
   const [q, setQ] = useState('');
@@ -654,15 +655,28 @@ export function AffnetPanel() {
             {netRevMsg && <span className="hint" style={{ margin: 0 }}>{netRevMsg}</span>}
           </div>
           <p className="hint" style={{ marginTop: 0 }}>
-            Liệt kê <b>toàn bộ domain đã phát hiện</b> của net này (kể cả domain quét rồi không có affiliate và
-            domain chưa quét) — dùng ô lọc để xem riêng từng nhóm.
+            Mặc định chỉ hiện domain <b>có chương trình affiliate</b>. Đổi ô lọc sang “Tất cả domain” để xem
+            <b> toàn bộ domain đã phát hiện</b>, kể cả domain quét rồi không có affiliate và domain chưa quét.
           </p>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
-            {/* Lọc trạng thái quét — 4 nhóm phủ kín "tất cả". */}
-            <select className="fbselect" value={filter} onChange={(e) => { setFilter(e.target.value as AffHostFilter); setPage(1); }} title="Lọc theo trạng thái quét">
-              {HOST_FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
-            </select>
+            {/* Ô lọc và menu sort ĐI CÙNG 1 HÀNG (mobile). Nhóm chung trong 1 flex vì để rời ra thì
+                flexWrap của hàng ngoài tách chúng sang 2 dòng khác nhau. */}
+            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap', minWidth: 0 }}>
+              {/* Lọc trạng thái quét — 4 nhóm phủ kín "tất cả". */}
+              <select className="fbselect" style={isMobile ? { minWidth: 0, flex: '1 1 0' } : undefined}
+                value={filter} onChange={(e) => { setFilter(e.target.value as AffHostFilter); setPage(1); }} title="Lọc theo trạng thái quét">
+                {HOST_FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
+              </select>
+              {/* Sort: CHỈ mobile mới có menu select (không bấm được header bảng). Desktop dùng mũi tên ▲▼ ở header. */}
+              {isMobile && (
+                <select className="fbselect" style={{ minWidth: 0, flex: '1 1 0' }} value={sort}
+                  onChange={(e) => { const k = e.target.value; setSort(k); setDir(ASC_FIRST.has(k) ? 'asc' : 'desc'); setPage(1); }}
+                  title="Sắp xếp">
+                  {HOST_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                </select>
+              )}
+            </span>
             <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>%commit:&nbsp;
               <input className="fbselect" style={{ width: 64 }} inputMode="numeric" placeholder="từ"
                 defaultValue={minPct ?? ''} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
@@ -672,25 +686,19 @@ export function AffnetPanel() {
                 defaultValue={maxPct ?? ''} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                 onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v); if (n !== maxPct) { setMaxPct(Number.isFinite(n as number) ? n : null); setPage(1); } }} />
             </label>
-            {/* Ô tìm domain và menu sort đi LIỀN nhau trong cùng 1 nhóm flex: để rời ra ngoài thì trên
-                mobile chúng bị wrap tách sang 2 dòng khác nhau, menu sort không còn nằm ngay sau domain. */}
             <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
               <input className="fbselect" placeholder="Tìm domain / tên dự án…" value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') applyQ(); }} />
               {(q || qInput) && <button className="srcbtn" onClick={() => { setQInput(''); setQ(''); setPage(1); }}>✕</button>}
-              {/* Sort: CHỈ mobile mới có menu select (không bấm được header bảng). Desktop dùng mũi tên ▲▼ ở header. */}
-              {isMobile && (
-                <select className="fbselect" value={sort}
-                  onChange={(e) => { const k = e.target.value; setSort(k); setDir(ASC_FIRST.has(k) ? 'asc' : 'desc'); setPage(1); }}
-                  title="Sắp xếp">
-                  {HOST_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                </select>
-              )}
             </span>
             {loading && <span className="spinner" />}
-            <button className="srcbtn" style={{ marginLeft: 'auto' }} onClick={exportExcel} disabled={data.total === 0}
-              title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel`}>⬇ Xuất Excel</button>
+            {/* Xuất Excel CHỈ desktop: trên mobile nút này chiếm cả 1 dòng, mà tải file .xlsx trên điện
+                thoại cũng gần như không dùng được. */}
+            {!isMobile && (
+              <button className="srcbtn" style={{ marginLeft: 'auto' }} onClick={exportExcel} disabled={data.total === 0}
+                title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel`}>⬇ Xuất Excel</button>
+            )}
           </div>
           {err && <div className="err">{err}</div>}
 

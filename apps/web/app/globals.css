@@ -413,12 +413,15 @@ button.ghost.danger { color: var(--danger); }
   .affnetcard .fbfoot .dl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Chạm vào thẻ thì thẻ nhấc lên. :hover CHỈ cho thiết bị có hover thật (mobile tap hay bị "hover
      dính" sau khi chạm), :active dùng cho mọi thiết bị. */
-  .affnetcard:active { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+  /* Nền xám nhẹ khi chạm/hover. color-mix theo --text nên tự đúng ở CẢ theme sáng và tối (theme tối
+     mà hardcode #f1f2f4 là thẻ loè sáng lên). */
+  .affnetcard:active { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); background: color-mix(in srgb, var(--text) 8%, var(--panel)); }
   @media (hover: hover) {
-    .affnetcard:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+    .affnetcard:hover { transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); background: color-mix(in srgb, var(--text) 6%, var(--panel)); }
   }
-  /* Thẻ vừa bấm: GIỮ trạng thái nhấc + đổi màu viền cho nổi (khác :active chỉ có lúc đang giữ tay). */
-  .affnetcard.sel { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+  /* Thẻ vừa bấm: GIỮ trạng thái nhấc + nền xám + đổi màu viền (khác :active chỉ có lúc đang giữ tay). */
+  .affnetcard.sel { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); background: color-mix(in srgb, var(--text) 8%, var(--panel)); }
+  .affnetcard { transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease; }
 
   /* Bảng đứng lẻ (report/modal) giữ full-width; nếu quá rộng thì khung cha (overflow:auto) tự cuộn */
   .localtbl { width: 100%; }
