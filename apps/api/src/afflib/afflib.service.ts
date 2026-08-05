@@ -96,6 +96,31 @@ export class AffLibService {
     }
   }
 
+  // Chặn thời gian cho Scan Revenue. Cloudflare cắt request ở ~100s rồi trả 524 — đã xảy ra thật với
+  // POST /aff-lib/rev-scan-net {"net":"goaffpro.com","limit":20}.
+  // Đo thật: 1 domain bình thường 4,6-6,9s, NHƯNG lô 20 domain chỉ quét được 3 trong 74,9s (~25s/domain)
+  // vì có domain rơi vào nhánh timeout mạng. Nên CẦN CẢ HAI mốc:
+  //  · REQ_BUDGET_MS: không BẮT ĐẦU domain mới sau mốc này.
+  //  · ONE_DOMAIN_MS: chặn trên cho TỪNG domain. Thiếu nó thì ngân sách vô nghĩa — 1 domain treo là
+  //    vượt 100s bất kể đã tiêu bao nhiêu.
+  // Xấu nhất = 20s + 20s + count (0,1s) ≈ 40s, còn xa 100s.
+  // FE vốn lặp cho tới khi `remaining` không giảm nữa nên lô ngắn KHÔNG làm mất domain nào.
+  private static readonly REQ_BUDGET_MS = 20_000;
+  private static readonly ONE_DOMAIN_MS = 20_000;
+
+  // revScanOne có chặn trên. Trả 'timeout' thay vì ném, để hàm gọi ghi rev_scan_at (khỏi tắc hàng đợi)
+  // mà TUYỆT ĐỐI không ghi cột shopify — hết thời gian là CHƯA KẾT LUẬN, chấm đỏ ở đây là loại trừ oan
+  // vĩnh viễn (cùng quy tắc với nhánh lỗi mạng trong revScanOne).
+  private async revScanOneCapped(row: { web: string; shop_id: string | null; shopify: number | null }) {
+    let timer: NodeJS.Timeout | undefined;
+    const cap = new Promise<'timeout'>((res) => { timer = setTimeout(() => res('timeout'), AffLibService.ONE_DOMAIN_MS); });
+    try {
+      return await Promise.race([this.revScanOne(row), cap]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   // Scan Revenue giới hạn trong 1 NET (nút ở /affnet/{net}) — dùng LẠI revScanOne, cùng quy tắc
   // chấm xanh/đỏ và cùng cách ghi doanh thu như nút ở /afflibrary.
   async revScanNet(net: string, limit = 20): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; seeded?: number; error?: string }> {
@@ -106,9 +131,12 @@ export class AffLibService {
     const seeded = await this.db.seedFromNet(n).catch(() => 0);
     const rows = await this.db.rowsToRevScanByNet(n, limit);
     const out = { scanned: 0, revved: 0, shopify: 0, notShopify: 0, remaining: 0 as number, error: undefined as string | undefined };
+    const deadline = Date.now() + AffLibService.REQ_BUDGET_MS;
     for (const r of rows) {
+      if (Date.now() > deadline) break; // hết ngân sách → KHÔNG bắt đầu domain mới, FE gọi lại lô sau
       try {
-        const k = await this.revScanOne(r);
+        const k = await this.revScanOneCapped(r);
+        if (k === 'timeout') { await this.db.setRevScanned(r.web, { err: 'quá thời gian' }).catch(() => {}); break; }
         out.scanned++;
         if (k === 'revved') out.revved++;
         else if (k === 'shopify') out.shopify++;
@@ -131,9 +159,14 @@ export class AffLibService {
     const backfilled = await this.db.backfillRevTotal().catch(() => 0);
     const rows = await this.db.rowsToRevScan(limit, staleMs);
     const out = { scanned: 0, revved: 0, shopify: 0, notShopify: 0, remaining: 0 as number, error: undefined as string | undefined };
+    // Cùng ngân sách như revScanNet: nút ở /afflibrary cũng gọi thẳng qua Cloudflare nên cũng 524 được.
+    // Job nền gọi hàm này (staleMs != null) không bị Cloudflare, nhưng lô ngắn cũng vô hại.
+    const deadline = Date.now() + AffLibService.REQ_BUDGET_MS;
     for (const r of rows) {
+      if (Date.now() > deadline) break; // hết ngân sách → KHÔNG bắt đầu domain mới, FE/job gọi lại lô sau
       try {
-        const k = await this.revScanOne(r);
+        const k = await this.revScanOneCapped(r);
+        if (k === 'timeout') { await this.db.setRevScanned(r.web, { err: 'quá thời gian' }).catch(() => {}); break; }
         out.scanned++;
         if (k === 'revved') out.revved++;
         else if (k === 'shopify') out.shopify++;

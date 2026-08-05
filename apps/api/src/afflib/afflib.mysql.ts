@@ -206,14 +206,27 @@ export class AffLibMysql {
     );
   }
 
+  // Domain của 1 net, đã ép COLLATE và bỏ trùng — VẬT CHẤT HOÁ thành bảng dẫn xuất.
+  //
+  // VÌ SAO PHẢI VIẾT KIỂU NÀY (đo thật trên net goaffpro.com, 22.481 dòng aff_program):
+  //  · `JOIN aff_library al ON al.web = p.web COLLATE utf8mb4_unicode_ci` → COUNT mất 302,7s.
+  //    EXPLAIN: al quét ALL 38.393 dòng, mỗi dòng lại ref 11.543 dòng — ép COLLATE lên vế so sánh
+  //    làm MẤT index PRIMARY của aff_library.web. Đây chính là thứ làm POST /aff-lib/rev-scan-net
+  //    trả 524 (Cloudflare cắt ở ~100s).
+  //  · Cùng câu mà bỏ COLLATE: 0,1s — nhưng KHÔNG được bỏ, vì prod từng lệch collation
+  //    (unicode_ci vs 0900_ai_ci do migrate) và bỏ ra là 500 ngay (commit 365ac99).
+  //  · Đưa cast VÀO trong bảng dẫn xuất: 0,11s (nhanh 2.750×) mà vẫn giữ COLLATE. Cast chạy 1 lần
+  //    khi vật chất hoá thay vì chạy trên từng dòng của phép so sánh.
+  //  · Đã đo `IN (subquery)` 163s và `EXISTS` 165s — cả hai đều KHÔNG cứu được, đừng thử lại.
+  private static readonly NET_WEBS = `(SELECT DISTINCT web COLLATE utf8mb4_unicode_ci AS w FROM aff_program WHERE net = ?)`;
+
   // Hàng đợi Scan Revenue giới hạn trong 1 NET: các domain (aff_program.web của net đó) đang thiếu doanh thu.
   async rowsToRevScanByNet(net: string, limit = 20): Promise<{ web: string; shop_id: string | null; shopify: number | null }[]> {
     const pool = await this.sh.getPool();
     const [rows] = await pool.query(
-      `SELECT DISTINCT al.web, al.shop_id, al.shopify
-       FROM aff_program p
-       JOIN aff_library al ON al.web = p.web COLLATE utf8mb4_unicode_ci
-       WHERE p.net = ? AND ${REV_QUEUE_COND}
+      `SELECT al.web, al.shop_id, al.shopify
+       FROM aff_library al JOIN ${AffLibMysql.NET_WEBS} d ON d.w = al.web
+       WHERE ${REV_QUEUE_COND}
        ORDER BY al.shop_id IS NULL, al.web ASC LIMIT ?`,
       [net, Math.max(1, Math.min(200, limit))],
     );
@@ -223,9 +236,8 @@ export class AffLibMysql {
   async countToRevScanByNet(net: string): Promise<number> {
     const pool = await this.sh.getPool();
     const [r] = await pool.query(
-      `SELECT COUNT(DISTINCT al.web) n FROM aff_program p
-       JOIN aff_library al ON al.web = p.web COLLATE utf8mb4_unicode_ci
-       WHERE p.net = ? AND ${REV_QUEUE_COND}`,
+      `SELECT COUNT(*) n FROM aff_library al JOIN ${AffLibMysql.NET_WEBS} d ON d.w = al.web
+       WHERE ${REV_QUEUE_COND}`,
       [net],
     );
     return Number((r as any[])[0].n) || 0;
