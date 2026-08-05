@@ -245,13 +245,15 @@ export class AffnetService {
   async fetchStep(cfg: { batch: number; paceMs: number; concurrency?: number }): Promise<{
     net: string | null; checked: number; active: number; inactive: number; notfound: number;
     blocked: number; laneErrors: number; lanes: number;
+    // Lý do lỗi THẬT của làn đầu tiên bị lỗi — để log không phải đoán "proxy chết?" (xem chỗ catch).
+    laneErrorMsg?: string;
   }> {
     await this.db.ensureTables();
     // Proxy xoay: đọc pool sh_proxy (Settings → Proxy) MỖI LƯỢT → đổi proxy trên web là lượt sau có hiệu lực.
     // Pool rỗng (hoặc mọi proxy status='die') → setProxies([]) tạo đúng 1 làn TRỰC TIẾP, job vẫn chạy.
     await this.fetch.setProxies(await this.db.listHttpProxies());
     const lanes = Math.max(1, Math.min(cfg.concurrency ?? this.fetch.laneCount(), this.fetch.laneCount()));
-    const out = { net: null as string | null, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes };
+    const out = { net: null as string | null, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes, laneErrorMsg: undefined as string | undefined };
 
     // XOAY VÒNG công bằng: net (enabled) CÒN host chờ, fetch_polled_at CŨ NHẤT — thay vòng lặp cũ (listNets
     // ORDER BY net alphabet + break) từng để 1 net đầu bảng chữ cái độc chiếm MỌI lượt fetch.
@@ -294,9 +296,14 @@ export class AffnetService {
         try {
           r = await this.fetch.fetchCampaign(n.net, h.slug, fake, lane, auth);
         } catch (e) {
-          // Proxy chết / lỗi mạng của LÀN này → coi như CHƯA BIẾT (đừng kết luận), khai tử làn này,
-          // các làn khác chạy tiếp. Đếm riêng để biết proxy hỏng chứ không phải Cloudflare chặn.
+          // Lỗi của LÀN này (proxy không kết nối được, timeout điều hướng, DNS, Playwright crash…) → coi
+          // như CHƯA BIẾT (đừng kết luận), khai tử làn này, các làn khác chạy tiếp.
+          //
+          // GIỮ LẠI LÝ DO THẬT: trước đây `e` bị ném đi, chỉ còn con số laneErrors, rồi log ở tầng job tự
+          // ĐOÁN là "proxy chết?" — đoán sai thì người dùng đi kiểm proxy (thấy proxy sống hết) và bế tắc,
+          // đúng tình huống đã xảy ra thật. Giữ thông điệp ĐẦU TIÊN là đủ để biết đi hướng nào.
           out.laneErrors++;
+          if (!out.laneErrorMsg) out.laneErrorMsg = String((e as Error)?.message || e).slice(0, 200);
           await this.db.bumpHostTries(n.net, h.slug);
           return;
         }

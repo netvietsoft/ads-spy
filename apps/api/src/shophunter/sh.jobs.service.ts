@@ -28,6 +28,18 @@ const DESC: Record<JobName, string> = {
 const IDLE_MS = 120000;  // 2' khi hết việc
 const BLOCK_MS = 300000; // 5' khi bị chặn
 const TICK_MS = 2000;    // nhịp kiểm cờ enabled (để tắt nhanh)
+
+// Thông điệp cho lượt afffetch có làn bị lỗi. KHÔNG ĐOÁN "proxy chết?" nữa: AffnetService.fetchStep nay
+// trả `laneErrorMsg` = lý do THẬT của làn lỗi đầu tiên. Đoán sai làm người dùng đi kiểm proxy, thấy proxy
+// sống hết rồi bế tắc — đã xảy ra thật trên prod (3 làn lỗi mà proxy sống cả 3).
+// proxyCount < 0 nghĩa là chưa đếm proxy (nhánh cảnh báo phụ, không cần).
+function laneWhy(r: { laneErrors?: number; laneErrorMsg?: string }, proxyCount: number): string {
+  const n = r.laneErrors || 0;
+  const co = proxyCount >= 0 ? ` (đang có ${proxyCount} proxy bật)` : '';
+  return r.laneErrorMsg
+    ? `${n} làn lỗi${co} — lý do: ${r.laneErrorMsg}`
+    : `${n} làn lỗi${co} — không bắt được lý do; kiểm proxy ở Cài đặt → Proxy (bấm Test) và log ads-spy-api.`;
+}
 const PRODUCTREV_STALE_MS = 20 * 3600000; // sp đồng bộ lại sau ~20h (xoay vòng doanh thu cao→thấp)
 
 // Tham số tốc độ chỉnh từ web (lưu DB job:<name>:cfg) — đọc lúc chạy → sửa sống, không cần restart.
@@ -362,11 +374,11 @@ export class ShJobsService implements OnModuleInit {
       const proxyCount = (await this.mysql.listProxiesFull(true).catch(() => [])).length;
       const why = proxyCount === 0
         ? 'chưa cấu hình proxy nào (đang chạy 1 làn trực tiếp) — thêm proxy ở Cài đặt → Proxy để đỡ bị chặn.'
-        : `${r.laneErrors} làn proxy lỗi (proxy chết?) — kiểm ở Cài đặt → Proxy, bấm Test.`;
+        : laneWhy(r, proxyCount);
       await this.mysql.appendJobLog('afffetch', 'warn', `Mọi làn đều lỗi/bị chặn lượt này (KHÔNG PHẢI đã hết dự án cần quét) — ${why}`).catch(() => {});
       return { pace: BLOCK_MS };
     }
-    if (r?.laneErrors) await this.mysql.appendJobLog('afffetch', 'warn', `${r.laneErrors} làn proxy lỗi (proxy chết?) — kiểm ở Cài đặt → Proxy, bấm Test.`).catch(() => {});
+    if (r?.laneErrors) await this.mysql.appendJobLog('afffetch', 'warn', laneWhy(r, -1)).catch(() => {});
     // CÙNG LOẠI với FIX 10 ở trên: net kiểu API cần token (uppromote) mà CHƯA dán token thì trả
     // checked=0 với laneErrors/blocked = 0 → rơi vào nhánh "Hết dự án cần quét" bên dưới và báo NGƯỢC
     // hẳn sự thật (người dùng tưởng đã quét xong, trong khi thực tế chưa gọi API lần nào). Phải xét

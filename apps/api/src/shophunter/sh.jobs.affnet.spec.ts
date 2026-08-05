@@ -79,7 +79,7 @@ describe('2 job affnet', () => {
 
   // FIX 10: mọi làn lỗi (checked=0) nhưng net vẫn CÒN dự án chờ — trước đây log "Hết dự án cần quét"
   // (idle) đồng thời với cảnh báo proxy lỗi, đọc như hàng đợi rỗng dù ~1370 host vẫn đang chờ.
-  it('afffetch: mọi làn lỗi (checked=0, laneErrors>0) + CÓ proxy cấu hình → KHÔNG log "Hết dự án", cảnh báo "proxy lỗi", pace BLOCK', async () => {
+  it('afffetch: mọi làn lỗi (checked=0, laneErrors>0) + CÓ proxy cấu hình → KHÔNG log "Hết dự án", pace BLOCK', async () => {
     const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'getrewardful.com', checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 2, lanes: 2 }), discoverStep: jest.fn() };
     const mysql = mkMysql();
     mysql.listProxiesFull.mockResolvedValue([{ id: 1 }, { id: 2 }]);
@@ -88,8 +88,32 @@ describe('2 job affnet', () => {
     expect(r.pace).toBeGreaterThanOrEqual(300000); // BLOCK_MS, không phải IDLE_MS
     const logs = mysql.appendJobLog.mock.calls.map((c: any[]) => c[2]);
     expect(logs.some((m: string) => m.includes('Hết dự án'))).toBe(false);
-    expect(logs.some((m: string) => m.includes('proxy lỗi'))).toBe(true);
+    expect(logs.some((m: string) => /2 làn lỗi/.test(m) && m.includes('2 proxy bật'))).toBe(true);
     expect(logs.some((m: string) => m.includes('chưa cấu hình proxy'))).toBe(false);
+    // KHÔNG được đoán nguyên nhân: proxy có thể sống hết mà làn vẫn lỗi (đã xảy ra thật trên prod).
+    expect(logs.some((m: string) => /proxy chết/.test(m))).toBe(false);
+  });
+
+  // fetchStep nay trả laneErrorMsg = lý do THẬT của làn lỗi đầu tiên. Trước đây `e` bị ném đi nên log chỉ
+  // còn con số rồi tự đoán "proxy chết?" — người dùng đi kiểm proxy, thấy sống hết, và bế tắc.
+  it('afffetch: có laneErrorMsg → log ĐƯA RA lý do thật, không đoán', async () => {
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'x.com', checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 3, lanes: 3, laneErrorMsg: 'page.goto: Timeout 30000ms exceeded' }), discoverStep: jest.fn() };
+    const mysql = mkMysql();
+    mysql.listProxiesFull.mockResolvedValue([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    const svc = new ShJobsService({} as any, mysql as any, {} as any, aff as any, {} as any);
+    await (svc as any).step('afffetch', true);
+    const logs = mysql.appendJobLog.mock.calls.map((c: any[]) => c[2]);
+    expect(logs.some((m: string) => m.includes('Timeout 30000ms exceeded'))).toBe(true);
+    expect(logs.some((m: string) => /proxy chết/.test(m))).toBe(false);
+  });
+
+  it('afffetch: KHÔNG bắt được lý do → nói thẳng "không bắt được lý do", không quy cho proxy', async () => {
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'x.com', checked: 2, active: 2, inactive: 0, notfound: 0, blocked: 0, laneErrors: 1, lanes: 2 }), discoverStep: jest.fn() };
+    const mysql = mkMysql();
+    const svc = new ShJobsService({} as any, mysql as any, {} as any, aff as any, {} as any);
+    await (svc as any).step('afffetch', true);
+    const logs = mysql.appendJobLog.mock.calls.map((c: any[]) => c[2]);
+    expect(logs.some((m: string) => m.includes('không bắt được lý do'))).toBe(true);
   });
 
   it('afffetch: mọi làn lỗi + KHÔNG proxy nào cấu hình → cảnh báo phân biệt rõ "chưa cấu hình proxy" (khác thông điệp "proxy lỗi")', async () => {
