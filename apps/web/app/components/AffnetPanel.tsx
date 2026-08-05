@@ -85,7 +85,8 @@ const HOST_SORTS: { key: string; label: string; asc?: boolean }[] = [
   { key: 'pct', label: '%commit ↓' }, { key: 'bounce', label: 'Bounce ↓' }, { key: 'time', label: 'Time-on-site ↓' },
   { key: 'cookie', label: 'Cookie ↓' }, { key: 'payout', label: 'Payout ↓' },
   { key: 'name', label: 'Tên dự án (A→Z)', asc: true }, { key: 'web', label: 'Web (A→Z)', asc: true },
-  { key: 'rev', label: 'DT tháng ↓' },
+  { key: 'rev', label: 'DT tháng ↓' }, { key: 'revday', label: 'DT ngày ↓' },
+  { key: 'revweek', label: 'DT tuần ↓' }, { key: 'revtotal', label: 'DT tổng ↓' },
 ];
 // Cột sort mặc định tăng dần (tên/domain) — số liệu thì mặc định giảm dần.
 const ASC_FIRST = new Set(HOST_SORTS.filter((s) => s.asc).map((s) => s.key));
@@ -217,6 +218,15 @@ function HostRowCard({ p, sel, onSelect, onHistory, onEditRow, onRescan, onDelet
         <span>Cookie {p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</span>
         <span>Payout {orDash(p.payout_threshold)}</span>
       </div>
+      {/* Cùng bộ doanh thu với /afflibrary. Chỉ hiện khi có ÍT NHẤT 1 số — domain chưa scan revenue thì
+          3 dấu — nằm chiếm 1 dòng của thẻ mà không nói thêm điều gì. */}
+      {(p.rev_day != null || p.rev_week != null || p.rev_total != null) && (
+        <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <span>DT ngày <b className="rev">{revUsd(p.rev_day, p.rev_currency)}</b></span>
+          <span>DT tuần <b className="rev">{revUsd(p.rev_week, p.rev_currency)}</b></span>
+          <span>DT tổng <b className="rev">{revUsd(p.rev_total, p.rev_currency)}</b></span>
+        </div>
+      )}
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <span>Traffic/th <b className="rev">{fmtVisits(p.traffic_visits)}</b></span>
         <span>Bounce <b>{fmtBounce(p.traffic_bounce)}</b></span>
@@ -558,9 +568,12 @@ export function AffnetPanel() {
         Shopify: p.shopify === 1 || p.shop_id ? 'có' : p.shopify === 0 ? 'không' : '',
         'Shop ID': p.shop_id || '',
         'DT tháng (gốc)': p.rev_month ?? '',
+        'DT ngày (gốc)': p.rev_day ?? '',
+        'DT tuần (gốc)': p.rev_week ?? '',
         'DT tổng (gốc)': p.rev_total ?? '',
         'Tiền tệ': p.rev_currency || '',
         'DT tháng (USD)': (toUsd(p.rev_month, p.rev_currency) as number | null) ?? '',
+        'DT tổng (USD)': (toUsd(p.rev_total, p.rev_currency) as number | null) ?? '',
         '%commit': pctOrFlat(p),
         '%commit (số)': p.commission_pct ?? '',
         'Phí cố định': p.commission_flat ?? '',
@@ -780,7 +793,11 @@ export function AffnetPanel() {
                   <th>Link tham gia</th>
                   {th('web', 'Web')}
                   {th('pct', '%commit')}
+                  {/* Bộ cột doanh thu giống /afflibrary: tháng · ngày · tuần · tổng (đều từ aff_library). */}
                   {th('rev', 'DT tháng')}
+                  {th('revday', 'DT ngày')}
+                  {th('revweek', 'DT tuần')}
+                  {th('revtotal', 'DT tổng')}
                   <th>Note</th>
                   {th('cookie', 'Cookie')}
                   {th('payout', 'Payout')}
@@ -814,7 +831,11 @@ export function AffnetPanel() {
                         <td className="rev" style={{ whiteSpace: 'nowrap' }} title={p.shopify === 1 ? 'Shopify — doanh thu đồng bộ từ Aff Library' : undefined}>
                           {revUsd(p.rev_month, p.rev_currency)}
                         </td>
-                        {/* minWidth: 15 cột + nhiều cột nowrap làm Note bị bóp còn ~1 chữ/dòng → dòng cao vọt. */}
+                        {/* Cùng bộ với /afflibrary. Mọi cột rev_* đều là TIỀN GỐC của shop → phải qua revUsd. */}
+                        <td className="rev" style={{ whiteSpace: 'nowrap' }}>{revUsd(p.rev_day, p.rev_currency)}</td>
+                        <td className="rev" style={{ whiteSpace: 'nowrap' }}>{revUsd(p.rev_week, p.rev_currency)}</td>
+                        <td className="rev" style={{ whiteSpace: 'nowrap' }}>{revUsd(p.rev_total, p.rev_currency)}</td>
+                        {/* minWidth: 18 cột + nhiều cột nowrap làm Note bị bóp còn ~1 chữ/dòng → dòng cao vọt. */}
                         <td className="wrap" style={{ minWidth: '16ch', maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
                         <td>{p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</td>
                         <td>{orDash(p.payout_threshold)}</td>
@@ -846,7 +867,7 @@ export function AffnetPanel() {
                     );
                   })}
                   {data.rows.length === 0 && !loading && (
-                    <tr><td colSpan={15} className="hint">Không có domain khớp bộ lọc.</td></tr>
+                    <tr><td colSpan={18} className="hint">Không có domain khớp bộ lọc.</td></tr>
                   )}
                 </tbody>
               </table>

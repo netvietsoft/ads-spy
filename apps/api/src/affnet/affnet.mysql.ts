@@ -25,8 +25,9 @@ const HOST_SORTS: Record<string, string> = {
   name: 'p.program_name', web: 'p.web', pct: 'p.commission_pct',
   cookie: 'p.cookie_days', payout: 'p.payout_threshold',
   visits: 't.visits', bounce: 't.bounce_rate', time: 't.visit_duration_sec',
-  // Doanh thu tháng lấy từ Aff Library (al.) theo domain — xem LEFT JOIN thứ 3 trong hostList.
-  rev: 'al.rev_month',
+  // Doanh thu lấy từ Aff Library (al.) theo domain — xem LEFT JOIN thứ 3 trong hostList. Cùng bộ cột với
+  // /afflibrary: tháng · ngày · tuần · tổng.
+  rev: 'al.rev_month', revday: 'al.rev_day', revweek: 'al.rev_week', revtotal: 'al.rev_total',
 };
 
 // Bộ lọc trạng thái host. check_status thực tế nhận 5 giá trị: 'active' | 'inactive' | 'notfound' |
@@ -700,7 +701,7 @@ export class AffnetMysql {
               p.status AS program_status, p.fetched_at,
               t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce, t.visit_duration_sec AS traffic_duration_sec,
               t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at,
-              al.rev_month, al.rev_total, al.currency AS rev_currency, al.shop_id, al.shopify
+              al.rev_month, al.rev_day, al.rev_week, al.rev_total, al.currency AS rev_currency, al.shop_id, al.shopify
        ${joins} ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, q.limit, q.offset],
     );

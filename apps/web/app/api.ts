@@ -674,7 +674,8 @@ export interface AffHostRow {
   // Doanh thu lấy từ Aff Library theo domain (LEFT JOIN aff_library) — null nếu domain không có trong kho.
   // rev_* lưu TIỀN GỐC của shop, phải nhân tỉ giá bằng rev_currency khi hiển thị.
   // shop_id có = domain ĐÃ được index vào danh sách shop trong local DB → mở được /shop/{shop_id}.
-  rev_month?: number | null; rev_total?: number | null; rev_currency?: string | null; shopify?: number | null; shop_id?: string | null;
+  rev_month?: number | null; rev_day?: number | null; rev_week?: number | null; rev_total?: number | null;
+  rev_currency?: string | null; shopify?: number | null; shop_id?: string | null;
   traffic_visits: number | null; traffic_bounce: number | null;
   traffic_duration_sec: number | null; traffic_rank: number | null; traffic_updated_at: number | null;
 }
