@@ -67,7 +67,7 @@ export const NET_ELIGIBLE_SQL = '(discover_polled_at IS NULL OR dry_rounds < ? O
 //   · quên NET_FETCHABLE_SQL → adapter chạy ĐÚNG 0 LẦN (0 host nên không bao giờ "còn host chờ"),
 //   · quên vế NOT IN ở pickNetToPoll → discovery cứ dò subdomain của net không có subdomain, đốt lượt vô ích.
 // Cả hai đều KHÔNG làm test nào đỏ nếu để rời rạc — đúng lỗi đã xảy ra ở commit aad442c.
-export const API_PLATFORMS = ['goaffpro', 'affiliatly'] as const;
+export const API_PLATFORMS = ['goaffpro', 'affiliatly', 'uppromote'] as const;
 const API_PLATFORM_SQL = API_PLATFORMS.map((p) => `'${p}'`).join(', ');
 export const NET_FETCHABLE_SQL =
   `(n.platform IN (${API_PLATFORM_SQL}) OR EXISTS (SELECT 1 FROM aff_host h WHERE h.net = n.net AND h.checked_at IS NULL))`;

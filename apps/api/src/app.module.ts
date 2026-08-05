@@ -28,6 +28,7 @@ import { AffnetMysql } from './affnet/affnet.mysql';
 import { AffnetFetch } from './affnet/affnet.fetch';
 import { AffnetGoaffpro } from './affnet/affnet.goaffpro';
 import { AffnetAffiliatly } from './affnet/affnet.affiliatly';
+import { AffnetUppromote } from './affnet/affnet.uppromote';
 import { AffLibController } from './afflib/afflib.controller';
 import { AffLibService } from './afflib/afflib.service';
 import { AffLibMysql } from './afflib/afflib.mysql';
@@ -38,6 +39,6 @@ import { TrafficService } from './traffic/traffic.service';
 @Module({
   imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule, AdminModule],
   controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController, AffLibController, TrafficController],
-  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetGoaffpro, AffnetAffiliatly, AffnetService, AffLibMysql, AffLibDetect, AffLibService, TrafficService],
+  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetGoaffpro, AffnetAffiliatly, AffnetUppromote, AffnetService, AffLibMysql, AffLibDetect, AffLibService, TrafficService],
 })
 export class AppModule {}

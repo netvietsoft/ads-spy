@@ -7,6 +7,7 @@ import { parseTrafficPaste } from './affnet.traffic';
 import { TrafficService } from '../traffic/traffic.service';
 import { AffnetGoaffpro, GOAFFPRO_NET, GOAFFPRO_PAGE_LIMIT, parseGoaffpro, joinUrlOfGoaffpro } from './affnet.goaffpro';
 import { AffnetAffiliatly, AFFILIATLY_NET, AFFILIATLY_PAGE_SIZE, parseAffiliatly, joinUrlOfAffiliatly } from './affnet.affiliatly';
+import { AffnetUppromote, UPPROMOTE_NET, UPPROMOTE_PAGE_LIMIT, parseUppromote, joinUrlOfUppromote } from './affnet.uppromote';
 
 @Injectable()
 export class AffnetService {
@@ -16,6 +17,7 @@ export class AffnetService {
     private readonly traffic: TrafficService,
     private readonly goaffpro?: AffnetGoaffpro,
     private readonly affiliatly?: AffnetAffiliatly,
+    private readonly uppromote?: AffnetUppromote,
   ) {}
 
   // Nhánh cho net kiểu API (goaffpro): phân trang /v1/public/sites rồi ghi thẳng host+program.
@@ -138,6 +140,54 @@ export class AffnetService {
     return out;
   }
 
+  // Nhánh cho uppromote.com — API JSON 1 tầng (mỗi trang đã đủ thông tin, không phải mở trang chi tiết
+  // như affiliatly). Con trỏ KV là SỐ TRANG. Đo thật: 9.496 offer / 95 trang (per_page=100).
+  //
+  // ĐIỂM KHÁC 2 net kia: API này BẮT BUỘC token (gọi trần → 401). Token đọc từ getNetCred, KHÔNG bao giờ
+  // nằm trong code (repo PUBLIC). Chưa có token thì trả `blocked` kèm 1 dòng log nói rõ phải dán ở đâu —
+  // KHÔNG ném lỗi, vì ném là job vào nhánh BLOCK và người dùng chỉ thấy "error" chung chung.
+  private static readonly UPPROMOTE_STEP_BUDGET_MS = 120_000;
+
+  private async fetchStepUppromote(net: string): Promise<{
+    net: string; checked: number; active: number; inactive: number; notfound: number; blocked: number;
+    laneErrors: number; lanes: number; quotaCost: number; needToken?: boolean;
+  }> {
+    const out = { net, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes: 1, quotaCost: 0, needToken: false };
+    if (!this.uppromote) return out;
+    const cred = await this.db.getNetCred(net).catch(() => null);
+    const token = cred?.token?.trim();
+    if (!token) { out.needToken = true; return out; }
+
+    const deadline = Date.now() + AffnetService.UPPROMOTE_STEP_BUDGET_MS;
+    let page = (await this.db.getNetOffset(net)) || 1;
+    do {
+      const { offers, hasNext } = await this.uppromote.page(page, token);
+      out.quotaCost++;
+      if (!offers.length) { page = 1; break; }
+
+      // Ghi host TRƯỚC (aff_host là nguồn của "đã phát hiện"), slug = ID offer — bền qua thời gian.
+      const slugs = offers.map((o) => String(o.id));
+      await this.db.upsertHosts(net, slugs.map((slug) => ({ slug, sources: ['uppromote-api'] })));
+      const now = Date.now();
+      await this.db.upsertProgramBulk(offers.map((o) => ({
+        ...parseUppromote(o), net, slug: String(o.id),
+        joinUrl: joinUrlOfUppromote(o),
+        // Mô tả HTML của offer → re-parse offline được, khỏi cào lại 9.496 offer khi đổi parser.
+        termsText: o.description ? String(o.description).slice(0, 60000) : null,
+        status: 'active', fetchedAt: now,
+      })));
+      await this.db.markHostCheckedBulk(net, slugs, 'active');
+      out.checked += offers.length; out.active += offers.length;
+
+      // simplePaginate: KHÔNG có total/last_page → next_page_url là dấu hiệu DUY NHẤT biết đã hết.
+      // Trang ngắn hơn per_page cũng coi là hết (chốt phụ, khỏi phụ thuộc 1 field duy nhất).
+      if (!hasNext || offers.length < UPPROMOTE_PAGE_LIMIT) { page = 1; break; }
+      page++;
+    } while (Date.now() < deadline);
+    await this.db.setNetOffset(net, page);
+    return out;
+  }
+
   // Giống normalizeDomain của search.service.ts: bỏ scheme, bỏ www., cắt tại '/', lowercase.
   normalizeNet(raw: string): string {
     return String(raw || '').trim().toLowerCase()
@@ -151,6 +201,8 @@ export class AffnetService {
     // affiliatly: directory HTML công khai 2 tầng. KHÔNG có wildcard subdomain (trả NXDOMAIN) nên đường
     // 'generic' dò {slug}.affiliatly.com sẽ ra ĐÚNG 0 kết quả mà không báo lỗi gì.
     if (net === AFFILIATLY_NET) return 'affiliatly';
+    // uppromote: API JSON nhưng BẮT BUỘC token (không có → 401) → token lấy từ getNetCred, dán ở Cài đặt.
+    if (net === UPPROMOTE_NET) return 'uppromote';
     return 'generic';
   }
 
@@ -210,6 +262,7 @@ export class AffnetService {
     // Rẽ nhánh theo platform TRƯỚC probeFake: net kiểu API không có trang catch-all để lấy fingerprint.
     if (n.platform === 'goaffpro') return this.fetchStepGoaffpro(n.net); // cfg.batch không dùng: xem ghi chú ở hàm
     if (n.platform === 'affiliatly') return this.fetchStepAffiliatly(n.net);
+    if (n.platform === 'uppromote') return this.fetchStepUppromote(n.net);
     const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
     if (!hosts.length) return out; // race hiếm (host vừa bị lượt khác lấy) → bỏ lượt
     // Token của net (nếu có) — đọc ĐÚNG 1 LẦN/lượt rồi dùng cho cả lô, khỏi đọc lại từng host.

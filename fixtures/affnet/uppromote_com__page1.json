@@ -1,0 +1,3142 @@
+{
+ "data": {
+  "current_page": 1,
+  "per_page": 7,
+  "data": [
+   {
+    "id": 11100,
+    "shop_id": 52828,
+    "program_id": 59065,
+    "store_banner": null,
+    "slogan": "From a classy tote to the perfect night-on-the-town handbag, a girl can never have too many bags.",
+    "description": "<p style=\"font-family: Futura, sans-serif; letter-spacing: 0.425px; line-height: var(--typeBaseLineHeight); font-size: 17px; -webkit-font-smoothing: antialiased; text-size-adjust: 100%; text-rendering: optimizespeed; margin-bottom: 25px; color: rgb(28, 29, 29);\" data-mce-fragment=\"1\">Expertly crafted from the finest vegan leather, our handbags are more than just an accessory, they&rsquo;re an investment piece that&rsquo;s both stylish and functional, designed to perfectly complete your outfit.&nbsp;</p>\r\n<p style=\"font-family: Futura, sans-serif; letter-spacing: 0.425px; line-height: var(--typeBaseLineHeight); font-size: 17px; -webkit-font-smoothing: antialiased; text-size-adjust: 100%; text-rendering: optimizespeed; margin-bottom: 25px; color: rgb(28, 29, 29);\" data-mce-fragment=\"1\">Limited to the following regions(at this moment): US, UK, AUS, NZ, EU, CAN</p>",
+    "website": "https://bondandmason.com/collections/handbags",
+    "geology_limit": null,
+    "video_url": null,
+    "average_earning_per_sale": null,
+    "created_at": "2021-12-17T15:39:03.000000Z",
+    "updated_at": "2026-08-04T06:00:11.000000Z",
+    "enable_offer": 1,
+    "custom_commission_amount": null,
+    "target_audience_ages": [
+     "18-24",
+     "25-34",
+     "35-44",
+     "45-54",
+     "55-64",
+     "65 and over"
+    ],
+    "target_audience_locations": [
+     "Austria",
+     "Australia",
+     "Belgium",
+     "Canada",
+     "Germany",
+     "Spain",
+     "France",
+     "United Kingdom",
+     "Italy",
+     "United States"
+    ],
+    "target_audience_genders": [
+     "Female"
+    ],
+    "target_audience_customer_channels": [
+     "Facebook",
+     "Instagram",
+     "Youtube",
+     "Tiktok",
+     "Twitter",
+     "Pinterest",
+     "Twitch",
+     "Reddit",
+     "Etsy",
+     "Quora",
+     "Blog",
+     "Coupons or Deals website",
+     "Comparison shopping engine",
+     "Content or Niche website",
+     "Podcast platforms"
+    ],
+    "hashtags": [
+     ""
+    ],
+    "offer_score": 4.62,
+    "payout_rate": "95.35%",
+    "approval_rate": 99.01,
+    "feature_offer_index": null,
+    "payout_period": null,
+    "recommend_score": 5.78,
+    "name": "Bond & Mason",
+    "currency": "EUR",
+    "myshopify_domain": "orgonitely.myshopify.com",
+    "subdomain": "bondandmason",
+    "programs_name": "Gold Ambassador Program",
+    "commission_type": 2,
+    "commission_amount": "20.00",
+    "enable_first_commission": 0,
+    "first_commission_type": null,
+    "first_commission_amount": "0.00",
+    "rule": 1,
+    "advance_amount": "[{\"key\":1,\"order_val\":\"0\",\"commission_val\":\"10\"}]",
+    "program_status": 1,
+    "is_default_program": 0,
+    "m_setting_cookie": 30,
+    "affiliate_registration": {
+     "page_heading": "Join our Affiliate Program",
+     "page_heading_color": "#222",
+     "main_heading": "",
+     "main_heading_color": "#fff",
+     "sub_main_heading": "Join our affiliate program!",
+     "text_benefit_color": "#222",
+     "text_form_color": "#222",
+     "submit_button_background": "#329e5e",
+     "submit_button_text_color": "#fff",
+     "submit_button_text": "JOIN",
+     "login_button_background": "#329e5e",
+     "login_button_text_color": "#222",
+     "login_button_text": "Login",
+     "side_background_color": "#000",
+     "page_background_color": "#fff",
+     "tick_mark_color": "#329e5e",
+     "logo": "storage/uploads/logo/1639652542_7579640_9754c4e686635fab3f33a80dab083679Bond & Mason logo new website v6 TRANS.png",
+     "cookie_value": "30 days"
+    },
+    "payment_support": {
+     "paypal": 1,
+     "store_credit": 1
+    },
+    "other_payment_method_name": "",
+    "payment_program": "",
+    "enable_coupon": 1,
+    "auto_active_affiliate": 1,
+    "auto_active_affiliate_program": [
+     "0"
+    ],
+    "custom_domain": null,
+    "p_setting_cookie": null,
+    "total_order_last_seven_day": 1310,
+    "category_id": "1",
+    "commissionText": "Percent Of Sale",
+    "applied_offers_id": [
+     300946,
+     277601,
+     127092,
+     67973,
+     96373,
+     129669,
+     84567,
+     24449,
+     233894,
+     64586,
+     180308,
+     101447,
+     168137,
+     4712,
+     12274,
+     122284,
+     71800,
+     103759,
+     67061,
+     174141
+    ],
+    "can_apply_offer": false,
+    "checked_change_program": [
+     {
+      "aff_p_id": 300946,
+      "mkp_p_id": 300946
+     },
+     {
+      "aff_p_id": 277601,
+      "mkp_p_id": 277601
+     },
+     {
+      "aff_p_id": 127092,
+      "mkp_p_id": 127092
+     },
+     {
+      "aff_p_id": 67973,
+      "mkp_p_id": 67973
+     },
+     {
+      "aff_p_id": 96373,
+      "mkp_p_id": 96373
+     },
+     {
+      "aff_p_id": 129669,
+      "mkp_p_id": 129669
+     },
+     {
+      "aff_p_id": 84567,
+      "mkp_p_id": 84567
+     },
+     {
+      "aff_p_id": 24449,
+      "mkp_p_id": 24449
+     },
+     {
+      "aff_p_id": 233894,
+      "mkp_p_id": 233894
+     },
+     {
+      "aff_p_id": 64586,
+      "mkp_p_id": 64586
+     },
+     {
+      "aff_p_id": 180308,
+      "mkp_p_id": 180308
+     },
+     {
+      "aff_p_id": 101447,
+      "mkp_p_id": 101447
+     },
+     {
+      "aff_p_id": 98795,
+      "mkp_p_id": 100939
+     },
+     {
+      "aff_p_id": 168137,
+      "mkp_p_id": 168137
+     },
+     {
+      "aff_p_id": 263132,
+      "mkp_p_id": 261391
+     },
+     {
+      "aff_p_id": 4712,
+      "mkp_p_id": 4712
+     },
+     {
+      "aff_p_id": 12274,
+      "mkp_p_id": 12274
+     },
+     {
+      "aff_p_id": 122284,
+      "mkp_p_id": 122284
+     },
+     {
+      "aff_p_id": 71800,
+      "mkp_p_id": 71800
+     },
+     {
+      "aff_p_id": 103759,
+      "mkp_p_id": 103759
+     },
+     {
+      "aff_p_id": 67061,
+      "mkp_p_id": 67061
+     },
+     {
+      "aff_p_id": 174141,
+      "mkp_p_id": 174141
+     }
+    ],
+    "is_change_program": false,
+    "categories": "Fashion",
+    "symbol_currency": "€",
+    "commission": "20% per order",
+    "cookie": 30,
+    "traffic_info": [],
+    "logo": "https://cdn.uppromote.com/storage/uploads/logo/1639652542_7579640_9754c4e686635fab3f33a80dab083679Bond & Mason logo new website v6 TRANS.png",
+    "promotion_details": [
+     "aff_link",
+     "coupon"
+    ],
+    "application_review": "auto",
+    "apply_url": "https://af.uppromote.com/bondandmason/register?p=59065&key=eyJpdiI6ImhTZkdBcm1Fd1lKcDI2NzU4OWJaWkE9PSIsInZhbHVlIjoiclpiaWt5ODZuV0RKemtSbkNoRlNjVU01ckNaM1htS3Z1ZHVaYTVKWkxFaENCYnhpZ0JnWE5hTWFhUU9VZTVFK0YzSzJJT2RDVmROMXFHN2lHUllZSUg3RDFwcmtZaVZrWXdPS2UxRVU0d2VlenNGNFY1L1h6WjlaS1RBaDYrSllTa0RMbUgybDRJRVNYWVhkVFVzc2V3PT0iLCJtYWMiOiI2MTAzZjkxZTY4MDIzODY1NDg3YjY0YWNjMDJlMTA5NGRhZmQ0NWYwZjQ2MDZhYzdkMzEyNDQzNGVjODczMWE4IiwidGFnIjoiIn0=",
+    "is_applied_offer": false,
+    "shop_info": {
+     "shop_id": 52828,
+     "name": "Bond & Mason",
+     "currency": "EUR",
+     "myshopify_domain": "orgonitely.myshopify.com"
+    },
+    "user_domain": {
+     "subdomain": "bondandmason",
+     "shop_id": 52828
+    },
+    "program": {
+     "id": 59065,
+     "name": "Gold Ambassador Program",
+     "commission_type": 2,
+     "commission_amount": "20.00",
+     "enable_first_commission": 0,
+     "first_commission_type": null,
+     "first_commission_amount": "0.00",
+     "rule": 1,
+     "advance_amount": "[{\"key\":1,\"order_val\":\"0\",\"commission_val\":\"10\"}]",
+     "status": 1,
+     "is_default": 0
+    },
+    "merchant_setting": {
+     "shop_id": 52828,
+     "cookie": 30,
+     "affiliate_registration": {
+      "page_heading": "Join our Affiliate Program",
+      "page_heading_color": "#222",
+      "main_heading": "",
+      "main_heading_color": "#fff",
+      "sub_main_heading": "Join our affiliate program!",
+      "text_benefit_color": "#222",
+      "text_form_color": "#222",
+      "submit_button_background": "#329e5e",
+      "submit_button_text_color": "#fff",
+      "submit_button_text": "JOIN",
+      "login_button_background": "#329e5e",
+      "login_button_text_color": "#222",
+      "login_button_text": "Login",
+      "side_background_color": "#000",
+      "page_background_color": "#fff",
+      "tick_mark_color": "#329e5e",
+      "logo": "storage/uploads/logo/1639652542_7579640_9754c4e686635fab3f33a80dab083679Bond & Mason logo new website v6 TRANS.png",
+      "cookie_value": "30 days"
+     },
+     "payment_support": {
+      "paypal": 1,
+      "bank": 0,
+      "debit": 0,
+      "cheque": 0,
+      "venmo": 0,
+      "paytm": 0,
+      "upi": 0,
+      "store_credit": 1,
+      "other": 0
+     },
+     "other_payment_method_name": null,
+     "payment_program": null,
+     "enable_coupon": 1,
+     "auto_active_affiliate": 1,
+     "auto_active_affiliate_program": [
+      "0"
+     ],
+     "custom_domain": null
+    },
+    "programs_setting": {
+     "program_id": 59065,
+     "cookie": null
+    },
+    "analytic": {
+     "shop_id": 52828,
+     "total_order_last_seven_day": 1310
+    },
+    "category_group": {
+     "category_id": "1",
+     "shop_id": 52828
+    },
+    "promotion_channels": []
+   },
+   {
+    "id": 30563,
+    "shop_id": 152140,
+    "program_id": 172851,
+    "store_banner": null,
+    "slogan": null,
+    "description": "<div style=\"font-family:Poppins;\"><p style=\"text-align:left;font-size:14px;font-weight:normal;\">Welcome to the Library Closet! A collection of book lovers sweatshirts and tshirts including Officially Licensed Merchandise from books like A Court of Thorns and Roses, Throne of Glass and Fourth Wing. Looking for book creators to drive relevant sales aimed at YA and fantasy book lovers. </p><p style=\"text-align:left;font-size:14px;font-weight:normal;\">• Brand introduction: Licensed A Court of Thorns and Roses, Throne of Glass and Fourth Wing Book Merch<br>• Product description: Bookish sweatshirts and tshirts<br>• USP (Unique Selling Point): Officially Licensed Merch <br><br></p></div>",
+    "website": null,
+    "geology_limit": null,
+    "video_url": null,
+    "average_earning_per_sale": "0",
+    "created_at": "2024-06-11T17:21:49.000000Z",
+    "updated_at": "2026-08-04T06:00:34.000000Z",
+    "enable_offer": 1,
+    "custom_commission_amount": null,
+    "target_audience_ages": [
+     "18-24",
+     "25-34"
+    ],
+    "target_audience_locations": [
+     "United States"
+    ],
+    "target_audience_genders": [
+     "Female"
+    ],
+    "target_audience_customer_channels": [],
+    "hashtags": [
+     "#bookish",
+     "#ACOTAR",
+     "#fourthwing",
+     "#booklover",
+     "#bookmerch",
+     "#bookishmerch",
+     "#bookaddict",
+     "#fantasyreader",
+     "#reading"
+    ],
+    "offer_score": 4.25,
+    "payout_rate": "94.17%",
+    "approval_rate": 98.76,
+    "feature_offer_index": null,
+    "payout_period": "Payout is on the last day of every month",
+    "recommend_score": 5.31,
+    "name": "TheLibraryCloset",
+    "currency": "USD",
+    "myshopify_domain": "bcfcd2.myshopify.com",
+    "subdomain": "bcfcd2",
+    "programs_name": "Standard Affiliate Commission",
+    "commission_type": 0,
+    "commission_amount": "10.00",
+    "enable_first_commission": 0,
+    "first_commission_type": 0,
+    "first_commission_amount": "0.00",
+    "rule": 1,
+    "advance_amount": 0,
+    "program_status": 1,
+    "is_default_program": 1,
+    "m_setting_cookie": 30,
+    "affiliate_registration": {
+     "font_family": "Poppins",
+     "page_heading": "Join our Affiliate Program",
+     "page_heading_color": "#222222",
+     "main_heading": "",
+     "main_heading_color": "#ffffff",
+     "sub_main_heading": "Join our affiliate program!",
+     "sub_main_heading_color": "#ffffff",
+     "enable_logo": 1,
+     "text_benefit_color": "#222222",
+     "text_form_color": "#222222",
+     "text_input_form_color": "#222222",
+     "submit_button_background": "#329e5e",
+     "submit_button_text_color": "#ffffff",
+     "submit_button_text": "JOIN",
+     "login_button_background": "#329e5e",
+     "login_button_text_color": "#222222",
+     "login_button_text": "Login",
+     "side_background_color": "#000000",
+     "page_background_color": "#ffffff",
+     "benefit_background_color": "#ffffff",
+     "tick_mark_color": "#329e5e",
+     "captcha": true,
+     "cookie_label": "Cookie days",
+     "commission_type_label": "Commission type",
+     "commission_amount_label": "Commission amount",
+     "additional_term_label": "Additional terms",
+     "policy_display_text": "By joining, you agree to the",
+     "policy_display_text_term": "Terms",
+     "policy_display_text_and": "and",
+     "policy_display_text_privacy": "Privacy Policy",
+     "term_popup_text": "Terms and Conditions",
+     "policy_popup_text": "Privacy Policy",
+     "is_check_benefit_cookie": 0,
+     "logo": "storage/uploads/logo//1718126530_3262456_53748464039b03b48367b06def236ff9.jpg"
+    },
+    "payment_support": {
+     "paypal": 1,
+     "store_credit": 1
+    },
+    "other_payment_method_name": "",
+    "payment_program": {
+     "paypal": 0
+    },
+    "enable_coupon": 1,
+    "auto_active_affiliate": 1,
+    "auto_active_affiliate_program": [
+     "0"
+    ],
+    "custom_domain": "affiliates.thelibrarycloset.com",
+    "p_setting_cookie": 30,
+    "total_order_last_seven_day": 151,
+    "category_id": "1",
+    "commissionText": "Flat Rate Per Order",
+    "applied_offers_id": [
+     300946,
+     277601,
+     127092,
+     67973,
+     96373,
+     129669,
+     84567,
+     24449,
+     233894,
+     64586,
+     180308,
+     101447,
+     168137,
+     4712,
+     12274,
+     122284,
+     71800,
+     103759,
+     67061,
+     174141
+    ],
+    "can_apply_offer": false,
+    "checked_change_program": [
+     {
+      "aff_p_id": 300946,
+      "mkp_p_id": 300946
+     },
+     {
+      "aff_p_id": 277601,
+      "mkp_p_id": 277601
+     },
+     {
+      "aff_p_id": 127092,
+      "mkp_p_id": 127092
+     },
+     {
+      "aff_p_id": 67973,
+      "mkp_p_id": 67973
+     },
+     {
+      "aff_p_id": 96373,
+      "mkp_p_id": 96373
+     },
+     {
+      "aff_p_id": 129669,
+      "mkp_p_id": 129669
+     },
+     {
+      "aff_p_id": 84567,
+      "mkp_p_id": 84567
+     },
+     {
+      "aff_p_id": 24449,
+      "mkp_p_id": 24449
+     },
+     {
+      "aff_p_id": 233894,
+      "mkp_p_id": 233894
+     },
+     {
+      "aff_p_id": 64586,
+      "mkp_p_id": 64586
+     },
+     {
+      "aff_p_id": 180308,
+      "mkp_p_id": 180308
+     },
+     {
+      "aff_p_id": 101447,
+      "mkp_p_id": 101447
+     },
+     {
+      "aff_p_id": 98795,
+      "mkp_p_id": 100939
+     },
+     {
+      "aff_p_id": 168137,
+      "mkp_p_id": 168137
+     },
+     {
+      "aff_p_id": 263132,
+      "mkp_p_id": 261391
+     },
+     {
+      "aff_p_id": 4712,
+      "mkp_p_id": 4712
+     },
+     {
+      "aff_p_id": 12274,
+      "mkp_p_id": 12274
+     },
+     {
+      "aff_p_id": 122284,
+      "mkp_p_id": 122284
+     },
+     {
+      "aff_p_id": 71800,
+      "mkp_p_id": 71800
+     },
+     {
+      "aff_p_id": 103759,
+      "mkp_p_id": 103759
+     },
+     {
+      "aff_p_id": 67061,
+      "mkp_p_id": 67061
+     },
+     {
+      "aff_p_id": 174141,
+      "mkp_p_id": 174141
+     }
+    ],
+    "is_change_program": false,
+    "categories": "Fashion",
+    "symbol_currency": "$",
+    "commission": "$10.00 per order",
+    "cookie": 30,
+    "traffic_info": [],
+    "logo": "https://cdn.uppromote.com/storage/uploads/logo/1718126530_3262456_53748464039b03b48367b06def236ff9.jpg",
+    "promotion_details": [
+     "aff_link",
+     "coupon"
+    ],
+    "application_review": "auto",
+    "apply_url": "https://affiliates.thelibrarycloset.com/bcfcd2/register?p=172851&key=eyJpdiI6InVBdHJaQTRiandmTm85MzNWZHJIV3c9PSIsInZhbHVlIjoiaTBsVHFZd2t1YkkxQjdQbWNEOVB0UEJBZkcrdE9qcStPQi9HQW1FSm9pRnl6Q3V5UkZwQzg3SHZkdmFCWFFhcDM1WjBtWDkrc0IwaExLd1hxaUpSY241TkpTMUs2VzlaaTRna0Q5S1VFTzMweGpjWjV6bUtSRVc0dmtKSHRneUciLCJtYWMiOiI3YzU2ZTE1NDdmMzBjNWQ5Y2Q2ZThmMjliNDFiNThkODk1NTQ5NDkxMGVlMTZkMmE4ZGEyOWE5MDgxNzY4YmEyIiwidGFnIjoiIn0=",
+    "is_applied_offer": false,
+    "shop_info": {
+     "shop_id": 152140,
+     "name": "TheLibraryCloset",
+     "currency": "USD",
+     "myshopify_domain": "bcfcd2.myshopify.com"
+    },
+    "user_domain": {
+     "subdomain": "bcfcd2",
+     "shop_id": 152140
+    },
+    "program": {
+     "id": 172851,
+     "name": "Standard Affiliate Commission",
+     "commission_type": 0,
+     "commission_amount": "10.00",
+     "enable_first_commission": 0,
+     "first_commission_type": 0,
+     "first_commission_amount": "0.00",
+     "rule": 1,
+     "advance_amount": null,
+     "status": 1,
+     "is_default": 1
+    },
+    "merchant_setting": {
+     "shop_id": 152140,
+     "cookie": 30,
+     "affiliate_registration": {
+      "font_family": "Poppins",
+      "page_heading": "Join our Affiliate Program",
+      "page_heading_color": "#222222",
+      "main_heading": "",
+      "main_heading_color": "#ffffff",
+      "sub_main_heading": "Join our affiliate program!",
+      "sub_main_heading_color": "#ffffff",
+      "enable_logo": 1,
+      "text_benefit_color": "#222222",
+      "text_form_color": "#222222",
+      "text_input_form_color": "#222222",
+      "submit_button_background": "#329e5e",
+      "submit_button_text_color": "#ffffff",
+      "submit_button_text": "JOIN",
+      "login_button_background": "#329e5e",
+      "login_button_text_color": "#222222",
+      "login_button_text": "Login",
+      "side_background_color": "#000000",
+      "page_background_color": "#ffffff",
+      "benefit_background_color": "#ffffff",
+      "tick_mark_color": "#329e5e",
+      "captcha": true,
+      "cookie_label": "Cookie days",
+      "commission_type_label": "Commission type",
+      "commission_amount_label": "Commission amount",
+      "additional_term_label": "Additional terms",
+      "policy_display_text": "By joining, you agree to the",
+      "policy_display_text_term": "Terms",
+      "policy_display_text_and": "and",
+      "policy_display_text_privacy": "Privacy Policy",
+      "term_popup_text": "Terms and Conditions",
+      "policy_popup_text": "Privacy Policy",
+      "is_check_benefit_cookie": 0,
+      "logo": "storage/uploads/logo//1718126530_3262456_53748464039b03b48367b06def236ff9.jpg"
+     },
+     "payment_support": {
+      "paypal": 1,
+      "bank": 0,
+      "debit": 0,
+      "cheque": 0,
+      "venmo": 0,
+      "paytm": 0,
+      "upi": 0,
+      "store_credit": 1,
+      "other": 0
+     },
+     "other_payment_method_name": null,
+     "payment_program": {
+      "paypal": 0
+     },
+     "enable_coupon": 1,
+     "auto_active_affiliate": 1,
+     "auto_active_affiliate_program": [
+      "0"
+     ],
+     "custom_domain": "affiliates.thelibrarycloset.com"
+    },
+    "programs_setting": {
+     "program_id": 172851,
+     "cookie": 30
+    },
+    "analytic": {
+     "shop_id": 152140,
+     "total_order_last_seven_day": 151
+    },
+    "category_group": {
+     "category_id": "1",
+     "shop_id": 152140
+    },
+    "promotion_channels": [
+     {
+      "shop_id": 152140,
+      "channel": "blogs_newspapers",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "comparison_shopping_sites",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "communities_forums",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "content_creators_influencers",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "social_group_user_generated_content",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "seo",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "coupon_discount_codes",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "incentivised_traffic_loyalty",
+      "value": 0
+     },
+     {
+      "shop_id": 152140,
+      "channel": "extension_software",
+      "value": 0
+     },
+     {
+      "shop_id": 152140,
+      "channel": "push_notification",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "social_media_ads",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "search_ads",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "pop_up_pop_under_tab_under",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "email_marketing",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "social_messenger_app",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "cashback",
+      "value": 0
+     },
+     {
+      "shop_id": 152140,
+      "channel": "display_banner",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "direct_linking_direct_traffic",
+      "value": 1
+     },
+     {
+      "shop_id": 152140,
+      "channel": "adult_pornographic",
+      "value": 0
+     },
+     {
+      "shop_id": 152140,
+      "channel": "brand_bidding",
+      "value": 0
+     },
+     {
+      "shop_id": 152140,
+      "channel": "gambling",
+      "value": 0
+     }
+    ]
+   },
+   {
+    "id": 22053,
+    "shop_id": 85440,
+    "program_id": 104919,
+    "store_banner": null,
+    "slogan": null,
+    "description": "<p style=\"text-align: left; font-size: 14px; font-weight: normal;\">&bull; Brand introduction:<br>OptiWize is formulated to be a superior supplement for: joint, tendon, ligament, organ and connective tissue health. &nbsp;<br>&bull; Product description:<br>OptiWize is Equine, pets, livestock &amp; human arthritis supplement scientifically studied in depth to create a product that has zero fillers and natural design.&nbsp;<br>&bull; USP (Unique Selling Point):<br>- REPAIRS<br>Formulated to create a patch structure in the cartilage where connective tissue is lost accelerating the healing of tendons, ligaments, and bones.<br>- RESTORES<br>Joint space is regained and joint strength is repaired. Assists in remodeling of connective tissue and bone.<br>- PROTECTS<br>Lubricates joints by increasing healthy synovial fluid, improving shock absorption and assists in bone density.<br>&bull; Payment terms:<br>15$ per product commission for each of our 8 products. Retail price ranging from 55-530$.<br>&bull; Other information:<br>We offer a 10% discount coupons that you can offer to your customers. Contact us so we can manually create and enable the coupon code for you.</p>",
+    "website": "https://optiwizehealth.com",
+    "geology_limit": "United States",
+    "video_url": null,
+    "average_earning_per_sale": null,
+    "created_at": "2023-03-18T17:14:44.000000Z",
+    "updated_at": "2026-08-04T06:00:25.000000Z",
+    "enable_offer": 1,
+    "custom_commission_amount": null,
+    "target_audience_ages": [
+     "18-24",
+     "25-34",
+     "35-44",
+     "45-54",
+     "55-64",
+     "65 and over"
+    ],
+    "target_audience_locations": [
+     "United States"
+    ],
+    "target_audience_genders": [
+     "Male",
+     "Female",
+     "Other"
+    ],
+    "target_audience_customer_channels": [
+     "Facebook",
+     "Instagram",
+     "Youtube",
+     "Tiktok",
+     "Twitter",
+     "Pinterest",
+     "Twitch",
+     "Reddit",
+     "Etsy",
+     "Quora",
+     "Blog",
+     "Coupons or Deals website",
+     "Comparison shopping engine",
+     "Content or Niche website",
+     "Podcast platforms"
+    ],
+    "hashtags": [
+     ""
+    ],
+    "offer_score": 3.2,
+    "payout_rate": "83.78%",
+    "approval_rate": 61.81,
+    "feature_offer_index": null,
+    "payout_period": null,
+    "recommend_score": 4,
+    "name": "OptiWize Inc",
+    "currency": "USD",
+    "myshopify_domain": "optiwize-9626.myshopify.com",
+    "subdomain": "optiwize-9626",
+    "programs_name": "10% off Coupon 15$ provision per item",
+    "commission_type": 1,
+    "commission_amount": "15.00",
+    "enable_first_commission": 0,
+    "first_commission_type": 0,
+    "first_commission_amount": "0.00",
+    "rule": 1,
+    "advance_amount": "[{\"key\":1,\"order_val\":\"0\",\"commission_val\":\"10\"}]",
+    "program_status": 1,
+    "is_default_program": 1,
+    "m_setting_cookie": 30,
+    "affiliate_registration": {
+     "page_heading": "Join our Affiliate Program",
+     "page_heading_color": "#222222",
+     "main_heading": "",
+     "main_heading_color": "#ffffff",
+     "sub_main_heading": "Join our affiliate program!",
+     "sub_main_heading_color": "#ffffff",
+     "text_benefit_color": "#222222",
+     "text_form_color": "#222222",
+     "text_input_form_color": "#222222",
+     "submit_button_background": "#329e5e",
+     "submit_button_text_color": "#ffffff",
+     "submit_button_text": "JOIN",
+     "login_button_background": "#329e5e",
+     "login_button_text_color": "#222222",
+     "login_button_text": "Login",
+     "side_background_color": "#000000",
+     "page_background_color": "#ffffff",
+     "benefit_background_color": "#ffffff",
+     "tick_mark_color": "#329e5e",
+     "captcha": true,
+     "logo": "storage/uploads/logo//1780912492_1497316_86b7f6ebb08197a43756fa3aaf9ebc01.png",
+     "cookie_value": "30 days"
+    },
+    "payment_support": {
+     "paypal": 1,
+     "store_credit": 1
+    },
+    "other_payment_method_name": "",
+    "payment_program": {
+     "": 0,
+     "venmo": [
+      "105258",
+      "121153"
+     ],
+     "store_credit": [
+      "103363",
+      "104919",
+      "105258",
+      "121153",
+      "135240",
+      "135336",
+      "136606",
+      "149308",
+      "154268",
+      "192535",
+      "97784"
+     ],
+     "paypal": [
+      "104919",
+      "105258",
+      "121153",
+      "135240",
+      "135336",
+      "136606",
+      "149308",
+      "154268",
+      "192535",
+      "289279",
+      "97784"
+     ]
+    },
+    "enable_coupon": 1,
+    "auto_active_affiliate": 0,
+    "auto_active_affiliate_program": [
+     "0"
+    ],
+    "custom_domain": null,
+    "p_setting_cookie": 30,
+    "total_order_last_seven_day": 995,
+    "category_id": "3,8,19",
+    "commissionText": "Flat Rate Per Item",
+    "applied_offers_id": [
+     300946,
+     277601,
+     127092,
+     67973,
+     96373,
+     129669,
+     84567,
+     24449,
+     233894,
+     64586,
+     180308,
+     101447,
+     168137,
+     4712,
+     12274,
+     122284,
+     71800,
+     103759,
+     67061,
+     174141
+    ],
+    "can_apply_offer": false,
+    "checked_change_program": [
+     {
+      "aff_p_id": 300946,
+      "mkp_p_id": 300946
+     },
+     {
+      "aff_p_id": 277601,
+      "mkp_p_id": 277601
+     },
+     {
+      "aff_p_id": 127092,
+      "mkp_p_id": 127092
+     },
+     {
+      "aff_p_id": 67973,
+      "mkp_p_id": 67973
+     },
+     {
+      "aff_p_id": 96373,
+      "mkp_p_id": 96373
+     },
+     {
+      "aff_p_id": 129669,
+      "mkp_p_id": 129669
+     },
+     {
+      "aff_p_id": 84567,
+      "mkp_p_id": 84567
+     },
+     {
+      "aff_p_id": 24449,
+      "mkp_p_id": 24449
+     },
+     {
+      "aff_p_id": 233894,
+      "mkp_p_id": 233894
+     },
+     {
+      "aff_p_id": 64586,
+      "mkp_p_id": 64586
+     },
+     {
+      "aff_p_id": 180308,
+      "mkp_p_id": 180308
+     },
+     {
+      "aff_p_id": 101447,
+      "mkp_p_id": 101447
+     },
+     {
+      "aff_p_id": 98795,
+      "mkp_p_id": 100939
+     },
+     {
+      "aff_p_id": 168137,
+      "mkp_p_id": 168137
+     },
+     {
+      "aff_p_id": 263132,
+      "mkp_p_id": 261391
+     },
+     {
+      "aff_p_id": 4712,
+      "mkp_p_id": 4712
+     },
+     {
+      "aff_p_id": 12274,
+      "mkp_p_id": 12274
+     },
+     {
+      "aff_p_id": 122284,
+      "mkp_p_id": 122284
+     },
+     {
+      "aff_p_id": 71800,
+      "mkp_p_id": 71800
+     },
+     {
+      "aff_p_id": 103759,
+      "mkp_p_id": 103759
+     },
+     {
+      "aff_p_id": 67061,
+      "mkp_p_id": 67061
+     },
+     {
+      "aff_p_id": 174141,
+      "mkp_p_id": 174141
+     }
+    ],
+    "is_change_program": false,
+    "categories": "Beauty & Health, Pet supplies, Others",
+    "symbol_currency": "$",
+    "commission": "$15.00 per item",
+    "cookie": 30,
+    "traffic_info": [],
+    "logo": "https://cdn.uppromote.com/storage/uploads/logo/1780912492_1497316_86b7f6ebb08197a43756fa3aaf9ebc01.png",
+    "promotion_details": [
+     "aff_link",
+     "coupon"
+    ],
+    "application_review": "manual",
+    "apply_url": "https://af.uppromote.com/optiwize-9626/register?p=104919&key=eyJpdiI6ImJoc3E1ZHZTZzlNbmhncmhPWVp0MWc9PSIsInZhbHVlIjoiS2JrWUpHQ1JEV1pPaFFPQkpyM1cwTWV3U3lBY1l0TW9Zcm12V0JadkY5VHgvNlVnY1liT1dwVUwvREk3YnhQbFp2aEIzUWVWdk5QeWhZM1ZSa3ZINHlMNXp4eTlwZEo1Y2ozY2NEUkVHQXJneFhGSEtqVFlrSm1QWnBiMXd0WG1zZGRCVTJ5aUpabzdERURHM05MVUVRPT0iLCJtYWMiOiJkMDQxMjNmNGM5Zjc5OTEyYTU2ZTJjZTcyMWEwNjY3NWIxZWVhYmNmMmQ0MjAzNWE4OTAzZjMyNDQxOWM0YWQyIiwidGFnIjoiIn0=",
+    "is_applied_offer": false,
+    "shop_info": {
+     "shop_id": 85440,
+     "name": "OptiWize Inc",
+     "currency": "USD",
+     "myshopify_domain": "optiwize-9626.myshopify.com"
+    },
+    "user_domain": {
+     "subdomain": "optiwize-9626",
+     "shop_id": 85440
+    },
+    "program": {
+     "id": 104919,
+     "name": "10% off Coupon 15$ provision per item",
+     "commission_type": 1,
+     "commission_amount": "15.00",
+     "enable_first_commission": 0,
+     "first_commission_type": 0,
+     "first_commission_amount": "0.00",
+     "rule": 1,
+     "advance_amount": "[{\"key\":1,\"order_val\":\"0\",\"commission_val\":\"10\"}]",
+     "status": 1,
+     "is_default": 1
+    },
+    "merchant_setting": {
+     "shop_id": 85440,
+     "cookie": 30,
+     "affiliate_registration": {
+      "page_heading": "Join our Affiliate Program",
+      "page_heading_color": "#222222",
+      "main_heading": "",
+      "main_heading_color": "#ffffff",
+      "sub_main_heading": "Join our affiliate program!",
+      "sub_main_heading_color": "#ffffff",
+      "text_benefit_color": "#222222",
+      "text_form_color": "#222222",
+      "text_input_form_color": "#222222",
+      "submit_button_background": "#329e5e",
+      "submit_button_text_color": "#ffffff",
+      "submit_button_text": "JOIN",
+      "login_button_background": "#329e5e",
+      "login_button_text_color": "#222222",
+      "login_button_text": "Login",
+      "side_background_color": "#000000",
+      "page_background_color": "#ffffff",
+      "benefit_background_color": "#ffffff",
+      "tick_mark_color": "#329e5e",
+      "captcha": true,
+      "logo": "storage/uploads/logo//1780912492_1497316_86b7f6ebb08197a43756fa3aaf9ebc01.png",
+      "cookie_value": "30 days"
+     },
+     "payment_support": {
+      "paypal": 1,
+      "bank": 0,
+      "debit": 0,
+      "cheque": 0,
+      "venmo": 0,
+      "paytm": 0,
+      "upi": 0,
+      "store_credit": 1,
+      "other": 0
+     },
+     "other_payment_method_name": null,
+     "payment_program": {
+      "": 0,
+      "venmo": [
+       "105258",
+       "121153"
+      ],
+      "store_credit": [
+       "103363",
+       "104919",
+       "105258",
+       "121153",
+       "135240",
+       "135336",
+       "136606",
+       "149308",
+       "154268",
+       "192535",
+       "97784"
+      ],
+      "paypal": [
+       "104919",
+       "105258",
+       "121153",
+       "135240",
+       "135336",
+       "136606",
+       "149308",
+       "154268",
+       "192535",
+       "289279",
+       "97784"
+      ]
+     },
+     "enable_coupon": 1,
+     "auto_active_affiliate": 0,
+     "auto_active_affiliate_program": [
+      "0"
+     ],
+     "custom_domain": null
+    },
+    "programs_setting": {
+     "program_id": 104919,
+     "cookie": 30
+    },
+    "analytic": {
+     "shop_id": 85440,
+     "total_order_last_seven_day": 995
+    },
+    "category_group": {
+     "category_id": "3,8,19",
+     "shop_id": 85440
+    },
+    "promotion_channels": []
+   },
+   {
+    "id": 20124,
+    "shop_id": 83391,
+    "program_id": 95489,
+    "store_banner": "https://cdn.uppromote.com/storage/uploads/banners/1735776093_6600476_929f9b08bc764a36dd3e92abb60a07d8.png",
+    "slogan": "Affordable High End Whiskey Accessories",
+    "description": "<p><span>As an affiliate, you'll have the opportunity to promote a diverse range of high-quality products that cater to individuals passionate about men's fashion accessories. Join us in sharing the art of elevated living with&nbsp;</span><a target=\"_blank\" href=\"http://www.doubleoakessentials.com/\" rel=\"noopener\">www.doubleoakessentials.com</a><span>, where each item tells a story of craftsmanship and sophistication.</span></p>\r\n<ul>\r\n<li style=\"box-sizing: border-box; color: rgb(72, 94, 117); font-family: 'Amazon Ember', Arial, sans-serif; font-size: 14px; text-align: justify; background-color: rgb(255, 255, 255);\">Gifts for Men</li>\r\n<li style=\"box-sizing: border-box; color: rgb(72, 94, 117); font-family: 'Amazon Ember', Arial, sans-serif; font-size: 14px; text-align: justify; background-color: rgb(255, 255, 255);\">Minimalist Wallets</li>\r\n<li style=\"box-sizing: border-box; color: rgb(72, 94, 117); font-family: 'Amazon Ember', Arial, sans-serif; font-size: 14px; text-align: justify; background-color: rgb(255, 255, 255);\">Travel Bags &amp; More</li>\r\n</ul>\r\n<p>&nbsp;</p>",
+    "website": "https://double-oak-essentials.myshopify.com",
+    "geology_limit": "United States",
+    "video_url": "https://www.youtube.com/watch?v=1znbLXjklyI",
+    "average_earning_per_sale": "15.5",
+    "created_at": "2023-01-10T23:03:46.000000Z",
+    "updated_at": "2026-08-04T06:00:24.000000Z",
+    "enable_offer": 1,
+    "custom_commission_amount": null,
+    "target_audience_ages": [
+     "25-34",
+     "35-44",
+     "45-54",
+     "55-64"
+    ],
+    "target_audience_locations": [
+     "United States"
+    ],
+    "target_audience_genders": [
+     "Male",
+     "Female",
+     "Other"
+    ],
+    "target_audience_customer_channels": [
+     "Facebook",
+     "Instagram",
+     "Youtube",
+     "Tiktok",
+     "Twitter",
+     "Pinterest",
+     "Twitch",
+     "Reddit",
+     "Etsy",
+     "Quora",
+     "Blog",
+     "Coupons or Deals website",
+     "Comparison shopping engine",
+     "Content or Niche website",
+     "Podcast platforms"
+    ],
+    "hashtags": [
+     "#wallets",
+     "#travelbags",
+     "#bags",
+     "#popupwallets",
+     "#Mensaccessories"
+    ],
+    "offer_score": 4.75,
+    "payout_rate": "98.77%",
+    "approval_rate": 98.8,
+    "feature_offer_index": null,
+    "payout_period": null,
+    "recommend_score": 5.94,
+    "name": "Double Oak Essentials",
+    "currency": "USD",
+    "myshopify_domain": "double-oak-essentials.myshopify.com",
+    "subdomain": "double-oak-essentials",
+    "programs_name": "Standard Affiliate Commission",
+    "commission_type": 2,
+    "commission_amount": "12.00",
+    "enable_first_commission": 0,
+    "first_commission_type": 0,
+    "first_commission_amount": "0.00",
+    "rule": 1,
+    "advance_amount": "[{\"key\":1,\"order_val\":\"0\",\"commission_val\":\"10\"}]",
+    "program_status": 1,
+    "is_default_program": 1,
+    "m_setting_cookie": 30,
+    "affiliate_registration": {
+     "page_heading": "Join our Affiliate Program",
+     "page_heading_color": "#222222",
+     "main_heading": "",
+     "main_heading_color": "#ffffff",
+     "sub_main_heading": "Join our affiliate program!",
+     "sub_main_heading_color": "#ffffff",
+     "text_benefit_color": "#222222",
+     "text_form_color": "#222222",
+     "text_input_form_color": "#222222",
+     "submit_button_background": "#329e5e",
+     "submit_button_text_color": "#ffffff",
+     "submit_button_text": "JOIN",
+     "login_button_background": "#329e5e",
+     "login_button_text_color": "#222222",
+     "login_button_text": "Login",
+     "side_background_color": "#000000",
+     "page_background_color": "#ffffff",
+     "benefit_background_color": "#ffffff",
+     "tick_mark_color": "#329e5e",
+     "captcha": true,
+     "logo": "storage/uploads/logo//1728312114_7126236_2c4f4ae3eb804ed2025031f9a0e0a039.jpg"
+    },
+    "payment_support": {
+     "paypal": 1
+    },
+    "other_payment_method_name": "",
+    "payment_program": {
+     "": 0,
+     "bank": 0,
+     "paypal": 0
+    },
+    "enable_coupon": 0,
+    "auto_active_affiliate": 1,
+    "auto_active_affiliate_program": [
+     "95489"
+    ],
+    "custom_domain": null,
+    "p_setting_cookie": 30,
+    "total_order_last_seven_day": 695,
+    "category_id": "19,1",
+    "commissionText": "Percent Of Sale",
+    "applied_offers_id": [
+     300946,
+     277601,
+     127092,
+     67973,
+     96373,
+     129669,
+     84567,
+     24449,
+     233894,
+     64586,
+     180308,
+     101447,
+     168137,
+     4712,
+     12274,
+     122284,
+     71800,
+     103759,
+     67061,
+     174141
+    ],
+    "can_apply_offer": false,
+    "checked_change_program": [
+     {
+      "aff_p_id": 300946,
+      "mkp_p_id": 300946
+     },
+     {
+      "aff_p_id": 277601,
+      "mkp_p_id": 277601
+     },
+     {
+      "aff_p_id": 127092,
+      "mkp_p_id": 127092
+     },
+     {
+      "aff_p_id": 67973,
+      "mkp_p_id": 67973
+     },
+     {
+      "aff_p_id": 96373,
+      "mkp_p_id": 96373
+     },
+     {
+      "aff_p_id": 129669,
+      "mkp_p_id": 129669
+     },
+     {
+      "aff_p_id": 84567,
+      "mkp_p_id": 84567
+     },
+     {
+      "aff_p_id": 24449,
+      "mkp_p_id": 24449
+     },
+     {
+      "aff_p_id": 233894,
+      "mkp_p_id": 233894
+     },
+     {
+      "aff_p_id": 64586,
+      "mkp_p_id": 64586
+     },
+     {
+      "aff_p_id": 180308,
+      "mkp_p_id": 180308
+     },
+     {
+      "aff_p_id": 101447,
+      "mkp_p_id": 101447
+     },
+     {
+      "aff_p_id": 98795,
+      "mkp_p_id": 100939
+     },
+     {
+      "aff_p_id": 168137,
+      "mkp_p_id": 168137
+     },
+     {
+      "aff_p_id": 263132,
+      "mkp_p_id": 261391
+     },
+     {
+      "aff_p_id": 4712,
+      "mkp_p_id": 4712
+     },
+     {
+      "aff_p_id": 12274,
+      "mkp_p_id": 12274
+     },
+     {
+      "aff_p_id": 122284,
+      "mkp_p_id": 122284
+     },
+     {
+      "aff_p_id": 71800,
+      "mkp_p_id": 71800
+     },
+     {
+      "aff_p_id": 103759,
+      "mkp_p_id": 103759
+     },
+     {
+      "aff_p_id": 67061,
+      "mkp_p_id": 67061
+     },
+     {
+      "aff_p_id": 174141,
+      "mkp_p_id": 174141
+     }
+    ],
+    "is_change_program": false,
+    "categories": "Others, Fashion",
+    "symbol_currency": "$",
+    "commission": "12% per order",
+    "cookie": 30,
+    "traffic_info": [],
+    "logo": "https://cdn.uppromote.com/storage/uploads/logo/1728312114_7126236_2c4f4ae3eb804ed2025031f9a0e0a039.jpg",
+    "promotion_details": [
+     "aff_link"
+    ],
+    "application_review": "auto",
+    "apply_url": "https://af.uppromote.com/double-oak-essentials/register?p=95489&key=eyJpdiI6IllnOHhhSUtmNFJPeElEQUFKU1REQ3c9PSIsInZhbHVlIjoiQ0VyYnVXUUpVdlVrY2tUVW5jcGZTYjJObGd5VlF6U1NuTTNJWnVCcW9iNFVOMVNyNUlGeGhPUUZRTjJGaHZSL1NvQlUxWEl0dkROSkNDbkoxNkhoZVZUKzBDVDRXWnVSVWkyUEYyZGxVWDV0N2lycVkrZ2RRemJEV1ROV1dESVBpSXI3Y1cweksyZkd0OWN6c2R4amdRPT0iLCJtYWMiOiIwY2FmYTU2ZTQ1MDI0ZDgzZWZhZGUxNzVjM2JhNmI2NTFkNTFhMGNmOTllNzFlNzQwNjkyODhmMWFhY2Y3ODdmIiwidGFnIjoiIn0=",
+    "is_applied_offer": false,
+    "shop_info": {
+     "shop_id": 83391,
+     "name": "Double Oak Essentials",
+     "currency": "USD",
+     "myshopify_domain": "double-oak-essentials.myshopify.com"
+    },
+    "user_domain": {
+     "subdomain": "double-oak-essentials",
+     "shop_id": 83391
+    },
+    "program": {
+     "id": 95489,
+     "name": "Standard Affiliate Commission",
+     "commission_type": 2,
+     "commission_amount": "12.00",
+     "enable_first_commission": 0,
+     "first_commission_type": 0,
+     "first_commission_amount": "0.00",
+     "rule": 1,
+     "advance_amount": "[{\"key\":1,\"order_val\":\"0\",\"commission_val\":\"10\"}]",
+     "status": 1,
+     "is_default": 1
+    },
+    "merchant_setting": {
+     "shop_id": 83391,
+     "cookie": 30,
+     "affiliate_registration": {
+      "page_heading": "Join our Affiliate Program",
+      "page_heading_color": "#222222",
+      "main_heading": "",
+      "main_heading_color": "#ffffff",
+      "sub_main_heading": "Join our affiliate program!",
+      "sub_main_heading_color": "#ffffff",
+      "text_benefit_color": "#222222",
+      "text_form_color": "#222222",
+      "text_input_form_color": "#222222",
+      "submit_button_background": "#329e5e",
+      "submit_button_text_color": "#ffffff",
+      "submit_button_text": "JOIN",
+      "login_button_background": "#329e5e",
+      "login_button_text_color": "#222222",
+      "login_button_text": "Login",
+      "side_background_color": "#000000",
+      "page_background_color": "#ffffff",
+      "benefit_background_color": "#ffffff",
+      "tick_mark_color": "#329e5e",
+      "captcha": true,
+      "logo": "storage/uploads/logo//1728312114_7126236_2c4f4ae3eb804ed2025031f9a0e0a039.jpg"
+     },
+     "payment_support": {
+      "paypal": 1,
+      "bank": 0,
+      "debit": 0,
+      "cheque": 0,
+      "venmo": 0,
+      "paytm": 0,
+      "upi": 0,
+      "store_credit": 0,
+      "other": 0
+     },
+     "other_payment_method_name": null,
+     "payment_program": {
+      "": 0,
+      "bank": 0,
+      "paypal": 0
+     },
+     "enable_coupon": 0,
+     "auto_active_affiliate": 1,
+     "auto_active_affiliate_program": [
+      "95489"
+     ],
+     "custom_domain": null
+    },
+    "programs_setting": {
+     "program_id": 95489,
+     "cookie": 30
+    },
+    "analytic": {
+     "shop_id": 83391,
+     "total_order_last_seven_day": 695
+    },
+    "category_group": {
+     "category_id": "19,1",
+     "shop_id": 83391
+    },
+    "promotion_channels": []
+   },
+   {
+    "id": 23064,
+    "shop_id": 96984,
+    "program_id": 110532,
+    "store_banner": null,
+    "slogan": null,
+    "description": "<div style=\"font-family: Poppins;\"><p style=\"text-align: left; font-size: 14px; font-weight: normal;\">• Brand introduction: Shopinverse<br>• Product description: Genuine and Top-notch USA Used Laptop Computers at Affordable Prices<br>• USP (Unique Selling Point): Quantity and Affordability<br>• Payment terms: PBD</p><p style=\"text-align: left; font-size: 14px; font-weight: normal;\">&nbsp;</p><p style=\"text-align: left; font-size: 14px; font-weight: normal;\">&nbsp;</p><p style=\"text-align: left; font-size: 14px; font-weight: normal;\">• Brand introduction: Shopinverse<br>• Product description: Genuine and Top-notch USA Used Laptop Computers at Affordable Prices<br>• USP (Unique Selling Point): Quantity and Affordability<br>• Payment terms: PBD</p><p style=\"text-align: left; font-size: 14px; font-weight: normal;\">&nbsp;</p><p style=\"text-align: left; font-size: 14px; font-weight: normal;\">• Brand introduction: Shopinverse<br>• Product description: Genuine and Top-notch USA Used Laptop Computers at Affordable Prices<br>• USP (Unique Selling Point): Quantity and Affordability<br>• Payment terms: PBD</p></div>",
+    "website": null,
+    "geology_limit": null,
+    "video_url": null,
+    "average_earning_per_sale": "0",
+    "created_at": "2023-04-26T10:53:34.000000Z",
+    "updated_at": "2026-08-04T06:00:26.000000Z",
+    "enable_offer": 1,
+    "custom_commission_amount": null,
+    "target_audience_ages": [
+     "Under 18",
+     "18-24",
+     "25-34",
+     "35-44",
+     "45-54",
+     "55-64",
+     "65 and over"
+    ],
+    "target_audience_locations": [
+     "Nigeria"
+    ],
+    "target_audience_genders": [
+     "Male",
+     "Female",
+     "Other"
+    ],
+    "target_audience_customer_channels": [],
+    "hashtags": [
+     ""
+    ],
+    "offer_score": 4.92,
+    "payout_rate": "96.51%",
+    "approval_rate": 99.96,
+    "feature_offer_index": null,
+    "payout_period": "7 working days",
+    "recommend_score": 6.15,
+    "name": "Shopinverse",
+    "currency": "NGN",
+    "myshopify_domain": "shopinverse.myshopify.com",
+    "subdomain": "shopinverse",
+    "programs_name": "Standard Affiliate Commission",
+    "commission_type": 2,
+    "commission_amount": "5.00",
+    "enable_first_commission": 0,
+    "first_commission_type": 0,
+    "first_commission_amount": "0.00",
+    "rule": 1,
+    "advance_amount": "[{\"key\":1,\"order_val\":\"0\",\"commission_val\":\"10\"}]",
+    "program_status": 1,
+    "is_default_program": 1,
+    "m_setting_cookie": 30,
+    "affiliate_registration": {
+     "page_heading": "Join our Affiliate Program",
+     "page_heading_color": "#222222",
+     "main_heading": "",
+     "main_heading_color": "#ffffff",
+     "sub_main_heading": "Join our affiliate program!",
+     "sub_main_heading_color": "#ffffff",
+     "text_benefit_color": "#222222",
+     "text_form_color": "#222222",
+     "text_input_form_color": "#222222",
+     "submit_button_background": "#329e5e",
+     "submit_button_text_color": "#ffffff",
+     "submit_button_text": "JOIN",
+     "login_button_background": "#329e5e",
+     "login_button_text_color": "#222222",
+     "login_button_text": "Login",
+     "side_background_color": "#000000",
+     "page_background_color": "#ffffff",
+     "benefit_background_color": "#ffffff",
+     "tick_mark_color": "#329e5e",
+     "captcha": true,
+     "logo": "storage/uploads/logo//1757104380_7990661_51e64d09164a8a397615592dd873d624.png",
+     "cookie_value": "30 days"
+    },
+    "payment_support": {
+     "paypal": 1,
+     "bank": 1
+    },
+    "other_payment_method_name": "",
+    "payment_program": "",
+    "enable_coupon": 1,
+    "auto_active_affiliate": 1,
+    "auto_active_affiliate_program": [
+     "0"
+    ],
+    "custom_domain": "affiliate.shopinverse.com",
+    "p_setting_cookie": 30,
+    "total_order_last_seven_day": 323,
+    "category_id": "14,15,16",
+    "commissionText": "Percent Of Sale",
+    "applied_offers_id": [
+     300946,
+     277601,
+     127092,
+     67973,
+     96373,
+     129669,
+     84567,
+     24449,
+     233894,
+     64586,
+     180308,
+     101447,
+     168137,
+     4712,
+     12274,
+     122284,
+     71800,
+     103759,
+     67061,
+     174141
+    ],
+    "can_apply_offer": false,
+    "checked_change_program": [
+     {
+      "aff_p_id": 300946,
+      "mkp_p_id": 300946
+     },
+     {
+      "aff_p_id": 277601,
+      "mkp_p_id": 277601
+     },
+     {
+      "aff_p_id": 127092,
+      "mkp_p_id": 127092
+     },
+     {
+      "aff_p_id": 67973,
+      "mkp_p_id": 67973
+     },
+     {
+      "aff_p_id": 96373,
+      "mkp_p_id": 96373
+     },
+     {
+      "aff_p_id": 129669,
+      "mkp_p_id": 129669
+     },
+     {
+      "aff_p_id": 84567,
+      "mkp_p_id": 84567
+     },
+     {
+      "aff_p_id": 24449,
+      "mkp_p_id": 24449
+     },
+     {
+      "aff_p_id": 233894,
+      "mkp_p_id": 233894
+     },
+     {
+      "aff_p_id": 64586,
+      "mkp_p_id": 64586
+     },
+     {
+      "aff_p_id": 180308,
+      "mkp_p_id": 180308
+     },
+     {
+      "aff_p_id": 101447,
+      "mkp_p_id": 101447
+     },
+     {
+      "aff_p_id": 98795,
+      "mkp_p_id": 100939
+     },
+     {
+      "aff_p_id": 168137,
+      "mkp_p_id": 168137
+     },
+     {
+      "aff_p_id": 263132,
+      "mkp_p_id": 261391
+     },
+     {
+      "aff_p_id": 4712,
+      "mkp_p_id": 4712
+     },
+     {
+      "aff_p_id": 12274,
+      "mkp_p_id": 12274
+     },
+     {
+      "aff_p_id": 122284,
+      "mkp_p_id": 122284
+     },
+     {
+      "aff_p_id": 71800,
+      "mkp_p_id": 71800
+     },
+     {
+      "aff_p_id": 103759,
+      "mkp_p_id": 103759
+     },
+     {
+      "aff_p_id": 67061,
+      "mkp_p_id": 67061
+     },
+     {
+      "aff_p_id": 174141,
+      "mkp_p_id": 174141
+     }
+    ],
+    "is_change_program": false,
+    "categories": "Computers & Office, Electronics, Phone & Telecommunication",
+    "symbol_currency": "₦",
+    "commission": "5% per order",
+    "cookie": 30,
+    "traffic_info": [],
+    "logo": "https://cdn.uppromote.com/storage/uploads/logo/1757104380_7990661_51e64d09164a8a397615592dd873d624.png",
+    "promotion_details": [
+     "aff_link",
+     "coupon"
+    ],
+    "application_review": "auto",
+    "apply_url": "https://affiliate.shopinverse.com/shopinverse/register?p=110532&key=eyJpdiI6ImpQS3U0VVRkRVZVUzVvZkVWcWJobWc9PSIsInZhbHVlIjoiTlExVWhISWh3V2F2WEdLQVpHbVA1VlNhWnFVdGQ2eXdVVkNrUzVXd3pZS05oRFNSUGdKOWhHWnRDMUFTQlRMVXB1NHgxdmJmZ2lzdHJKSU9tMC93Ynh2WExBak80VVRjQjRzKzl1RnN1MzMvOUtvNTcxSUx0UWY1T0E3aERCalIiLCJtYWMiOiI1MTJiYTFjYTFjMGFiZDdlMzM5Nzg4MDBiYTAyNDJmMjQ0MzBkNWY4NjJhZDMyOGIxMTcwZjcyMzMxMjUzNGEwIiwidGFnIjoiIn0=",
+    "is_applied_offer": false,
+    "shop_info": {
+     "shop_id": 96984,
+     "name": "Shopinverse",
+     "currency": "NGN",
+     "myshopify_domain": "shopinverse.myshopify.com"
+    },
+    "user_domain": {
+     "subdomain": "shopinverse",
+     "shop_id": 96984
+    },
+    "program": {
+     "id": 110532,
+     "name": "Standard Affiliate Commission",
+     "commission_type": 2,
+     "commission_amount": "5.00",
+     "enable_first_commission": 0,
+     "first_commission_type": 0,
+     "first_commission_amount": "0.00",
+     "rule": 1,
+     "advance_amount": "[{\"key\":1,\"order_val\":\"0\",\"commission_val\":\"10\"}]",
+     "status": 1,
+     "is_default": 1
+    },
+    "merchant_setting": {
+     "shop_id": 96984,
+     "cookie": 30,
+     "affiliate_registration": {
+      "page_heading": "Join our Affiliate Program",
+      "page_heading_color": "#222222",
+      "main_heading": "",
+      "main_heading_color": "#ffffff",
+      "sub_main_heading": "Join our affiliate program!",
+      "sub_main_heading_color": "#ffffff",
+      "text_benefit_color": "#222222",
+      "text_form_color": "#222222",
+      "text_input_form_color": "#222222",
+      "submit_button_background": "#329e5e",
+      "submit_button_text_color": "#ffffff",
+      "submit_button_text": "JOIN",
+      "login_button_background": "#329e5e",
+      "login_button_text_color": "#222222",
+      "login_button_text": "Login",
+      "side_background_color": "#000000",
+      "page_background_color": "#ffffff",
+      "benefit_background_color": "#ffffff",
+      "tick_mark_color": "#329e5e",
+      "captcha": true,
+      "logo": "storage/uploads/logo//1757104380_7990661_51e64d09164a8a397615592dd873d624.png",
+      "cookie_value": "30 days"
+     },
+     "payment_support": {
+      "paypal": 1,
+      "bank": 1,
+      "debit": 0,
+      "cheque": 0,
+      "venmo": 0,
+      "paytm": 0,
+      "upi": 0,
+      "store_credit": 0,
+      "other": 0
+     },
+     "other_payment_method_name": null,
+     "payment_program": [],
+     "enable_coupon": 1,
+     "auto_active_affiliate": 1,
+     "auto_active_affiliate_program": [
+      "0"
+     ],
+     "custom_domain": "affiliate.shopinverse.com"
+    },
+    "programs_setting": {
+     "program_id": 110532,
+     "cookie": 30
+    },
+    "analytic": {
+     "shop_id": 96984,
+     "total_order_last_seven_day": 323
+    },
+    "category_group": {
+     "category_id": "14,15,16",
+     "shop_id": 96984
+    },
+    "promotion_channels": [
+     {
+      "shop_id": 96984,
+      "channel": "blogs_newspapers",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "comparison_shopping_sites",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "communities_forums",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "content_creators_influencers",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "social_group_user_generated_content",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "seo",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "coupon_discount_codes",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "incentivised_traffic_loyalty",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "extension_software",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "push_notification",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "social_media_ads",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "search_ads",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "pop_up_pop_under_tab_under",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "email_marketing",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "social_messenger_app",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "cashback",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "display_banner",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "direct_linking_direct_traffic",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "adult_pornographic",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "brand_bidding",
+      "value": 1
+     },
+     {
+      "shop_id": 96984,
+      "channel": "gambling",
+      "value": 1
+     }
+    ]
+   },
+   {
+    "id": 37841,
+    "shop_id": 49315,
+    "program_id": 292189,
+    "store_banner": null,
+    "slogan": null,
+    "description": "<div style=\"font-family:Poppins;\"><div><p dir=\"ltr\" style=\"line-height:1.38;margin-top:12pt;margin-bottom:12pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">THE MOST VALUE-ALIGNED AFFILIATE PROGRAM</span></p><p dir=\"ltr\" style=\"line-height:1.38;margin-top:12pt;margin-bottom:12pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Trust Cannot Be Coded.</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\"> Join a collective where </span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Amazing coffees = Greater purpose.</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\"> A percentage of our carefully curated coffees go directly to cause partners. We're setting the new standard in purpose-driven coffee collabs that taste good, feel good, and do good.</span></p><p dir=\"ltr\" style=\"line-height:1.38;margin-top:12pt;margin-bottom:12pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Presence Over Reach</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\"> Most programs want your reach; we want your </span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">presence</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">. We believe your audience doesn’t buy because a 3D render told them to—they buy because they trust a real human that believes in our mission and loves our coffee.</span></p><p dir=\"ltr\" style=\"line-height:1.38;margin-top:12pt;margin-bottom:12pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Why Join the Collective?</span></p><ul style=\"margin-top:0;margin-bottom:0;\"><li dir=\"ltr\" style=\"list-style-type:disc;font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre;\"><p dir=\"ltr\" style=\"line-height:1.38;margin-top:12pt;margin-bottom:0pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Shared Success:</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\"> Earn a </span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">12% commission</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\"> on every order.</span></p></li><li dir=\"ltr\" style=\"list-style-type:disc;font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre;\"><p dir=\"ltr\" style=\"line-height:1.38;margin-top:0pt;margin-bottom:0pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Built on Trust:</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\"> A </span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">30-day cookie window</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\"> respects the time it takes to build real human relationships.</span></p></li><li dir=\"ltr\" style=\"list-style-type:disc;font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre;\"><p dir=\"ltr\" style=\"line-height:1.38;margin-top:0pt;margin-bottom:12pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Direct Access:</span><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\"> No bots, no automated scripts. You have a direct line to our team.</span></p></li></ul><p dir=\"ltr\" style=\"line-height:1.38;margin-top:12pt;margin-bottom:12pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:700;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Who We’re Looking For</span></p><p dir=\"ltr\" style=\"line-height:1.38;margin-top:12pt;margin-bottom:12pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Creators and publishers with engaged audiences in coffee, lifestyle, creativity, wellness, faith, or community-driven spaces. Authentic storytelling and real-life use convert best. We care more about alignment than follower count.</span></p><p dir=\"ltr\" style=\"line-height:1.38;margin-top:12pt;margin-bottom:12pt;\"><span style=\"font-size:11pt;font-family:Arial, sans-serif;color:#000000;background-color:transparent;font-weight:400;font-style:normal;font-variant:normal;text-decoration:none;vertical-align:baseline;white-space:pre-wrap;\">Let’s grow together!</span></p></div></div>",
+    "website": null,
+    "geology_limit": null,
+    "video_url": "https://youtu.be/0zrXdBtrvwM?si=4qR_gYxr8pZLcLVM",
+    "average_earning_per_sale": null,
+    "created_at": "2026-01-22T19:12:25.000000Z",
+    "updated_at": "2026-08-04T06:00:45.000000Z",
+    "enable_offer": 1,
+    "custom_commission_amount": null,
+    "target_audience_ages": [
+     "18-24",
+     "25-34",
+     "35-44",
+     "45-54"
+    ],
+    "target_audience_locations": [
+     "United States"
+    ],
+    "target_audience_genders": [
+     "Male",
+     "Female"
+    ],
+    "target_audience_customer_channels": [],
+    "hashtags": [
+     ""
+    ],
+    "offer_score": 1.77,
+    "payout_rate": "No data yet",
+    "approval_rate": 45.23,
+    "feature_offer_index": 2,
+    "payout_period": "Bi-Weekly",
+    "recommend_score": 1.86,
+    "name": "CoinCoffee",
+    "currency": "USD",
+    "myshopify_domain": "coincoffee.myshopify.com",
+    "subdomain": "coincoffee",
+    "programs_name": "CoinCoffee™ Partner Collective (Collab-it Affiliate Program)",
+    "commission_type": 2,
+    "commission_amount": "12.00",
+    "enable_first_commission": 0,
+    "first_commission_type": 0,
+    "first_commission_amount": "0.00",
+    "rule": 1,
+    "advance_amount": 0,
+    "program_status": 1,
+    "is_default_program": 1,
+    "m_setting_cookie": 45,
+    "affiliate_registration": {
+     "page_heading": "Join our Affiliate Program",
+     "page_heading_color": "#222",
+     "main_heading": "",
+     "main_heading_color": "#fff",
+     "sub_main_heading": "Join our affiliate program!",
+     "text_benefit_color": "#222",
+     "text_form_color": "#222",
+     "submit_button_background": "#329e5e",
+     "submit_button_text_color": "#fff",
+     "submit_button_text": "JOIN",
+     "login_button_background": "#329e5e",
+     "login_button_text_color": "#222",
+     "login_button_text": "Login",
+     "side_background_color": "#000",
+     "page_background_color": "#fff",
+     "tick_mark_color": "#329e5e",
+     "logo": "/storage/uploads/logos/1635210687_6120933_6d6b24bb17382f01624f68b182861de8.jpg",
+     "cookie_value": "45 days",
+     "signup_fields": [
+      {
+       "label": "First Name",
+       "id": "first_name",
+       "isRequired": true,
+       "isDefault": true,
+       "isEnabled": true,
+       "isDisableCb": true,
+       "size": 6
+      },
+      {
+       "label": "Last Name",
+       "id": "last_name",
+       "isRequired": true,
+       "isDefault": true,
+       "isEnabled": true,
+       "isDisableCb": true,
+       "size": 6
+      },
+      {
+       "label": "Email",
+       "id": "email",
+       "isRequired": true,
+       "isDefault": true,
+       "type": "email",
+       "isEnabled": true,
+       "isDisableCb": true,
+       "size": 12
+      },
+      {
+       "label": "Password",
+       "id": "password",
+       "isRequired": true,
+       "isDefault": true,
+       "type": "password",
+       "isEnabled": true,
+       "isDisableCb": true,
+       "size": 12
+      },
+      {
+       "label": "Confirm password",
+       "id": "password_confirmation",
+       "isRequired": true,
+       "isDefault": true,
+       "type": "password",
+       "isEnabled": true,
+       "isDisableCb": true,
+       "size": 12
+      },
+      {
+       "label": "Your preferred coupon",
+       "id": "coupon_code",
+       "isRequired": true,
+       "isDefault": true,
+       "isEnabled": true,
+       "type": "text",
+       "size": 12
+      },
+      {
+       "label": "Company",
+       "id": "company",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "size": 12
+      },
+      {
+       "label": "Address",
+       "id": "address",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "size": 12
+      },
+      {
+       "label": "City",
+       "id": "city",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "size": 12
+      },
+      {
+       "label": "ZIP code",
+       "id": "zipcode",
+       "isRequired": true,
+       "isDefault": true,
+       "isEnabled": false,
+       "size": 12
+      },
+      {
+       "label": "State",
+       "id": "state",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "size": 12
+      },
+      {
+       "label": "Country",
+       "id": "country",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "type": "country",
+       "size": 12
+      },
+      {
+       "label": "Phone",
+       "id": "phone",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "size": 12
+      },
+      {
+       "label": "Website",
+       "id": "website",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "prepend": "https://",
+       "size": 12
+      },
+      {
+       "label": "Instagram",
+       "id": "instagram",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "prepend": "@",
+       "size": 12
+      },
+      {
+       "label": "TikTok",
+       "id": "tiktok",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "prepend": "@",
+       "size": 12
+      },
+      {
+       "label": "Facebook",
+       "id": "facebook",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "size": 12
+      },
+      {
+       "label": "X",
+       "id": "twitter",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "prepend": "@",
+       "size": 12
+      },
+      {
+       "label": "YouTube channel",
+       "id": "youtube",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "prepend": "https://youtube.com/",
+       "size": 12
+      },
+      {
+       "label": "Personal detail",
+       "id": "personal_detail",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "type": "textarea",
+       "size": 12
+      },
+      {
+       "label": "Payment method",
+       "id": "payment_method",
+       "isRequired": false,
+       "isDefault": true,
+       "isEnabled": false,
+       "size": 12,
+       "type": "dropdown"
+      },
+      {
+       "label": "Tax",
+       "id": "tax_percent",
+       "isRequired": true,
+       "isDefault": true,
+       "isEnabled": true,
+       "size": 12
+      }
+     ]
+    },
+    "payment_support": {
+     "paypal": 1,
+     "other": "$CashApp"
+    },
+    "other_payment_method_name": "$CashApp",
+    "payment_program": "",
+    "enable_coupon": 1,
+    "auto_active_affiliate": 0,
+    "auto_active_affiliate_program": [
+     "0"
+    ],
+    "custom_domain": null,
+    "p_setting_cookie": 30,
+    "total_order_last_seven_day": 15,
+    "category_id": "7,26",
+    "commissionText": "Percent Of Sale",
+    "applied_offers_id": [
+     300946,
+     277601,
+     127092,
+     67973,
+     96373,
+     129669,
+     84567,
+     24449,
+     233894,
+     64586,
+     180308,
+     101447,
+     168137,
+     4712,
+     12274,
+     122284,
+     71800,
+     103759,
+     67061,
+     174141
+    ],
+    "can_apply_offer": false,
+    "checked_change_program": [
+     {
+      "aff_p_id": 300946,
+      "mkp_p_id": 300946
+     },
+     {
+      "aff_p_id": 277601,
+      "mkp_p_id": 277601
+     },
+     {
+      "aff_p_id": 127092,
+      "mkp_p_id": 127092
+     },
+     {
+      "aff_p_id": 67973,
+      "mkp_p_id": 67973
+     },
+     {
+      "aff_p_id": 96373,
+      "mkp_p_id": 96373
+     },
+     {
+      "aff_p_id": 129669,
+      "mkp_p_id": 129669
+     },
+     {
+      "aff_p_id": 84567,
+      "mkp_p_id": 84567
+     },
+     {
+      "aff_p_id": 24449,
+      "mkp_p_id": 24449
+     },
+     {
+      "aff_p_id": 233894,
+      "mkp_p_id": 233894
+     },
+     {
+      "aff_p_id": 64586,
+      "mkp_p_id": 64586
+     },
+     {
+      "aff_p_id": 180308,
+      "mkp_p_id": 180308
+     },
+     {
+      "aff_p_id": 101447,
+      "mkp_p_id": 101447
+     },
+     {
+      "aff_p_id": 98795,
+      "mkp_p_id": 100939
+     },
+     {
+      "aff_p_id": 168137,
+      "mkp_p_id": 168137
+     },
+     {
+      "aff_p_id": 263132,
+      "mkp_p_id": 261391
+     },
+     {
+      "aff_p_id": 4712,
+      "mkp_p_id": 4712
+     },
+     {
+      "aff_p_id": 12274,
+      "mkp_p_id": 12274
+     },
+     {
+      "aff_p_id": 122284,
+      "mkp_p_id": 122284
+     },
+     {
+      "aff_p_id": 71800,
+      "mkp_p_id": 71800
+     },
+     {
+      "aff_p_id": 103759,
+      "mkp_p_id": 103759
+     },
+     {
+      "aff_p_id": 67061,
+      "mkp_p_id": 67061
+     },
+     {
+      "aff_p_id": 174141,
+      "mkp_p_id": 174141
+     }
+    ],
+    "is_change_program": false,
+    "categories": "Grocery & Food, Retail & Consumer goods",
+    "symbol_currency": "$",
+    "commission": "12% per order",
+    "cookie": 30,
+    "traffic_info": [],
+    "logo": "https://cdn.uppromote.com/storage/uploads/logos/1635210687_6120933_6d6b24bb17382f01624f68b182861de8.jpg",
+    "promotion_details": [
+     "aff_link",
+     "coupon"
+    ],
+    "application_review": "manual",
+    "apply_url": "https://af.uppromote.com/coincoffee/register?p=292189&key=eyJpdiI6IkR6cGpXbXdTNWQ4V2JuWTYzcnJBYmc9PSIsInZhbHVlIjoiQzl5dG1ha1FVei8ydHEyOXhoRG5JQXhZSDBMcjdQeHIzSFcxYXlHaGY2QzBzUGNKZkpPaGRWU0F5bEtWL09saXdmOUp1NC9tMGk2WXdIb1l1VFEvNVA5M1FKU0RVZENUbUFtS0RaSTd6OXU3eFJlTThrU0plOEUyU2J1ZXZYT0giLCJtYWMiOiI2ZTk1OTBhMDA3ZTUzM2NhNTMwNzYxNDUxNmNlMTA5N2YxZWU1MDI2NDEyN2ZkNTRlNDQ3OGYyNjhhZWFjNTlmIiwidGFnIjoiIn0=",
+    "is_applied_offer": false,
+    "shop_info": {
+     "shop_id": 49315,
+     "name": "CoinCoffee",
+     "currency": "USD",
+     "myshopify_domain": "coincoffee.myshopify.com"
+    },
+    "user_domain": {
+     "subdomain": "coincoffee",
+     "shop_id": 49315
+    },
+    "program": {
+     "id": 292189,
+     "name": "CoinCoffee™ Partner Collective (Collab-it Affiliate Program)",
+     "commission_type": 2,
+     "commission_amount": "12.00",
+     "enable_first_commission": 0,
+     "first_commission_type": 0,
+     "first_commission_amount": "0.00",
+     "rule": 1,
+     "advance_amount": null,
+     "status": 1,
+     "is_default": 1
+    },
+    "merchant_setting": {
+     "shop_id": 49315,
+     "cookie": 45,
+     "affiliate_registration": {
+      "page_heading": "Join our Affiliate Program",
+      "page_heading_color": "#222",
+      "main_heading": "",
+      "main_heading_color": "#fff",
+      "sub_main_heading": "Join our affiliate program!",
+      "text_benefit_color": "#222",
+      "text_form_color": "#222",
+      "submit_button_background": "#329e5e",
+      "submit_button_text_color": "#fff",
+      "submit_button_text": "JOIN",
+      "login_button_background": "#329e5e",
+      "login_button_text_color": "#222",
+      "login_button_text": "Login",
+      "side_background_color": "#000",
+      "page_background_color": "#fff",
+      "tick_mark_color": "#329e5e",
+      "logo": "/storage/uploads/logos/1635210687_6120933_6d6b24bb17382f01624f68b182861de8.jpg",
+      "cookie_value": "45 days",
+      "signup_fields": [
+       {
+        "label": "First Name",
+        "id": "first_name",
+        "isRequired": true,
+        "isDefault": true,
+        "isEnabled": true,
+        "isDisableCb": true,
+        "size": 6
+       },
+       {
+        "label": "Last Name",
+        "id": "last_name",
+        "isRequired": true,
+        "isDefault": true,
+        "isEnabled": true,
+        "isDisableCb": true,
+        "size": 6
+       },
+       {
+        "label": "Email",
+        "id": "email",
+        "isRequired": true,
+        "isDefault": true,
+        "type": "email",
+        "isEnabled": true,
+        "isDisableCb": true,
+        "size": 12
+       },
+       {
+        "label": "Password",
+        "id": "password",
+        "isRequired": true,
+        "isDefault": true,
+        "type": "password",
+        "isEnabled": true,
+        "isDisableCb": true,
+        "size": 12
+       },
+       {
+        "label": "Confirm password",
+        "id": "password_confirmation",
+        "isRequired": true,
+        "isDefault": true,
+        "type": "password",
+        "isEnabled": true,
+        "isDisableCb": true,
+        "size": 12
+       },
+       {
+        "label": "Your preferred coupon",
+        "id": "coupon_code",
+        "isRequired": true,
+        "isDefault": true,
+        "isEnabled": true,
+        "type": "text",
+        "size": 12
+       },
+       {
+        "label": "Company",
+        "id": "company",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "size": 12
+       },
+       {
+        "label": "Address",
+        "id": "address",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "size": 12
+       },
+       {
+        "label": "City",
+        "id": "city",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "size": 12
+       },
+       {
+        "label": "ZIP code",
+        "id": "zipcode",
+        "isRequired": true,
+        "isDefault": true,
+        "isEnabled": false,
+        "size": 12
+       },
+       {
+        "label": "State",
+        "id": "state",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "size": 12
+       },
+       {
+        "label": "Country",
+        "id": "country",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "type": "country",
+        "size": 12
+       },
+       {
+        "label": "Phone",
+        "id": "phone",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "size": 12
+       },
+       {
+        "label": "Website",
+        "id": "website",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "prepend": "https://",
+        "size": 12
+       },
+       {
+        "label": "Instagram",
+        "id": "instagram",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "prepend": "@",
+        "size": 12
+       },
+       {
+        "label": "TikTok",
+        "id": "tiktok",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "prepend": "@",
+        "size": 12
+       },
+       {
+        "label": "Facebook",
+        "id": "facebook",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "size": 12
+       },
+       {
+        "label": "X",
+        "id": "twitter",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "prepend": "@",
+        "size": 12
+       },
+       {
+        "label": "YouTube channel",
+        "id": "youtube",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "prepend": "https://youtube.com/",
+        "size": 12
+       },
+       {
+        "label": "Personal detail",
+        "id": "personal_detail",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "type": "textarea",
+        "size": 12
+       },
+       {
+        "label": "Payment method",
+        "id": "payment_method",
+        "isRequired": false,
+        "isDefault": true,
+        "isEnabled": false,
+        "size": 12,
+        "type": "dropdown"
+       },
+       {
+        "label": "Tax",
+        "id": "tax_percent",
+        "isRequired": true,
+        "isDefault": true,
+        "isEnabled": true,
+        "size": 12
+       }
+      ]
+     },
+     "payment_support": {
+      "paypal": 1,
+      "bank": 0,
+      "debit": 0,
+      "cheque": 0,
+      "venmo": 0,
+      "paytm": 0,
+      "upi": 0,
+      "store_credit": 0,
+      "other": 1
+     },
+     "other_payment_method_name": "$CashApp",
+     "payment_program": [],
+     "enable_coupon": 1,
+     "auto_active_affiliate": 0,
+     "auto_active_affiliate_program": [
+      "0"
+     ],
+     "custom_domain": null
+    },
+    "programs_setting": {
+     "program_id": 292189,
+     "cookie": 30
+    },
+    "analytic": {
+     "shop_id": 49315,
+     "total_order_last_seven_day": 15
+    },
+    "category_group": {
+     "category_id": "7,26",
+     "shop_id": 49315
+    },
+    "promotion_channels": [
+     {
+      "shop_id": 49315,
+      "channel": "blogs_newspapers",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "comparison_shopping_sites",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "communities_forums",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "content_creators_influencers",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "social_group_user_generated_content",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "seo",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "coupon_discount_codes",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "incentivised_traffic_loyalty",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "extension_software",
+      "value": 0
+     },
+     {
+      "shop_id": 49315,
+      "channel": "push_notification",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "social_media_ads",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "search_ads",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "pop_up_pop_under_tab_under",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "email_marketing",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "social_messenger_app",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "cashback",
+      "value": 0
+     },
+     {
+      "shop_id": 49315,
+      "channel": "display_banner",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "direct_linking_direct_traffic",
+      "value": 1
+     },
+     {
+      "shop_id": 49315,
+      "channel": "adult_pornographic",
+      "value": 0
+     },
+     {
+      "shop_id": 49315,
+      "channel": "brand_bidding",
+      "value": 0
+     },
+     {
+      "shop_id": 49315,
+      "channel": "gambling",
+      "value": 0
+     }
+    ]
+   },
+   {
+    "id": 38112,
+    "shop_id": 253603,
+    "program_id": 296861,
+    "store_banner": null,
+    "slogan": null,
+    "description": "<div style=\"font-family:Poppins;\"><article class=\"text-token-text-primary w-full focus:outline-none [--shadow-height:45px] has-data-writing-block:pointer-events-none has-data-writing-block:-mt-(--shadow-height) has-data-writing-block:pt-(--shadow-height) [&amp;:has([data-writing-block])&gt;*]:pointer-events-auto scroll-mt-(--header-height)\"><br></article><article class=\"text-token-text-primary w-full focus:outline-none [--shadow-height:45px] has-data-writing-block:pointer-events-none has-data-writing-block:-mt-(--shadow-height) has-data-writing-block:pt-(--shadow-height) [&amp;:has([data-writing-block])&gt;*]:pointer-events-auto scroll-mt-[calc(var(--header-height)+min(200px,max(70px,20svh)))]\"><div class=\"text-base my-auto mx-auto pb-10 [--thread-content-margin:--spacing(4)] @w-sm/main:[--thread-content-margin:--spacing(6)] @w-lg/main:[--thread-content-margin:--spacing(16)] px-(--thread-content-margin)\"><div class=\"[--thread-content-max-width:40rem] @w-lg/main:[--thread-content-max-width:48rem] mx-auto max-w-(--thread-content-max-width) flex-1 group/turn-messages focus-visible:outline-hidden relative flex w-full min-w-0 flex-col agent-turn\"><div class=\"flex max-w-full flex-col grow\"><div class=\"min-h-8 text-message relative flex w-full flex-col items-end gap-2 text-start break-words whitespace-normal [.text-message+&amp;]:mt-1\"><div class=\"flex w-full flex-col gap-1 empty:hidden first:pt-[1px]\"><div class=\"markdown prose dark:prose-invert w-full wrap-break-word light markdown-new-styling\"><p><strong>Affiliate Creators Wanted – Partner With Chunk Fudge 🍫</strong></p><p>At <strong>Chunk Fudge</strong>, we don’t do tiny cubes of boring fudge. We make <strong>giant 400g bars packed with cookies, candy, chocolate and cakes</strong>, because <strong>“Fudge HAS to have Chunks.”</strong> Our signature <strong>“Chunks Of Yum”</strong> approach means every bite is loaded with texture, flavour, and serious wow-factor. From best-selling favourites like <strong>Cookies &amp; Cream</strong>, <strong>Lemon Meringue Pie</strong>, <strong>Super Bueno</strong>, and <strong>White Choc Biscoff</strong>, to viral seasonal releases, our handmade fudge is made fresh to order and shipped nationwide across the UK.</p><p>Now we’re inviting <strong>content creators, affiliates, and influencers</strong> to join the fastest-growing fudge brand online.</p><hr><h2>Why Creators Love Partnering With Chunk Fudge</h2><ul><li><p>⭐ <strong>UK’s #1 rated online fudge store</strong></p></li><li><p>🍫 <strong>FREE box of fudge</strong> sent to you to create an engaging unboxing / taste-test video</p></li><li><p>🎁 <strong>Your subscribers get 10% OFF</strong> on top of all our other discounts and offers</p></li><li><p>💰 <strong>Earn £4 commission via PayPal</strong> for every <strong>NEW customer</strong> who places an order of <strong>£18+</strong> using your unique link (first order only)</p></li><li><p>🇬🇧 <strong>UK-only shipping</strong> – focused, high-conversion audience</p></li><li><p>🚀 Proven viral-ready product – bold visuals, giant bars, and unforgettable flavours</p></li></ul><hr><h2>What Makes Chunk Fudge Different</h2><ul><li><p>Massive <strong>400g Chunk bars</strong> designed for social-ready content</p></li><li><p>Handmade fresh-to-order gourmet fudge loaded with real inclusions</p></li><li><p>Bright, gift-ready packaging perfect for unboxings</p></li><li><p>A rapidly growing UK brand with strong repeat-purchase customers</p></li></ul><hr><h3>Join the Chunkers Creator Network</h3><p>Promote the brand where <strong>“Fudge HAS to have Chunks”</strong> and earn commission while giving your audience the ultimate <strong>Chunks Of Yum</strong> experience.</p><p>Apply today and start earning with <strong>ChunkFudge.com</strong>.</p></div></div></div></div></div></div></article></div>",
+    "website": null,
+    "geology_limit": null,
+    "video_url": null,
+    "average_earning_per_sale": null,
+    "created_at": "2026-02-10T18:12:32.000000Z",
+    "updated_at": "2026-08-04T06:00:46.000000Z",
+    "enable_offer": 1,
+    "custom_commission_amount": null,
+    "target_audience_ages": [
+     "18-24",
+     "25-34",
+     "35-44",
+     "45-54",
+     "55-64",
+     "65 and over"
+    ],
+    "target_audience_locations": [
+     "United Kingdom"
+    ],
+    "target_audience_genders": [
+     "Male",
+     "Female",
+     "Other"
+    ],
+    "target_audience_customer_channels": [],
+    "hashtags": [
+     ""
+    ],
+    "offer_score": 3.7800000000000002,
+    "payout_rate": "84.57%",
+    "approval_rate": 89.89,
+    "feature_offer_index": null,
+    "payout_period": "1st of the Month",
+    "recommend_score": 3.97,
+    "name": "Chunk Fudge",
+    "currency": "GBP",
+    "myshopify_domain": "hde8ex-nx.myshopify.com",
+    "subdomain": "chunkfudge",
+    "programs_name": "UK Only Affiliate Commission",
+    "commission_type": 0,
+    "commission_amount": "4.00",
+    "enable_first_commission": 0,
+    "first_commission_type": 0,
+    "first_commission_amount": "0.00",
+    "rule": 1,
+    "advance_amount": 0,
+    "program_status": 1,
+    "is_default_program": 1,
+    "m_setting_cookie": 30,
+    "affiliate_registration": {
+     "font_family": "Poppins",
+     "page_heading": "Join our Affiliate Program",
+     "page_heading_color": "#222222",
+     "main_heading": "",
+     "main_heading_color": "#ffffff",
+     "sub_main_heading": "Join our affiliate program!",
+     "sub_main_heading_color": "#ffffff",
+     "enable_logo": 1,
+     "text_benefit_color": "#222222",
+     "text_form_color": "#222222",
+     "text_input_form_color": "#222222",
+     "submit_button_background": "#329e5e",
+     "submit_button_text_color": "#ffffff",
+     "submit_button_text": "JOIN",
+     "login_button_background": "#329e5e",
+     "login_button_text_color": "#222222",
+     "login_button_text": "Login",
+     "side_background_color": "#000000",
+     "page_background_color": "#ffffff",
+     "benefit_background_color": "#ffffff",
+     "tick_mark_color": "#329e5e",
+     "captcha": true,
+     "cookie_label": "Cookie days",
+     "commission_type_label": "Commission type",
+     "commission_amount_label": "Commission amount",
+     "additional_term_label": "Additional terms",
+     "policy_display_text": "By joining, you agree to the",
+     "policy_display_text_term": "Terms",
+     "policy_display_text_and": "and",
+     "policy_display_text_privacy": "Privacy Policy",
+     "term_popup_text": "Terms and Conditions",
+     "policy_popup_text": "Privacy Policy",
+     "is_check_benefit_cookie": 0,
+     "logo": "storage/uploads/logo//1770747554_6784159_d89222cbbd43ce2b2b2147f501b91d9e.png"
+    },
+    "payment_support": {
+     "paypal": 1
+    },
+    "other_payment_method_name": "",
+    "payment_program": {
+     "paypal": [
+      "296861"
+     ]
+    },
+    "enable_coupon": 1,
+    "auto_active_affiliate": 0,
+    "auto_active_affiliate_program": [
+     "0"
+    ],
+    "custom_domain": null,
+    "p_setting_cookie": 30,
+    "total_order_last_seven_day": 517,
+    "category_id": "7",
+    "commissionText": "Flat Rate Per Order",
+    "applied_offers_id": [
+     300946,
+     277601,
+     127092,
+     67973,
+     96373,
+     129669,
+     84567,
+     24449,
+     233894,
+     64586,
+     180308,
+     101447,
+     168137,
+     4712,
+     12274,
+     122284,
+     71800,
+     103759,
+     67061,
+     174141
+    ],
+    "can_apply_offer": false,
+    "checked_change_program": [
+     {
+      "aff_p_id": 300946,
+      "mkp_p_id": 300946
+     },
+     {
+      "aff_p_id": 277601,
+      "mkp_p_id": 277601
+     },
+     {
+      "aff_p_id": 127092,
+      "mkp_p_id": 127092
+     },
+     {
+      "aff_p_id": 67973,
+      "mkp_p_id": 67973
+     },
+     {
+      "aff_p_id": 96373,
+      "mkp_p_id": 96373
+     },
+     {
+      "aff_p_id": 129669,
+      "mkp_p_id": 129669
+     },
+     {
+      "aff_p_id": 84567,
+      "mkp_p_id": 84567
+     },
+     {
+      "aff_p_id": 24449,
+      "mkp_p_id": 24449
+     },
+     {
+      "aff_p_id": 233894,
+      "mkp_p_id": 233894
+     },
+     {
+      "aff_p_id": 64586,
+      "mkp_p_id": 64586
+     },
+     {
+      "aff_p_id": 180308,
+      "mkp_p_id": 180308
+     },
+     {
+      "aff_p_id": 101447,
+      "mkp_p_id": 101447
+     },
+     {
+      "aff_p_id": 98795,
+      "mkp_p_id": 100939
+     },
+     {
+      "aff_p_id": 168137,
+      "mkp_p_id": 168137
+     },
+     {
+      "aff_p_id": 263132,
+      "mkp_p_id": 261391
+     },
+     {
+      "aff_p_id": 4712,
+      "mkp_p_id": 4712
+     },
+     {
+      "aff_p_id": 12274,
+      "mkp_p_id": 12274
+     },
+     {
+      "aff_p_id": 122284,
+      "mkp_p_id": 122284
+     },
+     {
+      "aff_p_id": 71800,
+      "mkp_p_id": 71800
+     },
+     {
+      "aff_p_id": 103759,
+      "mkp_p_id": 103759
+     },
+     {
+      "aff_p_id": 67061,
+      "mkp_p_id": 67061
+     },
+     {
+      "aff_p_id": 174141,
+      "mkp_p_id": 174141
+     }
+    ],
+    "is_change_program": false,
+    "categories": "Food, Beverages & Tobacco",
+    "symbol_currency": "£",
+    "commission": "£4.00 per order",
+    "cookie": 30,
+    "traffic_info": [],
+    "logo": "https://cdn.uppromote.com/storage/uploads/logo/1770747554_6784159_d89222cbbd43ce2b2b2147f501b91d9e.png",
+    "promotion_details": [
+     "aff_link",
+     "coupon"
+    ],
+    "application_review": "manual",
+    "apply_url": "https://af.uppromote.com/chunkfudge/register?p=296861&key=eyJpdiI6IlM3Y2FYekJ1RTNDcHFtM3ZzTStCOEE9PSIsInZhbHVlIjoialUrNmc3YWZaaXpwNy9LMUZxTU4rY1FielJMbHVhRUxndm9MUmxGNEZFckNFVUlpZUlHL2NGWWtmaTFISzN0RjZYY3RyaVBiT1RiY3RrZ1YwZ0ZraXA4YThNL04wNzRTanM0MGVlc0NidVlwSjRONjBKbEQ1UUZOaGlUOUFJYzgiLCJtYWMiOiI0NzNjYTJlMjQwZDE0ZWQ4ZmJjNDdlOTA1NmJkZDAxNjExZGE4NjQ5YWMzYzhlNzJjOGMzNDAzYjQ3NjZmMjEzIiwidGFnIjoiIn0=",
+    "is_applied_offer": false,
+    "shop_info": {
+     "shop_id": 253603,
+     "name": "Chunk Fudge",
+     "currency": "GBP",
+     "myshopify_domain": "hde8ex-nx.myshopify.com"
+    },
+    "user_domain": {
+     "subdomain": "chunkfudge",
+     "shop_id": 253603
+    },
+    "program": {
+     "id": 296861,
+     "name": "UK Only Affiliate Commission",
+     "commission_type": 0,
+     "commission_amount": "4.00",
+     "enable_first_commission": 0,
+     "first_commission_type": 0,
+     "first_commission_amount": "0.00",
+     "rule": 1,
+     "advance_amount": null,
+     "status": 1,
+     "is_default": 1
+    },
+    "merchant_setting": {
+     "shop_id": 253603,
+     "cookie": 30,
+     "affiliate_registration": {
+      "font_family": "Poppins",
+      "page_heading": "Join our Affiliate Program",
+      "page_heading_color": "#222222",
+      "main_heading": "",
+      "main_heading_color": "#ffffff",
+      "sub_main_heading": "Join our affiliate program!",
+      "sub_main_heading_color": "#ffffff",
+      "enable_logo": 1,
+      "text_benefit_color": "#222222",
+      "text_form_color": "#222222",
+      "text_input_form_color": "#222222",
+      "submit_button_background": "#329e5e",
+      "submit_button_text_color": "#ffffff",
+      "submit_button_text": "JOIN",
+      "login_button_background": "#329e5e",
+      "login_button_text_color": "#222222",
+      "login_button_text": "Login",
+      "side_background_color": "#000000",
+      "page_background_color": "#ffffff",
+      "benefit_background_color": "#ffffff",
+      "tick_mark_color": "#329e5e",
+      "captcha": true,
+      "cookie_label": "Cookie days",
+      "commission_type_label": "Commission type",
+      "commission_amount_label": "Commission amount",
+      "additional_term_label": "Additional terms",
+      "policy_display_text": "By joining, you agree to the",
+      "policy_display_text_term": "Terms",
+      "policy_display_text_and": "and",
+      "policy_display_text_privacy": "Privacy Policy",
+      "term_popup_text": "Terms and Conditions",
+      "policy_popup_text": "Privacy Policy",
+      "is_check_benefit_cookie": 0,
+      "logo": "storage/uploads/logo//1770747554_6784159_d89222cbbd43ce2b2b2147f501b91d9e.png"
+     },
+     "payment_support": {
+      "paypal": 1,
+      "bank": 0,
+      "debit": 0,
+      "cheque": 0,
+      "venmo": 0,
+      "paytm": 0,
+      "upi": 0,
+      "store_credit": 0,
+      "other": 0
+     },
+     "other_payment_method_name": null,
+     "payment_program": {
+      "paypal": [
+       "296861"
+      ]
+     },
+     "enable_coupon": 1,
+     "auto_active_affiliate": 0,
+     "auto_active_affiliate_program": [
+      "0"
+     ],
+     "custom_domain": null
+    },
+    "programs_setting": {
+     "program_id": 296861,
+     "cookie": 30
+    },
+    "analytic": {
+     "shop_id": 253603,
+     "total_order_last_seven_day": 517
+    },
+    "category_group": {
+     "category_id": "7",
+     "shop_id": 253603
+    },
+    "promotion_channels": [
+     {
+      "shop_id": 253603,
+      "channel": "blogs_newspapers",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "comparison_shopping_sites",
+      "value": 0
+     },
+     {
+      "shop_id": 253603,
+      "channel": "communities_forums",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "content_creators_influencers",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "social_group_user_generated_content",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "seo",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "coupon_discount_codes",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "incentivised_traffic_loyalty",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "extension_software",
+      "value": 0
+     },
+     {
+      "shop_id": 253603,
+      "channel": "push_notification",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "social_media_ads",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "search_ads",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "pop_up_pop_under_tab_under",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "email_marketing",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "social_messenger_app",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "cashback",
+      "value": 0
+     },
+     {
+      "shop_id": 253603,
+      "channel": "display_banner",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "direct_linking_direct_traffic",
+      "value": 1
+     },
+     {
+      "shop_id": 253603,
+      "channel": "adult_pornographic",
+      "value": 0
+     },
+     {
+      "shop_id": 253603,
+      "channel": "brand_bidding",
+      "value": 0
+     },
+     {
+      "shop_id": 253603,
+      "channel": "gambling",
+      "value": 0
+     }
+    ]
+   }
+  ],
+  "next_page_url": "/?page=2"
+ },
+ "message": "OK",
+ "status": 200
+}

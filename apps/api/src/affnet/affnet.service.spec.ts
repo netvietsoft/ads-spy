@@ -160,6 +160,94 @@ describe('fetchStep nhánh goaffpro', () => {
   });
 });
 
+// uppromote.com: API JSON 1 tầng nhưng BẮT BUỘC token (gọi trần → 401). Con trỏ KV là SỐ TRANG.
+describe('fetchStep nhánh uppromote', () => {
+  const offer = (id: number) => ({
+    id, name: 'S' + id, programs_name: 'P' + id, myshopify_domain: `s${id}.myshopify.com`,
+    currency: 'USD', commission_type: 2, commission_amount: '10.00', commission: '10% per order',
+    commissionText: 'Percent Of Sale', cookie: 30, apply_url: `https://af.uppromote.com/s${id}/register`,
+    categories: 'Retail', payout_period: 'Bi-Weekly', description: '<p>mô tả</p>',
+  });
+  const mk = (pageImpl: any, offset = 0, token: string | null = 'TOKEN-X') => {
+    const db = mkDb(); const f = mkFetch();
+    db.pickNetToFetch.mockResolvedValue({ net: 'uppromote.com', platform: 'uppromote', fakeCheckedAt: null, fakeLen: null, fakeHash: null });
+    db.getNetOffset = jest.fn().mockResolvedValue(offset);
+    db.setNetOffset = jest.fn().mockResolvedValue(undefined);
+    db.getNetCred = jest.fn().mockResolvedValue(token ? { token, kind: 'bearer', updatedAt: 1 } : null);
+    const up = { page: jest.fn(typeof pageImpl === 'function' ? pageImpl : async () => pageImpl) };
+    return { db, f, up, svc: new AffnetService(db as any, f as any, mkTraffic() as any, undefined, undefined, up as any) };
+  };
+
+  // Token là JWT của tài khoản người dùng → KHÔNG nằm trong code (repo PUBLIC), đọc từ getNetCred.
+  // Chưa dán token thì phải nói rõ, KHÔNG ném lỗi (ném là job vào nhánh BLOCK, người dùng chỉ thấy "error").
+  it('CHƯA có token → needToken=true, không gọi API, KHÔNG dịch con trỏ', async () => {
+    const { db, up, svc } = mk({ offers: [offer(1)], hasNext: false }, 5, null);
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(r.needToken).toBe(true);
+    expect(up.page).not.toHaveBeenCalled();
+    expect(db.setNetOffset).not.toHaveBeenCalled();
+    expect(db.upsertProgramBulk).not.toHaveBeenCalled();
+  });
+
+  it('có token → truyền ĐÚNG token xuống adapter, ghi host + program bằng lệnh GỘP', async () => {
+    const { db, f, up, svc } = mk({ offers: [offer(1), offer(2)], hasNext: false });
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(up.page).toHaveBeenCalledWith(1, 'TOKEN-X');     // con trỏ 0 = trang 1
+    expect(f.probeFake).not.toHaveBeenCalled();
+    expect(f.fetchCampaign).not.toHaveBeenCalled();
+    expect(db.upsertHosts).toHaveBeenCalledWith('uppromote.com', [
+      { slug: '1', sources: ['uppromote-api'] }, { slug: '2', sources: ['uppromote-api'] },
+    ]);
+    expect(db.upsertProgramBulk).toHaveBeenCalledTimes(1);   // 1 statement/trang, không phải 1/offer
+    expect(db.upsertProgram).not.toHaveBeenCalled();
+    expect(db.markHostCheckedBulk).toHaveBeenCalledWith('uppromote.com', ['1', '2'], 'active');
+    expect(db.upsertProgramBulk.mock.calls[0][0][0]).toMatchObject({
+      net: 'uppromote.com', slug: '1', web: 's1.myshopify.com', commissionPct: 10, cookieDays: 30,
+      joinUrl: 'https://af.uppromote.com/s1/register', status: 'active',
+    });
+    expect(r).toMatchObject({ net: 'uppromote.com', checked: 2, active: 2 });
+  });
+
+  it('hasNext=false → con trỏ về 1 (API dạng simplePaginate, không có total)', async () => {
+    const { db, svc } = mk({ offers: [offer(1)], hasNext: false }, 9);
+    await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(db.setNetOffset).toHaveBeenCalledWith('uppromote.com', 1);
+  });
+
+  it('trang ĐẦY (100) + hasNext=true → đi tiếp trang sau trong cùng lượt', async () => {
+    const full = Array.from({ length: 100 }, (_, i) => offer(i + 1));
+    const pager = async (n: number) => (n <= 2 ? { offers: full, hasNext: true } : { offers: [offer(999)], hasNext: false });
+    const { db, up, svc } = mk(pager);
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(up.page.mock.calls.map((c: any[]) => c[0])).toEqual([1, 2, 3]);
+    expect(r.checked).toBe(201);
+    expect(r.quotaCost).toBe(3);                             // quotaCost = SỐ REQUEST
+    expect(db.setNetOffset).toHaveBeenLastCalledWith('uppromote.com', 1);
+  }, 30_000);
+
+  // Token hết hạn: adapter ném kèm chữ 'token'. Phải để lỗi văng ra để job GIỮ NGUYÊN con trỏ trang —
+  // ghi tiếp rồi tăng trang là mất hẳn 1 trang dữ liệu.
+  it('token hết hạn (401) → ném lỗi, KHÔNG dịch con trỏ, KHÔNG ghi gì', async () => {
+    const { db, svc } = mk(async () => { throw new Error('uppromote 401: token không hợp lệ hoặc đã hết hạn — dán lại ở Cài đặt'); }, 4);
+    await expect(svc.fetchStep({ batch: 30, paceMs: 0 })).rejects.toThrow(/token/);
+    expect(db.setNetOffset).not.toHaveBeenCalled();
+    expect(db.upsertProgramBulk).not.toHaveBeenCalled();
+  });
+
+  it('trang rỗng → con trỏ về 1, không ghi gì', async () => {
+    const { db, svc } = mk({ offers: [], hasNext: true }, 7);
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(db.setNetOffset).toHaveBeenCalledWith('uppromote.com', 1);
+    expect(db.upsertProgramBulk).not.toHaveBeenCalled();
+    expect(r.checked).toBe(0);
+  });
+
+  it('platformOf: uppromote.com → uppromote', () => {
+    const s = new AffnetService(mkDb() as any, mkFetch() as any, mkTraffic() as any);
+    expect(s.platformOf('uppromote.com')).toBe('uppromote');
+  });
+});
+
 // affiliatly.com: directory HTML 2 TẦNG (danh sách 50 thẻ → từng trang chi tiết). Con trỏ KV là SỐ TRANG.
 describe('fetchStep nhánh affiliatly', () => {
   // Giãn 120ms/request chi tiết là đúng cho chạy thật, nhưng 50 request × 120ms = 6s → quá timeout 5s của
