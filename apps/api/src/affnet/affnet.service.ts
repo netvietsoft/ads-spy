@@ -6,6 +6,7 @@ import { discoverNet } from './affnet.discovery';
 import { parseTrafficPaste } from './affnet.traffic';
 import { TrafficService } from '../traffic/traffic.service';
 import { AffnetGoaffpro, GOAFFPRO_NET, GOAFFPRO_PAGE_LIMIT, parseGoaffpro, joinUrlOfGoaffpro } from './affnet.goaffpro';
+import { AffnetAffiliatly, AFFILIATLY_NET, AFFILIATLY_PAGE_SIZE, parseAffiliatly, joinUrlOfAffiliatly } from './affnet.affiliatly';
 
 @Injectable()
 export class AffnetService {
@@ -14,6 +15,7 @@ export class AffnetService {
     private readonly fetch: AffnetFetch,
     private readonly traffic: TrafficService,
     private readonly goaffpro?: AffnetGoaffpro,
+    private readonly affiliatly?: AffnetAffiliatly,
   ) {}
 
   // Nhánh cho net kiểu API (goaffpro): phân trang /v1/public/sites rồi ghi thẳng host+program.
@@ -68,6 +70,74 @@ export class AffnetService {
     return out;
   }
 
+  // Nhánh cho affiliatly.com — directory HTML 2 TẦNG: trang danh sách (50 thẻ) → trang chi tiết từng
+  // chương trình. Con trỏ lưu ở KV là SỐ TRANG (getNetOffset trả 0 khi chưa có → coi là trang 1).
+  //
+  // ĐO THẬT: 583 chương trình / 12 trang. 1 trang = 1 request danh sách + 50 request chi tiết (~1s mỗi
+  // request) ≈ 55-60s, nên 1 lượt job đi được 1-2 trang trong ngân sách 120s → hết catalogue sau ~6-8 lượt.
+  // Giãn 120ms giữa các request chi tiết: site nhỏ, không có lý do gì nã 50 request liên tiếp không nghỉ.
+  private static readonly AFFILIATLY_STEP_BUDGET_MS = 120_000;
+  private static readonly AFFILIATLY_PACE_MS = 120;
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  private async fetchStepAffiliatly(net: string): Promise<{
+    net: string; checked: number; active: number; inactive: number; notfound: number; blocked: number;
+    laneErrors: number; lanes: number; quotaCost: number;
+  }> {
+    // quotaCost = SỐ REQUEST (danh sách + chi tiết), không phải số chương trình — quota ngày của afffetch
+    // đặt cho số trang Chromium mở được, tính theo chương trình là 1 lượt ăn hết quota của mọi net khác.
+    const out = { net, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes: 1, quotaCost: 0 };
+    if (!this.affiliatly) return out;
+    const deadline = Date.now() + AffnetService.AFFILIATLY_STEP_BUDGET_MS;
+    let page = (await this.db.getNetOffset(net)) || 1;
+    do {
+      const items = await this.affiliatly.listPage(page);
+      out.quotaCost++;
+      if (!items.length) { page = 1; break; }               // hết trang → vòng lại đầu
+
+      // Ghi host TRƯỚC (aff_host là nguồn của "đã phát hiện"), slug = ID chương trình — bền qua thời gian.
+      await this.db.upsertHosts(net, items.map((it) => ({ slug: it.id, sources: ['affiliatly-directory'] })));
+
+      const rows: Parameters<AffnetMysql['upsertProgramBulk']>[0] = [];
+      const okSlugs: string[] = [];
+      let failed = 0;
+      for (const it of items) {
+        try {
+          const d = await this.affiliatly.detail(it.id);
+          out.quotaCost++;
+          rows.push({
+            ...parseAffiliatly(it, d), net, slug: it.id,
+            joinUrl: joinUrlOfAffiliatly(d),
+            // Toàn văn mô tả/điều khoản → re-parse offline được, khỏi cào lại 583 trang khi đổi parser.
+            termsText: d.description,
+            status: 'active', fetchedAt: Date.now(),
+          });
+          okSlugs.push(it.id);
+        } catch {
+          failed++;   // 1 trang chi tiết lỗi thì BỎ QUA chương trình đó, không mất cả trang
+        }
+        await this.delay(AffnetService.AFFILIATLY_PACE_MS);
+      }
+      // Quá NỬA trang lỗi = đang bị chặn/site sự cố, KHÔNG phải dữ liệu xấu. Ném ra để giữ nguyên con trỏ
+      // trang (lượt sau làm lại đúng trang này) — cứ ghi tiếp rồi tăng trang là mất hẳn 1 trang dữ liệu.
+      if (failed > items.length / 2) throw new Error(`affiliatly: ${failed}/${items.length} trang chi tiết lỗi ở trang ${page}`);
+
+      if (rows.length) {
+        await this.db.upsertProgramBulk(rows);
+        await this.db.markHostCheckedBulk(net, okSlugs, 'active');
+        out.checked += rows.length; out.active += rows.length;
+      }
+      // Trang NGẮN hơn 50 = trang cuối (site không công bố tổng số nên đây là dấu hiệu duy nhất).
+      if (items.length < AFFILIATLY_PAGE_SIZE) { page = 1; break; }
+      page++;
+    } while (Date.now() < deadline);
+    await this.db.setNetOffset(net, page);
+    return out;
+  }
+
   // Giống normalizeDomain của search.service.ts: bỏ scheme, bỏ www., cắt tại '/', lowercase.
   normalizeNet(raw: string): string {
     return String(raw || '').trim().toLowerCase()
@@ -78,6 +148,9 @@ export class AffnetService {
     if (net === 'getrewardful.com') return 'rewardful';
     // goaffpro lấy dữ liệu bằng API JSON công khai, KHÔNG dò subdomain + mở trang như rewardful.
     if (net === GOAFFPRO_NET) return 'goaffpro';
+    // affiliatly: directory HTML công khai 2 tầng. KHÔNG có wildcard subdomain (trả NXDOMAIN) nên đường
+    // 'generic' dò {slug}.affiliatly.com sẽ ra ĐÚNG 0 kết quả mà không báo lỗi gì.
+    if (net === AFFILIATLY_NET) return 'affiliatly';
     return 'generic';
   }
 
@@ -136,6 +209,7 @@ export class AffnetService {
     await this.db.markNetFetched(n.net); // đẩy net này xuống cuối hàng đợi → net khác được lượt sau
     // Rẽ nhánh theo platform TRƯỚC probeFake: net kiểu API không có trang catch-all để lấy fingerprint.
     if (n.platform === 'goaffpro') return this.fetchStepGoaffpro(n.net); // cfg.batch không dùng: xem ghi chú ở hàm
+    if (n.platform === 'affiliatly') return this.fetchStepAffiliatly(n.net);
     const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
     if (!hosts.length) return out; // race hiếm (host vừa bị lượt khác lấy) → bỏ lượt
     // Token của net (nếu có) — đọc ĐÚNG 1 LẦN/lượt rồi dùng cho cả lô, khỏi đọc lại từng host.

@@ -60,6 +60,18 @@ export const SATURATED_COOLDOWN_MS = 24 * 3600 * 1000;
 // report, Vòng sửa 2). Sửa/đảo logic ở ĐÚNG 1 chỗ này thì cả code lẫn test đổi theo, test sẽ đỏ.
 export const NET_ELIGIBLE_SQL = '(discover_polled_at IS NULL OR dry_rounds < ? OR discover_polled_at <= ?)';
 
+// Net kiểu API/DIRECTORY: lấy dữ liệu bằng cách phân trang qua catalogue của nền tảng (goaffpro: API JSON;
+// affiliatly: trang directory HTML), KHÔNG dò subdomain và KHÔNG dựa vào "host chờ".
+// 1 NGUỒN CHÂN LÝ cho CẢ HAI câu SQL chọn net bên dưới. Thêm net kiểu này mà quên 1 trong 2 chỗ thì:
+//   · quên NET_FETCHABLE_SQL → adapter chạy ĐÚNG 0 LẦN (0 host nên không bao giờ "còn host chờ"),
+//   · quên vế NOT IN ở pickNetToPoll → discovery cứ dò subdomain của net không có subdomain, đốt lượt vô ích.
+// Cả hai đều KHÔNG làm test nào đỏ nếu để rời rạc — đúng lỗi đã xảy ra ở commit aad442c.
+export const API_PLATFORMS = ['goaffpro', 'affiliatly'] as const;
+const API_PLATFORM_SQL = API_PLATFORMS.map((p) => `'${p}'`).join(', ');
+export const NET_FETCHABLE_SQL =
+  `(n.platform IN (${API_PLATFORM_SQL}) OR EXISTS (SELECT 1 FROM aff_host h WHERE h.net = n.net AND h.checked_at IS NULL))`;
+export const NET_POLLABLE_PLATFORM_SQL = `platform NOT IN (${API_PLATFORM_SQL})`;
+
 function rowToAffNet(r: any): AffNet {
   return {
     net: r.net,
@@ -286,7 +298,8 @@ export class AffnetMysql {
       `SELECT net, platform, enabled, note, discover_polled_at, discover_polls, discover_last_new,
               fake_len, fake_hash, fake_checked_at
        FROM aff_net WHERE enabled = 1
-         AND platform <> 'goaffpro'
+         -- Net kiểu API/directory không có subdomain để dò → discovery vô nghĩa, bỏ hẳn khỏi vòng poll.
+         AND ${NET_POLLABLE_PLATFORM_SQL}
          AND ${NET_ELIGIBLE_SQL}
        ORDER BY discover_polled_at IS NOT NULL, discover_polled_at LIMIT 1`,
       [DRY_ROUNDS_TO_SATURATE, cutoff],
@@ -360,13 +373,7 @@ export class AffnetMysql {
       `SELECT net, platform, enabled, note, discover_polled_at, discover_polls, discover_last_new,
               fake_len, fake_hash, fake_checked_at
        FROM aff_net n
-       WHERE enabled = 1 AND (
-         -- Net kiểu API (goaffpro) LUÔN đủ điều kiện: nó đi phân trang qua catalogue (22.485 store) chứ
-         -- không dựa vào "host chờ". Thiếu vế này thì nó chạy ĐÚNG 0 LẦN: ban đầu 0 host, mà mỗi lượt
-         -- adapter lại markHostChecked ngay cho mọi host vừa ghi → không bao giờ có host checked_at NULL.
-         n.platform = 'goaffpro'
-         OR EXISTS (SELECT 1 FROM aff_host h WHERE h.net = n.net AND h.checked_at IS NULL)
-       )
+       WHERE enabled = 1 AND ${NET_FETCHABLE_SQL}
        ORDER BY fetch_polled_at IS NOT NULL, fetch_polled_at LIMIT 1`,
     );
     const r = (rows as any[])[0];

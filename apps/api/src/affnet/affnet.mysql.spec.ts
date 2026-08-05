@@ -1,7 +1,7 @@
 // affnet.mysql.spec.ts — 3 bảng aff_* trên MySQL local. Chạy: npx jest src/affnet/affnet.mysql --runInBand --forceExit
 import { ShMysql } from '../shophunter/sh.mysql';
 import { PrismaService } from '../prisma.service';
-import { AffnetMysql, DRY_THRESHOLD, DRY_ROUNDS_TO_SATURATE, SATURATED_COOLDOWN_MS, NET_ELIGIBLE_SQL } from './affnet.mysql';
+import { AffnetMysql, DRY_THRESHOLD, DRY_ROUNDS_TO_SATURATE, SATURATED_COOLDOWN_MS, NET_ELIGIBLE_SQL, API_PLATFORMS, NET_FETCHABLE_SQL, NET_POLLABLE_PLATFORM_SQL } from './affnet.mysql';
 
 const NET = 'zz-test-net.example';   // net giả, dọn sạch sau mỗi lần chạy
 let sh: ShMysql;
@@ -127,6 +127,42 @@ describe('AffnetMysql', () => {
     const cutoff = Date.now() - SATURATED_COOLDOWN_MS;
     const [rows] = await pool.query(`SELECT ${NET_ELIGIBLE_SQL} AS eligible FROM aff_net WHERE net = ?`, [DRY_ROUNDS_TO_SATURATE, cutoff, NET]);
     expect(Number((rows as any[])[0].eligible)).toBe(1);
+  });
+
+  // Net kiểu API/directory (goaffpro, affiliatly): 2 câu SQL chọn net phải nhất quán. Trước đây 2 vế này
+  // viết tay rời rạc và KHÔNG có test nào — chính lỗi ở commit aad442c: adapter goaffpro chạy đúng 0 lần
+  // vì pickNetToFetch đòi "còn host chờ", mà net kiểu này không bao giờ có host chờ. Đọc trực tiếp hằng số
+  // (không copy tay) trên DÒNG CỦA NET để không cạnh tranh ORDER BY với dữ liệu production.
+  describe('predicate chọn net cho net kiểu API/directory', () => {
+    it('API_PLATFORMS phải gồm mọi net kiểu này — thêm net mới mà quên đây là tính năng chạy 0 lần', () => {
+      expect([...API_PLATFORMS]).toEqual(expect.arrayContaining(['goaffpro', 'affiliatly']));
+    });
+
+    it('platform kiểu API + KHÔNG có host chờ nào → VẪN fetchable (đây là chỗ từng hỏng)', async () => {
+      const pool = await sh.getPool();
+      await pool.query('UPDATE aff_net SET platform = ? WHERE net = ?', ['affiliatly', NET]);
+      await pool.query('UPDATE aff_host SET checked_at = ? WHERE net = ?', [Date.now(), NET]); // dọn hết host chờ
+      const [rows] = await pool.query(`SELECT ${NET_FETCHABLE_SQL} AS ok FROM aff_net n WHERE n.net = ?`, [NET]);
+      expect(Number((rows as any[])[0].ok)).toBe(1);
+    });
+
+    it('platform generic + KHÔNG có host chờ → KHÔNG fetchable (đối chứng: predicate không bị nới quá tay)', async () => {
+      const pool = await sh.getPool();
+      await pool.query('UPDATE aff_net SET platform = ? WHERE net = ?', ['generic', NET]);
+      await pool.query('UPDATE aff_host SET checked_at = ? WHERE net = ?', [Date.now(), NET]);
+      const [rows] = await pool.query(`SELECT ${NET_FETCHABLE_SQL} AS ok FROM aff_net n WHERE n.net = ?`, [NET]);
+      expect(Number((rows as any[])[0].ok)).toBe(0);
+    });
+
+    it('net kiểu API bị LOẠI khỏi vòng poll discovery (không có subdomain để dò)', async () => {
+      const pool = await sh.getPool();
+      await pool.query('UPDATE aff_net SET platform = ? WHERE net = ?', ['affiliatly', NET]);
+      const [a] = await pool.query(`SELECT ${NET_POLLABLE_PLATFORM_SQL} AS ok FROM aff_net WHERE net = ?`, [NET]);
+      expect(Number((a as any[])[0].ok)).toBe(0);
+      await pool.query('UPDATE aff_net SET platform = ? WHERE net = ?', ['generic', NET]);
+      const [b] = await pool.query(`SELECT ${NET_POLLABLE_PLATFORM_SQL} AS ok FROM aff_net WHERE net = ?`, [NET]);
+      expect(Number((b as any[])[0].ok)).toBe(1);
+    });
   });
 
   it('FIX 4: markPolled(skipDryCounter=true) GIỮ NGUYÊN dry_rounds dù newCount < DRY_THRESHOLD (mô phỏng 1 nguồn discovery lỗi lượt này)', async () => {

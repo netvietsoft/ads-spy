@@ -155,7 +155,103 @@ describe('fetchStep nhánh goaffpro', () => {
     const s = new AffnetService(mkDb() as any, mkFetch() as any, mkTraffic() as any);
     expect(s.platformOf('goaffpro.com')).toBe('goaffpro');
     expect(s.platformOf('getrewardful.com')).toBe('rewardful');
+    expect(s.platformOf('affiliatly.com')).toBe('affiliatly');
     expect(s.platformOf('tapfiliate.com')).toBe('generic');
+  });
+});
+
+// affiliatly.com: directory HTML 2 TẦNG (danh sách 50 thẻ → từng trang chi tiết). Con trỏ KV là SỐ TRANG.
+describe('fetchStep nhánh affiliatly', () => {
+  // Giãn 120ms/request chi tiết là đúng cho chạy thật, nhưng 50 request × 120ms = 6s → quá timeout 5s của
+  // jest. Ép về 0 trong test; prod vẫn giữ nhịp thật.
+  beforeAll(() => { (AffnetService as any).AFFILIATLY_PACE_MS = 0; });
+
+  const item = (id: number) => ({ id: String(id), name: 'P' + id, category: 'Pets', blurb: 'x' });
+  const det = (id: string) => ({
+    id, web: `s${id}.com`, joinUrl: `https://www.affiliatly.com/af-1${id}/affiliate.panel`,
+    category: 'Pets', avgOrder: '100$', commissionPct: 12, payoutThreshold: 50, description: 'mô tả',
+  });
+  const mk = (listPage: any, offset = 0, detailImpl?: any) => {
+    const db = mkDb(); const f = mkFetch();
+    db.pickNetToFetch.mockResolvedValue({ net: 'affiliatly.com', platform: 'affiliatly', fakeCheckedAt: null, fakeLen: null, fakeHash: null });
+    db.getNetOffset = jest.fn().mockResolvedValue(offset);
+    db.setNetOffset = jest.fn().mockResolvedValue(undefined);
+    const af = {
+      listPage: jest.fn(typeof listPage === 'function' ? listPage : async () => listPage),
+      detail: jest.fn(detailImpl || (async (id: string) => det(id))),
+    };
+    return { db, f, af, svc: new AffnetService(db as any, f as any, mkTraffic() as any, undefined, af as any) };
+  };
+
+  it('con trỏ 0 = TRANG 1 (getNetOffset trả 0 khi chưa có), ghi host + program bằng lệnh GỘP', async () => {
+    const { db, f, af, svc } = mk([item(1), item(2), item(3)]);
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(af.listPage).toHaveBeenCalledWith(1);
+    expect(f.probeFake).not.toHaveBeenCalled();      // không có trang catch-all → probe vô nghĩa
+    expect(f.fetchCampaign).not.toHaveBeenCalled();  // không mở Playwright
+    expect(db.upsertHosts).toHaveBeenCalledWith('affiliatly.com', [
+      { slug: '1', sources: ['affiliatly-directory'] }, { slug: '2', sources: ['affiliatly-directory'] }, { slug: '3', sources: ['affiliatly-directory'] },
+    ]);
+    // 1 statement cho CẢ trang, KHÔNG phải 1 query/chương trình (xem upsertProgramBulk: 100 INSERT lẻ
+    // = 14.852ms còn 1 INSERT 100 dòng = 57ms).
+    expect(db.upsertProgramBulk).toHaveBeenCalledTimes(1);
+    expect(db.upsertProgram).not.toHaveBeenCalled();
+    expect(db.markHostCheckedBulk).toHaveBeenCalledWith('affiliatly.com', ['1', '2', '3'], 'active');
+    expect(db.upsertProgramBulk.mock.calls[0][0][0]).toMatchObject({
+      net: 'affiliatly.com', slug: '1', web: 's1.com', commissionPct: 12,
+      joinUrl: 'https://www.affiliatly.com/af-11/affiliate.panel', status: 'active',
+    });
+    expect(r).toMatchObject({ net: 'affiliatly.com', checked: 3, active: 3 });
+  });
+
+  it('trang NGẮN hơn 50 = trang cuối → con trỏ về 1 để vòng sau làm mới', async () => {
+    const { db, svc } = mk([item(1)], 7);
+    await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(db.setNetOffset).toHaveBeenCalledWith('affiliatly.com', 1);
+  });
+
+  it('ĐỦ 50 thẻ → đi tiếp trang sau trong CÙNG lượt, con trỏ tiến', async () => {
+    const full = Array.from({ length: 50 }, (_, i) => item(i + 1));
+    // trang 1,2 đầy; trang 3 ngắn → dừng và về 1
+    const pager = async (n: number) => (n <= 2 ? full : [item(999)]);
+    const { db, af, svc } = mk(pager);
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(af.listPage.mock.calls.map((c: any[]) => c[0])).toEqual([1, 2, 3]);
+    expect(r.checked).toBe(101);
+    expect(db.upsertProgramBulk).toHaveBeenCalledTimes(3);   // 1 lệnh/trang
+    expect(db.setNetOffset).toHaveBeenLastCalledWith('affiliatly.com', 1);
+  }, 30_000);
+
+  it('quotaCost = SỐ REQUEST (1 danh sách + N chi tiết), không phải số chương trình', async () => {
+    const { svc } = mk([item(1), item(2), item(3)]);
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(r.quotaCost).toBe(4);
+    expect(r.checked).toBe(3);
+  });
+
+  it('1 trang chi tiết lỗi → BỎ QUA chương trình đó, không mất cả trang', async () => {
+    const { db, svc } = mk([item(1), item(2), item(3)], 0,
+      async (id: string) => { if (id === '2') throw new Error('502'); return det(id); });
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(r.checked).toBe(2);
+    expect(db.markHostCheckedBulk).toHaveBeenCalledWith('affiliatly.com', ['1', '3'], 'active');
+  });
+
+  // Quá nửa trang lỗi = đang bị chặn / site sự cố, KHÔNG phải dữ liệu xấu. Cứ ghi tiếp rồi tăng con trỏ
+  // là MẤT HẲN 1 trang dữ liệu — phải ném để giữ nguyên con trỏ cho lượt sau làm lại đúng trang đó.
+  it('quá NỬA trang lỗi → ném lỗi và KHÔNG dịch con trỏ', async () => {
+    const { db, svc } = mk([item(1), item(2), item(3)], 5, async () => { throw new Error('bị chặn'); });
+    await expect(svc.fetchStep({ batch: 30, paceMs: 0 })).rejects.toThrow(/lỗi ở trang 5/);
+    expect(db.setNetOffset).not.toHaveBeenCalled();
+    expect(db.upsertProgramBulk).not.toHaveBeenCalled();
+  });
+
+  it('trang rỗng → con trỏ về 1, không ghi gì', async () => {
+    const { db, svc } = mk([], 9);
+    const r: any = await svc.fetchStep({ batch: 30, paceMs: 0 });
+    expect(db.setNetOffset).toHaveBeenCalledWith('affiliatly.com', 1);
+    expect(db.upsertProgramBulk).not.toHaveBeenCalled();
+    expect(r.checked).toBe(0);
   });
 });
 
