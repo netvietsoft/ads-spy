@@ -90,11 +90,22 @@ export function parseUppromote(o: UppromoteOffer): ParsedProgram {
   const web = webOfUppromote(o);
   const shopify = hostOf(o.myshopify_domain);
   const cookie = Number(o.cookie);
+  // notes gồm các MẨU nối bằng ' · ' — FE hiện mỗi mẩu 1 DÒNG (xem noteLines ở AffnetPanel). Vì vậy
+  // trạng thái duyệt và tỉ lệ duyệt phải nằm TRONG CÙNG 1 mẩu, không thì chúng bị tách thành 2 dòng rời.
+  const rate = Number(o.approval_rate);
+  const duyet = o.application_review === 'manual' ? 'Chờ duyệt'
+    : o.application_review === 'auto' ? 'Duyệt tự động'
+    : o.application_review ? `Duyệt: ${stripTags(o.application_review)}` : null;
+  // Tỉ lệ 0 phần lớn là "chưa có dữ liệu" chứ không phải "duyệt 0%" → bỏ đi cho đỡ nhiễu.
+  const duyetFull = duyet && Number.isFinite(rate) && rate > 0 ? `${duyet} (tỉ lệ ${rate}%)` : duyet;
+  // payout_period đáng ra là chu kỳ ngắn ("Bi-Weekly") nhưng có merchant nhồi cả đoạn văn vào đó (đo
+  // được: "Bi-monthly payouts on the 1st and 15th. Affiliates earn 5-10% commission… Minimum payout: $20")
+  // → chặn 60 ký tự, không thì ô Note phình ra kéo cao cả dòng bảng.
+  const ky = o.payout_period ? stripTags(o.payout_period) : '';
   const notes = [
     o.categories ? `Ngành: ${stripTags(o.categories)}` : null,
-    o.payout_period ? `Kỳ trả: ${o.payout_period}` : null,
-    o.application_review === 'manual' ? 'Cần chờ duyệt' : o.application_review ? `Duyệt: ${o.application_review}` : null,
-    Number.isFinite(Number(o.approval_rate)) ? `Tỉ lệ duyệt ${Number(o.approval_rate)}%` : null,
+    ky ? `Kỳ trả: ${ky.length > 60 ? ky.slice(0, 60).trimEnd() + '…' : ky}` : null,
+    duyetFull,
     // Giữ lại domain myshopify khi nó KHÁC `web`: mất nó là mất đường tra shop trên Shopify.
     shopify && shopify !== web ? `Shopify: ${shopify}` : null,
   ].filter(Boolean).join(' · ') || null;

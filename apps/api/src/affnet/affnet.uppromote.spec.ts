@@ -129,3 +129,46 @@ describe('parseUppromote — các field còn lại', () => {
     expect(UPPROMOTE_PAGE_LIMIT).toBe(100);
   });
 });
+
+// Note được FE tách theo ' · ' rồi hiện MỖI MẨU 1 DÒNG (noteLines ở AffnetPanel) — nên cách ghép ở đây
+// quyết định trực tiếp cái người dùng thấy.
+describe('parseUppromote — định dạng notes để FE tách dòng', () => {
+  const base: UppromoteOffer = { id: 1, myshopify_domain: 's1.myshopify.com', commission_type: 2, commission_amount: 10 };
+
+  it('trạng thái duyệt + tỉ lệ nằm CÙNG 1 mẩu (không bị tách thành 2 dòng rời)', () => {
+    const n = parseUppromote({ ...base, application_review: 'manual', approval_rate: 95 }).notes!;
+    expect(n).toContain('Chờ duyệt (tỉ lệ 95%)');
+    expect(n.split(' · ').filter((x) => /duyệt/i.test(x))).toHaveLength(1);
+  });
+
+  it("application_review 'auto' → 'Duyệt tự động', không in nguyên chữ auto", () => {
+    expect(parseUppromote({ ...base, application_review: 'auto', approval_rate: 94.44 }).notes)
+      .toContain('Duyệt tự động (tỉ lệ 94.44%)');
+  });
+
+  // Tỉ lệ 0 phần lớn là "chưa có dữ liệu" — in ra "tỉ lệ 0%" chỉ làm nhiễu ô Note.
+  it('tỉ lệ duyệt = 0 → BỎ phần tỉ lệ, vẫn giữ trạng thái duyệt', () => {
+    const n = parseUppromote({ ...base, application_review: 'manual', approval_rate: 0 }).notes!;
+    expect(n).toContain('Chờ duyệt');
+    expect(n).not.toContain('tỉ lệ');
+  });
+
+  // Đo thật: có merchant nhồi cả đoạn văn vào payout_period, làm ô Note phình kéo cao cả dòng bảng.
+  it('payout_period là đoạn văn dài → chặn 60 ký tự + "…"', () => {
+    const dai = 'Bi-monthly payouts on the 1st and 15th. Affiliates earn 5-10% commission on referred sales. Minimum payout: $20';
+    const n = parseUppromote({ ...base, payout_period: dai }).notes!;
+    const ky = n.split(' · ').find((x) => x.startsWith('Kỳ trả:'))!;
+    expect(ky.length).toBeLessThanOrEqual(70);
+    expect(ky.endsWith('…')).toBe(true);
+  });
+
+  it('payout_period ngắn ("Bi-Weekly") → giữ nguyên, không thêm dấu …', () => {
+    const ky = parseUppromote({ ...base, payout_period: 'Bi-Weekly' }).notes!.split(' · ').find((x) => x.startsWith('Kỳ trả:'))!;
+    expect(ky).toBe('Kỳ trả: Bi-Weekly');
+  });
+
+  it('mỗi mẩu KHÔNG chứa " · " bên trong (không thì FE tách sai dòng)', () => {
+    const n = parseUppromote({ ...base, categories: 'A, B', payout_period: 'Bi-Weekly', application_review: 'manual', approval_rate: 50, website: 'https://brand.com' }).notes!;
+    for (const part of n.split(' · ')) expect(part).not.toContain('·');
+  });
+});

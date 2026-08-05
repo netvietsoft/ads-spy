@@ -156,6 +156,15 @@ function shopDot(h: AffHostRow) {
 // URL chi tiết shop trong local DB. Không có shop_id = chưa index → không có gì để mở.
 const shopHref = (h: AffHostRow) => (h.shop_id ? `/shop/${encodeURIComponent(String(h.shop_id))}` : null);
 
+// Note do adapter ghép từ nhiều MẨU nối bằng ' · ' (Ngành / Kỳ trả / trạng thái duyệt / Shopify).
+// Hiện MỖI MẨU 1 DÒNG: nối hết vào 1 dòng thì ô Note dài ngoằng và thứ đáng chú ý nhất (chờ duyệt, domain
+// shopify) bị lẫn vào giữa. Tách ở FE nên áp cho CẢ 4 net mà không phải cào lại dữ liệu đã có.
+function noteLines(s: string | null | undefined) {
+  const parts = String(s || '').split(' · ').map((x) => x.trim()).filter(Boolean);
+  if (!parts.length) return '—';
+  return <>{parts.map((x, i) => <div key={i} style={{ whiteSpace: 'normal' }}>{x}</div>)}</>;
+}
+
 // Trạng thái quét 1 domain. 'error' = classify không kết luận được (không phải sự cố hệ thống).
 function hostBadge(h: AffHostRow) {
   if (h.check_status === 'active') return <span style={{ color: '#16a34a', fontWeight: 600 }} title="Có chương trình affiliate">✓ có</span>;
@@ -234,7 +243,7 @@ function HostRowCard({ p, sel, onSelect, onHistory, onEditRow, onRescan, onDelet
         <span>Bounce <b>{fmtBounce(p.traffic_bounce)}</b></span>
         <span>Time <b>{fmtDur(p.traffic_duration_sec)}</b></span>
       </div>
-      {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8 }}>{p.notes}</div>}
+      {p.notes && <div className="fbbody" style={{ fontSize: 12, opacity: 0.8, lineHeight: 1.5 }}>{noteLines(p.notes)}</div>}
       {/* DÒNG CUỐI: link tham gia + domain bên trái, icon hành động bên phải — gộp 2 dòng thành 1 cho
           thẻ đỡ dài. minWidth 0 để domain dài co lại chứ không đẩy nhóm icon ra khỏi thẻ. */}
       <div className="fbfoot" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
@@ -839,7 +848,7 @@ export function AffnetPanel() {
                         </td>
                         <td className="rev" style={{ whiteSpace: 'nowrap' }}>{revUsd(p.rev_total, p.rev_currency)}</td>
                         {/* minWidth: 18 cột + nhiều cột nowrap làm Note bị bóp còn ~1 chữ/dòng → dòng cao vọt. */}
-                        <td className="wrap" style={{ minWidth: '16ch', maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
+                        <td className="wrap" style={{ minWidth: '18ch', maxWidth: '32ch', fontSize: 12, lineHeight: 1.45 }}>{noteLines(p.notes)}</td>
                         <td>{p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</td>
                         <td>{orDash(p.payout_threshold)}</td>
                         {/* Traffic/tháng tô xanh (class .rev) cho đồng bộ với DT tháng — 2 cột hay dùng để
