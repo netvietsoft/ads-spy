@@ -364,6 +364,22 @@ button.ghost.danger { color: var(--danger); }
 .rev { color: #16b877; font-weight: 700; }
 :root[data-theme='light'] .rev { color: #0a8f5b; }
 
+/* Thẻ Local DB (shop / sản phẩm ở /localdb/shops và /localdb/products): chạm hoặc hover thì VIỀN XANH +
+   NỀN PHỚT XANH cho nổi hẳn khỏi các thẻ còn lại — cả thẻ là 1 vùng bấm mở /shop/{id} hoặc /product/{...}
+   nên cần phản hồi rõ khi chạm.
+   ⚠️ Đặt trên class RIÊNG .localdbcard, KHÔNG đặt lên .localcard: class đó dùng CHUNG với thẻ
+   Facebook/Shopify, tô xanh ở đó là đổi giao diện những tab không ai yêu cầu.
+   --gr đổi theo theme (giống .rev): theme tối cần xanh sáng hơn, hardcode 1 mã là 1 trong 2 theme bị tối
+   thui hoặc loè. Nền dùng color-mix nên tự hoà theo --panel của từng theme, không cần 2 mã màu nền. */
+.localdbcard { --gr: #16b877; transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease; }
+:root[data-theme='light'] .localdbcard { --gr: #0a8f5b; }
+/* :active cho MỌI thiết bị (mobile chạm); :hover chỉ cho thiết bị có hover thật — trên mobile hover hay bị
+   "dính" sau khi chạm, giữ nguyên nền xanh dù đã rời tay. */
+.localdbcard:active { border-color: var(--gr); background: color-mix(in srgb, var(--gr) 13%, var(--panel)); transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+@media (hover: hover) {
+  .localdbcard:hover { border-color: var(--gr); background: color-mix(in srgb, var(--gr) 10%, var(--panel)); transform: translateY(-3px); box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18); }
+}
+
 /* ============ Responsive mobile (≤760px): chống tràn ngang, xếp dọc ============ */
 @media (max-width: 760px) {
   /* Bỏ phóng 1.2× trên mobile — nguyên nhân chính khiến mọi px to thêm 20% rồi tràn ngang */

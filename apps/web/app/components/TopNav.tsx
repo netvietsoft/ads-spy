@@ -7,7 +7,7 @@ import { useI18n } from '../i18n/I18nProvider';
 const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
-  ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/afflibrary', 'Aff Library'], ['/traffic', 'Traffic'], ['/traffictool', 'Traffic Tool'], ['/settings', 'Cài đặt'],
+  ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/afflibrary', 'Aff Library'], ['/traffic', 'Traffic'], ['/settings', 'Cài đặt'],
   ['/admin/users', 'Người dùng'],
   // TODO(saas): tạm ẩn tab 'Doanh thu' (/admin/dashboard) + 'Gói' (/admin/plans) — phát triển sau
   // ['/admin/dashboard', 'Doanh thu'], ['/admin/plans', 'Gói'],
@@ -29,8 +29,6 @@ function activeHref(p: string): string {
   if (p.startsWith('/reportlocaldb')) return '/reportlocaldb';
   if (p.startsWith('/afflibrary')) return '/afflibrary';
   if (p.startsWith('/affnet')) return '/affnet';
-  // /traffictool PHẢI xét trước /traffic — '/traffictool'.startsWith('/traffic') là true nên đặt sau sẽ thành code chết.
-  if (p.startsWith('/traffictool')) return '/traffictool';
   if (p.startsWith('/traffic')) return '/traffic';
   if (p.startsWith('/import')) return '/import';
   if (p.startsWith('/settings')) return '/settings';

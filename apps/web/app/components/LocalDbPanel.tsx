@@ -54,7 +54,7 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
 function ShopRowCard({ s, fav, catNames }: { s: any; fav: boolean; catNames: Record<string, string> }) {
   const cur = s._storefront_currency || s.currency;
   return (
-    <div className="fbcard localcard" onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer', position: 'relative' }}>
+    <div className="fbcard localcard localdbcard" onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer', position: 'relative' }}>
       <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={24} />
         <span style={{ fontSize: 14 }}>{fav && <span style={{ color: '#e0384f', marginRight: 4 }}>♥</span>}{s.shop_title || s.url}</span>
@@ -87,7 +87,7 @@ function ProductRowCard({ p }: { p: any }) {
   const purl = shProductUrl(p); const site = shShopSite(p);
   const rev = (raw: any) => moneyCap(p._normalized ? raw : toUsd(raw, cur));
   return (
-    <div className="fbcard localcard" onClick={() => window.open(`/product/${p.shop_id}/${p.product_id}`, '_blank')} style={{ cursor: 'pointer' }}>
+    <div className="fbcard localcard localdbcard" onClick={() => window.open(`/product/${p.shop_id}/${p.product_id}`, '_blank')} style={{ cursor: 'pointer' }}>
       <div style={{ display: 'flex', gap: 10 }}>
         {p.product_image_external ? <img src={shAssetProxy(p.product_image_external)} alt="" width={56} height={56} style={{ borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} loading="lazy" /> : null}
         <div style={{ minWidth: 0, flex: 1 }}>
