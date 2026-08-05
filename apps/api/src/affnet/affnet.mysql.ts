@@ -278,6 +278,11 @@ export class AffnetMysql {
     const pool = await this.sh.getPool();
     const [r] = await pool.query('UPDATE aff_host SET checked_at = NULL WHERE net = ?', [net]);
     await pool.query('UPDATE aff_net SET discover_polls = 0, discover_last_new = NULL WHERE net = ?', [net]);
+    // Net kiểu API/directory (goaffpro/affiliatly/uppromote) phân trang theo CON TRỎ TRANG ở KV, KHÔNG
+    // theo hàng đợi host — nên chỉ xoá checked_at là nút "Quét lại net" KHÔNG thực sự quét lại từ đầu như
+    // lời hứa trên hộp xác nhận: adapter vẫn tiếp tục từ trang đang dở. Phải đưa con trỏ về đầu.
+    // Với net 'generic' thì khoá này không tồn tại/không dùng → set 0 là vô hại.
+    await this.setNetOffset(net, 0);
     return { hosts: Number((r as any).affectedRows) || 0 };
   }
 

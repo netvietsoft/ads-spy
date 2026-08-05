@@ -367,6 +367,15 @@ export class ShJobsService implements OnModuleInit {
       return { pace: BLOCK_MS };
     }
     if (r?.laneErrors) await this.mysql.appendJobLog('afffetch', 'warn', `${r.laneErrors} làn proxy lỗi (proxy chết?) — kiểm ở Cài đặt → Proxy, bấm Test.`).catch(() => {});
+    // CÙNG LOẠI với FIX 10 ở trên: net kiểu API cần token (uppromote) mà CHƯA dán token thì trả
+    // checked=0 với laneErrors/blocked = 0 → rơi vào nhánh "Hết dự án cần quét" bên dưới và báo NGƯỢC
+    // hẳn sự thật (người dùng tưởng đã quét xong, trong khi thực tế chưa gọi API lần nào). Phải xét
+    // needToken TRƯỚC, và nói rõ dán token ở đâu.
+    if (r?.needToken) {
+      this.mem.afffetch.lastStatus = 'cần token';
+      await this.mysql.appendJobLog('afffetch', 'warn', `${r.net}: CHƯA có token nên không quét được gì (KHÔNG PHẢI đã hết dự án) — dán token của net này ở /affnet → ô token của ${r.net}.`).catch(() => {});
+      return { pace: IDLE_MS };
+    }
     if (!r?.net || !r.checked) { this.mem.afffetch.lastStatus = 'idle'; await this.mysql.appendJobLog('afffetch', 'info', 'Hết dự án cần quét; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
     // quotaCost: net kiểu API (goaffpro) trả SỐ REQUEST đã gọi thay cho số store. Quota `daily` đặt cho số
     // trang Chromium mở được; tính theo store thì 1 lượt goaffpro (hàng nghìn store) là hết quota cả ngày

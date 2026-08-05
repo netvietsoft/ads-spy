@@ -60,6 +60,23 @@ describe('2 job affnet', () => {
     expect((svc as any).mem.afffetch.stats.lan).toBe(3);
   });
 
+  // CÙNG LOẠI FIX 10, cho net kiểu API cần token (uppromote): chưa dán token thì fetchStep trả
+  // checked=0 với laneErrors/blocked = 0, rơi vào nhánh cuối và log "Hết dự án cần quét" — báo NGƯỢC
+  // hẳn sự thật (chưa gọi API lần nào mà người dùng tưởng đã quét xong).
+  it('afffetch: net cần token mà CHƯA có token → KHÔNG log "Hết dự án", báo rõ phải dán token', async () => {
+    const aff = { fetchStep: jest.fn().mockResolvedValue({ net: 'uppromote.com', checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes: 1, quotaCost: 0, needToken: true }), discoverStep: jest.fn() };
+    const mysql = mkMysql();
+    const svc = new ShJobsService({} as any, mysql as any, {} as any, aff as any, {} as any);
+    const r = await (svc as any).step('afffetch', true);
+    expect(r.pace).toBe(120000);                                  // IDLE_MS — chờ người dùng, không backoff dài
+    expect((svc as any).mem.afffetch.lastStatus).toBe('cần token');
+    const logs = mysql.appendJobLog.mock.calls.map((c: any[]) => c[2]);
+    expect(logs.some((m: string) => m.includes('Hết dự án'))).toBe(false);
+    expect(logs.some((m: string) => /CHƯA có token/.test(m) && m.includes('uppromote.com'))).toBe(true);
+    // KHÔNG được cộng quota ngày cho lượt không gọi API lần nào.
+    expect(mysql.addDailyCount).not.toHaveBeenCalled();
+  });
+
   // FIX 10: mọi làn lỗi (checked=0) nhưng net vẫn CÒN dự án chờ — trước đây log "Hết dự án cần quét"
   // (idle) đồng thời với cảnh báo proxy lỗi, đọc như hàng đợi rỗng dù ~1370 host vẫn đang chờ.
   it('afffetch: mọi làn lỗi (checked=0, laneErrors>0) + CÓ proxy cấu hình → KHÔNG log "Hết dự án", cảnh báo "proxy lỗi", pace BLOCK', async () => {
