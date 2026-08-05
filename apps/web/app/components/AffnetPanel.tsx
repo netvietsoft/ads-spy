@@ -264,6 +264,9 @@ export function AffnetPanel() {
   const [rescanning, setRescanning] = useState<string | null>(null); // net đang quét lại
   // Hộp xác nhận TRONG APP, thay cho confirm() của trình duyệt (xem ghi chú ở doRescan).
   const [ask, setAsk] = useState<{ msg: string; onYes: () => void } | null>(null);
+  // Xuất Excel đi NHIỀU trang (22k+ dòng) nên phải có tiến độ, không thì trông như treo.
+  const [xlsBusy, setXlsBusy] = useState(false);
+  const [xlsMsg, setXlsMsg] = useState<string | null>(null);
 
   const [importText, setImportText] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -521,32 +524,67 @@ export function AffnetPanel() {
     }
   };
 
+  // Xuất TOÀN BỘ dòng đã lọc, không phải 1 trang. BE kẹp pageSize ở 5000/request
+  // (affnet.controller.ts: Math.min(5000, …)) nên phải đi nhiều trang rồi gộp lại — bản cũ gọi đúng 1 lần
+  // pageSize=5000 nên net 22.486 domain chỉ xuất được 5.000 dòng.
+  // Phân trang an toàn vì hostList ORDER BY có khoá phụ `h.slug ASC` và (net, slug) là PK → thứ tự xác
+  // định giữa các request. Vẫn lọc trùng theo slug: job nền ghi song song có thể làm cửa sổ trang lệch.
+  const XLS_PAGE = 5000;
+  const XLS_MAX_PAGES = 40; // chốt an toàn 200.000 dòng — đừng để 1 bộ lọc sai làm treo trình duyệt
   const exportExcel = async () => {
-    if (!activeNet) return;
-    const r = await affHosts({ net: activeNet, filter, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page: 1, pageSize: 5000, sort, dir });
-    // Giới hạn 1 lượt lấy tối đa 5000 dòng — net nào có hơn 5000 domain thì file bị cắt, phải báo rõ (không âm thầm xuất thiếu).
-    if (r.rows.length < r.total) {
-      alert(`Chỉ xuất được ${r.rows.length.toLocaleString()} / ${r.total.toLocaleString()} dòng (giới hạn 5000 dòng/lần) — file KHÔNG có đủ toàn bộ dữ liệu đã lọc.`);
+    if (!activeNet || xlsBusy) return;
+    setXlsBusy(true); setXlsMsg('Đang lấy dữ liệu…'); setErr(null);
+    try {
+      const seen = new Set<string>();
+      const all: AffHostRow[] = [];
+      let total = 0;
+      for (let page = 1; page <= XLS_MAX_PAGES; page++) {
+        const r = await affHosts({ net: activeNet, filter, minPct: minPct ?? undefined, maxPct: maxPct ?? undefined, q: q || undefined, page, pageSize: XLS_PAGE, sort, dir });
+        total = r.total;
+        for (const row of r.rows) if (!seen.has(row.slug)) { seen.add(row.slug); all.push(row); }
+        setXlsMsg(`Đang lấy ${all.length.toLocaleString()} / ${total.toLocaleString()} dòng…`);
+        if (r.rows.length < XLS_PAGE || all.length >= total) break;
+      }
+      // Vẫn thiếu thì PHẢI báo, không âm thầm xuất file cụt.
+      if (all.length < total) setErr(`Chỉ lấy được ${all.length.toLocaleString()} / ${total.toLocaleString()} dòng — file KHÔNG đủ toàn bộ dữ liệu đã lọc.`);
+
+      setXlsMsg(`Đang tạo file ${all.length.toLocaleString()} dòng…`);
+      const sheetRows = all.map((p) => ({
+        Domain: p.slug,
+        'Trạng thái': p.check_status || 'chưa quét',
+        'Tên dự án': p.program_name || '',
+        Web: p.web || '',
+        // Số liệu để dạng SỐ (không format) để trong Excel còn sort/tính được; rỗng thì để '' chứ không 0.
+        Shopify: p.shopify === 1 || p.shop_id ? 'có' : p.shopify === 0 ? 'không' : '',
+        'Shop ID': p.shop_id || '',
+        'DT tháng (gốc)': p.rev_month ?? '',
+        'DT tổng (gốc)': p.rev_total ?? '',
+        'Tiền tệ': p.rev_currency || '',
+        'DT tháng (USD)': (toUsd(p.rev_month, p.rev_currency) as number | null) ?? '',
+        '%commit': pctOrFlat(p),
+        '%commit (số)': p.commission_pct ?? '',
+        'Phí cố định': p.commission_flat ?? '',
+        'Cookie (ngày)': p.cookie_days ?? '',
+        Payout: p.payout_threshold ?? '',
+        'Traffic/tháng': p.traffic_visits ?? '',
+        'Bounce %': p.traffic_bounce ?? '',
+        'Time-on-site (giây)': p.traffic_duration_sec ?? '',
+        'Global rank': p.traffic_rank ?? '',
+        Note: p.notes || '',
+        'Link tham gia': p.join_url || '',
+        'Quét lúc': p.checked_at ? new Date(p.checked_at).toLocaleString('vi-VN') : '',
+        'Traffic cập nhật': p.traffic_updated_at ? new Date(p.traffic_updated_at).toLocaleDateString('vi-VN') : '',
+      }));
+      const ws = XLSX.utils.json_to_sheet(sheetRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Domain');
+      XLSX.writeFile(wb, `affnet-${activeNet}-${all.length}dong.xlsx`);
+      setXlsMsg(`Đã xuất ${all.length.toLocaleString()} dòng · ${Object.keys(sheetRows[0] || {}).length} cột`);
+    } catch (e) {
+      setErr(`Xuất Excel thất bại: ${(e as Error).message}`);
+      setXlsMsg(null);
     }
-    const sheetRows = r.rows.map((p) => ({
-      Domain: p.slug,
-      'Trạng thái': p.check_status || 'chưa quét',
-      'Tên dự án': p.program_name || '',
-      'Link tham gia': p.join_url || '',
-      Web: p.web || '',
-      '%commit': pctOrFlat(p),
-      Note: p.notes || '',
-      Cookie: p.cookie_days ?? '',
-      Payout: p.payout_threshold ?? '',
-      'Traffic/tháng': p.traffic_visits ?? '',
-      'Bounce %': p.traffic_bounce ?? '',
-      'Time-on-site (giây)': p.traffic_duration_sec ?? '',
-      'Global rank': p.traffic_rank ?? '',
-    }));
-    const ws = XLSX.utils.json_to_sheet(sheetRows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Domain');
-    XLSX.writeFile(wb, `affnet-${activeNet}.xlsx`);
+    setXlsBusy(false);
   };
 
   const clickSort = (k: string) => {
@@ -708,8 +746,13 @@ export function AffnetPanel() {
             {/* Xuất Excel CHỈ desktop: trên mobile nút này chiếm cả 1 dòng, mà tải file .xlsx trên điện
                 thoại cũng gần như không dùng được. */}
             {!isMobile && (
-              <button className="srcbtn" style={{ marginLeft: 'auto' }} onClick={exportExcel} disabled={data.total === 0}
-                title={`Xuất toàn bộ ${data.total.toLocaleString()} dòng đã lọc ra Excel`}>⬇ Xuất Excel</button>
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                {xlsMsg && <span className="hint" style={{ margin: 0 }}>{xlsMsg}</span>}
+                <button className="srcbtn" onClick={exportExcel} disabled={data.total === 0 || xlsBusy}
+                  title={`Xuất TOÀN BỘ ${data.total.toLocaleString()} dòng đã lọc ra Excel (lấy theo lô ${XLS_PAGE.toLocaleString()} dòng)`}>
+                  {xlsBusy ? '⏳ Đang xuất…' : '⬇ Xuất Excel'}
+                </button>
+              </span>
             )}
           </div>
           {err && <div className="err">{err}</div>}
