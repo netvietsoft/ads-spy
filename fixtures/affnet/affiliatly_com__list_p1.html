@@ -1,0 +1,955 @@
+<!doctype html>
+<html class="no-js" lang="">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <title>Affiliate tracking software for your store - Affiliatly</title>
+        <meta name="description" content="Start your own affiliate program with Affiliatly, control, track and manage affiliates with ease">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <link rel="shortcut icon" type="image/x-icon" href="https://www.affiliatly.com/favicon.ico">
+        <!-- Place favicon.ico in the root directory -->
+
+        <!-- ========================= CSS here ========================= -->
+        <link rel="stylesheet" href="https://static.affiliatly.com/css/affiliate_v2/bootstrap.min.css">
+        <link rel="stylesheet" href="https://static.affiliatly.com/css/affiliate_v2/LineIcons.2.0.css">
+        <link rel="stylesheet" href="https://static.affiliatly.com/css/affiliate_v2/animate.css">
+        <link rel="stylesheet" href="https://static.affiliatly.com/css/affiliate_v2/tiny-slider.css">
+        <link rel="stylesheet" href="https://static.affiliatly.com/css/affiliate_v2/glightbox.min.css">
+        <link rel="stylesheet" href="https://static.affiliatly.com/css/affiliate_v2/main.css">
+
+        
+		<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://www.affiliatly.com/#organization",
+      "name": "Affiliatly",
+      "url": "https://www.affiliatly.com/",
+      "logo": "https://static.affiliatly.com/images/affiliate_v2/logo/logo.png",
+      "foundingDate": "2014",
+      "sameAs": [
+        "https://www.capterra.com/p/138373/Affiliatly/reviews/",
+		  "https://apps.shopify.com/affiliatly"
+      ]
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://www.affiliatly.com/#software",
+      "name": "Affiliatly",
+      "url": "https://www.affiliatly.com/",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "Affiliate Marketing Software",
+      "operatingSystem": "Web",
+      "description": "Affiliate tracking software for e-commerce stores. Track affiliates by link, coupon, email, or QR code, manage payouts, and integrate with Shopify, WooCommerce, BigCommerce, and more.",
+      "provider": { "@id": "https://www.affiliatly.com/#organization" },
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Free",
+          "price": "0",
+          "priceCurrency": "USD",
+          "description": "Up to 50 tracked orders, no payment required, core tracking tools",
+          "url": "https://www.affiliatly.com/register?chosen_plan=0"
+        },
+        {
+          "@type": "Offer",
+          "name": "Starter",
+          "price": "16",
+          "priceCurrency": "USD",
+          "description": "Unlimited orders, up to 50 affiliates, billed monthly, 14-day free trial",
+          "url": "https://www.affiliatly.com/register?chosen_plan=1"
+        },
+        {
+          "@type": "Offer",
+          "name": "Advanced",
+          "price": "24",
+          "priceCurrency": "USD",
+          "description": "Unlimited orders, up to 200 affiliates, branded portal, 3rd-party integrations, staff accounts, 14-day free trial",
+          "url": "https://www.affiliatly.com/register?chosen_plan=2"
+        },
+        {
+          "@type": "Offer",
+          "name": "Professional",
+          "price": "39",
+          "priceCurrency": "USD",
+          "description": "Unlimited orders, up to 500 affiliates, custom commission per SKU, two-tier structure, bulk payout, 14-day free trial",
+          "url": "https://www.affiliatly.com/register?chosen_plan=3"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro 1000",
+          "price": "59",
+          "priceCurrency": "USD",
+          "description": "Up to 1000 affiliates, all features, 14-day free trial",
+          "url": "https://www.affiliatly.com/register?chosen_plan=4"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro 2500",
+          "price": "79",
+          "priceCurrency": "USD",
+          "description": "Up to 2500 affiliates, all features, 14-day free trial",
+          "url": "https://www.affiliatly.com/register?chosen_plan=5"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Unlimited",
+          "price": "129",
+          "priceCurrency": "USD",
+          "description": "Unlimited affiliates, all features, 14-day free trial",
+          "url": "https://www.affiliatly.com/register?chosen_plan=6"
+        }
+      ]
+    }
+  ]
+}
+</script>
+    </head>
+    <body>
+        <!--[if lte IE 9]>
+            <p class="browserupgrade">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience and security.</p>
+        <![endif]-->
+
+        <!-- ========================= preloader start ========================= -->
+        <div class="preloader">
+            <div class="loader">
+                <div class="spinner">
+                    <div class="spinner-container">
+                        <div class="spinner-rotator">
+                            <div class="spinner-left">
+                                <div class="spinner-circle"></div>
+                            </div>
+                            <div class="spinner-right">
+                                <div class="spinner-circle"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- preloader end -->
+        <!-- ========================= header start ========================= -->
+        <header class="header navbar-area">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-lg-12">
+                        <nav class="navbar navbar-expand-lg">
+                            <a class="navbar-brand" href="https://www.affiliatly.com/">
+                                <img src="https://static.affiliatly.com/images/affiliate_v2/logo/logo.png" style="max-width: 200px;" alt="Affiliatly">
+                            </a>
+                            <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                                data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                                aria-expanded="false" aria-label="Toggle navigation">
+                                <span class="toggler-icon"></span>
+                                <span class="toggler-icon"></span>
+                                <span class="toggler-icon"></span>
+                            </button>
+
+                            <div class="collapse navbar-collapse sub-menu-bar" id="navbarSupportedContent">
+                                <ul id="nav" class="navbar-nav ms-auto">
+                                    <li class="nav-item">
+                                        <a class="page-scroll  " href="https://www.affiliatly.com/">Home</a>
+                                    </li>
+											  <li class="nav-item">
+                                        <a class="page-scroll" href="https://www.affiliatly.com/#pricing">Pricing</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="page-scroll " href="https://www.affiliatly.com/register">Register</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="page-scroll  " href="https://www.affiliatly.com/login.html">Login</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="page-scroll" href="https://affiliatly.helpscoutdocs.com/">FAQ</a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a class="page-scroll  " href="https://www.affiliatly.com/contact.html">Contact</a>
+                                    </li>
+                                </ul>
+                            </div> <!-- navbar collapse -->
+                        </nav> <!-- navbar -->
+                    </div>
+                </div> <!-- row -->
+            </div> <!-- container -->
+        
+        </header>
+        <!-- ========================= header end ========================= -->
+        
+
+<!-- ========================= page-banner-section start ========================= -->
+<section class="page-banner-section pt-75 pb-75 img-bg" style="background-image: url('https://static.affiliatly.com/images/affiliate_v2/bg/common-bg.svg')">
+    <div class="container">
+        <div class="row">
+            <div class="col-xl-12">
+                <div class="banner-content">
+                    <h2 class="text-white">Affiliate programs</h2>
+                    <div class="page-breadcrumb">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item" aria-current="page"><a href="https://www.affiliatly.com/">Home</a></li>
+                                <li class="breadcrumb-item active" aria-current="page">Affiliate programs</li>
+                            </ol>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<!-- ========================= page-banner-section end ========================= -->
+<section class="feature-section pt-75">
+    <div class="container">
+        <div class="row">
+            <div class="col-xl-10 col-lg-8 mx-auto">
+                <div class="section-title text-center mb-50">
+                    <span class="wow fadeInDown" data-wow-delay=".2s" style="visibility: visible; animation-delay: 0.2s; animation-name: fadeInDown;">
+							  <a href="https://www.affiliatly.com/affiliate-programs.html">Affiliate programs</a>
+							</span>
+                    <h2 class="wow fadeInUp" data-wow-delay=".4s" style="visibility: visible; animation-delay: 0.4s; animation-name: fadeInUp;">Affiliate programs using our app</h2>
+                    <p class="wow fadeInUp" data-wow-delay=".6s" style="visibility: visible; animation-delay: 0.6s; animation-name: fadeInUp;">You can register as an affiliate in one of those affiliate programs</p>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+			  <div class="col-md-6">
+            <div class="dropdown">
+                  <button class="theme-btn dropdown-toggle top10" type="button" id="dropdownMenu_categories" data-bs-toggle="dropdown" aria-expanded="false">
+                    Choose Category
+                    <span class="caret"></span>
+                  </button><ul class="col-md-12_ categories_menu_ dropdown-menu" aria-labelledby="dropdownMenu_categories"><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=0" class="dropdown-item active">All</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=1" class="dropdown-item ">Apparel/Clothing</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=2" class="dropdown-item ">Art and Photo</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=3" class="dropdown-item ">Automotive</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=4" class="dropdown-item ">Baby and Child</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=34" class="dropdown-item ">Beauty</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=5" class="dropdown-item ">Books and Magazines</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=6" class="dropdown-item ">Business</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=8" class="dropdown-item ">Computers</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=35" class="dropdown-item ">Crafts</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=11" class="dropdown-item ">Education</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=12" class="dropdown-item ">Electronics</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=14" class="dropdown-item ">Entertainment</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=15" class="dropdown-item ">Financial</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=16" class="dropdown-item ">Flowers and Gifts</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=17" class="dropdown-item ">Food and Drink</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=19" class="dropdown-item ">Health and Fitness</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=20" class="dropdown-item ">Home and Garden</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=21" class="dropdown-item ">Internet Services</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=22" class="dropdown-item ">Marketing</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=23" class="dropdown-item ">Miscellaneous</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=24" class="dropdown-item ">Personals</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=25" class="dropdown-item ">Pets</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=26" class="dropdown-item ">Real Estate</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=27" class="dropdown-item ">Scripts/Software</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=28" class="dropdown-item ">Shopping</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=29" class="dropdown-item ">Sports</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=31" class="dropdown-item ">Toys and Games</a></li><li><a href="https://www.affiliatly.com/affiliate-programs.html?category=32" class="dropdown-item ">Travel</a></li></ul></div> 
+				</div>
+            <div class="col-md-6">
+                <div class="subscribe-section">   
+                    <form class="subscribe-form" method="get" action="https://www.affiliatly.com/affiliate-programs.html">
+                        <input type="text" name="search" id="program_listing_search" placeholder="Search for keyword" value="" >
+                        
+                        <button type="submit" id="search_for"><i class="lni lni-search"></i></button>
+                    </form>
+                </div>
+            </div>	
+        </div>
+    </div>
+    <div class="container mt-5">
+        <div class="row">
+            
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/75283.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/75283/banner.png" class="align-middle listing_image rounded  "  alt="TopBrainBoosters" style="" ></a></div>
+	    <h5 class="card-title">TopBrainBoosters</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text">Represent a science-backed brand and earn. Join our Affiliate Program!How Our Affiliate Program WorksOnce approved, you will receive your own unique 10% discount code to share with your audience.Your followers can use this ...</p>
+	    <a href="https://www.affiliatly.com/program/75283.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/75098.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/75098/Background Family 2.jpg" class="align-middle listing_image rounded  "  alt="Woolpedia" style="" ></a></div>
+	    <h5 class="card-title">Woolpedia</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Crafts</h6>
+	    <p class="card-text">Hi!We are Chris &amp; Julia, the small yarn manufacturer Woolpedia.We found our happiness in a wooden house, on the banks of a river, right in the forest. Every day we are surrounded by squirrels burying their nuts, ...</p>
+	    <a href="https://www.affiliatly.com/program/75098.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/75071.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/75071/1776625626952.png" class="align-middle listing_image rounded  "  alt="renee" style="" ></a></div>
+	    <h5 class="card-title">renee</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Apparel/Clothing</h6>
+	    <p class="card-text">Join the Kinetic Activewear affiliate program and earn commissions by promoting premium activewear, tracksuits, T‑shirts, and gym essentials. Perfect for fitness creators, lifestyle influencers, and bloggers. Sign up below to get started. ...</p>
+	    <a href="https://www.affiliatly.com/program/75071.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/74790.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="HaloCalm" style="" ></a></div>
+	    <h5 class="card-title">HaloCalm</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Beauty</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/74790.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/74440.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Bob" style="" ></a></div>
+	    <h5 class="card-title">Bob</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Toys and Games</h6>
+	    <p class="card-text">We are a online Remote Controlled Hobby Shop.  With locations in New Hampshire and Myrtle Beach SC.  Shipping nationwide to customers with an extensive online catalog! ...</p>
+	    <a href="https://www.affiliatly.com/program/74440.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/74392.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/74392/1 stk bActivate - Kopi.png" class="align-middle listing_image rounded  "  alt="bActivate" style="" ></a></div>
+	    <h5 class="card-title">bActivate</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Pets</h6>
+	    <p class="card-text">Most vets and breeders are not aware of dormant strep zoo infectionsBroodmares, when older or 3 foals in can turn up empty, even everything is checked and look fine.Very often the problem is dormant and is not detected in the standard test, biopsi, flush, or swabWhen a ...</p>
+	    <a href="https://www.affiliatly.com/program/74392.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/74129.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/74129/Screenshot 2026-01-23 at 1.26.38 PM.jpg" class="align-middle listing_image rounded  "  alt="Enhanced Chem" style="" ></a></div>
+	    <h5 class="card-title">Enhanced Chem</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Miscellaneous</h6>
+	    <p class="card-text">Earn 25%–35% Commission Promoting Products People Already Buy.Get paid for sharing research-grade peptides with your audience.You’ll receive a personal referral link + discount code, earn up to 35% per sale, and unlock bonus incentives as you scale.No ...</p>
+	    <a href="https://www.affiliatly.com/program/74129.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/73966.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/73966/Make-Money-Online-By-Selling (1).png" class="align-middle listing_image rounded  "  alt="RLS Agents Program" style="" ></a></div>
+	    <h5 class="card-title">RLS Agents Program</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Business</h6>
+	    <p class="card-text">Join RLS affiliate program to earn commission by selling livestock products. Agents can manage orders directly from their dashboard. Simple, fast, and profitable. ...</p>
+	    <a href="https://www.affiliatly.com/program/73966.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/73732.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/73732/home page.png" class="align-middle listing_image rounded  "  alt="Join WONDERLAND" style="" ></a></div>
+	    <h5 class="card-title">Join WONDERLAND</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Entertainment</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/73732.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/73414.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/73414/shotgun roulette.jpg" class="align-middle listing_image rounded  "  alt="Shotgun Roulette" style="" ></a></div>
+	    <h5 class="card-title">Shotgun Roulette</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Toys and Games</h6>
+	    <p class="card-text">The perfect drinking game for tailgates, bbq's, days on the beach, golfing, boating, camping, skiing, and anywhere that friends gather for a good time. We are the original Shotgun Roulette, and we have the trademarks and patents to prove it. We launched in February 2025 and sales are booming. ...</p>
+	    <a href="https://www.affiliatly.com/program/73414.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/72919.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/72919/The Patch Method logo.png" class="align-middle listing_image rounded  "  alt="The Patch Method" style="" ></a></div>
+	    <h5 class="card-title">The Patch Method</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/72919.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/72854.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Weight loss in a day " style="" ></a></div>
+	    <h5 class="card-title">Weight loss in a day </h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/72854.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/71971.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Genius Pipe" style="" ></a></div>
+	    <h5 class="card-title">Genius Pipe</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Apparel/Clothing</h6>
+	    <p class="card-text">Looking for a fun and easy way to engage your followers/customers and grow your social media pages? Look no further! Pick one of these Genius Giveaway packages and share some excitement with your fans! This is a great way to increase loyalty and engagement with your people.&nbsp;With these ...</p>
+	    <a href="https://www.affiliatly.com/program/71971.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/71650.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="NicoleJ Hair" style="" ></a></div>
+	    <h5 class="card-title">NicoleJ Hair</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Shopping</h6>
+	    <p class="card-text">Luxury Hair. Real Results. No Compromise.At Nicole J., we specialize in 100% human hair—Grade 12A, no shedding, full of shine and attitude. From HD lace wigs to buttery bundles, our pieces are made to bleach, dye, curl, and SLAY.Founded by a college beautypreneur with a ...</p>
+	    <a href="https://www.affiliatly.com/program/71650.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/71324.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/71324/Product Offering.jpg" class="align-middle listing_image rounded  "  alt="Bring It On Cleaner" style="" ></a></div>
+	    <h5 class="card-title">Bring It On Cleaner</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Home and Garden</h6>
+	    <p class="card-text">Use Bring It On Cleaning Products. I will send you free product. Use them, take pictures and videos. Then get them out to your followers.20% Commission on sales.I offer a free bottle of product with all purchases. ...</p>
+	    <a href="https://www.affiliatly.com/program/71324.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/71323.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/71323/COZZETTE-300x250-px.gif" class="align-middle listing_image rounded  "  alt="Cozzette Beauty " style="" ></a></div>
+	    <h5 class="card-title">Cozzette Beauty </h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Beauty</h6>
+	    <p class="card-text">Welcome to the Cozzette Affiliate Marketing Program!At Cozzette, we believe in empowering individuals to share their passion for beauty while earning some extra income. Our affiliate program is designed for beauty enthusiasts like you who want to make a positive impact—both on your ...</p>
+	    <a href="https://www.affiliatly.com/program/71323.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/71129.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/71129/LOGO.jpg" class="align-middle listing_image rounded  "  alt="The Bearded Viking Beard Care and Mens wear" style="" ></a></div>
+	    <h5 class="card-title">The Bearded Viking Beard Care and Mens wear</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Beauty</h6>
+	    <p class="card-text">Join The Bearded Viking Affiliate Program and turn your passion for premium beard care into a rewarding opportunity! As an affiliate, you'll earn 3% - 10% commission on every successful sale made through your referral link, with payments made securely via PayPal ...</p>
+	    <a href="https://www.affiliatly.com/program/71129.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/70970.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/70970/Alien Hydro North America square logo.png" class="align-middle listing_image rounded  "  alt="Alien Hydroponics - North America" style="" ></a></div>
+	    <h5 class="card-title">Alien Hydroponics - North America</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Home and Garden</h6>
+	    <p class="card-text">Do you have a passion for all things gardening? If so, we offer an excellent opportunity to combine promoting what you love along with making some money. ...</p>
+	    <a href="https://www.affiliatly.com/program/70970.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/70955.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/70955/Outline_Circle_Black_Logo.jpg" class="align-middle listing_image rounded  "  alt="Niche coffee" style="" ></a></div>
+	    <h5 class="card-title">Niche coffee</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Food and Drink</h6>
+	    <p class="card-text">Niche Coffee Affiliate ProgramEarn 5% Commission by Promoting Premium Coffee GrindersJoin the Niche Coffee Affiliate Program and earn money by referring customers to our award-winning coffee grinders. Whether you're a ...</p>
+	    <a href="https://www.affiliatly.com/program/70955.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/70797.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/70797/Pink and White Minimalist Initial Makeup Artist Logo (1).png" class="align-middle listing_image rounded  "  alt="Lush & Pure" style="" ></a></div>
+	    <h5 class="card-title">Lush & Pure</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Beauty</h6>
+	    <p class="card-text">Lush &amp; Pure! Handmade, plastic-free, sustainable palm oil &amp; 100% animal friendly ingredients! Join us at the beginning of our journey, we currently have 2 products up for purchase with a lot more on the way! 10% commission Facebook group with ...</p>
+	    <a href="https://www.affiliatly.com/program/70797.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/70778.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/70778/Comma Logo Short Long Tag (2).png" class="align-middle listing_image rounded  "  alt="Comma Vintage" style="" ></a></div>
+	    <h5 class="card-title">Comma Vintage</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Apparel/Clothing</h6>
+	    <p class="card-text">Greetings from Comma Vintage! The World's foremost Vintage Clothing Subscription Service. The first. The best. In every shipment, you'll receive several pieces of awesome vintage clothing hand selected to fit your body and lifestyle.&nbsp;What can you expect? ...</p>
+	    <a href="https://www.affiliatly.com/program/70778.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/70671.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Elevated Operator" style="" ></a></div>
+	    <h5 class="card-title">Elevated Operator</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text">We are a veteran owned and operated company and we sell all natural mental health focused products.  Our sleep tea works incredible well and is extremely popular.  We're always looking for help and we think you'll like our commission structure. ...</p>
+	    <a href="https://www.affiliatly.com/program/70671.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/70661.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="We Design Motion video templates" style="" ></a></div>
+	    <h5 class="card-title">We Design Motion video templates</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Scripts/Software</h6>
+	    <p class="card-text">Provide creatives with the right tools, and get paid for it- 40% commission per sale- $50 sign-up bonus- Exclusive 20% discount for your audience- 120-day cookie tracking- High-converting templates and tools- Fast &amp; ...</p>
+	    <a href="https://www.affiliatly.com/program/70661.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/70577.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/70577/Big Logo (2).png" class="align-middle listing_image rounded  "  alt="The Maker's Chest" style="" ></a></div>
+	    <h5 class="card-title">The Maker's Chest</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Crafts</h6>
+	    <p class="card-text">Monetize your platform or audience in the laser engraving niche with The Maker’s Chest Affiliate Program. With&nbsp;commissions&nbsp;up to 10%&nbsp;and an&nbsp;</p>
+	    <a href="https://www.affiliatly.com/program/70577.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/70552.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/70552/Y.S.Designed-8-2.png" class="align-middle listing_image rounded  "  alt="ysdesigned" style="" ></a></div>
+	    <h5 class="card-title">ysdesigned</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Apparel/Clothing</h6>
+	    <p class="card-text">Streetwear clothes, automotive thematic &amp; accessories ...</p>
+	    <a href="https://www.affiliatly.com/program/70552.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/69623.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/69623/New logo.png" class="align-middle listing_image rounded  "  alt="How100:  Next Generation Anti-aging Platform" style="" ></a></div>
+	    <h5 class="card-title">How100:  Next Generation Anti-aging Platform</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text">BalanceGenics (How100.com | BalanceGenics.com)Personalized one-stop anti-aging solutions. Over 20,000 Happy Customers.Our Mission is to&nbsp;create personalized solutions to live longer but stay younger, accessible to as many people as possible....</p>
+	    <a href="https://www.affiliatly.com/program/69623.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/69611.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/69611/Safer H2O Logotype - NBG.png" class="align-middle listing_image rounded  "  alt="Safer H2O Whole Home Water Filtration Systems" style="" ></a></div>
+	    <h5 class="card-title">Safer H2O Whole Home Water Filtration Systems</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/69611.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/69316.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/69316/250x250_IT.png" class="align-middle listing_image rounded  "  alt="Anker Solix FR" style="" ></a></div>
+	    <h5 class="card-title">Anker Solix FR</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Home and Garden</h6>
+	    <p class="card-text">Anker Solix spécialisée dans les solutions et accessoires de recharge mobile de haute qualité.&nbsp;L'enseigne se consacre à offrir des solutions d'alimentation pour toutes les occasions, les voyages, la sauvegarde de la maison, le camping, les véhicules récréatifs, etc. ...</p>
+	    <a href="https://www.affiliatly.com/program/69316.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/69266.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/69266/Big-Dipper-Wax-Works-Affiliatly.png" class="align-middle listing_image rounded  "  alt="Big Dipper Wax Works" style="" ></a></div>
+	    <h5 class="card-title">Big Dipper Wax Works</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Home and Garden</h6>
+	    <p class="card-text">Big Dipper Wax Works has been handcrafting 100% Pure Beeswax Candles for over 20 years. We offer a variety of beeswax candles styles, colors, and shapes and practice sustainability in every aspect of our business. We're looking for like-minded creators to join our affiliate program to help ...</p>
+	    <a href="https://www.affiliatly.com/program/69266.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/69258.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/69258/Jojo-Bloom-Body-Soul-logo-shop-1200x670.png" class="align-middle listing_image rounded  "  alt="Jojo Bloom" style="" ></a></div>
+	    <h5 class="card-title">Jojo Bloom</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Beauty</h6>
+	    <p class="card-text">Jojo Bloom brings the very best super-natural organic skin care ingredients together, to rock your body and soul.Organic fair-trade 'Grade A' Shea butter.Organic cold-pressed virgin Jojoba oil.Choose natural fragrance or, complimentary organic ...</p>
+	    <a href="https://www.affiliatly.com/program/69258.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/69179.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/69179/logo-png.png" class="align-middle listing_image rounded  "  alt="Promo" style="" ></a></div>
+	    <h5 class="card-title">Promo</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Business</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/69179.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/68759.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Mobility Department" style="" ></a></div>
+	    <h5 class="card-title">Mobility Department</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text">MobilityDepartment.com Affiliate Program DetailsCommission:&nbsp;6%Cookies Duration:&nbsp;30 DaysUnlock an incredible earning potential by joining the MobilityDepartment.com Affiliate Program. Promote premium mobility and wellness products, ...</p>
+	    <a href="https://www.affiliatly.com/program/68759.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/68464.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="AugHog Products LLC " style="" ></a></div>
+	    <h5 class="card-title">AugHog Products LLC </h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Home and Garden</h6>
+	    <p class="card-text">Hello,We appreciate your interest in representing&nbsp;AugHog Products, a family-owned American manufacturer dedicated to building premium outdoor products that create memorable experiences.At AugHog, we're committed to building long-term ...</p>
+	    <a href="https://www.affiliatly.com/program/68464.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/68391.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/68391/logo_transparent 350x350.png" class="align-middle listing_image rounded  "  alt="PerfectButter®" style="" ></a></div>
+	    <h5 class="card-title">PerfectButter®</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Home and Garden</h6>
+	    <p class="card-text">Join the PerfectButter® Affiliate Program! Are you passionate about premium kitchen products? Do you love sharing unique finds with your audience? Then the PerfectButter® Affiliate Program is perfect for you!Why Join?Promote our ...</p>
+	    <a href="https://www.affiliatly.com/program/68391.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/68099.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/68099/DESIGNERGOOGLEAD.6.jpg" class="align-middle listing_image rounded  "  alt="Designer-Motorsports.com" style="" ></a></div>
+	    <h5 class="card-title">Designer-Motorsports.com</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Automotive</h6>
+	    <p class="card-text">Designer Motorsports Affiliate PartnershipProducts Include: Audio Systems &amp; Electronics for Cars, Trucks, Boats, Motorcycles.Create custom referral links to connect your audience with our site.Earn a commission on the products they purchase....</p>
+	    <a href="https://www.affiliatly.com/program/68099.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/67986.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Wonder Remineralizing Tooth Powder - Toothpaste Alternative" style="" ></a></div>
+	    <h5 class="card-title">Wonder Remineralizing Tooth Powder - Toothpaste Alternative</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text">The Wonder Oral Wellness affiliate program is a perfect fit for the holistic, crunchy, toxic free connector or influencer. We pay 25% commission on the first order and a recurring 5% on all repeat orders from returning customers. Toothpowder is an alternative to toothpaste so the residual income ...</p>
+	    <a href="https://www.affiliatly.com/program/67986.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/67962.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Sharp betting " style="" ></a></div>
+	    <h5 class="card-title">Sharp betting </h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Marketing</h6>
+	    <p class="card-text">We are a sports handicapping business. We offer 45 day cookies duration with a 40% commission which is around $80 per client. ...</p>
+	    <a href="https://www.affiliatly.com/program/67962.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/67560.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/67560/Skærmbillede 2025-04-02 kl. 18.51.13.png" class="align-middle listing_image rounded  "  alt="My Content Collective" style="" ></a></div>
+	    <h5 class="card-title">My Content Collective</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Business</h6>
+	    <p class="card-text">Join the My Content Collective Affiliate Program – Earn 30% Per Referral!Are you a content creator, influencer, or business owner with an audience that loves stunning visuals? Our affiliate program is perfect for:✅ Digital product sellers looking to add value to ...</p>
+	    <a href="https://www.affiliatly.com/program/67560.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/67379.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/67379/EMESS__3_-removebg-preview (1).png" class="align-middle listing_image rounded  "  alt="Moaque Jewlry" style="" ></a></div>
+	    <h5 class="card-title">Moaque Jewlry</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Apparel/Clothing</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/67379.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/67179.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/67179/36D7E24C-F915-4116-AC64-898271E545A5.png" class="align-middle listing_image rounded  "  alt="Brittiney’s Professional Services " style="" ></a></div>
+	    <h5 class="card-title">Brittiney’s Professional Services </h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Business</h6>
+	    <p class="card-text">Hey! Brittiney here!I’m a serial entrepreneur and have now added professional services to my belt! I’m looking for affiliates that can bring me business, in return I’m giving 20% of each service that is booked through your link! I design websites, perform SEO overhauls, ...</p>
+	    <a href="https://www.affiliatly.com/program/67179.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/67086.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/67086/logo-removebg-preview.png" class="align-middle listing_image rounded  "  alt="Snout Select" style="" ></a></div>
+	    <h5 class="card-title">Snout Select</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Pets</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/67086.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/66354.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="My Vanilla Gallery " style="" ></a></div>
+	    <h5 class="card-title">My Vanilla Gallery </h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Internet Services</h6>
+	    <p class="card-text">Ready to start earning commissions passively with minimal effort?Earn a&nbsp;25% commission&nbsp;on every referral! Your earnings will be paid out once you reach a minimum of $50 in commissions.By signing up for our affiliate program, you’ll ...</p>
+	    <a href="https://www.affiliatly.com/program/66354.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/66329.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/66329/modelar sectional sofa.png" class="align-middle listing_image rounded  "  alt="Get Bargo" style="" ></a></div>
+	    <h5 class="card-title">Get Bargo</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Home and Garden</h6>
+	    <p class="card-text">Public baseline 5%Join our exciting affiliate program and become a part of the Get Bargo . As a trusted brand in home decor, living room essentials, and pillow covers, we invite you to share the beauty of our products while earning attractive commissions. ...</p>
+	    <a href="https://www.affiliatly.com/program/66329.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/65942.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/65942/mychway-logo (2).png" class="align-middle listing_image rounded  "  alt="Jenny" style="" ></a></div>
+	    <h5 class="card-title">Jenny</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Beauty</h6>
+	    <p class="card-text">...</p>
+	    <a href="https://www.affiliatly.com/program/65942.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/65780.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Spain Luxury Trains" style="" ></a></div>
+	    <h5 class="card-title">Spain Luxury Trains</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Travel</h6>
+	    <p class="card-text"> ...</p>
+	    <a href="https://www.affiliatly.com/program/65780.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/65550.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/65550/Resized 250Grappling.png" class="align-middle listing_image rounded  "  alt="Al Hogan" style="" ></a></div>
+	    <h5 class="card-title">Al Hogan</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Health and Fitness</h6>
+	    <p class="card-text">We are looking for the absolute best grappling athletes to join our Grappling Nutritional Supplement company as affiliates.&nbsp;As one of the markets leading Nutritional Supplement companies, we pride ourselves on providing our athletes the best grappling supplements.&nbsp;In doing so we ...</p>
+	    <a href="https://www.affiliatly.com/program/65550.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/65475.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/65475/FAF6D74E-3444-4376-A79C-7F90F83B88E5.png" class="align-middle listing_image rounded  "  alt="Earn with Gedop" style="" ></a></div>
+	    <h5 class="card-title">Earn with Gedop</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Apparel/Clothing</h6>
+	    <p class="card-text">"Unlock earning potential! Join our Affiliate Marketing Program today. Click the link to register and start earning with every sale. Your journey to success begins here: [https://s2.affiliatly.com/af-1065475/affiliate.panel?mode=register] #AffiliateMarketing #EarnWithUs" ...</p>
+	    <a href="https://www.affiliatly.com/program/65475.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/65360.html"><img src="https://s2.affiliatly.com/affiliate_files/brand_images/65360/IMAH_trnsprnt-removebg-preview.png" class="align-middle listing_image rounded  "  alt="IMAHustlerPreneur Affiliate Program" style="" ></a></div>
+	    <h5 class="card-title">IMAHustlerPreneur Affiliate Program</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Business</h6>
+	    <p class="card-text">...</p>
+	    <a href="https://www.affiliatly.com/program/65360.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3 text-bg-secondary rounded p-3 " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/65071.html"><img src="https://www.affiliatly.com/images/affiliate_v2/logo/na_logo.png" class="align-middle listing_image_na "  alt="Finishlinefever" style="" ></a></div>
+	    <h5 class="card-title">Finishlinefever</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Apparel/Clothing</h6>
+	    <p class="card-text">Hey there!We are looking to affiliates who have passion for motorsport to represent Finishlinefever. We offer exclusive gifted marketing options as well as some upfront payments and commission based salaries.Get in touch with us through our website and we will get back to you asap! ...</p>
+	    <a href="https://www.affiliatly.com/program/65071.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>
+<div class="col-md-12 mb-5">
+	<div class="card">
+	  <div class="card-body">
+		 <div class="float-start  me-3  " style="overflow: hidden; width:200px; height:200px; text-align: center;" ><a href="https://www.affiliatly.com/program/65034.html"><img src="https://www.affiliatly.com/affiliate_files/brand_images/65034/esimfox prepiad banner.jpg" class="align-middle listing_image rounded  "  alt="eSIM FOX – Prepaid Travel eSIMs for Tourists" style="" ></a></div>
+	    <h5 class="card-title">eSIM FOX – Prepaid Travel eSIMs for Tourists</h5>
+	    <h6 class="card-subtitle mb-2 text-body-secondary">Travel</h6>
+	    <p class="card-text">eSIM FOX is a trusted Prepaid eSIM provider for international travelers.&nbsp;&nbsp;We help tourists save up to 90% on roaming costs with instant digital eSIMs in over 190 countries(Turkey, Germany, USA...)&nbsp;Why promote eSIM FOX?&nbsp;&nbsp;- High conversion ...</p>
+	    <a href="https://www.affiliatly.com/program/65034.html" class="card-link">see more</a>
+	  </div>
+	</div>
+</div>  
+        </div>
+    </div>
+	 <div class="blog-section">
+        <div class="pagination mb-5">
+            <ul class="d-flex justify-content-center align-items-center">
+                
+                            <li><a href="https://www.affiliatly.com/affiliate-programs.html?" class="active">1</a></li>
+                        
+                            <li><a href="https://www.affiliatly.com/affiliate-programs.html?pagenum=2" class="">2</a></li>
+                        
+                            <li><a href="https://www.affiliatly.com/affiliate-programs.html?pagenum=3" class="">3</a></li>
+                        <li><a href="https://www.affiliatly.com/affiliate-programs.html?pagenum=2" class=""><i class="lni lni-arrow-right"></i></a></li>
+            </ul>
+        </div>
+    </div>	 
+</section>
+
+ <!-- ========================= footer start ========================= -->
+        <footer class="footer pt-100">
+            <div class="container">
+                <div class="row">
+                    <div class="col-xl-3 col-lg-4 col-md-6">
+                        <div class="footer-widget mb-60 wow fadeInLeft" data-wow-delay=".2s">
+                            <a href="index.html" class="logo mb-30"><img src="https://static.affiliatly.com/images/affiliate_v2/logo/logo.png" alt="logo" width="200" ></a>
+                            <p class="mb-30 footer-desc">Our outstanding set of tools to get your affiliate marketing program running in minutes to help getting your business to the next level is just a few clicks away!</p>
+                        </div>
+                    </div>
+                    <div class="col-xl-2 offset-xl-1 col-lg-2 col-md-6">
+                        <div class="footer-widget mb-60 wow fadeInUp" data-wow-delay=".4s">
+                            <h4>Quick Links</h4>
+                            <ul class="footer-links">
+                                <li><a href="https://www.affiliatly.com/">Home</a></li>
+                                <li><a href="https://www.affiliatly.com/register">Register</a></li>
+                                <li><a href="https://www.affiliatly.com/login.html">Login</a></li>
+                                <li><a href="https://www.affiliatly.com/af-101/affiliate.panel">Our Affiliate program</a></li>
+                                <li><a href="https://www.affiliatly.com/affiliate-programs.html">Some of our client's programs</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-xl-3 col-lg-3 col-md-6">
+                        <div class="footer-widget mb-60 wow fadeInUp" data-wow-delay=".6s">
+                            <h4>Customer Service</h4>
+                            <ul class="footer-links">
+                                <li><a href="https://www.affiliatly.com/contact.html">Contact</a></li>
+                                <li><a href="https://affiliatly.helpscoutdocs.com/">FAQ</a></li>
+                                <li><a href="https://www.affiliatly.com/blog">Blog</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-xl-3 col-lg-3 col-md-6">
+                        <div class="footer-widget mb-60 wow fadeInRight" data-wow-delay=".8s">
+                            <h4>Legal</h4>
+                            <ul class="footer-links">
+                                <li><a href="/legal-tos">Terms of Service</a></li>
+                                <li><a href="/legal-privacy">Privacy Policy</a></li>
+                                <li><a href="/legal-cookie-policy">Cookie Policy</a></li>
+                                <li><a href="/legal-incident-response-policy">Incident Response Policy</a></li>
+                                <li><a href="/legal-dpa">DPA</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="copyright-area">
+                    <div class="row align-items-center">
+                        <div class="col-md-12">
+                            <p class="wow fadeInUp" data-wow-delay=".3s">&copy; 2014 - 2026 Developed by Overcode.bg. All Rights Reserved</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </footer>
+        <!-- ========================= footer end ========================= -->
+
+        <!-- ========================= scroll-top ========================= -->
+        <a href="#" class="scroll-top">
+            <i class="lni lni-arrow-up"></i>
+        </a>
+        <span id="hsf_main_site">dd3975eab7b539f9f9feb06dfcb1a098c6a215b2c6ce704abf1be9148c12f3941b9586906f40d038540d0949e0fb1af612fb7700a2b9fb9a5ce63d44db05fc2b</span>
+        <!-- ========================= JS here ========================= -->
+        <script src="https://static.affiliatly.com/js/affiliate_v2/bootstrap.min.js"></script>
+        <script src="https://static.affiliatly.com/js/affiliate_v2/contact-form.js"></script>
+        <script src="https://static.affiliatly.com/js/affiliate_v2/count-up.min.js"></script>
+        <script src="https://static.affiliatly.com/js/affiliate_v2/tiny-slider.js"></script>
+        <script src="https://static.affiliatly.com/js/affiliate_v2/isotope.min.js"></script>
+        <script src="https://static.affiliatly.com/js/affiliate_v2/glightbox.min.js"></script>
+        <script src="https://static.affiliatly.com/js/affiliate_v2/wow.min.js"></script>
+        <script src="https://static.affiliatly.com/js/affiliate_v2/imagesloaded.min.js"></script>
+        <script src="https://static.affiliatly.com/js/affiliate_v2/main.js"></script>
+        <script src="https://static.affiliatly.com/affiliate_files/js/jquery-3.5.1.js"></script>
+        <script type="text/javascript" src="https://www.affiliatly.com/functions_two.js?caller=listing"></script>
+        <script src="https://static.affiliatly.com/v3/affiliatly_subdomain.js?affiliatly_code=AF-101"></script>
+		  <script nonce="9neJBUSix5SsHdRHhyQ3aw==" >
+            $(function(){
+                checkLegalCookie();
+            })
+        </script>
+        <script nonce="9neJBUSix5SsHdRHhyQ3aw==" >
+            //========= glightbox
+            GLightbox({
+                'href': 'https://youtu.be/KFzN1pfECBU',
+                'type': 'video',
+                'source': 'youtube', //vimeo, youtube or local
+                'width': 900,
+                'autoplayVideos': true,
+            });
+
+            const lightbox = GLightbox({
+                selector: '.glightbox1',
+                touchNavigation: true,
+                loop: true,
+                autoplayVideos: true
+            });
+
+            //========= testimonial 
+            tns({
+                container: '.testimonial-active',
+                items: 1,
+                slideBy: 'page',
+                autoplay: false,
+                mouseDrag: true,
+                gutter: 0,
+                nav: false,
+                controlsText: ['<i class="lni lni-arrow-left"></i>', '<i class="lni lni-arrow-right"></i>'],
+            });
+
+            //============== isotope masonry js with imagesloaded
+            imagesLoaded( '#container', function() {
+                var elem = document.querySelector('.grid');
+                var iso = new Isotope(elem, {
+                    // options
+                    itemSelector: '.grid-item',
+                    masonry: {
+                    // use outer width of grid-sizer for columnWidth
+                    columnWidth: '.grid-item'
+                    }
+                });
+
+                let filterButtons = document.querySelectorAll('.portfolio-btn-wrapper button');
+                filterButtons.forEach(e =>
+                    e.addEventListener('click', () => {
+
+                        let filterValue = event.target.getAttribute('data-filter');
+                        iso.arrange({
+                            filter: filterValue
+                        });
+                    })
+                );
+            });
+        </script>
+<!-- Matomo -->
+<script nonce="9neJBUSix5SsHdRHhyQ3aw==" >
+  var _paq = window._paq = window._paq || [];
+  /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+  _paq.push(['trackPageView']);
+  _paq.push(['enableLinkTracking']);
+  (function() {
+    var u="https://affiliatly.matomo.cloud/";
+    _paq.push(['setTrackerUrl', u+'matomo.php']);
+    _paq.push(['setSiteId', '1']);
+    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+    g.async=true; g.src='https://cdn.matomo.cloud/affiliatly.matomo.cloud/matomo.js'; s.parentNode.insertBefore(g,s);
+  })();
+</script>
+<!-- End Matomo Code -->
+
+    </body>
+</html>
