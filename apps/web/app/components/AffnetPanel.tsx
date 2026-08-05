@@ -170,7 +170,8 @@ function NetRowCard({ n, active, onSelect, onDelete, onRescan, rescanning }: { n
         {/* Mobile: bỏ badge 'generic' — nhãn mặc định cho net không rõ nền tảng, chỉ chiếm chỗ. */}
         <span>{n.net}{n.platform && n.platform !== 'generic' ? <> <span className="badge-local">{n.platform}</span></> : null}</span>
         <span style={{ display: 'inline-flex', gap: 6 }}>
-          <button className="ghost" title="Quét lại net này" onClick={(e) => { e.stopPropagation(); onRescan(); }} disabled={rescanning}>{rescanning ? '⏳' : '⟳'}</button>
+          {/* SVG xoay khi đang chạy — bản cũ chỉ đổi chữ ⟳→⏳, request xong quá nhanh nên không ai thấy. */}
+          <button className="ghost lcbtn" title="Quét lại net này" onClick={(e) => { e.stopPropagation(); onRescan(); }} disabled={rescanning}><ActIcon k="rescan" spin={rescanning} /></button>
           <button className="ghost danger" onClick={(e) => { e.stopPropagation(); onDelete(); }}>Xoá</button>
         </span>
       </div>
@@ -261,6 +262,8 @@ export function AffnetPanel() {
   const [netsErr, setNetsErr] = useState<string | null>(null);
   const [netSort, setNetSort] = useState<NetSortKey>('active');
   const [rescanning, setRescanning] = useState<string | null>(null); // net đang quét lại
+  // Hộp xác nhận TRONG APP, thay cho confirm() của trình duyệt (xem ghi chú ở doRescan).
+  const [ask, setAsk] = useState<{ msg: string; onYes: () => void } | null>(null);
 
   const [importText, setImportText] = useState('');
   const [importBusy, setImportBusy] = useState(false);
@@ -383,12 +386,21 @@ export function AffnetPanel() {
   };
 
   // Quét lại net: host về "chờ quét" + reset poll. Dữ liệu cũ KHÔNG mất, job nền quét đè dần.
-  const doRescan = async (net: string) => {
-    if (!confirm(`Quét lại net "${net}"? Toàn bộ host sẽ được quét lại từ đầu (dữ liệu cũ vẫn giữ, job nền cập nhật dần).`)) return;
-    setRescanning(net); setNetsErr(null);
-    try { const r = await affRescanNet(net); setImportMsg(`Đã đưa ${r.hosts.toLocaleString()} host của ${net} vào lại hàng đợi quét.`); refreshNets(); }
-    catch (e) { setNetsErr((e as Error).message); }
-    setRescanning(null);
+  //
+  // KHÔNG dùng confirm() của trình duyệt. Đo thật trên khổ mobile: dialog bị bỏ qua (người dùng bấm Cancel,
+  // HOẶC iOS Safari chặn dialog sau khi hỏi "Prevent this page from creating additional dialogs") → confirm()
+  // trả false NGAY, hàm return sớm ⇒ 0 POST, icon không đổi, không có thông báo gì. Người dùng chỉ thấy
+  // "bấm không chạy" mà không có manh mối nào. Hộp xác nhận trong app thì luôn hiện được.
+  const doRescan = (net: string) => {
+    setAsk({
+      msg: `Quét lại net "${net}"? Toàn bộ host sẽ được quét lại từ đầu (dữ liệu cũ vẫn giữ, job nền cập nhật dần).`,
+      onYes: async () => {
+        setRescanning(net); setNetsErr(null); setImportMsg(null);
+        try { const r = await affRescanNet(net); setImportMsg(`Đã đưa ${r.hosts.toLocaleString()} host của ${net} vào lại hàng đợi quét.`); refreshNets(); }
+        catch (e) { setNetsErr(`Quét lại ${net} thất bại: ${(e as Error).message}`); }
+        setRescanning(null);
+      },
+    });
   };
 
   // Scan traffic cho TOÀN BỘ web của net đang xem — AITDK mỗi lô 50, lặp tới khi hết.
@@ -617,7 +629,7 @@ export function AffnetPanel() {
                   <td>{n.polls}</td>
                   {BUCKET_COLS.map((b) => <td key={b.key}>{n.buckets[b.key] || 0}</td>)}
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className="ghost" title="Quét lại net này" onClick={(e) => { e.stopPropagation(); doRescan(n.net); }} disabled={rescanning === n.net}>{rescanning === n.net ? '⏳' : '⟳'}</button>{' '}
+                    <button className="ghost actbtn flat" title="Quét lại net này" onClick={(e) => { e.stopPropagation(); doRescan(n.net); }} disabled={rescanning === n.net}><ActIcon k="rescan" spin={rescanning === n.net} /></button>{' '}
                     <button className="ghost danger" onClick={(e) => { e.stopPropagation(); doDelete(n.net); }}>Xoá</button>
                   </td>
                 </tr>
@@ -796,6 +808,19 @@ export function AffnetPanel() {
             </div>
           )}
         </>
+      )}
+
+      {/* Hộp xác nhận trong app — thay confirm() của trình duyệt (iOS có thể chặn dialog, xem doRescan). */}
+      {ask && (
+        <div onClick={() => setAsk(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 12 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius, 8px)', padding: 16, width: 'min(420px, 94vw)' }}>
+            <p style={{ margin: '0 0 14px', fontSize: 14, lineHeight: 1.5 }}>{ask.msg}</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="ghost" onClick={() => setAsk(null)}>Huỷ</button>
+              <button className="srcbtn" onClick={() => { const f = ask.onYes; setAsk(null); f(); }}>Đồng ý</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 📊 — cào 12 tháng traffic + lưu DB (save=true), rồi tải lại bảng để 3 cột traffic đổi theo. */}
