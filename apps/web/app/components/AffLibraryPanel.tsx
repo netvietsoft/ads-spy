@@ -503,10 +503,12 @@ export function AffLibraryPanel() {
                 <td style={td}>{r.sku ?? '—'}</td>
                 <td style={td}>{usd(r.rev_day, r.currency)}</td>
                 <td style={td}>{usd(r.rev_week, r.currency)}</td>
-                <td style={td}>{usd(r.rev_total, r.currency)}</td>
+                {/* DT tổng + Traffic/th tô xanh (class .rev) — 2 cột hay dùng để xếp hạng shop nên cần
+                    bắt mắt. .rev có sẵn override cho theme sáng nên không phải hardcode màu. */}
+                <td style={td} className="rev">{usd(r.rev_total, r.currency)}</td>
                 <td style={{ ...td, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.join_url ? <a href={r.join_url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>link</a> : '—'}</td>
                 <td style={td}>{pct(r.commission_pct)}</td>
-                <td style={td}>{numfmt(r.traffic_visits)}</td>
+                <td style={td} className="rev">{numfmt(r.traffic_visits)}</td>
                 <td style={td}>{bounce(r.traffic_bounce)}</td>
                 <td style={td}>{dur(r.traffic_duration_sec)}</td>
                 <td style={td}>{r.payout ?? '—'}</td>

@@ -218,7 +218,7 @@ function HostRowCard({ p, sel, onSelect, onHistory, onEditRow, onRescan, onDelet
         <span>Payout {orDash(p.payout_threshold)}</span>
       </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span>Traffic/th <b>{fmtVisits(p.traffic_visits)}</b></span>
+        <span>Traffic/th <b className="rev">{fmtVisits(p.traffic_visits)}</b></span>
         <span>Bounce <b>{fmtBounce(p.traffic_bounce)}</b></span>
         <span>Time <b>{fmtDur(p.traffic_duration_sec)}</b></span>
       </div>
@@ -818,7 +818,9 @@ export function AffnetPanel() {
                         <td className="wrap" style={{ minWidth: '16ch', maxWidth: '30ch', fontSize: 12 }}>{orDash(p.notes)}</td>
                         <td>{p.cookie_days != null ? p.cookie_days + ' ngày' : '—'}</td>
                         <td>{orDash(p.payout_threshold)}</td>
-                        <td title={p.traffic_updated_at ? 'Cập nhật ' + new Date(p.traffic_updated_at).toLocaleDateString('vi-VN') + (isSubWeb(p.web) ? ' · số của domain gốc' : '') : (isSubWeb(p.web) ? 'số của domain gốc' : undefined)}>
+                        {/* Traffic/tháng tô xanh (class .rev) cho đồng bộ với DT tháng — 2 cột hay dùng để
+                            xếp hạng. .rev có override theme sáng nên không hardcode màu. */}
+                        <td className="rev" title={p.traffic_updated_at ? 'Cập nhật ' + new Date(p.traffic_updated_at).toLocaleDateString('vi-VN') + (isSubWeb(p.web) ? ' · số của domain gốc' : '') : (isSubWeb(p.web) ? 'số của domain gốc' : undefined)}>
                           {fmtVisits(p.traffic_visits)}{isSubWeb(p.web) && p.traffic_visits != null ? ' *' : ''}
                         </td>
                         <td>{fmtBounce(p.traffic_bounce)}</td>
