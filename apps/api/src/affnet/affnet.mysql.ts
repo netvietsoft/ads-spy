@@ -161,7 +161,19 @@ export class AffnetMysql {
       check_tries INT NOT NULL DEFAULT 0,
       PRIMARY KEY (net, slug))`);
     // check_status hẹp hơn spec (VARCHAR(16)) ở bản tạo bảng lần đầu — nới cho DB cũ.
-    try { await pool.query('ALTER TABLE aff_host MODIFY check_status VARCHAR(20)'); } catch { /* đã đủ rộng */ }
+    // KIỂM TRƯỚC KHI ALTER: bản cũ chạy ALTER vô điều kiện mỗi lần gọi ensureTables, mà ALTER … MODIFY là
+    // DỰNG LẠI CẢ BẢNG nên chi phí tăng theo số dòng. Đo thật lúc aff_host có 42.576 dòng: ensureTables mất
+    // 6.113ms — vượt timeout 5.000ms của beforeAll trong affnet.mysql.spec.ts (cả 44 test chết theo), và
+    // prod cũng trả đúng chi phí đó MỖI LẦN khởi động API. Đọc information_schema trước thì đường thường
+    // chỉ còn 1 SELECT rẻ, ALTER chỉ chạy đúng 1 lần trên DB cũ.
+    const [csRows] = await pool.query(
+      `SELECT CHARACTER_MAXIMUM_LENGTH len FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'aff_host' AND COLUMN_NAME = 'check_status'`,
+    );
+    const csLen = Number((csRows as any[])[0]?.len ?? 0);
+    if (csLen > 0 && csLen < 20) {
+      try { await pool.query('ALTER TABLE aff_host MODIFY check_status VARCHAR(20)'); } catch { /* đã đủ rộng */ }
+    }
     // Index cho hot-path takeHostsToCheck (WHERE net = ? AND checked_at IS NULL ORDER BY first_seen).
     await this.ensureIndexMulti(pool, 'aff_host', 'idx_queue', 'net, checked_at');
 

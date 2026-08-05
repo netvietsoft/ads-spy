@@ -969,7 +969,20 @@ export class ShMysql implements OnModuleInit {
     const where: string[] = []; const params: any[] = [];
     if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
-    if (o.q) { where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)"); params.push('%' + o.q + '%', '%' + o.q + '%'); } // khớp cả tên lẫn domain
+    // Ô tìm nhận CẢ BA: tên shop, domain, và SHOP ID. Tên + domain đã có sẵn; shop_id thì trước đây
+    // KHÔNG khớp gì (đo thật: q=100000956793 → 0 kết quả) vì id không nằm trong shop_name lẫn raw.url.
+    // Chỉ thêm vế shop_id khi q TOÀN CHỮ SỐ: id là chuỗi số dài, gộp vào LIKE '%…%' cho mọi truy vấn thì
+    // vừa vô nghĩa vừa mất index.
+    if (o.q) {
+      const q = String(o.q).trim();
+      if (/^\d{5,}$/.test(q)) {
+        where.push("(shop_id = ? OR shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)");
+        params.push(q, '%' + q + '%', '%' + q + '%');
+      } else {
+        where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)");
+        params.push('%' + q + '%', '%' + q + '%');
+      }
+    }
     if (o.aff) { where.push("affiliate_status IN ('yes','app')"); } // shop có affiliate (link công khai hoặc app đã cài)
     if (o.fav) { where.push('shop_id IN (SELECT shop_id FROM sh_fav_shop)'); } // chỉ shop đã thả tim
     // Lọc bậc doanh thu theo USD (khớp báo cáo bậc): revenue(gốc) × tỉ giá tiền tệ thật.

@@ -31,6 +31,21 @@ function Upd({ ms }: { ms: number | null | undefined }) {
   );
 }
 
+// Menu sort cho MOBILE. Trên desktop sort bằng cách bấm header bảng, nhưng ở khổ ≤760px bảng bị thay bằng
+// thẻ nên KHÔNG có cách nào sort — đây là lối duy nhất. Key phải khớp whitelist sort ở BE
+// (sh.mysql.ts queryLocalShops/queryLocalProducts), sai key là BE lặng lẽ dùng sort mặc định.
+const SHOP_SORTS: { key: string; label: string }[] = [
+  { key: 'revenue_month', label: 'DT Tháng ↓' }, { key: 'revenue_week', label: 'DT Tuần ↓' },
+  { key: 'revenue_day', label: 'Hôm qua ↓' }, { key: 'growth_month', label: 'Tăng trưởng ↓' },
+  { key: 'sku', label: 'SKU ↓' }, { key: 'followers', label: 'FB ↓' }, { key: 'ads', label: 'Ads ↓' },
+  { key: 'aff', label: 'Affiliate ↓' }, { key: 'fetched_at', label: 'Mới cập nhật ↓' },
+];
+const PRODUCT_SORTS: { key: string; label: string }[] = [
+  { key: 'revenue_month', label: 'DT Tháng ↓' }, { key: 'revenue_week', label: 'DT Tuần ↓' },
+  { key: 'revenue_day', label: 'Hôm qua ↓' }, { key: 'price', label: 'Giá ↓' },
+  { key: 'fetched_at', label: 'Mới cập nhật ↓' },
+];
+
 const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: '_logo', label: '' },
   { key: '_name', label: 'Shop' },
@@ -72,7 +87,9 @@ function ShopRowCard({ s, fav, catNames }: { s: any; fav: boolean; catNames: Rec
       </div>
       <div className="fbfoot" style={{ alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-          {s._harvested ? <span className="badge-harvest">✓ harvest</span> : <span className="badge-local">local</span>}
+          {/* Chỉ gắn badge khi ĐÃ harvest. Trước đây shop chưa harvest bị dán chữ "local" — không nói
+              thêm điều gì (mọi dòng ở trang này đều từ DB local) mà chiếm chỗ. */}
+          {s._harvested ? <span className="badge-harvest">✓ harvest</span> : null}
           {s._affiliate === 'yes' && s._affiliate_link ? <a href={s._affiliate_link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-2)', fontWeight: 700, fontSize: 12 }}>aff ✓</a> : s._affiliate === 'app' ? <span style={{ color: '#e0a800', fontSize: 11 }}>aff app</span> : null}
         </span>
         <span className="fbplat" style={{ marginLeft: 'auto', textAlign: 'right' }}><Upd ms={s._fetched_at ?? s._harvested_at} /></span>
@@ -250,7 +267,6 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
       </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0', flexWrap: 'wrap' }}>
-        <span className="badge-local">local</span>
         {tab === 'products' && shopFilter && (
           <span className="badge-harvest" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
             Shop: {shopFilter}
@@ -263,12 +279,24 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
             <span onClick={() => { setRevMin(null); setRevMax(null); setPage(1); router.replace('/localdb/' + tab); }} style={{ cursor: 'pointer', fontWeight: 700 }} title="Bỏ lọc doanh thu">✕</span>
           </span>
         )}
-        <label>Nước:&nbsp;
-          <select className="fbselect" value={country} onChange={(e) => { setCountry(e.target.value); setPage(1); }}>
-            <option value="">Tất cả</option>
-            {opts.countries.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
+        {/* Nước + Sắp xếp CÙNG 1 HÀNG: để rời ra thì flexWrap của hàng ngoài tách chúng sang 2 dòng trên
+            mobile. minWidth 0 + flex để 2 select chia đôi chỗ, không thì select dài đẩy tràn ngang. */}
+        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', minWidth: 0, flex: isMobile ? '1 1 100%' : undefined }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', minWidth: 0, flex: isMobile ? '1 1 0' : undefined }}>Nước:&nbsp;
+            <select className="fbselect" style={isMobile ? { minWidth: 0, flex: '1 1 0' } : undefined}
+              value={country} onChange={(e) => { setCountry(e.target.value); setPage(1); }}>
+              <option value="">Tất cả</option>
+              {opts.countries.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          {/* Sort CHỈ mobile — desktop bấm header bảng (mũi tên ▲▼). */}
+          {isMobile && (
+            <select className="fbselect" style={{ minWidth: 0, flex: '1 1 0' }} value={sort} title="Sắp xếp"
+              onChange={(e) => { setSort(e.target.value); setDir('desc'); setPage(1); }}>
+              {(tab === 'shops' ? SHOP_SORTS : PRODUCT_SORTS).map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          )}
+        </span>
         {tab === 'products' && (
           <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>Shop ID:&nbsp;
             <input className="fbselect" style={{ width: 130 }} inputMode="numeric" placeholder="vd 68686217283"
@@ -289,8 +317,9 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
           ) : null}
           <div style={{ position: 'relative', flex: '1 1 40%', minWidth: 0, display: 'flex', gap: 4, alignItems: 'center' }}>
             <input
-              className="fbselect" style={{ flex: 1, minWidth: 0 }} value={qInput} title={tab === 'products' ? 'Tên sản phẩm' : 'Tên shop'}
-              placeholder={tab === 'products' ? 'Gõ tên sản phẩm…' : 'Gõ tên shop…'}
+              className="fbselect" style={{ flex: 1, minWidth: 0 }} value={qInput}
+              title={tab === 'products' ? 'Tên sản phẩm' : 'Nhận cả tên shop, domain hoặc Shop ID'}
+              placeholder={tab === 'products' ? 'Gõ tên sản phẩm…' : 'Tên shop / domain / Shop ID…'}
               onChange={(e) => { setQInput(e.target.value); setShowSug(true); }}
               onKeyDown={(e) => { if (e.key === 'Enter') applyQ(qInput); if (e.key === 'Escape') setShowSug(false); }}
               onFocus={() => { if (sugs.length) setShowSug(true); }}
@@ -369,7 +398,7 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
                   <td>{s.sku_count ?? '—'}</td>
                   <td>{/^[A-Za-z]{2,3}$/.test(s.country || '') ? s.country : ''}</td>
                   <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}><Upd ms={s._fetched_at ?? s._harvested_at} /></td>
-                  <td>{s._harvested ? <span className="badge-harvest">✓ harvest</span> : <span className="badge-local">local</span>}</td>
+                  <td>{s._harvested ? <span className="badge-harvest">✓ harvest</span> : null}</td>
                 </tr>
               ))}
             </tbody>

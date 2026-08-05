@@ -7,13 +7,17 @@ const NET = 'zz-test-net.example';   // net giả, dọn sạch sau mỗi lần 
 let sh: ShMysql;
 let db: AffnetMysql;
 
+// Timeout 30s, KHÔNG dùng mặc định 5s của jest: lượt gọi ensureTables ĐẦU TIÊN phải tạo pool MySQL +
+// khởi tạo Prisma + chạy hết các bước DDL kiểm tra — đo thật 6,1-7,2s trên DB có aff_host 42.576 dòng
+// (lượt thứ 2 chỉ 1,0-1,2s vì đã ấm). Quá 5s là hook chết và CẢ 44 test của file này đỏ cùng lúc, đọc như
+// "code hỏng" trong khi chạy riêng file thì 44/44 xanh — đã mất một vòng chẩn đoán vì chuyện này.
 beforeAll(async () => {
   sh = new ShMysql(new PrismaService());
   db = new AffnetMysql(sh);
   await db.ensureTables();
   await db.deleteNet(NET);
-});
-afterAll(async () => { await db.deleteNet(NET); });
+}, 30_000);
+afterAll(async () => { await db.deleteNet(NET); }, 30_000);
 
 const prog = (slug: string, pct: number | null, flat: number | null = null) => ({
   net: NET, slug, joinUrl: `https://${slug}.${NET}/signup`,
