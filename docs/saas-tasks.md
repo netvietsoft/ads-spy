@@ -62,10 +62,10 @@ Spec/plan chi tiết: `docs/superpowers/specs/` + `docs/superpowers/plans/`. Nh�
 - [ ] grantModule tier lạ → im lặng fallback plan cao nhất; `extend` không validate cycle. (admin edge)
 
 ## Go-live checklist (khi deploy — CHƯA làm)
-1. Đặt ENV (xem `.env.example`): `SITE_PASSWORD`/`ADMIN_PASSWORD` (cũ, sẽ bỏ), `APP_BASE_URL`, `AUTH_COOKIE_NAME`, Google (`GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL`), SMTP (`SMTP_*`), Stripe (`STRIPE_SECRET_KEY/WEBHOOK_SECRET/PUBLISHABLE_KEY`), QR (`QR_BANK_CODE/ACCOUNT/NAME`), `USD_VND_RATE`, `SEED_ADMIN_EMAIL/PASSWORD`.
+1. Đặt ENV (xem `.env.example`) — `SITE_PASSWORD`/`ADMIN_PASSWORD` **đã bỏ hẳn 2026-08-06, đừng set nữa**: `APP_BASE_URL`, `AUTH_COOKIE_NAME`, Google (`GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL`), SMTP (`SMTP_*`), Stripe (`STRIPE_SECRET_KEY/WEBHOOK_SECRET/PUBLISHABLE_KEY`), QR (`QR_BANK_CODE/ACCOUNT/NAME`), `USD_VND_RATE`, `SEED_ADMIN_EMAIL/PASSWORD`.
 2. Tạo **Stripe Price** cho từng plan×kỳ trên Stripe → dán ID vào plan (`stripePriceMonthly/Yearly`) qua admin CRUD.
 3. Cấu hình webhook Stripe trỏ `POST https://api.../api/webhooks/stripe`; test bằng Stripe CLI (`stripe listen` / `stripe trigger invoice.paid`) để xác nhận raw-body + chữ ký.
-4. Thứ tự deploy an toàn: **migrate DB → `seed:admin` → `seed:catalog` → mới bật cổng đăng nhập mới** (tránh khóa ngoài). FE: `rm -rf .next` + build + purge Cloudflare. Restart RIÊNG `ads-spy-api`/`ads-spy-web` (KHÔNG `pm2 restart all`).
+4. Thứ tự deploy an toàn: **migrate DB → `seed:admin` → `seed:catalog` → mới bật cổng đăng nhập mới** (tránh khóa ngoài). FE: build ra dist tạm rồi swap (`NEXT_DIST_DIR=.next-new` → kiểm `BUILD_ID` → `mv`), **KHÔNG `rm -rf .next` trước khi build** — xem `deployment.md` mục 4.1, xoá trước rồi build fail là web down. Xong thì purge Cloudflare. Restart RIÊNG `ads-spy-api`/`ads-spy-web` (KHÔNG `pm2 restart all`).
 
 ## Chạy & test LOCAL (bản `saas` này)
 > BE cổng 3100, FE cổng 3101. Nếu server main-repo đang chạy trùng cổng → dừng nó trước, hoặc đổi cổng.

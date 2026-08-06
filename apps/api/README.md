@@ -64,8 +64,9 @@ Ngoài bảng trên còn nhiều biến tinh chỉnh tốc độ/hành vi job ha
 `SH_HARVEST_JITTER_MS`, `SH_HARVEST_CONCURRENCY`, `SH_HARVEST_DELAY_MIN_MS`/`_MAX_MS`/`_MS`) — xem
 `.env.example` ở gốc repo và [docs/backend-modules.md](../../docs/backend-modules.md) mục 3 (Jobs nền).
 
-`SITE_PASSWORD`/`ADMIN_PASSWORD` (cổng đăng nhập) thuộc `apps/web`, không dùng ở BE — xem
-[apps/web/README.md](../web/README.md).
+`SITE_PASSWORD`/`ADMIN_PASSWORD` (cổng đăng nhập cũ) **đã bỏ hẳn 2026-08-06** — không còn file nào đọc.
+Xác thực giờ ở BE: `apps/api/src/auth` (Prisma `User`/`Session`, cookie `AUTH_COOKIE_NAME` mặc định
+`gas_session`, phân quyền theo `role`); FE chỉ là gate thô — xem [apps/web/README.md](../web/README.md).
 
 ## Build / chạy
 

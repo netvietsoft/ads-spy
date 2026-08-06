@@ -4,6 +4,175 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-06 — Fix vòng lặp 429 vô hạn (job affiliate) — nguyên nhân là THIẾU dấu tiến triển, không phải rate limit
+
+> Log prod `shop 75562647841: 429` lặp lại đúng cùng một shop_id mỗi ~23 giây, **không bao giờ dứt**. Job vẫn báo `lastStatus='ok'` và ghi job log `"1 shop · 0 yes · 0 app · 0 chặn"` nên nhìn từ web tưởng đang chạy tốt.
+
+- **Root cause** (`sh.service.ts` nhánh `ratelimited`): 429 `return` **trước** `setShopAffiliate`, mà đó là nơi DUY NHẤT ghi `affiliate_checked_at`. Cột giữ **NULL**, trong khi hàng đợi `getShopsNeedingAffiliate` dùng `ORDER BY affiliate_checked_at ASC` — MySQL xếp **NULL trước tiên** ⇒ đúng shop đó là phần tử đầu của batch kế tiếp, **vĩnh viễn**. Không có cột `try_count`/`blocked_until` nào cho affiliate. Việc đập lại mỗi 23s qua proxy random chính là thứ **duy trì** trạng thái 429.
+- Vì sao các cơ chế phanh có sẵn không cứu: nhánh 429 không tăng `blocked` nên điều kiện nghỉ `r.blocked >= r.shops` không bao giờ đúng ⇒ không rơi vào `BLOCK_MS` (5'), chỉ nghỉ `paceMs` 1,5s. Quota ngày cũng vô dụng: `addDailyCount(dk, r.shops)` cộng đúng 1–2/lượt nên cần ~1.000–2.000 vòng mới chạm trần.
+- **Fix theo idiom repo đã có** — không phát minh mới. Chính bệnh này đã được chữa ở `afflib.detect.ts` cho **cùng client `checkShopAffiliate`**, kèm comment tả đúng triệu chứng *"nếu không tính, domain sống-mà-hỏng nằm hàng đợi vĩnh viễn"*; `affnet` cũng có `bumpHostTries` + `ORDER BY check_tries` với comment *"đứng ĐẦU hàng đợi MÃI MÃI"*.
+  - `sh_shop.affiliate_try_count INT NOT NULL DEFAULT 0` qua `ensureColumn` (không migration). `ensureColumn` kiểm `information_schema.COLUMNS` trước rồi mới ALTER ⇒ **idempotent**, chạy mỗi lần boot vô hại.
+    > ⚠️ Lần boot ĐẦU sau deploy sẽ chạy `ALTER TABLE sh_shop ADD COLUMN` trên bảng **1.056MB**. Đây là `ADD COLUMN` ở cuối bảng có DEFAULT nên MySQL 8.0.12+ dùng **ALGORITHM=INSTANT** (chỉ đổi metadata) — **khác** `ALTER … MODIFY` từng làm treo cả API vì rebuild bảng (bài học 2026-07-23). Bằng chứng thực nghiệm: ALTER này đã chạy trên DB local (cùng kích thước) trong một lượt `jest` 82 suite chỉ mất 68,8s tổng ⇒ không phải rebuild.
+  - `bumpShopAffiliateTries(shopId)` — tăng đếm mà **KHÔNG** ghi `affiliate_status` (429 không kết luận được gì, đánh `'blocked'` là oan — bất biến này đã có từ `3b8c7d9` và phải giữ).
+  - Hàng đợi thêm `AND COALESCE(affiliate_try_count,0) < SH_AFF_MAX_TRIES` (=3) và `ORDER BY affiliate_try_count ASC, affiliate_checked_at ASC` → shop lỗi lặp tụt xuống cuối rồi rời hàng đợi.
+  - `setShopAffiliate` reset `affiliate_try_count = 0` → lần stale sau vẫn quét lại bình thường.
+  - `affiliateSyncStep` trả thêm `rateLimited`; job nghỉ **`BLOCK_MS` 5'** khi `rateLimited >= shops` và ghi `lastStatus='ratelimited'` (thay vì báo `'ok'` rồi đập tiếp sau 1,5s).
+- **Nhánh `catch` cũng cùng bệnh** (agent chỉ báo nhánh 429): shop lỗi DNS/mạng cũng không được đánh dấu gì → cũng nằm đầu hàng đợi mãi. Đã cho nó `bumpShopAffiliateTries` luôn. Cố ý **không** cộng vào `rateLimited` — lỗi mạng khác bị bóp 429, gộp vào là job nghỉ 5' oan.
+- Test: 5/5 xanh, thêm 2 case canh chính xác bất biến — *429 → gọi `bumpShopAffiliateTries` và **không** gọi `setShopAffiliate`*, và *lỗi mạng → cũng +1 lần thử nhưng `rateLimited` vẫn 0*.
+- **Cùng bệnh, chưa sửa (báo để không quên):** job `productrev` có `catch` với comment tự nhận *"KHÔNG mark → thử lại vòng sau"* ⇒ sản phẩm 429/không có giá cũng lặp vô hạn, chỉ khác là **im lặng** nên không thấy trong log. `catalogSyncStep` thì KHÔNG bị (mọi nhánh đều ghi `setShopCatalog`).
+
+---
+
+## 2026-08-06 — Test: 12 suite fail / 63 test fail hoá ra KHÔNG có suite nào sai logic
+
+> Phân loại bằng cách chạy **từng suite một mình**, không đoán.
+
+- **6 suite** (`sh.mysql.joblog/prodrev/coverage/schema/catalog`, `sh.product-list.dualwrite`) — **pass sạch khi chạy riêng**. Là tranh chấp hạ tầng: mỗi `ShMysql` mở pool 25 kết nối, mỗi worker jest một pool → `Threads_connected` ~55/151, cộng nhiều suite cùng `ensureReady` (CREATE TABLE/ALTER) đụng **metadata lock** cùng bảng, trong khi các test nặng nhất chỉ cách timeout 5s một chút (coverage 7,9s · catalog 5,8s · schema 3,6s).
+- **4 suite** fail CẢ khi chạy riêng, đều do **test cũ so với code** (không phải bug code, không phải dữ liệu): `runHarvest` giờ gọi `loadCfg()` → `mysql.getSetting` mà test truyền `{} as any`; `buildLocalProductDetail` gọi `getProductLeanRow` mà mock thiếu; fixture cache "mỏng" bị code **cố ý** bỏ qua. Đã sửa test, **assertion mạnh hơn trước** (assert exact cfg được truyền xuống `catalogSyncStep`).
+- **1 suite** là test phụ thuộc dữ liệu thật: `sh.mysql.fav.spec.ts` gọi `queryLocalProducts({ q: 'zz' })` → token < 3 ký tự → nhánh fallback `name LIKE '%zz%'` **không khoanh vùng** → quét trọn 5,3M dòng cho cả page query lẫn `COUNT(*)` → vượt 5000ms. Đo: `MATCH…AGAINST` 43ms · `LIKE` có lọc `shop_id` **1ms** · `LIKE` không lọc hàng chục giây. Đã khoanh theo shop của chính test (**không** tăng timeout, không hạ assertion).
+- `sh.mysql.prodlistquery.spec.ts › sort revenue_month desc`: đòi fixture `revenue_month=900` nằm trong **top 50 toàn bảng** 5,3M dòng. Đã lọc theo shop và assert **cả thứ tự** `toEqual([P+'1', P+'2'])` — mạnh hơn bản gốc (gốc chỉ kiểm `ids[0]`). Test từ 1071ms → **7ms**.
+- **`jest.config.js`** thêm 3 tuỳ chọn kèm lý do đo được: `forceExit` (nhiều spec không đóng pool → jest **treo vô hạn** sau khi test xong, từng phải kill sau 600s mà không có output nào), `maxWorkers: 1`, `testTimeout: 30000` (5000ms là quá ngắn cho DB thật 4GB — không nới assertion nào).
+- **Kết quả cuối, cùng một commit:**
+  | Cấu hình | Kết quả | Thời gian |
+  |---|---|---|
+  | mặc định (nhiều worker) | 12 suite fail · 63 test fail | 129,6s |
+  | `maxWorkers: 2` | 1 suite fail · 5 test fail | 68,8s |
+  | **`maxWorkers: 1`** | **82/82 suite · 642/642 test XANH** | **65,2s** |
+  ⇒ chạy tuần tự vừa **xanh** vừa **nhanh hơn** song song. Song song trên DB thật chỉ tạo tranh chấp rồi phải chạy lại.
+- **Test chéo `platformOf` ↔ `API_PLATFORMS`** (thay test hardcode vô dụng): đọc **thư mục** `src/affnet` bằng `fs.readdirSync`, tự bắt mọi export `*_NET` của adapter → adapter mới tự động vào diện kiểm, không ai phải nhớ sửa test. Đã **chứng minh test thật sự đỏ**: tạm `splice` bỏ `'uppromote'` khỏi `API_PLATFORMS` trong bộ nhớ test → 2 test mới FAIL, trong khi test hardcode cũ vẫn XANH ở đúng lần chạy đó — bằng chứng trực tiếp nó không canh được gì. `affnet.mysql.spec.ts`: 44 → **48 test**, 44 test cũ nguyên vẹn.
+
+---
+
+## 2026-08-06 — Chặn tận gốc kiểu sập prod hôm qua: deploy không còn tự huỷ, `pm2 save` không còn xoá dump
+
+> Sửa **cơ chế**, không chỉ sửa tài liệu. Sự cố 2026-08-05 không phải do ai gõ sai — quy trình được ghi trong doc VÀ trong `deploy.sh` đều dẫn tới đó.
+
+- **`deploy.sh` — build dist tạm rồi swap.** Bỏ `rm -rf apps/web/.next` (dòng 29, thêm từ `b59e71f`) trước `npm run build`. Nay: `rm -rf .next-new` → `NEXT_DIST_DIR=.next-new npm run build` → **kiểm `.next-new/BUILD_ID` tồn tại** → `rm -rf .next && mv .next-new .next`. Bản đang chạy không bị đụng cho tới khi có bản mới hợp lệ ⇒ **build fail thì site vẫn sống**. `NEXT_DIST_DIR` đặt **inline chứ không `export`**, để nó không lọt vào env của `pm2 reload` phía dưới (`next start` phải đọc `.next`, không phải `.next-new`).
+- **`deploy.sh` — chặn `pm2 save` phá dump list.** So số process `pm2 jlist` với số phần tử trong `~/.pm2/dump.pm2` (đọc qua `os.homedir()`); ít hơn thì **bỏ qua `pm2 save`** + in cảnh báo kèm số app sẽ bị mất. Đúng tình huống 2026-08-05: daemon còn 2 app (trước ~47), `pm2 save` chạy 2 lần → mất định nghĩa ~45 app ở cả `dump.pm2` lẫn `dump.pm2.bak`. Đã test 3 nhánh logic (2<47 → chặn · 47≥47 → save · không đọc được jlist → không chặn) + `bash -n`.
+- **`docs/deployment.md` sửa 8 chỗ**, gồm 2 chỗ **nói sai về chính code**:
+  - `:80` — *"Đã kiểm tra kỹ — `deploy.sh` KHÔNG tự `rm -rf apps/web/.next`"*: **SAI** so với `deploy.sh:29`. Câu sai lại được đóng dấu "đã kiểm tra kỹ" nên không ai soi lại, và nó còn đẩy người đọc `rm -rf` thêm một lần bằng tay.
+  - Quy tắc 4.2 cấm luôn `ecosystem.config.js` làm target restart → **tự mâu thuẫn với `deploy.sh`** vốn dùng `pm2 reload ecosystem.config.js`. Thực tế lệnh đó chỉ tác động 2 app trong file; thứ bị cấm là `all`. Đã nói rõ.
+  - Quy tắc 4.1 đảo chiều: từ *"FE luôn `rm -rf .next` trước khi build lại"* → *"build ra dist tạm rồi swap, TUYỆT ĐỐI KHÔNG xoá trước"*. Thêm quy tắc **4.5 về `pm2 save`/`pm2 resurrect`**.
+  - Mục 8: thêm `ls apps/web/.next/BUILD_ID` + cách **đọc cột `↺`** — PM2 vẫn báo `online` cho process đang crash-loop (nó vừa restart xong), đúng chỗ làm sự cố bị đọc sai lúc đầu.
+  - Mục 9: thêm 3 case chưa từng có — web down do thiếu `.next` (kèm lệnh lấy lỗi build thật `2>&1 | tail -40` và cách nhận OOM), **524** Cloudflare, và trang danh sách chậm do `COUNT(*)`.
+- **Dọn `SITE_PASSWORD`/`ADMIN_PASSWORD` — code chết.** Kiểm thật: **không file `.ts`/`.tsx` nào đọc 2 biến này**, kể cả `apps/web/middleware.ts` (README/docs lại ghi là nó đọc). Gate đã chuyển sang cookie phiên + `role` trong Prisma `User` từ Phase 1. Gỡ khỏi `ecosystem.config.js` (kèm comment cũ ghi `SITE_PASSWORD=guest, ADMIN_PASSWORD=admin` — trên repo **PUBLIC** đọc ra như công bố mật khẩu), `.env.example`, `apps/web/README.md`, và viết lại `docs/frontend.md` mục 3 theo `middleware.ts` thật (gate thô + `AUTH_COOKIE_NAME` phải khớp FE/BE, lệch là loop vô hạn về `/login`).
+- **`.gitignore`** thêm `apps/web/app/traffictool/`: 2 file secret bên trong đã được chặn bởi rule `proxy.txt`/`.env*`, nhưng **bản thân thư mục thì chưa** → 5 file source vẫn lọt vào `git add -A`.
+- **Nạp sẵn cache COUNT lúc boot** (`onModuleInit`, chạy nền `void`) → request `/localdb/products` đầu tiên sau mỗi lần restart không còn phải tự chờ COUNT.
+- **Kiểm chứng pattern dist-swap bằng build THẬT, 2 lần** (không suy đoán — chính dòng này đã làm sập prod):
+  | Kiểm | Kết quả |
+  |---|---|
+  | Build từ `apps/web` với `NEXT_DIST_DIR=.next-verify` | `.next-verify/BUILD_ID` tạo mới, `.next/BUILD_ID` **giữ nguyên timestamp cũ** |
+  | Build từ **gốc repo** (`npm run build --workspaces`, đúng lệnh `deploy.sh` chạy) với `NEXT_DIST_DIR=.next-new` | `apps/web/.next-new/BUILD_ID` tạo mới, `apps/web/.next/BUILD_ID` **không bị đụng**, `apps/api/dist/main.js` cũng build, `routes-manifest.json` bake đúng `https://api.dpboss.pet` |
+  ⇒ env truyền được qua `--workspaces`, và **bản đang chạy sống nguyên trong lúc build** — đúng tính chất mà hôm qua không có.
+- **Tác dụng phụ phát hiện KHI CHẠY THẬT (nếu chỉ đọc code thì không thấy):** `next build` **tự ghi lại** `apps/web/next-env.d.ts` (trỏ `reference path` vào distDir vừa dùng) và `apps/web/tsconfig.json` (thêm `".next-new/types/**/*.ts"` vào `include` + reformat cả file) — và **tích luỹ**: sau 2 lần build thử, `include` có cả `.next-verify` lẫn `.next-new`. Không ảnh hưởng `next start` (chỉ là type reference) nhưng để lại working tree bẩn. Xử lý: `deploy.sh` + mục 3.2 thêm `git checkout -- next-env.d.ts tsconfig.json` sau khi swap (an toàn vì bước [1/6] đã `git reset --hard`), và `.gitignore` đổi `.next-dev/` → **`.next-*/`** để mọi dist tạm đều được chặn (build fail giữa đường sẽ để lại `.next-new/`, mà `git reset --hard` không dọn thư mục untracked).
+
+---
+
+## 2026-08-06 — `/localdb/products` mất 6s: thủ phạm là COUNT(*) cho phân trang, không phải JOIN
+
+> Triệu chứng: `GET /api/sh/local/products?sort=revenue_month&dir=desc&page=1&pageSize=100` mất ~6s trên prod. Đo từng phần thay vì đoán — và phần bị nghi nhiều nhất (LEFT JOIN `sh_product` + 6 `JSON_EXTRACT` trên cột `raw`) hoá ra vô can.
+
+| Phần của câu | Lạnh | Ấm |
+|---|---|---|
+| inner `sh_product_list ORDER BY revenue_month LIMIT 100` | 358ms | **2ms** |
+| FULL (+ LEFT JOIN `sh_product` + 6 `JSON_EXTRACT`) | 2.700ms | **32ms** |
+| **`COUNT(*) FROM sh_product_list`** | **38.698ms** | **1.093ms** |
+| `sh_shop IN (97 shop)` | 75ms | 3ms |
+| `sh_product_revsync IN (100 sp)` | 57ms | 1ms |
+
+- **Gốc**: `cachedCount` TTL **60s** nhưng bản thân COUNT mất 1s (ấm) đến 38,7s (lạnh) — hết TTL là lại
+  có một request phải chờ trọn, và **không có dedup** nên N request đồng thời sinh N câu COUNT chồng nhau
+  trên bảng 4GB. `sh_product_list` hiện **5.306.740 dòng**; InnoDB không lưu sẵn row-count nên COUNT phải
+  index-scan hết `idx_pl_country` (171MB, index nhỏ nhất).
+- **Fix**: áp **đúng cơ chế mà `getLocalFilters` trong cùng file đã dùng** — dedup in-flight
+  (`countLoading`) + **stale-while-revalidate** (có số cũ thì trả ngay, COUNT làm mới chạy nền) + TTL
+  60s → **5 phút**. Không đổi câu SQL, không thêm index, không đổi số hiển thị.
+- **KHÔNG dùng số ước lượng** `information_schema.TABLE_ROWS` dù nó trả về trong 2ms: đo thật thì lệch
+  **−14,09%** với `sh_product_list` (4.559.050 vs 5.306.740) và **−36,25%** với `sh_shop` (29.951 vs
+  46.982) — sai quá nhiều để hiển thị.
+- **`/localdb/shops` vô can**, đã đo để loại trừ: `COUNT(*) sh_shop` 9ms (47k dòng), `JSON.parse` 100
+  dòng `raw` = 2ms / 0,25MB. Giữ nguyên, không đụng vào.
+- Test mới trong `sh.mysql.prodlistquery.spec.ts`: 5 request đồng thời chỉ chạm DB **1 lần**; hết TTL thì
+  hàm trả về trong <600ms trong khi COUNT giả lập chậm 1.500ms vẫn chạy nền tới nơi.
+
+---
+
+## 2026-08-05 — SỰ CỐ PROD: web down hoàn toàn vì chính quy trình deploy FE trong doc
+
+> Triệu chứng: `dpboss.pet` không mở được, `pm2 status` báo `ads-spy-web` **online** nhưng `↺ 30`. API bình thường. **Chưa khắc phục xong khi ghi log này** — còn chờ chạy lại build trên VPS để lấy lỗi thật.
+
+- **Chuỗi nhân quả** (đọc từ `ads-spy-web-error.log`): mục 3.2 bước 3 của `docs/deployment.md:101` mắc chuỗi bằng `&&` theo thứ tự `pm2 stop ads-spy-web && rm -rf .next && npm run build`. Build **fail** → `.next` đã bị xoá, không còn bản build, không còn gì để rollback → `next start` chết ngay với `Could not find a production build in the '.next' directory` → PM2 restart liên tục (đo được 30 lần). **Quy trình được ghi trong doc chính là nguyên nhân**, không phải ai làm sai.
+- **Lỗi build thật: CHƯA BIẾT.** Phần dán được chỉ là đoạn kết của npm (`npm error code 1 … command sh -c next build`); lý do nằm ở các dòng phía trên, chưa capture. Giả thuyết dẫn đầu là **OOM** (lần đo trước: swap 4.0/4.0Gi đầy, `mmo-be-scheduler` 2.37GB) vì build local cùng commit `bc042d3` **exit 0** và `tsc --noEmit` sạch cả 2 app → **không phải lỗi code**. Chưa xác nhận, đừng ghi thành kết luận.
+- **CẢ HAI đường deploy đều dính, không riêng cách thủ công.** `deploy.sh:29` cũng chạy `rm -rf apps/web/.next` ngay trước `npm run build` (thêm 2026-07-30, `b59e71f`) → `bash deploy.sh` có y hệt cơ chế tự huỷ. Nặng hơn: `deployment.md:80` in đậm **"Đã kiểm tra kỹ — `deploy.sh` KHÔNG tự `rm -rf apps/web/.next`"** — **SAI so với `deploy.sh:29`**, mà lại được đóng dấu "đã kiểm tra kỹ" và còn đẩy người đọc `rm -rf` thêm lần nữa bằng tay. Sửa mỗi `:101` + `:123` mà bỏ `deploy.sh` thì sự cố **vẫn lặp**.
+- **`docs/deployment.md` thiếu hẳn tình huống này** (kiểm chứng bằng agent đọc cả 234 dòng): 0 câu cảnh báo rủi ro "xoá `.next` trước khi build"; mục 4 quy tắc 1 (`:123`) còn khẳng định một chiều **"FE luôn `rm -rf .next` trước khi build lại"**; mục 9 Troubleshooting có 5 case nhưng **không case nào về `ads-spy-web` chết** (3/5 là API 502 + ChunkLoadError client, 2 case còn lại là thiếu `GOOGLE_PROXY` và 503 MySQL); `grep NEXT_DIST_DIR` và `grep resurrect` đều ra **0 dòng**.
+- **Cơ chế an toàn đã có sẵn mà doc không biết**: `apps/web/next.config.js:9` `distDir: process.env.NEXT_DIST_DIR || '.next'` (comment ở `:7-8` chỉ ghi mục đích "build verify" cho dev). Pattern đúng: build vào `.next-new`, **chỉ khi build thành công** mới `rm -rf .next && mv .next-new .next` rồi restart → build fail không còn làm sập site.
+- **PM2 mất danh sách process** (sự cố thứ hai, độc lập): `ads-spy-api` từ **id 46 → id 0**, bảng chỉ còn 2 dòng → daemon đã bị dựng lại, ~45 app khác (`mmo-be-scheduler`…) rơi khỏi danh sách. `pm2 save` chạy **2 lần** sau đó → cả `dump.pm2` lẫn `dump.pm2.bak` giờ chỉ còn 2 app; định nghĩa các app kia không còn trong dump nào ⇒ **VPS reboot là chúng không tự bật lại**. Doc cũng không cảnh báo gì về việc này (`pm2 resurrect` xuất hiện **0 lần** trong cả file).
+- **Nghi vấn "chuyển DB sang ổ mới làm hỏng kết nối" → SAI.** API log `Nest application successfully started` + `API listening on http://localhost:8075/api`; `mysql -u shop … -e "SELECT 1"` trả `1`. Mấy dòng `TypeError: fetch failed` trong error.log là **fetch RA NGOÀI** (`sh.client.ts:179 fetchAsset`, tải ảnh shop) và timestamp 17:34/17:53 — cũ hơn lần restart 21:48, không liên quan DB.
+- **Rủi ro thật của việc đổi ổ đĩa nằm ở chỗ khác — Prisma SQLite.** `apps/api/prisma/schema.prisma:7` hardcode `url = "file:./dev.db"` nên `DATABASE_URL` **bị bỏ qua hoàn toàn**; đường dẫn runtime neo theo `node_modules/.prisma/client` (`relativePath: "../../../apps/api/prisma"`). Chuyển repo/ổ đĩa mà **không chạy lại `prisma generate`** → `existsSync` fail → nhánh fallback trỏ DB về `node_modules/.prisma/client/dev.db`, SQLite **tự tạo file rỗng**, app boot bình thường **không báo lỗi gì** nhưng mất sạch User/Session/Search/Favorite và không đăng nhập được. Chữa: chạy lại `prisma generate` tại vị trí mới; copy DB tay phải mang cả `dev.db-journal`.
+
+---
+
+## 2026-08-05 — Local DB: ô tìm nhận Shop ID/domain · bỏ nhãn "local" · mobile thêm ô sort cạnh ô Nước
+
+- **Tìm theo Shop ID** — `sh.mysql.ts` nhận diện chuỗi toàn số ≥5 ký tự (`/^\d{5,}$/`) → `WHERE shop_id = ? OR shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw,'$.url')) LIKE ?`, nên dán `100000956793` hay `abc.myshopify.com` hay tên shop đều ra. Placeholder đổi thành `Tên shop / domain / Shop ID…`.
+- **Mobile** — `/localdb/shops` thêm ô `<select>` sort (9 lựa chọn), `/localdb/products` 5 lựa chọn, xếp **cùng hàng** với select Nước (`flex: 1 1 0` + `minWidth: 0` để không tràn ngang). Desktop giữ sort bằng header bảng, không hiện select.
+- **Chạm thẻ** — class `.localdbcard`: viền xanh (`--gr` = `#16b877` tối / `#0a8f5b` sáng) + nền phớt xanh khi `:active` và `@media (hover:hover)`. Bỏ 3 badge chữ "local" thừa. Bỏ tab **Traffic Tool** khỏi TopNav (chỉ giữ `/traffic`).
+- **Bài học kiểm chứng**: lần đầu test báo "nhập Shop ID ra 100 dòng" → hoá ra tôi chỉ `sleep 3.5s` rồi đếm, bảng còn giữ kết quả CŨ (query `LIKE '%…%'` trên `sh_shop` 1.056MB mất vài giây). Sửa test thành **poll tới khi đúng 1 dòng**; API trả `total=1` ngay từ đầu — **không có bug FE**.
+
+---
+
+## 2026-08-05 — affnet: adapter `uppromote.com` (9.496 offer/lượt) + sửa 3 log NÓI SAI SỰ THẬT
+
+- **Adapter UpPromote** — `UPPROMOTE_PAGE_LIMIT = 100` (`affnet.uppromote.ts:22`); ngân sách `UPPROMOTE_STEP_BUDGET_MS = 120_000` nằm ở **`affnet.service.ts:149`**, không phải trong file adapter. Laravel `simplePaginate` **không có `total`/`last_page`** → dấu hiệu hết catalogue là `!hasNext || offers.length < LIMIT` với `hasNext = !!d.next_page_url`. `webOfUppromote` ưu tiên domain thương hiệu, fallback `myshopify_domain`, **không bao giờ** dùng `custom_domain`. Map `type` 2→%, 0/1→tiền phẳng kèm currency.
+- **Token KHÔNG nằm trong code** — đọc qua `getNetCred(net)` từ KV cấu hình Prisma `FbSetting`, key `affnet:cred:${net}` (`affnet.mysql.ts:530-547`). Cố ý **không** thêm cột vào `aff_net` vì `netSummaries` trả cả bảng ra FE → token sẽ lộ trong payload (lý do ghi ở `affnet.mysql.ts:526-529`). Thiếu token thì **không ném lỗi**: trả `needToken: true`, mọi bộ đếm = 0, **không** ghi `setNetOffset`.
+- **`API_PLATFORMS = ['goaffpro','affiliatly','uppromote']`** (`affnet.mysql.ts:70`) là 1 nguồn chân lý sinh ra 2 mệnh đề SQL: `NET_FETCHABLE_SQL` (net kiểu API luôn fetchable dù không có host chờ) và `NET_POLLABLE_PLATFORM_SQL` (loại net kiểu API khỏi vòng discovery vì không có subdomain để dò).
+  > ⚠️ **Chỗ này CHƯA có test canh thật** (agent phản biện phát hiện): test duy nhất chạm `API_PLATFORMS` là `affnet.mysql.spec.ts:166` với danh sách kỳ vọng **hardcode `['goaffpro','affiliatly']`** — không có `'uppromote'`. Bằng chứng trực tiếp: uppromote đang nằm trong `API_PLATFORMS` mà test vẫn xanh ⇒ **quên thêm net mới thì test KHÔNG đỏ**. Chính comment `affnet.mysql.ts:66-69` đã cảnh báo đúng điều đó ("đúng lỗi đã xảy ra ở commit `aad442c`"). Cần một test chéo `platformOf` ↔ `API_PLATFORMS` thật sự.
+- **3 log nói sai, đều sửa** — (1) net thiếu token bị log **NGƯỢC** thành "Hết dự án cần quét" → thêm nhánh `needToken` **trước** nhánh idle, đặt `lastStatus = 'cần token'`, không cộng `addDailyCount`; (2) job log **ĐOÁN** "(proxy chết?)" trong khi user xác nhận **"Proxy sống hết"** → thay bằng `laneWhy(r, proxyCount)` giữ và hiện lý do lỗi THẬT của làn (`out.laneErrorMsg`, 200 ký tự đầu); (3) `rescanNet` không đưa con trỏ trang về đầu → net kiểu API "quét lại" mà thật ra không quét lại từ đầu → thêm `setNetOffset(net, 0)`.
+- **Ô Note xuống dòng từng mục** — `noteLines(s)` cắt theo `' · '` thành từng `<div>`: `Chờ duyệt (tỉ lệ 95%)` và `xxx.myshopify.com` mỗi thứ một dòng thay vì dồn một dòng dài.
+- **Sai lệch còn tồn** (ghi để không viết doc sai): `getNetCred` trả `kind: 'bearer' | 'cookie'` nhưng `fetchStepUppromote` **không đọc `kind`**, luôn gắn `Bearer ${token}` → chọn `kind='cookie'` cho uppromote vẫn bị gửi làm Bearer.
+
+---
+
+## 2026-08-05 — affnet: adapter `affiliatly.com` — directory HTML 2 tầng, 583 chương trình, KHÔNG cần Playwright
+
+- `AFFILIATLY_PAGE_SIZE = 50` là **số thẻ đo được mỗi trang HTML** (không gửi tham số nào lên server), chỉ dùng làm dấu hiệu trang cuối: `items.length < 50` → `page = 1; break`. Site không công bố tổng. `AFFILIATLY_PACE_MS = 120` giãn giữa các request chi tiết; 1 vòng = 1 request danh sách + tối đa 50 request chi tiết.
+- **`webOf` từ chối host affiliatly và lấy URL đầy đủ CUỐI CÙNG** trong chuỗi — ID 71323 có hai scheme trong cùng một ô. `labelValue` neo vào `<strong>LABEL:</strong></span>…</li>`; `commissionPctOf` bắt buộc kề chữ "commission" mới nhận.
+- **2 lỗi parser tôi tự tạo rồi sửa bằng fixture thật**: (1) markup thật là `class="card-subtitle mb-2 text-body-secondary"` nhưng regex của tôi khớp **chính xác chuỗi ngắn** `class="card-subtitle"` → **trượt sạch cả 50 category**; phải đổi sang khớp-chứa `class="[^"]*card-subtitle[^"]*"` (`affnet.affiliatly.ts:104`, có test canh 50 thẻ); (2) tôi viết test giả định ID 66354 không có hoa hồng — thực tế trang ghi rõ "25% commission" → **sửa test, không sửa parser**. 7 fixture HTML thật (204K) trong `fixtures/affnet/`.
+- **Bài học quy trình**: commit `d4596db` chỉ lọt được 7 fixture, **toàn bộ code bị rớt** vì `git add` của tôi có pathspec sai mà tôi lại `2>/dev/null` che stderr. Code nằm ở `72a99c2`. Từ đó luôn in `git diff --cached --numstat` trước khi commit.
+
+---
+
+## 2026-08-05 — Fix afflib `rev-scan-net` trả 524: COLLATE ở cột JOIN phá index (302,7s → 0,11s)
+
+> `POST /api/aff-lib/rev-scan-net` `{"net":"goaffpro.com","limit":20}` bị Cloudflare cắt ở ~100s.
+
+- **Hai nút thắt, đo thật cả hai.** (1) `COUNT(*)` với `COLLATE` **đặt trực tiếp trên cột JOIN** → MySQL bỏ index → **302,7s**. Chuyển sang **derived table** `(SELECT DISTINCT web COLLATE utf8mb4_unicode_ci AS w FROM aff_program WHERE net = ?)` — vật thể hoá trước rồi mới JOIN → vừa đúng collation vừa giữ index → **0,11s (2.750×)**. (2) Lô 20 domain **không có chặn thời gian** nào: thêm `REQ_BUDGET_MS = 20_000` cho cả request và `ONE_DOMAIN_MS = 20_000` cho từng domain qua `Promise.race`.
+- **An toàn dữ liệu**: khi domain `'timeout'` thì ghi `setRevScanned(web, {err:'quá thời gian'})` và **tuyệt đối không** ghi cột `shopify` — đánh dấu đỏ = loại trừ vĩnh viễn, không được làm vậy vì một lỗi mạng/timeout.
+- `ensureWeb(web)` (`INSERT IGNORE INTO aff_library …`) vì `setRevScanned` là UPDATE nên **im lặng trượt** các dòng chưa tồn tại; `seedFromNet(net)` seed từ `aff_program` để `rev-scan-net` không còn là no-op.
+
+---
+
+## 2026-08-05 — affnet UI: 4 cột doanh thu Ngày·Tuần·Tháng·Tổng · Excel đủ dòng · mặc định "Có chương trình"
+
+- **4 cột doanh thu** cho `/affnet/{net}` đồng bộ với `/afflibrary`, thứ tự theo kỳ tăng dần **Ngày · Tuần · Tháng · Tổng** ở cả 6 nơi: header bảng, ô dữ liệu, thẻ mobile, menu sort mobile, `HOST_SORTS` và Excel. Tô xanh 3 cột hay dùng để xếp hạng.
+- **Excel chỉ ra 5.000/22.486 dòng** → phân trang `XLS_PAGE = 5000`, `XLS_MAX_PAGES = 40`, dedupe theo `slug`. Số cột đi **13 → 23 → 26** qua 3 commit (`aa60428` thêm 10, `e55eecb` thêm 3 cột doanh thu). Nguồn dữ liệu là `GET /api/aff/hosts` chứ không phải `/aff/programs`.
+- **Nút "Quét lại net" bấm như không chạy** — nguyên nhân là `confirm()` của trình duyệt làm **cổng chặn im lặng** (iOS/Safari chặn không báo gì) → thay bằng modal xác nhận trong app (state `ask`).
+- **Phân trang ổn định**: `ORDER BY … , h.slug ASC` — thiếu tie-breaker duy nhất thì dòng nhảy/lặp giữa các trang khi giá trị sort trùng.
+- Mặc định lọc **"Có chương trình"**; mobile ẩn nút Xuất Excel và cột ID domain; chạm thẻ đổi nền hơi xám; thẻ mobile 13px.
+
+---
+
+## 2026-08-04 — affnet: goaffpro chỉ quét được 30 domain — 2 nút thắt, đo thật rồi sửa cả hai
+
+- **Nút thắt 1 — vòng xoay 458 net.** Mỗi lượt fetch chỉ xử lý 1 net; với 458 net thì goaffpro tới lượt rất thưa → con số "30 domain" khớp đúng phép tính vòng xoay, không phải bug ngẫu nhiên.
+- **Nút thắt 2 — trang quá nhỏ.** Đo thật: `limit=500` mất **930ms**, `limit=100` mất **1.253ms** → đặt `GOAFFPRO_PAGE_LIMIT = 500`. Dấu hiệu hết catalogue dùng **2 điều kiện độc lập** (`stores.length < LIMIT` **HOẶC** `count > 0 && offset >= count`), cố ý không chỉ dựa vào `count`.
+- **Ghi DB theo lô**: `upsertProgramBulk` (chunk 250) + `markHostCheckedBulk` (chunk 500) — nhanh **260×** so với ghi từng dòng.
+- **Cột Action** vẽ **SVG cả 4 icon** (15×15, `currentColor`) thay emoji vì emoji lệch cỡ giữa các máy; thêm ⟳ rescan doanh thu + traffic của 1 domain; chấm xanh/đỏ phân biệt shopify, chấm xanh mở `/shop/{id}`; gộp link tham gia + domain cùng hàng với icon, icon căn lề phải dòng cuối thẻ.
+- **Popup traffic mobile 2×2** — vỡ layout vì rule `.fbgrid, .grid { grid-template-columns: minmax(0,1fr) !important }` trong `@media (max-width:760px)` của `globals.css` (**hiện ở dòng 397**; lúc sửa là 375, các commit CSS localdb 08-05 đẩy xuống — nên tìm bằng `grep -n 'fbgrid, .grid'` thay vì nhớ số dòng); `!important` thắng cả `grid-cols-2` **lẫn inline style** → cách duy nhất là **bỏ class `grid`**, dùng `gridTemplateColumns: '1fr 1fr'` inline; biểu đồ bọc trong `overflowX: auto` với `minWidth = months.length * 34`.
+- ⚠️ **Bẫy đo lường của repo này**: `body { zoom: 1.2 }` trên desktop (mobile = 1) → 1px thật đọc ra 0.8333px, SVG 15px đọc ra 18px. Đo bằng `offsetHeight`, đừng đổ số đo từ `getBoundingClientRect()` vào CSS.
+
+---
+
 ## 2026-07-31 — Fix Aff Library 500 (prod) THẬT: xung đột COLLATION ở JOIN web
 
 > Endpoint chẩn đoán tạm `/aff-lib/diag` chỉ ra chính xác (thay vì đoán): bảng ĐỦ, `ensureTables` OK, `aff_library` **5624 dòng**, nhưng JOIN `t.web = al.web` → **"Illegal mix of collations (utf8mb4_unicode_ci, utf8mb4_0900_ai_ci) for operation '='"**. Prod migrate bằng mysqldump khiến `aff_library.web` và `aff_domain_traffic.web`/`aff_program.web` lệch collation (local tạo mới đồng nhất nên không lỗi — đúng bài học migration đã ghi).

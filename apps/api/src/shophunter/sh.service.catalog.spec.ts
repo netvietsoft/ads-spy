@@ -114,11 +114,13 @@ describe('ShHarvestService wiring: SH_HARVEST_MODE=catalog', () => {
   it("mode='catalog' → runHarvest gọi svc.catalogSyncStep(opts) và trả thẳng kết quả", async () => {
     process.env.SH_HARVEST_MODE = 'catalog';
     const svc = { catalogSyncStep: jest.fn().mockResolvedValue({ shops: 2, newProducts: 2, blocked: 1 }) } as any;
-    const h = new ShHarvestService({} as any, svc, {} as any);
+    // runHarvest nạp cfg tốc độ từ DB (job:harvest:cfg) rồi truyền delayMs/concurrency xuống catalogSyncStep.
+    const mysql = { getSetting: jest.fn().mockResolvedValue(JSON.stringify({ delayMs: 1234, concurrency: 3 })) } as any;
+    const h = new ShHarvestService({} as any, svc, mysql);
 
     const r = await h.runHarvest({ daily: 9 });
 
-    expect(svc.catalogSyncStep).toHaveBeenCalledWith({ daily: 9 });
+    expect(svc.catalogSyncStep).toHaveBeenCalledWith({ daily: 9, delayMs: 1234, concurrency: 3 });
     expect(r).toEqual({ shops: 2, newProducts: 2, blocked: 1 });
   });
 

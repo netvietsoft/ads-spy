@@ -1,9 +1,12 @@
 # 12 — Affiliate Nets (nguồn thứ 5): dò subdomain net affiliate → cào bảng dự án/%hoa hồng
 
-> Dựa trên `apps/api/src/affnet/*` (`affnet.types/discovery/classify/parser/fetch/mysql/service/controller.ts`) +
-> `apps/web/app/components/AffnetPanel.tsx`. Spec gốc (bằng chứng đo thật đầy đủ):
+> Dựa trên `apps/api/src/affnet/*` — **12 file nguồn** (không tính `*.spec.ts`): lõi chung
+> `affnet.types/discovery/classify/parser/fetch/mysql/service/controller.ts` + adapter theo net
+> `affnet.goaffpro.ts`, `affnet.affiliatly.ts`, `affnet.uppromote.ts` + `affnet.traffic.ts` (parse khối
+> text traffic AITDK, hàm thuần) — cùng `apps/web/app/components/AffnetPanel.tsx`.
+> Spec gốc (bằng chứng đo thật đầy đủ):
 > [`docs/superpowers/specs/2026-07-28-affiliate-net-crawler-design.md`](superpowers/specs/2026-07-28-affiliate-net-crawler-design.md).
-> Cập nhật: 2026-07-28.
+> Cập nhật: 2026-08-06.
 
 Nhập một danh sách **domain net affiliate** (vd `getrewardful.com`) → tự động dò **mọi dự án/campaign**
 trong net đó (mỗi dự án là 1 subdomain, vd `editgpt.getrewardful.com`) → cào %hoa hồng/web/điều khoản →
@@ -131,8 +134,16 @@ câu có thể bắt đầu thẳng bằng số không có động từ (`a2b-la
 | `notes` | cờ tiêu đề mục điều khoản (No Paid Advertising / No coupon / No brand bidding / No self-referral / No search traffic) | chỉ neo tiêu đề mục, tránh bắt trong câu văn dài |
 | `status` | `active` \| `inactive` (2 wording chết: "no longer active" / "program inactive") | — |
 
-Fixtures thật trong `fixtures/affnet/` (12 file: 10 trang Rewardful active/inactive thật + 1 trang catch-all
-`tapfiliate_com__zzz-not-real-*`) — đổi mapping phải giữ test xanh.
+Fixtures thật trong `fixtures/affnet/` — **20 file** (đếm thật 2026-08-06), gồm 4 nhóm:
+
+| Nhóm | Số file | File |
+|---|---|---|
+| Trang Rewardful active/inactive thật | **11** | `getrewardful_com__*.txt` (`1clickwebsite-ai`, `a2b-labs`, `acoust-ai`, `akool-1`, `bbai`, `editgpt`, `feather`, `founderpass`, `hostgpo`, `privacy-toll-free-llc`, `sammywrites`) |
+| Directory affiliatly | **7** | `affiliatly_com__list_p1.html` (1 trang danh sách) + `affiliatly_com__program_*.html` (6 trang chi tiết) |
+| Trang catch-all (fingerprint trang giả) | **1** | `tapfiliate_com__zzz-not-real-987654.txt` |
+| API JSON uppromote | **1** | `uppromote_com__page1.json` |
+
+Đổi mapping phải giữ test xanh.
 
 ## 5. Chống chặn Cloudflare + proxy theo làn (`affnet.fetch.ts` + `sh_proxy`)
 
@@ -160,13 +171,26 @@ dụng **theo từng làn** nên throughput ≈ số làn × (1/paceMs). Launch 
 kết quả rỗng nên crawler tự rơi về đúng 1 làn trực tiếp. Muốn tăng tốc thật thì user phải **nạp proxy mới**
 và bấm Test cho `status` khác `'die'`.
 
-## 6. Lược đồ dữ liệu — 3 bảng `aff_*` (`affnet.mysql.ts`)
+## 6. Lược đồ dữ liệu — 5 bảng `aff_*` (`affnet.mysql.ts`)
+
+`ensureTables()` tạo đúng **5** bảng (đếm thật `CREATE TABLE IF NOT EXISTS` trong `affnet.mysql.ts`
+2026-08-06 — comment ở đầu file đó vẫn ghi "3 bảng", đã lệch code):
 
 | Bảng | Vai trò |
 |---|---|
 | `aff_net` (PK `net`) | Danh sách net + tiến độ discovery (`discover_polled_at/polls/last_new`) + fingerprint trang giả (`fake_len/hash/checked_at`) |
 | `aff_host` (PK `net,slug`) | Kho subdomain **APPEND-ONLY** (`first_seen` không đổi) **VÀ ĐỒNG THỜI là hàng đợi quét** (`checked_at IS NULL` = chưa quét = đầu hàng đợi, index `idx_queue (net, checked_at)`). `check_status` chỉ nhận `active\|inactive\|notfound\|error` — **KHÔNG BAO GIỜ** `'blocked'` |
 | `aff_program` (PK `net,slug`) | Bảng DỰ ÁN (đầu ra chính). `terms_text` (MEDIUMTEXT, toàn văn) + `commission_raw` (câu gốc) lưu nguyên văn để **re-parse offline**, không cần cào lại. Index `idx_net_pct` (lọc bậc %commit), `idx_net_status` |
+| `aff_domain_traffic` (PK `web`) | Traffic hiện tại theo **DOMAIN**, không theo `net,slug` (1 domain có thể là web của nhiều chương trình): `visits`, `bounce_rate`, `visit_duration_sec`, `global_rank`, `note`, `updated_at`. Tên cột là `global_rank` vì `rank` là **từ khoá dành riêng** của MySQL 8 |
+| `aff_domain_traffic_month` (PK `web,month`) | Lịch sử traffic **theo tháng, LŨY TIẾN**. AITDK chỉ trả cửa sổ 12 tháng gần nhất → mỗi lần cào lại upsert từng tháng, tháng cũ **ở lại vĩnh viễn** kể cả khi cửa sổ đã trượt qua. `month` là `CHAR(7)` `'YYYY-MM'` |
+
+**`hostList` JOIN 3 bảng, trong đó 1 bảng KHÔNG thuộc module này**: `aff_host h` LEFT JOIN `aff_program p`
+(theo `net,slug`) LEFT JOIN `aff_domain_traffic t` (theo `web`) LEFT JOIN **`aff_library al`** (theo `web`)
+— bảng `aff_library` là của tab Aff Library, dùng để lấy **doanh thu** (`rev_day/rev_week/rev_month/rev_total`,
+`currency`, `shop_id`, `shopify`) hiện trong 4 cột DT của trang `/affnet/{net}`. JOIN này **bắt buộc có
+`COLLATE utf8mb4_unicode_ci`** vì 2 bảng khác collation (`aff_library` sinh từ migrate cũ) — thiếu là lỗi
+"Illegal mix of collations" (đúng lỗi 500 prod đã xảy ra). Cả 3 LEFT JOIN đều theo khoá chính của bảng phải
+nên **không nhân dòng** → `COUNT(*)` dùng chung JOIN vẫn cho `total` đúng.
 
 **Quyết định lưu trữ có chủ ý, đừng "sửa cho khớp spec cũ":** cột tiền/%commit (`commission_pct`,
 `commission_flat`, `payout_threshold`) dùng **`DOUBLE`**, KHÔNG dùng `DECIMAL` — vì driver `mysql2` trả
@@ -185,7 +209,22 @@ Dùng chung framework job nền sẵn có (Bật/Tắt bền DB, "Chạy ngay", 
 | Job | Việc | `DEFAULT_CFG` trong code | Kẹp (`CFG_BOUNDS`) |
 |---|---|---|---|
 | `affdiscover` | 1 net/lượt (net `discover_polled_at` cũ nhất trước) → gọi 4 nguồn, giãn `paceMs` → `upsertHosts` → `markPolled` | `{ paceMs: 8000, daily: 200, activeStart: 0, activeEnd: 24 }` | `paceMs` 0-600000ms · `daily` 1-100000 |
-| `afffetch` | Lấy `batch` host chưa quét của 1 net → chia cho các làn IP chạy song song, mỗi làn tự giãn `paceMs` | `{ batch: 30, paceMs: 10000, daily: 3000, concurrency: 3, activeStart: 0, activeEnd: 24 }` | `concurrency` 1-8 · `batch` 1-1000 · `paceMs` 0-600000ms |
+| `afffetch` | Lấy `batch` host chưa quét của 1 net → chia cho các làn IP chạy song song, mỗi làn tự giãn `paceMs`. **Chỉ đúng với net `rewardful`/`generic`** — xem rẽ nhánh ngay dưới | `{ batch: 30, paceMs: 10000, daily: 3000, concurrency: 3, activeStart: 0, activeEnd: 24 }` | `concurrency` 1-8 · `batch` 1-1000 · `paceMs` 0-600000ms |
+
+⚠️ **`fetchStep` rẽ nhánh theo `platform` TRƯỚC khi dùng `batch`/`paceMs`/làn IP** (`affnet.service.ts`, sau
+`pickNetToFetch` + `markNetFetched`, đặt trước `probeFake` vì net kiểu API không có trang catch-all):
+`goaffpro → fetchStepGoaffpro` · `affiliatly → fetchStepAffiliatly` · `uppromote → fetchStepUppromote`;
+mọi net còn lại mới đi đường Chromium `takeHostsToCheck(net, cfg.batch)`. Hệ quả phải nhớ:
+
+- **Net kiểu API KHÔNG dùng `batch`, KHÔNG dùng `paceMs`, KHÔNG dùng làn IP/proxy** — 3 nhánh này đều
+  `lanes: 1`, gọi `fetch` trần (không Playwright), và chặn trên là **ngân sách thời gian 120s/lượt**
+  (`GOAFFPRO/AFFILIATLY/UPPROMOTE_STEP_BUDGET_MS = 120_000`) chứ không phải số dòng. Riêng affiliatly có
+  nhịp riêng cứng trong code `AFFILIATLY_PACE_MS = 120ms` giữa các request chi tiết — không đọc từ cfg,
+  đổi tốc độ ở `/settings` không tác động.
+- **Quota ngày trừ theo `quotaCost` = SỐ REQUEST**, không phải số dòng ghi được: `ShJobsService` cộng
+  `r.quotaCost ?? r.checked`. Cố ý vậy vì `daily: 3000` đặt cho **số trang Chromium**; tính theo store/offer
+  thì 1 lượt goaffpro (~22.5k store) ăn hết quota của cả job trong ngày. goaffpro đếm 1/trang danh sách;
+  affiliatly đếm cả **trang danh sách + từng trang chi tiết** (1 trang ≈ 51 request); uppromote 1/trang API.
 
 ⚠️ **Lệch số so với spec thiết kế, KHÔNG phải bug — ghi lại lý do:** spec ban đầu chốt `concurrency: 1`
 "có chủ ý" (lo Cloudflare chặn theo nhịp burst). Code thật ship với **`concurrency: 3`** làm mặc định.
@@ -201,28 +240,91 @@ bấm Test ở Cài đặt → Proxy.
 
 ## 8. REST API `/api/aff/*` (`affnet.controller.ts`)
 
+**14 route** (đếm thật trong `affnet.controller.ts` 2026-08-06). Prefix `/api` đặt global ở `main.ts` nên
+path trong controller viết là `aff/...`:
+
 | Method | Path | Vào → Ra |
 |---|---|---|
-| POST | `/aff/nets` | Body `{ nets: "getrewardful.com\ntapfiliate.com" }` → chuẩn hoá (bỏ scheme/`www.`, cắt tại `/`, lowercase, bỏ trùng), `platform` = `'rewardful'` nếu domain đúng `getrewardful.com` còn lại `'generic'` → `{ imported, skipped }` |
+| POST | `/aff/nets` | Body `{ nets: "getrewardful.com\ntapfiliate.com" }` → chuẩn hoá (bỏ scheme/`www.`, cắt tại `/`, lowercase, bỏ trùng), `platform` = `platformOf(net)` (xem mục 11) → `{ imported, skipped }`. Body rỗng → 400 |
 | GET | `/aff/nets` | → `NetSummary[]` (bảng Net: discovered/checked/active/pending/polls/lastNew + `buckets`) |
+| POST | `/aff/nets/:net/rescan` | Quét lại 1 net: host về pending + reset con trỏ/poll discovery (`setNetOffset` về 0). Job nền xử tiếp |
+| POST | `/aff/nets/:net/traffic-fill` | Body `{ limit }` (mặc định 50) → điền traffic cho web của net còn trống, 1 lô/lần, trả `remaining` để FE gọi tiếp |
+| GET | `/aff/nets/:net/token` | Trạng thái token của net (`{ has }`) — **không trả token** |
+| POST | `/aff/nets/:net/token` | Body `{ token, kind: 'bearer'\|'cookie', loginUrl? }` → lưu vào KV Prisma `FbSetting` (xem mục 11) |
+| DELETE | `/aff/nets/:net/token` | Xoá token của net |
 | DELETE | `/aff/nets/:net` | Xoá `aff_program` → `aff_host` → `aff_net` của net đó |
-| GET | `/aff/programs` | Query bắt buộc `net`; tuỳ chọn `minPct,maxPct,status,q,page,pageSize(≤5000),sort(pct\|name\|web\|fetched\|slug),dir` → `{ rows, total }`, **không kèm `terms_text`** |
-| GET | `/aff/programs/:net/:slug` | 1 dự án đầy đủ kể cả `terms_text` |
+| GET | `/aff/programs` | Query bắt buộc `net`; tuỳ chọn `minPct,maxPct,status,q,page,pageSize(≤5000),sort,dir` → `{ rows, total }`, **không kèm `terms_text`** |
+| GET | `/aff/hosts` | **Nguồn của trang `/affnet/{net}`** — MỌI domain đã phát hiện (`aff_host`), không chỉ cái có chương trình. Query bắt buộc `net`; tuỳ chọn `filter(all\|active\|none\|error\|pending\|scanned)`, `q`, `minPct`, `maxPct`, `page`, `pageSize(≤5000)`, `sort`, `dir` → `{ rows, total }` kèm cột chương trình + traffic + doanh thu |
+| PUT | `/aff/hosts/:net/:slug` | Sửa TAY 1 dòng, chỉ nhận `programName, web, joinUrl, commissionPct, cookieDays, payoutThreshold, notes`. Field **vắng mặt** trong body thì giữ nguyên (không ghi NULL đè); body không có field nào hợp lệ → 400 |
+| DELETE | `/aff/hosts/:net/:slug` | Xoá 1 domain khỏi net |
+| GET | `/aff/programs/:net/:slug` | 1 dự án đầy đủ kể cả `terms_text`. Không thấy → 400 |
+| POST | `/aff/traffic` | Lưu traffic dán tay theo domain — body bắt buộc có `web`, thiếu → 400 |
 
-**Xuất Excel làm ở CLIENT** (`AffnetPanel.tsx` dùng thư viện `xlsx` sẵn có) — gọi `/aff/programs` với
-`pageSize=5000` rồi xuất; nếu net có > 5000 dự án khớp lọc thì cảnh báo rõ ràng "chỉ xuất được N/total"
-thay vì âm thầm xuất thiếu. Không thêm endpoint export riêng ở backend.
+`minPct`/`maxPct` không phải số hữu hạn (`?minPct=abc`) được coi là **KHÔNG LỌC**, không trả 400 —
+`numOrUndef` chặn trước, vì trước đây `NaN` rơi xuống SQL `BETWEEN NaN AND NaN` và làm **500** cả trang.
 
-## 9. Web UI — tab `/affnet` (`AffnetPanel.tsx`)
+**Khoá `sort` hợp lệ** — 2 bảng riêng trong `affnet.mysql.ts`, khoá lạ thì `buildOrderBy` rơi về mặc định
+(không NÉM lỗi), nên tự ý đổi tên khoá ở FE là **im lặng mất sort**:
 
-- Ô nhập nhiều dòng domain → "Thêm net".
-- **Bảng Net**: Tên net · Đã phát hiện · Đã quét · Dự án sống · Còn chờ · Lượt poll · 7 cột bậc %commit
-  (`0-10 · 10-15 · 15-20 · 20-30 · >30% · $ cố định · Chưa rõ`) + nút Xoá. Tự làm mới mỗi 10s (job chạy nền).
-  Bấm 1 dòng → mở bảng Dự án của net đó.
-- **Bảng Dự án** (của net đang chọn): lọc theo khoảng %commit, trạng thái, tìm tên; cột Tên dự án · Link
-  tham gia (mở tab mới) · Web (mở tab mới) · %commit · Note · Cookie · Payout; sort theo tên/web/%commit;
-  phân trang; nút Xuất Excel. Ô trống hiện `—`, không bịa số.
-- Mobile (< 760px): mỗi hàng thành **thẻ** (mirror cách Local DB đã làm để bảng nhiều cột không vỡ).
+| Endpoint | Bảng khoá | Khoá (đếm thật 2026-08-06) | Mặc định |
+|---|---|---|---|
+| `GET /aff/programs` | `PROGRAM_SORTS` — **10 khoá** | `pct` · `name` · `web` · `fetched` · `slug` · `visits` · `bounce` · `time` · `cookie` · `payout` | `fetched` `desc` |
+| `GET /aff/hosts` | `HOST_SORTS` — **16 khoá** | `domain` · `found` · `checked` · `status` · `name` · `web` · `pct` · `cookie` · `payout` · `visits` · `bounce` · `time` · `rev` · `revday` · `revweek` · `revtotal` | `domain` `asc`, luôn kèm khoá phụ `h.slug ASC` |
+
+`visits/bounce/time` map sang `aff_domain_traffic`; `rev*` map sang `aff_library` (chỉ có ở `HOST_SORTS`).
+Nhóm cột số liệu thêm vào để FE **mobile** có menu "sắp xếp" — trên mobile bảng thành thẻ nên không bấm
+được header. Khoá phụ `h.slug` ở `hostList` là **bắt buộc**: thiếu nó thì 2 dòng cùng giá trị sort có thứ
+tự không xác định giữa các request → phân trang lặp/nhảy dòng (đúng lỗi đã gặp ở Aff Library) và làm hỏng
+cả vòng lấy nhiều trang của Xuất Excel.
+
+**Xuất Excel làm ở CLIENT** (`AffnetPanel.tsx` dùng thư viện `xlsx` sẵn có) và gọi **`GET /aff/hosts`**
+(không phải `/aff/programs`) — cùng bộ `filter/q/minPct/maxPct/sort/dir` đang hiện trên bảng, **lấy NHIỀU
+trang** rồi xuất: `XLS_PAGE = 5000`, `XLS_MAX_PAGES = 40` (⇒ tối đa 200.000 dòng), dedupe theo `slug`,
+**26 cột**, sheet tên `Domain`. Không thêm endpoint export riêng ở backend.
+
+> Trước 2026-08-05 chỗ này gọi **1 trang** `pageSize=5000` → net goaffpro 22.486 dòng chỉ xuất được
+> 5.000 mà cảnh báo lại không đủ rõ. Nếu vượt `XLS_MAX_PAGES` thì vẫn phải cảnh báo "chỉ xuất được
+> N/total", **không âm thầm xuất thiếu**.
+
+## 9. Web UI — `/affnet` + `/affnet/{net}` (`AffnetPanel.tsx`)
+
+1 component `AffnetPanel.tsx` phục vụ **2 trang**, phân biệt bằng `usePathname()`: `/affnet` = danh sách net;
+`/affnet/{net}` = trang riêng của net đó.
+
+- Ô nhập nhiều dòng domain → "Thêm net". Có menu "Sắp xếp net" (client-side, vì `nets` tải hết 1 lần).
+- **Bảng Net** (`/affnet`): Tên net (kèm `platform` in nhỏ dưới tên) · Đã phát hiện · Đã quét · Dự án sống ·
+  Còn chờ · Lượt poll · 7 cột bậc %commit (`0-10 · 10-15 · 15-20 · 20-30 · >30% · $ cố định · Chưa rõ`) +
+  cột hành động (⟳ quét lại net · Xoá). Tự làm mới mỗi 10s (job chạy nền).
+  **Bấm 1 dòng → `window.open('/affnet/{net}', '_blank')` = TAB MỚI**, không còn hiện bảng inline bên dưới.
+- **Bảng của `/affnet/{net}` là bảng DOMAIN, KHÔNG phải bảng Dự án** — nguồn là `GET /aff/hosts` (`aff_host`),
+  tức liệt kê **mọi domain đã phát hiện** kể cả domain quét rồi không có affiliate và domain chưa quét (với
+  `getrewardful.com` là 1.401 dòng thay vì 335) → thấy được cả độ phủ quét. Mặc định ô lọc đặt ở "Có chương
+  trình". **18 cột**, đúng thứ tự trong code:
+
+  | # | Cột | # | Cột |
+  |---|---|---|---|
+  | 1 | Domain (sort `domain`) | 10 | DT tổng (sort `revtotal`) |
+  | 2 | Trạng thái (sort `status`) | 11 | Note |
+  | 3 | Tên dự án (sort `name`) | 12 | Cookie (sort `cookie`) |
+  | 4 | Link tham gia (mở tab mới) | 13 | Payout (sort `payout`) |
+  | 5 | Web (sort `web`, mở tab mới) | 14 | Traffic/tháng (sort `visits`) |
+  | 6 | %commit (sort `pct`) | 15 | Bounce (sort `bounce`) |
+  | 7 | DT ngày (sort `revday`) | 16 | Time-on-site (sort `time`) |
+  | 8 | DT tuần (sort `revweek`) | 17 | Quét lúc (sort `checked`) |
+  | 9 | DT tháng (sort `rev`) | 18 | Action |
+
+  4 cột **DT** lấy từ `aff_library` theo domain, thứ tự theo kỳ tăng dần (ngày → tuần → tháng → tổng) và
+  **luôn đổi sang USD** bằng `toUsd(rev, rev_currency)` — `aff_library` lưu TIỀN GỐC của shop, không đổi thì
+  shop INR/VND/JPY trông to gấp hàng trăm lần (đo thật: 55.262.732 INR = $572.025). Cột **Action** là 4 icon
+  SVG trần: ⟳ rescan doanh thu+traffic của dòng · ✎ sửa tay (`PUT /aff/hosts/...`) · 📊 cào 12 tháng traffic ·
+  🗑 xoá dòng — 2 nút giữa chỉ hiện khi biết `web`.
+- Trên `/affnet/{net}` còn có: link `← Tất cả net`, nút **Scan traffic** (cả net) + **scan Revenue** (cả net),
+  ô lọc trạng thái 5 mục (`Tất cả domain · Có chương trình · Quét rồi, không có · Không phân loại được ·
+  Chưa quét`), ô %commit "từ → đến", ô tìm domain/tên dự án, phân trang, nút **Xuất Excel** (chỉ desktop).
+  Bấm vào khoảng trắng của 1 dòng → mở chi tiết shop trong Local DB ở tab mới, chỉ khi domain có `shop_id`.
+  Ô trống hiện `—`, không bịa số.
+- Mobile (< 760px): mỗi hàng thành **thẻ** (mirror cách Local DB đã làm để bảng nhiều cột không vỡ); sort
+  chuyển sang menu `<select>` và nút Xuất Excel bị ẩn.
 - `TopNav.tsx`: mục `['/affnet', 'Affiliate Nets']`; `page.tsx`: `Source` thêm `'affnet'`, map `pathToSource`/`SOURCE_TO_PATH`.
 
 ## 10. Số liệu thật cần biết trước khi báo cáo cho user
@@ -236,10 +338,20 @@ thay vì âm thầm xuất thiếu. Không thêm endpoint export riêng ở back
 
 ## 11. Giới hạn đã biết (đọc kỹ trước khi "đơn giản hoá" phần này)
 
-- Cột **Cookie** (`cookie_days`, lưu ý bản chất là **cửa sổ cookie/attribution**, không phải "chờ bao lâu
-  mới được trả tiền" — 2 nghĩa khác nhau, spec chọn nghĩa cookie vì đó là số duy nhất đôi khi công khai)
-  và **Payout** (`payout_threshold`) **không công khai ổn định** trên phần lớn trang — lấy best-effort từ
-  điều khoản khi merchant tự nói ra, còn lại để trống. **Không bao giờ bịa số.**
+- Cột **Cookie** (`cookie_days`) — bản chất là **cửa sổ cookie/attribution**, không phải "chờ bao lâu mới
+  được trả tiền" (2 nghĩa khác nhau; spec chọn nghĩa cookie vì đó là số duy nhất đôi khi công khai) — và cột
+  **Payout** (`payout_threshold`) có **độ tin cậy KHÁC NHAU theo net**, phải tách 2 trường hợp:
+
+  | Net | `cookie_days` | `payout_threshold` |
+  |---|---|---|
+  | `getrewardful.com` (+ `generic`) | **best-effort từ text** — bới trong `terms_text`, chỉ nhận khi câu nói rõ cookie/attribution window (tránh bắt nhầm `"within thirty (30) days of the request"`) | **best-effort từ text** — nhận cả 2 thứ tự "từ khoá trước $" và "$ trước từ khoá" (`a2b-labs` viết ngược `"$50 threshold"`) |
+  | `goaffpro.com` | **CÓ CẤU TRÚC** — field API `cookieDuration` tính bằng **GIÂY**, đổi sang ngày (`604800 → 7`, `Math.round`, kẹp `>= 1`) | **LUÔN `null`** — API không trả ngưỡng trả, ai cần thì nhập tay ở cột Action |
+  | `uppromote.com` | **CÓ CẤU TRÚC** — field API `cookie` tính bằng **NGÀY** (1, 7, 14, 30, 90, 120, 360…), có giá trị ở **2.986/3.000** offer đo được | **LUÔN `null`** — API không có ngưỡng trả; `payout_period` (`"Bi-Weekly"`) là **KỲ TRẢ**, nhét vào đây là sai nghĩa |
+  | `affiliatly.com` | **LUÔN `null`** — trang không có thời hạn cookie (chuỗi `Cookie Policy` ở footer chỉ là link pháp lý) | **best-effort từ text** — chỉ nhận khi có đúng cụm `minimum payout`; đo được **1/6** trang có |
+
+  Nói gọn: **net kiểu API có cookie ĐÁNG TIN nhưng payout thì không bao giờ có**; net dò-trang (rewardful/
+  generic) thì cả 2 đều best-effort. Trường hợp nào để trống cũng **không bao giờ bịa số** — muốn có thì
+  nhập tay qua `PUT /aff/hosts/:net/:slug`.
 - Dự án CHẾT được đếm trong tổng hợp bảng Net nhưng **KHÔNG lưu thành dòng `aff_program`** (mục tiêu là
   bảng dự án có thể join được) → không có cách liệt kê dự án cụ thể nào đã chết.
 - **Sửa parser không tự sửa lại dữ liệu đã cào**: `terms_text` + `commission_raw` lưu nguyên văn để
@@ -247,7 +359,35 @@ thay vì âm thầm xuất thiếu. Không thêm endpoint export riêng ở back
   giá trị cũ tới khi được fetch lại.
 - **Recall không bao giờ chắc chắn 100%** — mọi nguồn discovery đều là sampler. UI vì vậy hiện tách bạch
   "đã phát hiện / đã quét / dự án sống / còn chờ" thay vì ngụ ý một con số cuối cùng.
-- **Chỉ có adapter Rewardful.** Thứ tự mở rộng đã có bằng chứng đo (giá trị/công sức, làm sau v1):
+- **Hiện có 4 adapter** (cập nhật 2026-08-05 — trước đó doc ghi "chỉ có adapter Rewardful", đã lệch code).
+  `platformOf` (`affnet.service.ts:197-207`) trả đúng 5 giá trị: `'rewardful'` · `'goaffpro'` ·
+  `'affiliatly'` · `'uppromote'` · `'generic'` (mặc định).
+
+  | Net | platform | Phân trang | Token | Dấu hiệu hết catalogue |
+  |---|---|---|---|---|
+  | `getrewardful.com` | `rewardful` | discovery subdomain | không | (theo vòng poll) |
+  | `goaffpro.com` | `goaffpro` | `GOAFFPRO_PAGE_LIMIT = 500` (limit gửi API) | **không** | `stores.length < 500` **HOẶC** `count > 0 && offset >= count` |
+  | `affiliatly.com` | `affiliatly` | `AFFILIATLY_PAGE_SIZE = 50` — số thẻ **đo được**/trang HTML. `listPage` CÓ gửi `?pagenum=N` (`affnet.affiliatly.ts:186`); thứ **không** gửi được là tham số **kích thước** trang | **không** | `items.length < 50` (site không công bố tổng) |
+  | `uppromote.com` | `uppromote` | `UPPROMOTE_PAGE_LIMIT = 100` (limit gửi API) | **có** | `!hasNext \|\| offers.length < 100`; Laravel `simplePaginate` không có `total`/`last_page` |
+
+  - **`API_PLATFORMS = ['goaffpro','affiliatly','uppromote']`** (`affnet.mysql.ts:70`) là **1 nguồn chân
+    lý** sinh 2 mệnh đề SQL: `NET_FETCHABLE_SQL` (net kiểu API luôn fetchable **dù không có host chờ**) và
+    `NET_POLLABLE_PLATFORM_SQL` (loại net kiểu API khỏi vòng discovery — không có subdomain để dò). Thêm
+    net kiểu API mà quên thêm vào đây = tính năng chạy **0 lần** (đúng lỗi đã xảy ra ở `aad442c`).
+    ⚠️ **Chưa có test canh việc này.** Test duy nhất chạm `API_PLATFORMS` là `affnet.mysql.spec.ts:166`,
+    kỳ vọng **hardcode `['goaffpro','affiliatly']`** — thiếu `'uppromote'`, nên quên thêm net mới thì test
+    vẫn xanh. Cần test chéo `platformOf` ↔ `API_PLATFORMS`.
+  - **Token** (chỉ uppromote cần): đọc qua `getNetCred(net)` từ KV Prisma `FbSetting`, key
+    `affnet:cred:${net}` — **cố ý không** thêm cột vào `aff_net` vì `netSummaries` trả cả bảng ra FE thì
+    token sẽ lộ trong payload. Thiếu token **không ném lỗi**: trả `needToken: true`, đếm = 0, không ghi
+    `setNetOffset`.
+  - Cả 3 `fetchStep*` đều có ngân sách **120s**, nhưng là vòng `do…while` nên **luôn chạy hết ít nhất 1
+    trang dù deadline đã qua**; deadline chỉ kiểm **sau** khi trang đó ghi xong.
+  - Con trỏ cả 3 net dùng chung KV `affnet:offset:${net}` nhưng **ngữ nghĩa khác nhau**: goaffpro là
+    **offset bản ghi**, affiliatly/uppromote là **số trang** (`|| 1` nên 0 = trang 1). `rescanNet` reset
+    về 0 cho mọi net.
+
+- Thứ tự mở rộng tiếp đã có bằng chứng đo (giá trị/công sức):
   1. **PartnerStack** — giá trị cao nhất, công sức thấp nhất: **1 request** tới `market.partnerstack.com`
      → blob có cấu trúc **~420 công ty + ~4.643 offer** kèm `value`/`type_` (percent/flat)/`currency`/`cycle`
      — nhưng response **~10,6MB** nên phải **bỏ giới hạn kích thước** mặc định trước khi dùng.
@@ -262,12 +402,20 @@ thay vì âm thầm xuất thiếu. Không thêm endpoint export riêng ở back
 
 ## 12. Test
 
-7 file spec (`affnet.discovery/classify/parser/mysql/fetch/service.spec.ts` + `sh.jobs.affnet.spec.ts`
-kiểm việc gắn 2 job vào `ShJobsService`) — **121 test xanh** (`npx jest affnet` — đo lúc viết bản cập
-nhật này; riêng `src/affnet/*.spec.ts`, không tính `sh.jobs.affnet.spec.ts`, là **114 test / 6 suite**,
-`npx jest src/affnet`). Fixtures thật trong `fixtures/affnet/` (12 file: 10 trang
-Rewardful active/inactive + 1 trang catch-all tapfiliate) — đổi mapping ở `affnet.parser.ts` phải giữ
-test xanh, đúng quy ước dự án ([CLAUDE.md §0](../CLAUDE.md)).
+**12 file spec**: 11 file trong `src/affnet/` (`affnet.affiliatly / classify / controller / discovery /
+fetch / goaffpro / mysql / parser / service / traffic / uppromote.spec.ts`) + `src/shophunter/sh.jobs.affnet.spec.ts`
+(kiểm việc gắn 2 job vào `ShJobsService`).
+
+Đo thật 2026-08-06 (chạy **trong `apps/api`**, chạy ở root sẽ fail):
+
+| Lệnh | Suite | Test |
+|---|---|---|
+| `npx jest affnet` | 12 | **278 xanh** |
+| `npx jest src/affnet` (không tính `sh.jobs.affnet.spec.ts`) | 11 | **266 xanh** |
+
+Fixtures thật trong `fixtures/affnet/` — **20 file**, bảng chi tiết 4 nhóm ở cuối mục 4.
+Đổi mapping ở `affnet.parser.ts` (hoặc các `parse*` của adapter) phải giữ test xanh, đúng quy ước dự án
+([CLAUDE.md §0](../CLAUDE.md)).
 
 ## 13. Ghi chú pháp lý
 

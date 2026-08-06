@@ -1,7 +1,10 @@
 node_modules/
 dist/
 .next/
-.next-dev/
+# Mọi dist tạm của Next: .next-dev (dev server), .next-new (deploy.sh build rồi swap), .next-verify…
+# Không có dòng này thì build fail giữa đường sẽ để lại .next-new/ lù lù trong `git status`
+# (và `git reset --hard` ở bước 1 của deploy.sh KHÔNG dọn thư mục untracked).
+.next-*/
 .pw-profile/
 *.db
 *.db-journal
@@ -33,6 +36,11 @@ graphify-out/
 # Thư mục nháp tool traffic Python — chứa proxy.txt (credential) + raw dump ~500KB của 1 lần chạy thử.
 # Bản chính thức đã port sang apps/api/src/traffic/, thư mục này chỉ để tham khảo local.
 Traffic tool/
+
+# Thư mục nháp tool traffic bản Next — chứa proxy.txt (19 dòng, 15 dòng có user:pass) + .env.local.
+# 2 file secret đó đã bị chặn bởi rule `proxy.txt`/`.env*` ở trên, NHƯNG bản thân thư mục thì chưa:
+# 5 file source trong đó vẫn lọt vào `git add -A`. Tính năng chính đã ở /traffic, thư mục này chỉ là nháp.
+apps/web/app/traffictool/
 
 # Backup zip source của CHÍNH repo này (old/ads-spy-main.zip ~907KB) — binary không diff được,
 # lọt vào history là vĩnh viễn dù có xoá sau.

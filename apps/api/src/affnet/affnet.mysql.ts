@@ -1,4 +1,6 @@
-// Lưu trữ MySQL cho affnet: 3 bảng aff_net/aff_host/aff_program + các query trên đó.
+// Lưu trữ MySQL cho affnet: 5 bảng `ensureTables` tạo — aff_net, aff_host, aff_program,
+// aff_domain_traffic, aff_domain_traffic_month + các query trên đó. (Ghi chú cũ ở dòng này ghi "3 bảng",
+// lệch từ khi thêm 2 bảng traffic; `hostList` còn LEFT JOIN sang aff_library để lấy doanh thu.)
 // Dùng CHUNG pool với ShMysql (sh.getPool()) — không mở pool thứ 2 (pool giới hạn 25 kết nối).
 // Lược đồ theo docs/superpowers/specs/2026-07-28-affiliate-net-crawler-design.md §3 — đổi cột/index phải khớp doc đó.
 import { Injectable } from '@nestjs/common';

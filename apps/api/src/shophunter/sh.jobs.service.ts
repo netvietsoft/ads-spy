@@ -483,11 +483,14 @@ export class ShJobsService implements OnModuleInit {
     const r = await this.svc.affiliateSyncStep({ daily: cfg.batch, concurrency: cfg.concurrency });
     await this.mysql.addDailyCount(dk, r.shops).catch(() => {});
     this.mem.affiliate.lastRunAt = Date.now();
-    this.mem.affiliate.stats = { shops: r.shops, yes: r.yes, app: r.app, blocked: r.blocked };
+    this.mem.affiliate.stats = { shops: r.shops, yes: r.yes, app: r.app, blocked: r.blocked, bop_429: r.rateLimited };
     if (r.shops === 0) { this.mem.affiliate.lastStatus = 'idle'; await this.mysql.appendJobLog('affiliate', 'info', 'Hết shop cần quét; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    // Cả lô bị 429 = Shopify đang bóp IP/proxy. Trước đây nhánh này báo lastStatus='ok' + pace 1.5s nên
+    // job đập lại ngay, tự duy trì 429. Nghỉ BLOCK_MS như nhánh blocked bên dưới.
+    if (r.rateLimited >= r.shops) { this.mem.affiliate.lastStatus = 'ratelimited'; await this.mysql.appendJobLog('affiliate', 'warn', `Bị bóp 429 (${r.rateLimited}/${r.shops}); nghỉ 5'.`).catch(() => {}); return { pace: BLOCK_MS }; }
     if (r.blocked >= r.shops) { this.mem.affiliate.lastStatus = 'blocked'; await this.mysql.appendJobLog('affiliate', 'warn', `Bị chặn nhiều (${r.blocked}/${r.shops}); nghỉ.`).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.affiliate.lastStatus = 'ok';
-    await this.mysql.appendJobLog('affiliate', 'info', `${r.shops} shop · ${r.yes} yes · ${r.app} app · ${r.blocked} chặn`).catch(() => {});
+    await this.mysql.appendJobLog('affiliate', 'info', `${r.shops} shop · ${r.yes} yes · ${r.app} app · ${r.blocked} chặn${r.rateLimited ? ` · ${r.rateLimited} bóp 429` : ''}`).catch(() => {});
     return { pace: cfg.paceMs };
   }
 

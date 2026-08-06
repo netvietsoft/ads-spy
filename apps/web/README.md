@@ -30,12 +30,17 @@ Chi tiết đầy đủ (component, responsive, theme): xem [docs/frontend.md](.
 
 ## Auth hiện tại — `middleware.ts`
 
-Chưa có bảng user thật — 2 mật khẩu qua biến môi trường: `SITE_PASSWORD` (role **guest**, chặn
-`/import` + `/settings`) và `ADMIN_PASSWORD` (role **admin**, toàn quyền). Không đặt biến nào → mở
-hoàn toàn (dùng cho dev local). Đăng nhập set cookie `site_auth` (httpOnly, hash sha256 của mật khẩu
-khớp) — middleware tự tính lại hash mỗi request để suy ra role, không tin dữ liệu client. Cơ chế này
-là tạm thời, sẽ được thay bằng subsystem User & Auth thật (Phase 1 SaaS) — xem
-[docs/frontend.md](../../docs/frontend.md) mục 3.
+**Đã thay hệ 2-mật-khẩu (`SITE_PASSWORD`/`ADMIN_PASSWORD`) bằng tài khoản thật** (Prisma `User`/`Session`,
+BE `apps/api/src/auth`). Middleware ở FE giờ chỉ là **gate thô**: có cookie phiên
+(`AUTH_COOKIE_NAME`, mặc định `gas_session`) → cho qua; không có → redirect `/login?next=<path>`.
+**Xác thực + phân quyền THẬT do BE guard** (`role` trong `User`), FE không tự suy role nữa.
+
+- `PUBLIC_PATHS = ['/login', '/reset-password']` luôn cho qua; `/api/*` cho qua để proxy sang BE (BE tự guard).
+- Tạm khoá tầng SaaS chưa xong: `['/landing','/register','/pricing']` → `/login`;
+  `['/admin/plans','/admin/dashboard']` → `/admin/users`. Code các trang vẫn nguyên, bật lại bằng cách
+  bỏ path khỏi 2 mảng đó.
+
+Chi tiết: [docs/frontend.md](../../docs/frontend.md) mục 3.
 
 ## Biến môi trường (chỉ tên biến — không có giá trị thật)
 
@@ -43,8 +48,8 @@ là tạm thời, sẽ được thay bằng subsystem User & Auth thật (Phase 
 |---|---|---|
 | `NEXT_PUBLIC_API_ORIGIN` | `app/api.ts` (FE gọi thẳng BE, bỏ qua rewrite Next để tránh timeout với FB scraping 30-60s) | **Build-time** — Next nhúng lúc `next build`, phải đặt **trước khi build**; mặc định `http://localhost:3100` |
 | `API_ORIGIN` | `next.config.js` (rewrite `/api/:path*` → BE) | Mặc định `http://localhost:3100` |
-| `SITE_PASSWORD` | `middleware.ts`, `app/api/login/route.ts` | Mật khẩu quyền guest (7 mục, chặn Import/Cài đặt). Rỗng = không chặn ai |
-| `ADMIN_PASSWORD` | `middleware.ts`, `app/api/login/route.ts` | Mật khẩu quyền admin (đủ 9 mục) |
+| `AUTH_COOKIE_NAME` | `middleware.ts` | Tên cookie phiên, mặc định `gas_session`. **Phải khớp với BE** (`apps/api/src/auth/auth.config.ts`) — lệch một bên là middleware không thấy cookie → loop về `/login` |
+| ~~`SITE_PASSWORD`~~ / ~~`ADMIN_PASSWORD`~~ | — | **ĐÃ BỎ.** Không còn file nào đọc; đã gỡ khỏi `ecosystem.config.js`. Đặt cũng không có tác dụng |
 | `NEXT_DIST_DIR` | `next.config.js` | Tuỳ chọn — đổi thư mục build (`distDir`) để build verify không đụng `.next` mà dev server đang dùng; mặc định `.next` |
 
 ## Build / chạy

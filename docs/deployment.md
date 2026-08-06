@@ -77,8 +77,15 @@ pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
 pm2 save
 ```
 
-> ⚠️ **Đã kiểm tra kỹ — `deploy.sh` KHÔNG tự `rm -rf apps/web/.next`.** Bước `[5/6] npm run build`
-> chỉ chạy `next build` đè lên `.next` cũ (Next không xoá sạch thư mục cũ trước khi build lại).
+> ⚠️ **`deploy.sh` build FE vào dist TẠM rồi mới swap — không xoá `.next` trước khi build.**
+> Bước `[5/6]` chạy `NEXT_DIST_DIR=.next-new npm run build`, kiểm `.next-new/BUILD_ID` tồn tại, rồi mới
+> `rm -rf .next && mv .next-new .next`. Bản đang chạy **không bị đụng tới** cho đến khi có bản mới hợp lệ.
+>
+> **Sửa lỗi tài liệu (2026-08-06):** trước đây chỗ này ghi *"Đã kiểm tra kỹ — `deploy.sh` KHÔNG tự
+> `rm -rf apps/web/.next`"* — **câu đó SAI**. `deploy.sh:29` đã có `rm -rf apps/web/.next` ngay trước
+> `npm run build` từ commit `b59e71f` (2026-07-30), và chính nó làm **sập prod ngày 2026-08-05**: build
+> fail sau khi `.next` đã bị xoá → không còn bản build lẫn bản cũ → `next start` chết → PM2 restart loop,
+> web down hoàn toàn. Câu sai lại còn được đóng dấu "đã kiểm tra kỹ" nên không ai soi lại.
 > `.next/` không nằm trong git (gitignored) nên `git reset --hard` ở bước 1 cũng không dọn nó.
 > → Nếu đổi code **frontend**, sau khi `bash deploy.sh` chạy xong vẫn nên tự
 > `pm2 stop ads-spy-web && rm -rf apps/web/.next` rồi build/restart lại thủ công (mục 3.2), hoặc
@@ -97,8 +104,14 @@ git pull origin main
 # 2) Build backend
 cd apps/api && npm run build
 
-# 3) Build frontend — PHẢI bake API origin (NEXT_PUBLIC_* là build-time) + PHẢI xoá .next cũ
-cd ../web && pm2 stop ads-spy-web && rm -rf .next && NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build
+# 3) Build frontend — PHẢI bake API origin (NEXT_PUBLIC_* là build-time).
+#    KHÔNG xoá .next trước khi build: build ra dist TẠM, chỉ swap khi build THÀNH CÔNG.
+#    (Xoá trước rồi build fail = mất cả bản mới lẫn bản cũ → web down. Đã xảy ra 2026-08-05.)
+cd ../web && rm -rf .next-new \
+  && NEXT_DIST_DIR=.next-new NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build \
+  && test -f .next-new/BUILD_ID \
+  && pm2 stop ads-spy-web && rm -rf .next && mv .next-new .next \
+  && git checkout -- next-env.d.ts tsconfig.json   # next build tự sửa 2 file này, xem ghi chú dưới
 
 # 4) Restart ĐÚNG 2 process này (xem quy tắc bắt buộc ở mục 4)
 pm2 restart ads-spy-api ads-spy-web --update-env
@@ -107,6 +120,14 @@ pm2 status ads-spy-api ads-spy-web
 # 5) Purge cache Cloudflare + hard refresh (xem mục 4)
 ```
 
+> ⚠️ **Tác dụng phụ của `NEXT_DIST_DIR` (đã đo, không phải suy đoán):** `next build` **tự ghi lại**
+> `apps/web/next-env.d.ts` (đổi `/// <reference path="./.next/types/routes.d.ts" />` thành `.next-new`)
+> và `apps/web/tsconfig.json` (thêm `".next-new/types/**/*.ts"` vào `include`, đồng thời reformat cả
+> file). Sau khi swap thì đường dẫn đó không còn — **không ảnh hưởng `next start`** (chỉ là type
+> reference cho TS) nhưng để lại working tree bẩn, và `tsconfig.json` **tích luỹ thêm 1 entry mỗi lần
+> đổi `distDir`**. Vì vậy có bước `git checkout -- next-env.d.ts tsconfig.json` ở cuối; `deploy.sh` cũng
+> làm điều này. An toàn vì bước 1 đã `git reset --hard` nên không có thay đổi local nào cần giữ.
+>
 > Nếu chỉ đổi **backend** (không đụng `schema.prisma`) có thể bỏ qua bước
 > `prisma migrate deploy`/`prisma generate` — chỉ cần khi deploy lần đầu hoặc có migration mới
 > (xem mục 6).
@@ -120,12 +141,21 @@ pm2 status ads-spy-api ads-spy-web
 
 ## 4. Quy tắc bắt buộc khi deploy (không được bỏ qua)
 
-1. **FE luôn `rm -rf .next` trước khi build lại.** Build đè lên `.next` cũ → chunk/manifest lệch →
-   lỗi `ChunkLoadError: Unexpected token '<'` phía client (xem mục 9).
+1. **FE build ra dist TẠM rồi swap — TUYỆT ĐỐI KHÔNG `rm -rf .next` trước khi build.**
+   Vẫn cần thay sạch `.next` (build đè lên thư mục cũ → chunk/manifest lệch → `ChunkLoadError:
+   Unexpected token '<'` phía client, mục 9), **nhưng phải thay SAU khi build thành công**:
+   `NEXT_DIST_DIR=.next-new npm run build` → `test -f .next-new/BUILD_ID` → `rm -rf .next && mv
+   .next-new .next`.
+   > Xoá trước rồi build fail = mất cả bản mới lẫn bản cũ → `next start` chết với `Could not find a
+   > production build in the '.next' directory` → PM2 restart loop → **web down hoàn toàn**. Đúng sự cố
+   > prod 2026-08-05. Quy tắc này trước đây ghi ngược ("luôn `rm -rf .next` trước khi build lại").
 2. **Restart RIÊNG từng process — KHÔNG BAO GIỜ `pm2 restart all`.** VPS chạy chung nhiều app khác
    ngoài `ads-spy-*`; `restart all` sẽ đụng vào các app đó. Luôn gọi đích danh:
    `pm2 restart ads-spy-api` / `pm2 restart ads-spy-web` (hoặc cả hai, liệt kê tên rõ ràng như mục
-   3.2 bước 4) — không dùng `ecosystem.config.js`/`all` làm target restart.
+   3.2 bước 4).
+   > `pm2 reload ecosystem.config.js` (mà `deploy.sh` dùng) **KHÔNG vi phạm quy tắc này** — nó chỉ tác
+   > động 2 app định nghĩa trong file đó. Điều bị cấm là `all`. Bản trước của quy tắc cấm luôn cả
+   > `ecosystem.config.js` nên tự mâu thuẫn với chính `deploy.sh`.
 3. **Sau mỗi lần đổi FE: purge cache Cloudflare (dpboss.pet → Caching → Purge Everything) rồi hard
    refresh trình duyệt (Ctrl+Shift+R).** Không purge → Cloudflare giữ HTML/chunk cũ → vẫn lỗi
    `ChunkLoadError` dù server đã đúng.
@@ -135,6 +165,12 @@ pm2 status ads-spy-api ads-spy-web
    `next build` trên server tự đúng dù quên `export`. Kiểm nhanh sau build:
    `grep -o 'http[^"]*api/:path\*' apps/web/.next/routes-manifest.json` → phải ra
    `https://api.dpboss.pet/api/:path*`, nếu ra `localhost:3100` là build đã lỗi (mọi `/api/*` sẽ 500).
+5. **`pm2 save` ghi ĐÈ dump list — xem `pm2 list` trước khi save.** `pm2 save` lưu danh sách process
+   **hiện tại** vào `~/.pm2/dump.pm2`; bản cũ chỉ còn ở `dump.pm2.bak`, nên **save 2 lần là mất hẳn**.
+   Nếu daemon PM2 vừa bị dựng lại và đang thiếu app, `pm2 save` **xoá vĩnh viễn** định nghĩa các app đó ⇒
+   VPS reboot chúng không tự bật lại. Đã xảy ra 2026-08-05 (47 app → còn 2, rồi save 2 lần).
+   `deploy.sh` nay tự chặn: so số process hiện tại với dump đã lưu, ít hơn thì **bỏ qua** `pm2 save` +
+   cảnh báo. Khôi phục khi mất: **`pm2 resurrect`** (đọc lại `dump.pm2`).
 
 ## 5. nginx + routing
 
@@ -177,32 +213,66 @@ Hệ thống có **2 kho dữ liệu tách biệt**, quy trình migrate khác nh
 | `NEXT_PUBLIC_API_ORIGIN` | build FE (`apps/web`) | Build-time, mặc định `https://api.dpboss.pet` trong `deploy.sh`. |
 | `SH_MYSQL_URL` | `ads-spy-api` (ShopHunter) | Connection string MySQL thật của VPS — KHÔNG dùng giá trị mặc định `root@127.0.0.1` (không mật khẩu) trên production. |
 | `GOOGLE_PROXY` | `ads-spy-api` (Google Ads Transparency) | Cần vì IP datacenter thường bị Google chặn (`/sorry`); Facebook KHÔNG cần proxy (dùng Chromium + cookie thật). |
-| `SITE_PASSWORD` | `ads-spy-web` | Mật khẩu quyền "guest" (7 mục, chặn `/import` + `/settings`). Rỗng = không chặn ai. |
-| `ADMIN_PASSWORD` | `ads-spy-web` | Mật khẩu quyền "admin" (đủ 9 mục). Chưa đặt → Import/Cài đặt khoá với mọi người. |
+| `AITDK_SECRET_KEY` | `ads-spy-api` (Traffic) | Thiếu → `/api/traffic/*` trả **503 "Chưa cấu hình SECRET_KEY"**; quét Aff Library vẫn chạy nhưng cột Traffic/Bounce/Time trống. `apps/api` **không đọc `.env`** nên bắt buộc export. |
+| ~~`SITE_PASSWORD`~~ | — | **ĐÃ BỎ — code chết.** Không file nào trong `apps/web` đọc nữa; gate đã chuyển sang cookie phiên (`apps/web/middleware.ts`). Export cũng không có tác dụng. |
+| ~~`ADMIN_PASSWORD`~~ | — | **ĐÃ BỎ — code chết.** Như trên. Phân quyền giờ theo `role` trong Prisma `User`. |
 
 **Cách set:** export trong `~/.bashrc` trên VPS rồi `source ~/.bashrc`, KHÔNG sửa giá trị mặc định
 trong `ecosystem.config.js` (file đó chỉ đọc `process.env.*`, không hardcode secret — đúng thiết kế
 vì repo public).
 
-**Đổi `SITE_PASSWORD`/`ADMIN_PASSWORD` (bài học đã ghi nhận):** sửa `~/.bashrc` → `source` →
-**`pm2 delete ads-spy-web && pm2 start ecosystem.config.js --only ads-spy-web && pm2 save`**
-(delete rồi start lại để block `env` được đọc lại từ đầu; `pm2 restart --update-env` **không chắc
-ăn** với biến đọc 1 lần lúc app khởi động).
+**Đổi một biến env của API (bài học đã ghi nhận):** sửa `~/.bashrc` → `source ~/.bashrc` →
+**`pm2 delete ads-spy-api && pm2 start ecosystem.config.js --only ads-spy-api`** (delete rồi start lại
+để block `env` được đọc lại từ đầu; `pm2 restart --update-env` **không chắc ăn** với biến đọc 1 lần lúc
+app khởi động, vd `PORT` ở `main.ts` hay `SH_MYSQL_URL` lúc connect). Chỉ `pm2 save` sau khi `pm2 list`
+cho thấy đủ process (quy tắc 4.5).
+
+> ⚠️ **`ecosystem.config.js` đọc `process.env.*` LÚC CHẠY LỆNH `pm2`**, tức lấy env của **shell đang gõ
+> lệnh**. Mở SSH mới mà chưa `source ~/.bashrc` rồi `pm2 start` → mọi biến rơi về default, và nếu
+> `pm2 save` sau đó thì env sai bị **đóng băng vào dump** (reboot vẫn sai). Đặc biệt nguy hiểm với
+> `SH_MYSQL_URL`: default là `root@127.0.0.1` **không mật khẩu** — nếu kết nối được thì code
+> `CREATE DATABASE IF NOT EXISTS` sẽ tạo DB **rỗng**, app "sống" nhưng mất sạch dữ liệu hiển thị.
 
 ## 8. Kiểm tra sau khi deploy
 
 ```bash
-curl -s https://api.dpboss.pet/api/health          # health check (HealthController, prefix /api toàn cục)
-pm2 status ads-spy-api ads-spy-web                  # cả 2 process phải "online"
+ls -la apps/web/.next/BUILD_ID                      # PHẢI tồn tại — không có = chưa có bản build FE
+curl -s https://api.dpboss.pet/api/health           # health check (HealthController, prefix /api toàn cục)
+curl -s -o /dev/null -w "web %{http_code}\n" https://dpboss.pet/   # FE còn sống không
+pm2 status ads-spy-api ads-spy-web                  # cả 2 process phải "online" VÀ ↺ không tăng
 pm2 logs ads-spy-api --lines 30 --nostream          # log khởi động/cron gần nhất
 free -h                                             # RAM — crawl + MySQL nặng, dễ OOM → 502
 ```
 
+> **Đọc cột `↺` (restart) chứ không chỉ cột `status`.** PM2 vẫn báo `online` cho process đang crash-loop
+> — nó vừa restart xong nên đúng là "online" ở thời điểm đó. `↺` tăng dần giữa 2 lần chạy `pm2 status`
+> nghĩa là app đang chết đi sống lại. Đây chính là cái làm sự cố 2026-08-05 bị đọc sai lúc đầu
+> (`ads-spy-web` báo `online` với `↺ 30`).
+
 ## 9. Troubleshooting
 
+- **`dpboss.pet` không mở được / 502 · `pm2 status` báo `ads-spy-web` online nhưng `↺` tăng liên tục**
+  → xem `pm2 logs ads-spy-web --lines 30 --nostream`. Nếu thấy
+  **`Could not find a production build in the '.next' directory`** thì `.next` đã bị xoá mà build chưa
+  thành công (đúng sự cố 2026-08-05).
+  Fix: `pm2 stop ads-spy-web` (dừng vòng lặp cho log sạch) → chạy lại bước 3 mục 3.2 và **lấy cho được
+  lỗi build thật**: `NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build 2>&1 | tail -40`
+  (không có `2>&1 | tail` thì chỉ thấy đoạn kết của npm, vô dụng). Thấy `Killed` /
+  `JS heap out of memory` là **OOM** → thêm `NODE_OPTIONS="--max-old-space-size=2048"`, hoặc tạm dừng
+  app nặng khác trên VPS trong lúc build. Build xong: `pm2 restart ads-spy-web --update-env` + purge
+  Cloudflare.
 - **`Application error: client-side exception` + console `ChunkLoadError`/`Unexpected token '<'`**
-  → `.next` cũ lệch chunk. Fix: lặp lại đủ mục 3.2 bước 3 (`rm -rf .next` + build lại) + mục 4.2
+  → `.next` cũ lệch chunk. Fix: lặp lại đủ mục 3.2 bước 3 (build dist tạm + swap) + mục 4.2
   (restart riêng `ads-spy-web`) + mục 4.3 (purge Cloudflare + Ctrl+Shift+R).
+- **`524` (Cloudflare) trên 1 endpoint API** → Cloudflare cắt ở ~100s, KHÔNG phải app chết. Là truy vấn
+  quá chậm hoặc lô việc không có chặn thời gian. Đã gặp thật ở `POST /api/aff-lib/rev-scan-net`: một
+  `COUNT` đặt `COLLATE` ngay trên cột JOIN làm MySQL bỏ index → **302,7s**; sửa bằng derived table →
+  0,11s. Cách xử lý chung: đo bằng `EXPLAIN` trước, thêm ngân sách thời gian cho request, và đưa việc
+  dài thành job nền (`void this.doRunOnce()`) thay vì giữ request mở.
+- **Trang danh sách chậm vài giây dù bảng đã có index** → nghi `COUNT(*)` tính `total` cho phân trang,
+  không phải câu lấy dữ liệu. `sh_product_list` 5,3M dòng: câu lấy 100 dòng mất **2ms** nhưng
+  `COUNT(*)` mất **981ms (ấm) → 38,7s (lạnh)**. `cachedCount` nay dedup in-flight + trả số cũ ngay và
+  làm mới ở nền (TTL 5 phút) nên chỉ lần đầu sau restart mới phải chờ.
 - **Google báo "Google chặn IP máy chủ"** → chưa set `GOOGLE_PROXY` (mục 7); Facebook không liên
   quan (không cần proxy).
 - **Tab ShopHunter trả 503 "ShopHunter DB (MySQL) không kết nối được")** → MySQL chưa chạy hoặc

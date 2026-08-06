@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ShClient } from './sh.client';
-import { ShMysql } from './sh.mysql';
+import { ShMysql, SH_AFF_MAX_TRIES } from './sh.mysql';
 import { ShAuth } from './sh.auth';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -793,23 +793,35 @@ export class ShService {
   }
 
   // Quét tín hiệu affiliate (yes/no/blocked + link) — khung như catalogSyncStep: rotation, cách ly lỗi per-shop, concurrency.
-  async affiliateSyncStep(opts: { daily?: number; delayMs?: number; concurrency?: number }): Promise<{ shops: number; yes: number; app: number; blocked: number }> {
+  async affiliateSyncStep(opts: { daily?: number; delayMs?: number; concurrency?: number }): Promise<{ shops: number; yes: number; app: number; blocked: number; rateLimited: number }> {
     const quota = opts.daily ?? (Number(process.env.SH_HARVEST_DAILY) || 500);
     const staleMs = (Number(process.env.SH_AFFILIATE_STALE_HOURS) || 720) * 3600000; // 30 ngày — affiliate ít đổi
     const fixedDelay = opts.delayMs != null && Number.isFinite(opts.delayMs) ? opts.delayMs : null;
     const conc = Math.max(1, Math.min(8, Number(opts.concurrency) || 1));
     const list = await this.mysql.getShopsNeedingAffiliate(quota, staleMs);
-    let shops = 0, yes = 0, app = 0, blocked = 0, idx = 0;
+    let shops = 0, yes = 0, app = 0, blocked = 0, rateLimited = 0, idx = 0;
     const one = async (shopId: string, url: string) => {
       try {
         const r = await checkShopAffiliate(url);
-        if (r.status === 'ratelimited') { this.logger.warn(`shop ${shopId}: 429 Shopify bóp IP — KHÔNG lưu, thử lại sau`); shops++; await this.sleep((fixedDelay ?? this.randDelayMs()) * 4); return; }
+        if (r.status === 'ratelimited') {
+          // KHÔNG ghi affiliate_status (429 không kết luận được gì, đánh 'blocked' là oan) — NHƯNG phải
+          // đếm 1 lần thử. Thiếu vế này thì affiliate_checked_at giữ NULL, mà hàng đợi ORDER BY cột đó
+          // ASC nên NULL đứng đầu ⇒ đúng shop này quay lại mỗi lượt VĨNH VIỄN (log 429 lặp mỗi ~23s,
+          // và việc đập lại liên tục chính là thứ duy trì trạng thái 429).
+          await this.mysql.bumpShopAffiliateTries(shopId).catch(() => {});
+          this.logger.warn(`shop ${shopId}: 429 Shopify bóp IP — KHÔNG lưu, +1 lần thử (tối đa ${SH_AFF_MAX_TRIES})`);
+          shops++; rateLimited++;
+          await this.sleep((fixedDelay ?? this.randDelayMs()) * 4);
+          return;
+        }
         await this.mysql.setShopAffiliate(shopId, r.status, r.link);
         if (r.status === 'yes') { yes++; this.logger.log(`shop ${shopId}: affiliate ${r.via} → ${r.link}`); }
         else if (r.status === 'app') app++;
         else if (r.status === 'blocked') blocked++;
       } catch (e) {
-        this.logger.warn(`shop ${shopId}: lỗi affiliate check (${(e as Error).message}) — bỏ qua.`);
+        // Cùng lý do như nhánh 429: không đếm lần thử thì shop lỗi mạng/DNS cũng nằm đầu hàng đợi mãi.
+        await this.mysql.bumpShopAffiliateTries(shopId).catch(() => {});
+        this.logger.warn(`shop ${shopId}: lỗi affiliate check (${(e as Error).message}) — +1 lần thử, bỏ qua.`);
       }
       shops++;
       const d = fixedDelay != null ? fixedDelay : this.randDelayMs();
@@ -817,7 +829,7 @@ export class ShService {
     };
     const worker = async () => { while (idx < list.length) { const it = list[idx++]; await one(it.shopId, it.url); } };
     await Promise.all(Array.from({ length: conc }, () => worker()));
-    return { shops, yes, app, blocked };
+    return { shops, yes, app, blocked, rateLimited };
   }
 
   private sleep(ms: number): Promise<void> {

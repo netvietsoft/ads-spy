@@ -86,32 +86,28 @@ import ở bất kỳ đâu** trong `apps/web/app` (dead code) — không nằm 
 
 ## 3. Auth hiện tại — `middleware.ts`
 
-`apps/web/middleware.ts` là cổng gác duy nhất hiện có (chưa có bảng user thật), theo đúng comment đầu
-file:
+> **Đã thay xong (Phase 1 SaaS).** Mục này trước đây mô tả cơ chế 2 mật khẩu tĩnh
+> `SITE_PASSWORD`/`ADMIN_PASSWORD` + cookie hash `site_auth`/`site_role`. **Toàn bộ cơ chế đó không còn
+> trong code** (kiểm 2026-08-06: không file `.ts`/`.tsx` nào đọc 2 biến đó nữa; đã gỡ khỏi
+> `ecosystem.config.js`). Dưới đây là cơ chế THẬT hiện tại.
 
-- 2 mật khẩu qua biến môi trường: `SITE_PASSWORD` (role **guest**) và `ADMIN_PASSWORD` (role
-  **admin**). Không đặt biến nào → middleware mở hoàn toàn (`NextResponse.next()`), dùng cho dev
-  local.
-- Đăng nhập (`POST /api/login`) so mật khẩu nhập vào với 2 biến trên; nếu khớp, set cookie
-  **`site_auth` (httpOnly)** = `sha256(mật khẩu khớp)` — không lưu mật khẩu gốc, không thể giả mạo
-  vì không biết trước hash mà không biết mật khẩu. Cookie sống 30 ngày.
-- Mỗi request, middleware tự tính lại `sha256(ADMIN_PASSWORD)`/`sha256(SITE_PASSWORD)` và so với
-  cookie `site_auth` để suy ra `role` (`admin` | `guest` | không có). Đây là nguồn xác thực **duy
-  nhất** dùng để chặn — an toàn vì phía server tự tính, không tin dữ liệu client.
-- Không có cookie hợp lệ → redirect `/login?next=<path gốc>` (trừ `/login` và `/api/login` luôn cho
-  qua).
-- `role === 'guest'` mà vào 2 route **admin-only** (`ADMIN_ONLY = ['/import', '/settings']`, khớp
-  theo tiền tố path) → redirect về `/home`.
-- Sau khi qua được middleware, ghi đè cookie **`site_role`** (không httpOnly) = role — cookie này
-  **chỉ để client (`TopNav.tsx`) đọc và ẩn/hiện đúng mục menu**, không dùng để phân quyền (phân quyền
-  thật luôn suy từ `site_auth` ở middleware, chạy lại mỗi request).
-- `config.matcher` áp middleware cho mọi route trừ static asset của Next (`_next/static`,
-  `_next/image`, favicon, và các đuôi ảnh/css/js tĩnh).
+`apps/web/middleware.ts` chỉ còn là **gate thô** — theo đúng comment đầu file: *"có cookie phiên → cho
+qua; không → về /login. Xác thực + phân quyền THẬT do BE guard."*
 
-Cơ chế 2 quyền cookie-hash này là tạm thời cho giai đoạn nội bộ 1 khách; theo roadmap SaaS (xem
-[`kien-truc.md`](./kien-truc.md) mục 3) nó **sẽ được thay bằng subsystem User & Auth thật (Phase 1)**
-— đăng ký/đăng nhập/quên-reset mật khẩu/Google OAuth, phân quyền Admin/Manager/User theo bảng user
-trong DB, không còn 2 mật khẩu tĩnh qua biến môi trường.
+- Cookie phiên: `AUTH_COOKIE_NAME` (mặc định **`gas_session`**). Có giá trị → `NextResponse.next()`;
+  không có → redirect `/login?next=<path + query>`. FE **không** tự suy `role` nữa.
+- Phân quyền thật nằm ở BE: `apps/api/src/auth` (Prisma `User`/`Session`, `@Roles()` guard). FE gọi
+  `/api/*` và BE tự chặn — nên `/api/*` được middleware cho qua không kiểm gì.
+- `PUBLIC_PATHS = ['/login', '/reset-password']` luôn cho qua.
+- **Tạm khoá tầng SaaS chưa hoàn thiện** (code các trang vẫn nguyên, chỉ chặn truy cập):
+  `DISABLED_TO_LOGIN = ['/landing','/register','/pricing']` → `/login`;
+  `DISABLED_TO_ADMIN = ['/admin/plans','/admin/dashboard']` → `/admin/users`.
+  Bật lại = bỏ path khỏi 2 mảng, đồng bộ với UI ẩn ở `TopNav`/`login`/`UsersAdminPanel`.
+- `config.matcher` áp cho mọi route trừ static asset của Next (`_next/static`, `_next/image`, favicon,
+  và các đuôi ảnh/css/js tĩnh).
+
+⚠️ `AUTH_COOKIE_NAME` phải **khớp giữa FE và BE** (`apps/api/src/auth/auth.config.ts` cũng default
+`gas_session`). Đặt lệch một bên → middleware không thấy cookie → **loop vô hạn về `/login`**.
 
 ## 4. Responsive / theme
 

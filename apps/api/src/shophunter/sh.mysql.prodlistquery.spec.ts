@@ -14,7 +14,9 @@ describe('queryLocalProducts tren sh_product_list', () => {
     await pool.query('INSERT INTO sh_product (product_id, raw, fetched_at, product_title, shop_id, source) VALUES (?,?,?,?,?,?)',
       [P+'1', JSON.stringify({ product_id: P+'1', product_title: 'Zzq Unicorn Hoodie', shop_title: 'Shop A', shop_url: 'shopa.myshopify.com', product_handle: 'zzq-unicorn-hoodie', month_current_period_revenue: 900 }), 111, 'Zzq Unicorn Hoodie', 'sA', null]); });
   afterAll(async () => { const pool=(m as any).pool; if(pool){ await pool.query('DELETE FROM sh_product_list WHERE product_id LIKE ?',[P+'%']); await pool.query('DELETE FROM sh_product WHERE product_id LIKE ?',[P+'%']); await pool.end(); } });
-  it('sort revenue_month desc', async () => { const r=await m.queryLocalProducts({sort:'revenue_month',dir:'desc',offset:0,limit:50}); const ids=r.items.map((x:any)=>x.product_id).filter((id:string)=>id.startsWith(P)); expect(ids[0]).toBe(P+'1'); });
+  // Phải lọc shop:'sA' — sh_product_list local có 5,3M dòng nên fixture (rev 900) KHÔNG nằm trong top 50 cả bảng.
+  // Lọc rồi so cả mảng: P+'1' (900) phải đứng TRƯỚC P+'2' (100) → đúng là canh ORDER BY revenue_month DESC.
+  it('sort revenue_month desc', async () => { const r=await m.queryLocalProducts({sort:'revenue_month',dir:'desc',offset:0,limit:50,shop:'sA'}); const ids=r.items.map((x:any)=>x.product_id).filter((id:string)=>id.startsWith(P)); expect(ids).toEqual([P+'1',P+'2']); });
   it('loc shop', async () => { const r=await m.queryLocalProducts({sort:'revenue_month',dir:'desc',offset:0,limit:50,shop:'sB'}); expect(r.items.every((x:any)=>x.shop_id==='sB' || !x.product_id.startsWith(P))).toBe(true); const mine=r.items.filter((x:any)=>x.product_id.startsWith(P)); expect(mine.length).toBe(1); });
   it('loc country', async () => { const r=await m.queryLocalProducts({sort:'revenue_month',dir:'desc',offset:0,limit:50,country:'VN'}); const mine=r.items.filter((x:any)=>x.product_id.startsWith(P)); expect(mine.length).toBe(1); expect(mine[0].product_id).toBe(P+'3'); });
   it('FULLTEXT ten', async () => { const r=await m.queryLocalProducts({sort:'revenue_month',dir:'desc',offset:0,limit:50,q:'unicorn hoodie'}); const mine=r.items.filter((x:any)=>x.product_id.startsWith(P)); expect(mine.some((x:any)=>x.product_id===P+'1')).toBe(true); });
@@ -38,5 +40,56 @@ describe('queryLocalProducts tren sh_product_list', () => {
     expect(item.shop_url).toBe('joinshop.myshopify.com');
     expect(item.shop_title).toBe('Join Shop');
     expect(item.product_handle).toBe('join-product');
+  });
+
+  // COUNT(*) trên sh_product_list (5,3M dòng) đo được 981ms khi buffer pool ấm và 38,7s khi lạnh →
+  // đó là toàn bộ 6s của /api/sh/local/products trên prod. 2 test dưới canh 2 tính chất đã thêm.
+  // Dùng WHERE product_id LIKE 'test_plq_%' (range trên PK) để COUNT rẻ — KHÔNG count cả bảng trong test.
+  describe('cachedCount', () => {
+    const WHERE = 'WHERE product_id LIKE ?';
+    const spyCount = (pool: any) => {
+      const orig = pool.query.bind(pool);
+      const state = { n: 0, restore: () => { pool.query = orig; } };
+      pool.query = (sql: any, ...rest: any[]) => {
+        if (typeof sql === 'string' && sql.startsWith('SELECT COUNT(*) AS n FROM sh_product_list')) state.n++;
+        return orig(sql, ...rest);
+      };
+      return state;
+    };
+
+    it('5 request ĐỒNG THỜI chỉ chạy 1 COUNT (dedup in-flight) — trước đây là 5 COUNT chồng nhau', async () => {
+      const pool = (m as any).pool;
+      (m as any).countCache.clear(); (m as any).countLoading.clear();
+      const spy = spyCount(pool);
+      try {
+        const rs = await Promise.all(Array.from({ length: 5 }, () => (m as any).cachedCount('sh_product_list', WHERE, [P + '%'], 300000)));
+        expect(new Set(rs).size).toBe(1); // 5 câu trả lời giống nhau
+        expect(spy.n).toBe(1); // nhưng chỉ 1 COUNT thật chạm DB
+      } finally { spy.restore(); }
+    });
+
+    it('hết TTL → trả số CŨ NGAY, COUNT làm mới chạy nền (request không còn phải chờ COUNT)', async () => {
+      const pool = (m as any).pool;
+      (m as any).countCache.clear(); (m as any).countLoading.clear();
+      const first = await (m as any).cachedCount('sh_product_list', WHERE, [P + '%'], 300000);
+      const orig = pool.query.bind(pool);
+      let bgDone = false;
+      pool.query = async (sql: any, ...rest: any[]) => {
+        if (typeof sql === 'string' && sql.startsWith('SELECT COUNT(*) AS n FROM sh_product_list')) {
+          await new Promise((r) => setTimeout(r, 1500)); // giả lập COUNT chậm như trên prod
+          const out = await orig(sql, ...rest); bgDone = true; return out;
+        }
+        return orig(sql, ...rest);
+      };
+      try {
+        const t0 = Date.now();
+        const stale = await (m as any).cachedCount('sh_product_list', WHERE, [P + '%'], 0); // ttl 0 = hết hạn ngay
+        const waited = Date.now() - t0;
+        expect(stale).toBe(first); // trả đúng số cũ
+        expect(waited).toBeLessThan(600); // KHÔNG chờ 1500ms của COUNT
+        await new Promise((r) => setTimeout(r, 2000));
+        expect(bgDone).toBe(true); // COUNT vẫn thật sự chạy ở nền
+      } finally { pool.query = orig; }
+    });
   });
 });

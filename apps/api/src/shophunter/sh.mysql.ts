@@ -16,6 +16,10 @@ type Table = 'sh_shop' | 'sh_product';
 // Khoá setting theo dõi ngày snapshot mới nhất đã nạp (trùng LAST_SNAPSHOT_KEY trong sh.service.ts — Task 4).
 const LAST_SNAPSHOT_SETTING_KEY = 'shophunter_last_snapshot_imported';
 
+// Số lần thử tối đa cho 1 shop trong hàng đợi affiliate trước khi bỏ qua nó. Chỉ tăng khi KHÔNG kết luận
+// được (429/lỗi mạng); quét ra kết quả là reset về 0. Bằng 3 để khớp ngưỡng aff_try_count của afflib.
+export const SH_AFF_MAX_TRIES = 3;
+
 const numExpr = (path: string) => `CAST(JSON_EXTRACT(raw, '${path}') AS DECIMAL(30,6))`;
 // Doanh thu shop quy đổi USD để SẮP XẾP đúng (dữ liệu lưu theo tiền tệ gốc, trộn nhiều loại). Tiền tệ thật = storefront_currency, fallback raw.currency.
 const SHOP_CUR_EXPR = `COALESCE(storefront_currency, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')))`;
@@ -147,15 +151,26 @@ export class ShMysql implements OnModuleInit {
   // Cache dropdown Nước/Danh mục (query DISTINCT quét toàn bảng) → khỏi quét mỗi lần mở tab, đỡ đứng khi harvest chạy.
   private filtersCache = new Map<string, { v: { countries: string[]; categories: string[] }; t: number }>();
   private filtersLoading = new Map<string, Promise<{ countries: string[]; categories: string[] }>>();
-  // Cache COUNT(*) — InnoDB không lưu sẵn row-count nên COUNT toàn bảng sh_product_list (4M) ~600ms/lần.
-  // Total chỉ để hiển thị "x / N" nên cache ngắn (stale vài chục giây chấp nhận được).
+  // Cache COUNT(*) — InnoDB không lưu sẵn row-count nên COUNT phải index-scan toàn bảng. ĐO THẬT
+  // 2026-08-06 trên sh_product_list (5,3M dòng, index nhỏ nhất idx_pl_country 171MB): **981ms khi buffer
+  // pool ấm, 38,7s khi lạnh** (ghi chú cũ "4M ~600ms" đã lạc hậu). Total chỉ để hiển thị "x / N".
+  // Dùng CÙNG cơ chế với filtersCache (dedup in-flight + stale-while-revalidate) vì cùng một bệnh:
+  // TTL ngắn hơn thời gian COUNT → cứ hết TTL là lại có 1 request phải chờ trọn, và nhiều request
+  // đồng thời thì COUNT chồng COUNT trên bảng 4GB.
   private countCache = new Map<string, { n: number; t: number }>();
+  private countLoading = new Map<string, Promise<number>>();
 
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
     try {
       await this.connect();
+      // Nạp sẵn COUNT(*) sh_product_list vào cache ngay sau khi kết nối, chạy NỀN (void — không chặn boot).
+      // Thiếu bước này thì request /localdb/products ĐẦU TIÊN sau mỗi lần restart phải tự chờ COUNT:
+      // đo thật 981ms khi buffer pool ấm, 38,7s khi lạnh (bảng 5,3M dòng, index-scan idx_pl_country).
+      // Dùng đúng khoá mà trang mặc định gọi (không lọc gì); total không phụ thuộc sort/trang nên mọi
+      // sort đều dùng lại được cache này.
+      void this.cachedCount('sh_product_list', '', [], 0).catch(() => { /* lỗi thì để request tự thử lại */ });
     } catch (err) {
       console.warn('[ShMysql] MySQL không sẵn sàng, ShopHunter sẽ thử lại khi có request:', (err as Error).message);
     }
@@ -305,6 +320,12 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'affiliate_checked_at', 'affiliate_checked_at BIGINT');
     await this.ensureColumn(pool, 'sh_shop', 'affiliate_status', 'affiliate_status VARCHAR(16)');
     await this.ensureColumn(pool, 'sh_shop', 'affiliate_link', 'affiliate_link VARCHAR(512)');
+    // 429 Shopify (ratelimited) KHÔNG kết luận được gì → cố ý không ghi affiliate_status (đừng đánh
+    // 'blocked' oan), NHƯNG phải tính là 1 lần thử. Thiếu cột này thì shop bị bóp nằm ĐẦU hàng đợi
+    // vĩnh viễn (ORDER BY affiliate_checked_at ASC, mà NULL sort trước) → log "shop X: 429" lặp mãi
+    // mỗi ~23s, đập vào cùng domain và tự duy trì trạng thái 429. Cùng idiom `aff_try_count` của
+    // afflib (afflib.mysql.ts markTryFailed) và `check_tries` của affnet (affnet.mysql.ts bumpHostTries).
+    await this.ensureColumn(pool, 'sh_shop', 'affiliate_try_count', 'affiliate_try_count INT NOT NULL DEFAULT 0');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_aff_check', 'affiliate_checked_at');
 
     // Shop yêu thích (tim đỏ) — user đánh dấu theo dõi riêng.
@@ -1016,12 +1037,23 @@ export class ShMysql implements OnModuleInit {
   // COUNT(*) có cache ngắn theo (bảng + điều kiện WHERE + params). table/whereSql là literal do code dựng (không phải input) → an toàn.
   private async cachedCount(table: string, whereSql: string, params: any[], ttlMs: number): Promise<number> {
     const key = `${table}|${whereSql}|${JSON.stringify(params)}`;
-    const hit = this.countCache.get(key);
-    if (hit && Date.now() - hit.t < ttlMs) return hit.n;
-    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM ${table} ${whereSql}`, params);
-    const n = Number((cnt as any[])[0].n) || 0;
-    this.countCache.set(key, { n, t: Date.now() });
-    return n;
+    const cached = this.countCache.get(key);
+    if (cached && Date.now() - cached.t < ttlMs) return cached.n;
+    let load = this.countLoading.get(key);
+    if (!load) {
+      load = (async () => {
+        await this.ensureReady();
+        const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM ${table} ${whereSql}`, params);
+        const n = Number((cnt as any[])[0].n) || 0;
+        this.countCache.set(key, { n, t: Date.now() });
+        return n;
+      })().finally(() => this.countLoading.delete(key));
+      this.countLoading.set(key, load);
+    }
+    // Có số cũ → trả NGAY, để COUNT làm mới chạy nền. Request không bao giờ phải chờ COUNT nữa
+    // (trừ lần đầu sau khi restart, lúc cache còn rỗng).
+    if (cached) { load.catch(() => { /* giữ số cũ khi refresh lỗi */ }); return cached.n; }
+    return load;
   }
 
   async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number }): Promise<{ items: any[]; total: number }> {
@@ -1066,7 +1098,10 @@ export class ShMysql implements OnModuleInit {
        ${orderBy}`,
       [...params, o.limit, o.offset],
     );
-    const total = await this.cachedCount('sh_product_list', whereSql, params, 60000);
+    // TTL 5 phút (trước là 60s): với stale-while-revalidate thì TTL chỉ còn nghĩa "cũ bao lâu thì làm
+    // mới", mà COUNT trên bảng này mất 1-38s — TTL 60s nghĩa là COUNT chạy gần như liên tục chỉ để
+    // nuôi một con số hiển thị. Lệch 5 phút trên "N sản phẩm" thì user không nhận ra.
+    const total = await this.cachedCount('sh_product_list', whereSql, params, 300000);
     const items = (rows as any[]).map((r) => ({ ...r, _fetched_at: r._fetched_at == null ? null : Number(r._fetched_at) }));
     // Tiền tệ THẬT của shop (storefront) cho từng SP → quy đổi USD đúng cả khi ShopHunter gắn sai. IN(?) theo shop_id (param, không lỗi collation).
     const shopIds = Array.from(new Set(items.map((it) => String(it.shop_id)).filter(Boolean)));
@@ -1678,15 +1713,24 @@ export class ShMysql implements OnModuleInit {
         WHERE JSON_EXTRACT(raw, '$.url') IS NOT NULL
           AND (affiliate_checked_at IS NULL OR affiliate_checked_at < ?)
           AND (affiliate_status IS NULL OR affiliate_status != 'blocked' OR affiliate_checked_at < ?)
-        ORDER BY affiliate_checked_at ASC LIMIT ?`,
+          AND COALESCE(affiliate_try_count, 0) < ${SH_AFF_MAX_TRIES}
+        ORDER BY affiliate_try_count ASC, affiliate_checked_at ASC LIMIT ?`,
       [cutoff, cutoff, limit],
     );
     return (rows as any[]).map((r) => ({ shopId: r.shop_id, url: r.url }));
   }
 
+  // 429/lỗi mạng: chưa kết luận được nên KHÔNG ghi affiliate_status, nhưng VẪN tính 1 lần thử.
+  // Đủ SH_AFF_MAX_TRIES lần → rơi khỏi hàng đợi getShopsNeedingAffiliate, hết vòng lặp vô hạn.
+  async bumpShopAffiliateTries(shopId: string): Promise<void> {
+    await this.ensureReady();
+    await this.pool!.query('UPDATE sh_shop SET affiliate_try_count = COALESCE(affiliate_try_count, 0) + 1 WHERE shop_id = ?', [shopId]);
+  }
+
+  // Quét được (dù kết quả là 'yes'/'no'/'blocked') → reset đếm thử, để lần stale sau shop được quét lại bình thường.
   async setShopAffiliate(shopId: string, status: string, link: string | null): Promise<void> {
     await this.ensureReady();
-    await this.pool!.query('UPDATE sh_shop SET affiliate_checked_at = ?, affiliate_status = ?, affiliate_link = ? WHERE shop_id = ?', [Date.now(), status, link == null ? null : String(link).slice(0, 512), shopId]);
+    await this.pool!.query('UPDATE sh_shop SET affiliate_checked_at = ?, affiliate_status = ?, affiliate_link = ?, affiliate_try_count = 0 WHERE shop_id = ?', [Date.now(), status, link == null ? null : String(link).slice(0, 512), shopId]);
   }
 
   // Shop yêu thích (tim đỏ theo dõi riêng).

@@ -5,6 +5,7 @@ describe('fav shop + product search FULLTEXT (DB thật)', () => {
   const m = new ShMysql({} as any);
   const FAV_ID = 'test_fav_s1';
   const PROD_ID = 'test_ftsearch_p1';
+  const SHOP_ID = 'test_fts_shop';
   const TITLE = 'Zzzqx Unicorn Hoodie Test';
 
   afterAll(async () => {
@@ -26,11 +27,14 @@ describe('fav shop + product search FULLTEXT (DB thật)', () => {
   });
 
   it('bulkUpsertProducts đồng bộ sh_product_list → queryLocalProducts tìm thấy theo từ trong tên', async () => {
-    await m.bulkUpsertProducts([{ productId: PROD_ID, raw: JSON.stringify({ product_id: PROD_ID, product_title: TITLE, month_current_period_revenue: 1 }), title: TITLE, shopId: 'test_fts_shop' }]);
+    // shop_id nằm TRONG raw: dòng sh_product_list dựng từ raw (rawToListRow), không lấy field shopId.
+    await m.bulkUpsertProducts([{ productId: PROD_ID, raw: JSON.stringify({ product_id: PROD_ID, shop_id: SHOP_ID, product_title: TITLE, month_current_period_revenue: 1 }), title: TITLE, shopId: SHOP_ID }]);
     const r = await m.queryLocalProducts({ sort: 'fetched_at', dir: 'desc', offset: 0, limit: 10, q: 'zzzqx unicorn' });
     expect(r.items.some((it: any) => it.product_id === PROD_ID)).toBe(true);
-    // token ngắn (<3 ký tự) → fallback LIKE vẫn chạy không lỗi
-    const r2 = await m.queryLocalProducts({ sort: 'fetched_at', dir: 'desc', offset: 0, limit: 5, q: 'zz' });
+    // token ngắn (<3 ký tự) → fallback LIKE vẫn chạy không lỗi. Khoanh theo shop test: LIKE '%zz%' không
+    // index được, không lọc thì cả page + COUNT quét trọn sh_product_list (5M+ dòng) → chậm hàng chục giây.
+    const r2 = await m.queryLocalProducts({ sort: 'fetched_at', dir: 'desc', offset: 0, limit: 5, q: 'zz', shop: SHOP_ID });
     expect(Array.isArray(r2.items)).toBe(true);
+    expect(r2.items.some((it: any) => it.product_id === PROD_ID)).toBe(true);
   });
 });

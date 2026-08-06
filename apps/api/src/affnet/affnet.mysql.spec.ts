@@ -1,7 +1,10 @@
 // affnet.mysql.spec.ts — 3 bảng aff_* trên MySQL local. Chạy: npx jest src/affnet/affnet.mysql --runInBand --forceExit
+import * as fs from 'fs';
+import * as path from 'path';
 import { ShMysql } from '../shophunter/sh.mysql';
 import { PrismaService } from '../prisma.service';
 import { AffnetMysql, DRY_THRESHOLD, DRY_ROUNDS_TO_SATURATE, SATURATED_COOLDOWN_MS, NET_ELIGIBLE_SQL, API_PLATFORMS, NET_FETCHABLE_SQL, NET_POLLABLE_PLATFORM_SQL } from './affnet.mysql';
+import { AffnetService } from './affnet.service';
 
 const NET = 'zz-test-net.example';   // net giả, dọn sạch sau mỗi lần chạy
 let sh: ShMysql;
@@ -27,6 +30,24 @@ const prog = (slug: string, pct: number | null, flat: number | null = null) => (
   cookieDays: null, payoutThreshold: null, notes: null, termsText: null,
   status: 'active' as const, fetchedAt: Date.now(),
 });
+
+// ─── Nguồn chân lý cho test CHÉO "quên thêm net kiểu API" (xem describe cuối phần predicate) ───────
+// Quy ước của repo: net kiểu API/directory (lấy dữ liệu qua API/directory, KHÔNG dò subdomain) LUÔN có
+// một file adapter riêng `affnet.<vendor>.ts` và file đó export hằng tên net `<VENDOR>_NET`
+// (GOAFFPRO_NET, AFFILIATLY_NET, UPPROMOTE_NET). Đọc THƯ MỤC thay vì gõ tay danh sách → adapter thêm
+// sau này TỰ ĐỘNG vào diện kiểm tra, không ai phải nhớ sửa test này.
+// Regex `affnet.<một-đoạn>.ts` loại luôn *.spec.ts (tên spec có 2 dấu chấm).
+const ADAPTER_NET_CONSTS: { file: string; constName: string; net: string }[] = (() => {
+  const out: { file: string; constName: string; net: string }[] = [];
+  for (const file of fs.readdirSync(__dirname).sort()) {
+    if (!/^affnet\.[^.]+\.ts$/.test(file)) continue;
+    const mod = require(path.join(__dirname, file));           // eslint-disable-line @typescript-eslint/no-var-requires
+    for (const [constName, v] of Object.entries(mod)) {
+      if (/_NET$/.test(constName) && typeof v === 'string') out.push({ file, constName, net: v });
+    }
+  }
+  return out;
+})();
 
 describe('AffnetMysql', () => {
   it('ensureTables gọi 2 lần không lỗi (idempotent)', async () => {
@@ -181,6 +202,45 @@ describe('AffnetMysql', () => {
       await pool.query('UPDATE aff_host SET checked_at = ? WHERE net = ?', [Date.now(), NET]);
       const [rows] = await pool.query(`SELECT ${NET_FETCHABLE_SQL} AS ok FROM aff_net n WHERE n.net = ?`, [NET]);
       expect(Number((rows as any[])[0].ok)).toBe(0);
+    });
+
+    // Test CHÉO — cái CANH THẬT việc "thêm net kiểu API mà quên thêm vào API_PLATFORMS".
+    // Test hardcode ngay phía trên KHÔNG canh được: danh sách kỳ vọng của nó gõ tay và đang THIẾU
+    // 'uppromote', tức uppromote từng được thêm mà nó vẫn xanh — đúng thất bại nó phải bắt.
+    // 3 nguồn được đối chiếu, không nguồn nào gõ tay:
+    //   (1) ADAPTER_NET_CONSTS — hằng *_NET export từ các file adapter (đọc thư mục, adapter mới tự vào),
+    //   (2) platformOf() của AffnetService — chỗ DUY NHẤT map net → platform rồi ghi vào cột aff_net.platform,
+    //   (3) API_PLATFORMS — nơi 2 câu SQL chọn net đọc ra.
+    // Định nghĩa dùng ở đây: "platform kiểu API" = platform của net CÓ FILE ADAPTER. rewardful đi đường
+    // dò subdomain nên không có adapter/hằng *_NET, generic cũng vậy → cả hai phải NẰM NGOÀI
+    // API_PLATFORMS (test đối chứng cuối cùng chốt điều đó, để 3 test này không thể được "làm xanh"
+    // bằng cách nhồi mọi platform vào API_PLATFORMS).
+    const svc = new AffnetService(null as any, null as any, null as any); // chỉ gọi platformOf — hàm thuần, không cần db/fetch/traffic
+    const platformsOfAdapters = () => [...new Set(ADAPTER_NET_CONSTS.map((x) => svc.platformOf(x.net)))].sort();
+
+    it('CHÉO: cơ chế dò adapter còn sống — thấy đủ các hằng *_NET đã biết (không thì 2 test dưới rỗng mà vẫn xanh)', () => {
+      const names = ADAPTER_NET_CONSTS.map((x) => x.constName);
+      expect(names).toEqual(expect.arrayContaining(['GOAFFPRO_NET', 'AFFILIATLY_NET', 'UPPROMOTE_NET']));
+    });
+
+    it('CHÉO: mọi net CÓ ADAPTER → platformOf trả platform PHẢI có trong API_PLATFORMS (thêm net mới mà quên = ĐỎ)', () => {
+      const missing = ADAPTER_NET_CONSTS
+        .map((x) => ({ ...x, platform: svc.platformOf(x.net) }))
+        .filter((x) => !(API_PLATFORMS as readonly string[]).includes(x.platform));
+      // Kỳ vọng danh sách RỖNG; khi đỏ, thông báo chỉ thẳng hằng số/file nào bị bỏ sót.
+      expect(missing.map((x) => `${x.file}:${x.constName} (${x.net}) → platformOf='${x.platform}' KHÔNG có trong API_PLATFORMS`)).toEqual([]);
+    });
+
+    it('CHÉO: API_PLATFORMS không có mục lạ/gõ sai — trùng KHÍT tập platform mà platformOf trả cho các adapter', () => {
+      // Chiều ngược lại: gõ sai ('uppromot') hoặc để lại platform đã bỏ thì SQL không bao giờ khớp net nào.
+      expect([...API_PLATFORMS].sort()).toEqual(platformsOfAdapters());
+    });
+
+    it('CHÉO đối chứng: rewardful (dò subdomain) và generic KHÔNG được nằm trong API_PLATFORMS', () => {
+      expect(svc.platformOf('getrewardful.com')).toBe('rewardful');
+      expect(svc.platformOf('zz-net-khong-co-adapter.example')).toBe('generic');
+      expect([...API_PLATFORMS] as string[]).not.toContain('rewardful');
+      expect([...API_PLATFORMS] as string[]).not.toContain('generic');
     });
 
     it('net kiểu API bị LOẠI khỏi vòng poll discovery (không có subdomain để dò)', async () => {

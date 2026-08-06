@@ -10,6 +10,7 @@ function makeSvc(over: Record<string, any> = {}) {
     setDetail: jest.fn().mockResolvedValue(undefined),
     getShopLocalDetail: jest.fn(),
     getProductLocalRaw: jest.fn(),
+    getProductLeanRow: jest.fn().mockResolvedValue(null), // dòng lean (sh_product_list) — mặc định không có
     getRevenueDaily: jest.fn().mockResolvedValue([]),
     getProductRevenueDaily: jest.fn().mockResolvedValue([]),
     queryLocalProducts: jest.fn().mockResolvedValue({ items: [], total: 0 }),
@@ -90,7 +91,7 @@ describe('fallback DB local khi ShopHunter lỗi', () => {
 
     const r = await svc.productDetail('s1', 'p1');
 
-    expect(r.detail).toEqual(raw);
+    expect(r.detail).toEqual({ ...raw, shop_id: 's1' }); // raw + FE-shape (shop_id bù từ tham số khi raw/lean không có)
     expect(r.revenueChart).toEqual(daily);
     expect(r.similar).toEqual([]);
     expect(r.cached).toBe(true);
@@ -107,7 +108,8 @@ describe('fallback DB local khi ShopHunter lỗi', () => {
 
   it('shopDetail: cache detail còn hạn → vẫn trả cache, không đụng client/local', async () => {
     const { svc, mysql, client } = makeSvc();
-    mysql.getDetail.mockResolvedValue({ detail: { shop_id: 's1' }, revenueChart: [] });
+    // Cache phải ĐỦ (có similar / top_revenue_products) — bản "mỏng" bị code cố tình bỏ qua để tính lại.
+    mysql.getDetail.mockResolvedValue({ detail: { shop_id: 's1' }, revenueChart: [], similar: [{ shop_id: 's9' }] });
 
     const r = await svc.shopDetail('s1');
 

@@ -33,9 +33,10 @@ module.exports = {
       // next binary (hoisted về node_modules gốc do npm workspaces)
       script: '../../node_modules/next/dist/bin/next',
       args: 'start -p 3062',
-      // Mật khẩu đọc từ env (KHÔNG hardcode — repo public). SITE_PASSWORD=guest (7 mục), ADMIN_PASSWORD=admin (đủ).
-      // Set trước khi start: export SITE_PASSWORD='...' ADMIN_PASSWORD='...'
-      env: { NODE_ENV: 'production', SITE_PASSWORD: process.env.SITE_PASSWORD || '', ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '' },
+      // SITE_PASSWORD/ADMIN_PASSWORD đã BỎ (2026-08-06): không file nào trong apps/web đọc nữa — gate
+      // chuyển sang cookie phiên (middleware.ts) + role trong Prisma User. Comment cũ ở đây còn ghi
+      // "SITE_PASSWORD=guest, ADMIN_PASSWORD=admin" — trên repo PUBLIC đọc ra như công bố mật khẩu.
+      env: { NODE_ENV: 'production' },
       max_memory_restart: '700M',
       time: true,
     },
