@@ -58,6 +58,12 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 - **Dọn `SITE_PASSWORD`/`ADMIN_PASSWORD` — code chết.** Kiểm thật: **không file `.ts`/`.tsx` nào đọc 2 biến này**, kể cả `apps/web/middleware.ts` (README/docs lại ghi là nó đọc). Gate đã chuyển sang cookie phiên + `role` trong Prisma `User` từ Phase 1. Gỡ khỏi `ecosystem.config.js` (kèm comment cũ ghi `SITE_PASSWORD=guest, ADMIN_PASSWORD=admin` — trên repo **PUBLIC** đọc ra như công bố mật khẩu), `.env.example`, `apps/web/README.md`, và viết lại `docs/frontend.md` mục 3 theo `middleware.ts` thật (gate thô + `AUTH_COOKIE_NAME` phải khớp FE/BE, lệch là loop vô hạn về `/login`).
 - **`.gitignore`** thêm `apps/web/app/traffictool/`: 2 file secret bên trong đã được chặn bởi rule `proxy.txt`/`.env*`, nhưng **bản thân thư mục thì chưa** → 5 file source vẫn lọt vào `git add -A`.
 - **Nạp sẵn cache COUNT lúc boot** (`onModuleInit`, chạy nền `void`) → request `/localdb/products` đầu tiên sau mỗi lần restart không còn phải tự chờ COUNT.
+- **Kiểm chứng END-TO-END qua API thật**, gọi đúng URL trong ảnh user gửi (`/api/sh/local/products?sort=revenue_month&dir=desc&page=1&pageSize=100`), 2 lần restart sạch:
+  | | Lần 1 sau restart | Lần 2–4 |
+  |---|---|---|
+  | Code cũ (TTL 60s, không dedup, không nạp sẵn) | **13.050ms** | ~70ms |
+  | Code mới | **55ms** | **32ms** |
+  `total` trả về vẫn là **5.306.740** (số chính xác, không phải ước lượng). Lưu ý khi tự kiểm lại: dev server local chạy `node dist/main.js` **không phải watch mode**, nên phải `npm run build` + restart tiến trình mới thấy thay đổi — lần đo đầu của tôi vẫn là code cũ vì lý do này.
 - **Kiểm chứng pattern dist-swap bằng build THẬT, 2 lần** (không suy đoán — chính dòng này đã làm sập prod):
   | Kiểm | Kết quả |
   |---|---|
