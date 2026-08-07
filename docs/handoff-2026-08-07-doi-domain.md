@@ -125,6 +125,13 @@ Tạm thời trước khi làm: dùng `pageSize` nhỏ (20) cho `/localdb/shops`
 - **`kill` client KHÔNG huỷ truy vấn trong MySQL.** Restart app không dọn được truy vấn nặng đang chạy;
   phải `KILL` trong MySQL. Kiểm bằng
   `SELECT id,time,LEFT(info,95) FROM information_schema.processlist WHERE db='shophunter' AND command='Query' AND time>20`.
+- ⚠️ **Dọn zombie phải dùng `KILL QUERY <id>`, KHÔNG phải `KILL <id>`.** `KILL <id>` giết **cả kết nối**;
+  mà kết nối đang chạy zombie **chính là kết nối trong pool của app**, nên nó làm app báo
+  `Connection lost: The server closed the connection` ở request kế tiếp (đã xảy ra 2026-08-07 lúc 15:40,
+  thấy ở `AffnetMysql.netSummaries`). Dạng đúng:
+  ```
+  sudo mysql -N -e "SELECT CONCAT('KILL QUERY ',id,';') FROM information_schema.processlist WHERE db='shophunter' AND command='Query' AND time>20" | sudo mysql
+  ```
 - **Cloudflare thay body của 502 bằng trang lỗi riêng** → lỗi 502 do chính API sinh ra trông y hệt lỗi hạ
   tầng. Với bất kỳ 5xx, **lệnh đầu tiên** là gọi thẳng `http://127.0.0.1:8075/...`.
 - **Phân biệt nguồn của lỗi theo hình dạng body**: JSON `{"statusCode":…}` = Nest (app) · text trần

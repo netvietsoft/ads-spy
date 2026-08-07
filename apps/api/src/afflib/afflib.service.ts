@@ -273,7 +273,11 @@ export class AffLibService {
       const filled = await this.fillTrafficFor(webs);
       return { filled, remaining: await this.db.countMissingTraffic() };
     } catch (e) {
-      return { filled: 0, remaining: await this.db.countMissingTraffic(), error: (e as Error).message };
+      // `countMissingTraffic()` ở đây PHẢI có .catch: nó là lệnh DB chạy TRONG khối xử lý lỗi, nên nếu
+      // nó cũng lỗi thì exception thoát ra thành 500 và XOÁ MẤT lỗi gốc `e` — đúng thứ FE cần hiện.
+      // Mất con số `remaining` chỉ làm nút bấm tiếp hiển thị sai; mất lý do lỗi thì không chẩn được gì.
+      const remaining = await this.db.countMissingTraffic().catch(() => -1);
+      return { filled: 0, remaining, error: (e as Error).message };
     }
   }
 
