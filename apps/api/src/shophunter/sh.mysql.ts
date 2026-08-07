@@ -372,7 +372,25 @@ export class ShMysql implements OnModuleInit {
     try {
       await this.connect();
     } catch (err) {
-      throw new ShBlockedError('ShopHunter DB (MySQL) không kết nối được. Kiểm tra MySQL/SH_MYSQL_URL.');
+      // Nguyên nhân THẬT (vd ER_ACCESS_DENIED_ERROR) trước đây chỉ được console.warn MỘT LẦN lúc boot
+      // trong onModuleInit, còn mỗi request lỗi chỉ ném ra "Kiểm tra MySQL/SH_MYSQL_URL" — phải đào
+      // ~/.pm2/logs mới thấy, và grep theo "ExceptionsHandler" thì lọc mất đúng dòng cần. 2026-08-07
+      // đã mất vài lượt hỏi-đáp vì chỗ này. Nay log ĐẦY ĐỦ ở mọi lần fail, kèm user@host/db để biết
+      // sửa grant ở đâu — TUYỆT ĐỐI không kèm mật khẩu (repo public, log hay bị dán ra ngoài).
+      const e = err as { code?: string; message?: string };
+      console.error(`[ShMysql] Kết nối MySQL THẤT BẠI ${this.connTarget()}: ${e?.code || ''} ${e?.message || String(err)}`);
+      // Mã lỗi đi kèm response để đọc được ngay từ DevTools mà không lộ user/host ra ngoài.
+      throw new ShBlockedError(`ShopHunter DB (MySQL) không kết nối được${e?.code ? ` (${e.code})` : ''}. Xem log ads-spy-api để biết chi tiết.`);
+    }
+  }
+
+  // "user@host:port/db" lấy từ SH_MYSQL_URL — CHỦ Ý bỏ mật khẩu. Dùng cho log chẩn đoán.
+  private connTarget(): string {
+    try {
+      const u = new URL(process.env.SH_MYSQL_URL || 'mysql://root@127.0.0.1:3306/shophunter');
+      return `[${decodeURIComponent(u.username) || 'root'}@${u.hostname}:${u.port || '3306'}/${u.pathname.replace(/^\//, '') || 'shophunter'}]`;
+    } catch {
+      return '[SH_MYSQL_URL sai định dạng]';
     }
   }
 
