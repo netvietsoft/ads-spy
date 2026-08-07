@@ -18,7 +18,16 @@ const BATCH_SIZE = 50;
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_PROXY_ATTEMPTS = 3;
 const PROXY_TIMEOUT_MS = 6_000;
-const DIRECT_TIMEOUT_MS = 30_000;
+// 20s, KHÔNG phải 30s. Lý do là hạ tầng, không phải AITDK: FE gọi API same-origin nên mọi request đi qua
+// rewrite của Next, và **Next bỏ cuộc ở ~30s** (không cấu hình được trong next.config.js) — nginx 180s và
+// Cloudflare 100s đều không cứu được vì Next cắt trước. Đo thật 2026-08-07 trên POST /aff-lib/traffic-fill:
+//   thẳng 127.0.0.1:8075 → 201 ở 31,8s   |   qua mmo-coin.com → 500 "Internal Server Error" ở 30,19s
+// (đối chứng: /aff-lib/rev-scan mất 25,5s thì QUA được, 201 — nên ngưỡng nằm giữa 25,5s và 31,8s).
+// 30s ở đây làm tổng thời gian request thành ~31,8s ⇒ luôn vượt ngưỡng ⇒ user luôn thấy 500 dù API chạy
+// xong bình thường. 20s giữ tổng ở ~21s, còn dư biên an toàn.
+// ⚠️ Khi sửa được DNS api.mmo-coin.com và bỏ đường same-origin, block API có proxy_read_timeout 180s nên
+// có thể nâng lại — nhưng chỉ nâng SAU khi đã đo, đừng nâng theo cảm giác.
+const DIRECT_TIMEOUT_MS = 20_000;
 const CIRCUIT_TRIP_AFTER = 4;
 
 const HEADERS = {

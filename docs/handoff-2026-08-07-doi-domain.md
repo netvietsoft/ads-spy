@@ -111,6 +111,29 @@ thứ lọc/sort đều qua `JSON_EXTRACT(raw, …)` nên **không index nào đ
 
 Tạm thời trước khi làm: dùng `pageSize` nhỏ (20) cho `/localdb/shops`.
 
+## 5b. ⚠️ Đường same-origin áp trần ~30s cho MỌI endpoint
+
+Hệ quả kiến trúc quan trọng nhất của đường vòng same-origin, dễ quên nhất:
+
+`/api/*` giờ đi qua **rewrite của Next**, và **Next bỏ cuộc ở ~30 giây** — không cấu hình được trong
+`next.config.js`. `proxy_read_timeout 180s` của nginx và giới hạn 100s của Cloudflare **đều không cứu
+được** vì Next cắt trước cả hai.
+
+Đo thật 2026-08-07 trên `POST /api/aff-lib/traffic-fill`:
+
+| Đường | Kết quả | Thời gian |
+|---|---|---|
+| thẳng `127.0.0.1:8075` | **201** (chạy đúng) | 31,8s |
+| qua `mmo-coin.com` | **500** `Internal Server Error` (text trần = Next) | **30,19s** |
+| đối chứng `/aff-lib/rev-scan` qua `mmo-coin.com` | **201** | 25,5s |
+
+⇒ ngưỡng nằm giữa **25,5s và 31,8s**. Vì vậy `DIRECT_TIMEOUT_MS` của traffic hạ 30s → **20s** (tổng ~21s).
+
+**Quy tắc từ nay:** mọi endpoint chạy sau rewrite phải trả lời **dưới ~25s**. Việc dài hơn phải thành
+**job nền** (`void this.doRunOnce()` như `ShJobsService`) chứ không giữ request mở — đúng bài học vụ 524
+ngày 2026-08-05. Khi sửa được DNS `api.mmo-coin.com` và bỏ đường same-origin thì trần này biến mất
+(block API có 180s), nhưng **chỉ nâng lại sau khi đã đo**.
+
 ## 6. Bẫy vận hành đã trả giá — đọc trước khi deploy
 
 - **`pm2 start` trên app đang online là lệnh RỖNG** ("already running") → **không nạp code mới**. Deploy
