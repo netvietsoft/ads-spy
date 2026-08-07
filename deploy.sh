@@ -10,8 +10,11 @@
 #   KHÔNG đưa seed vào script: upsert sẽ RESET mật khẩu admin về giá trị env MỖI lần deploy.
 set -e
 
-# Domain công khai của API (browser gọi tới) — subdomain riêng -> API :8075.
-export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://api.mmo-coin.com}"
+# Origin mà BROWSER gọi tới. Hiện là chính domain web (same-origin) rồi Next rewrite /api/* vào cổng
+# nội bộ — xem ghi chú dài trong apps/web/.env.production. Biến process env THẮNG file .env* nên 2 dòng
+# này phải khớp với file đó, nếu không build sẽ lấy giá trị ở đây.
+export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://mmo-coin.com}"
+export API_ORIGIN="${API_ORIGIN:-http://127.0.0.1:8075}"
 
 echo "==> [1/6] Kéo code mới (ép về origin/main, bỏ thay đổi local như package-lock)"
 git fetch origin
