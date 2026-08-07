@@ -4,6 +4,21 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-07 — Đổi domain production: `dpboss.pet` → `mmo-coin.com` (bỏ hẳn domain cũ)
+
+> Web `mmo-coin.com` :3062 · API `api.mmo-coin.com` :8075. Đổi domain có **2 cái bẫy độc lập** — sửa một cái vẫn không đăng nhập được, nên phải làm cả hai cùng lúc.
+
+- **Bẫy 1 — cookie bị trình duyệt VỨT BỎ (im lặng).** `COOKIE_DOMAIN='.dpboss.pet'` khiến API trả `Set-Cookie: gas_session=…; Domain=.dpboss.pet`, mà trình duyệt đang ở `mmo-coin.com` **từ chối** cookie mang Domain của site khác. Triệu chứng đúng như đo được: `POST /api/auth/login` trả **201 bình thường**, nhưng `GET /api/auth/me` trả **401** → `middleware.ts` đá về `/login` ⇒ **vòng lặp đăng nhập, không có thông báo lỗi nào**. Sửa: `ecosystem.config.js` đổi `COOKIE_DOMAIN` → `.mmo-coin.com` và `APP_BASE_URL` → `https://mmo-coin.com`.
+- **Bẫy 2 — đích API nướng cứng lúc build.** `apps/web/.env.production` giữ `NEXT_PUBLIC_API_ORIGIN`, mà Next **inline giá trị này vào `.next` lúc BUILD** (cả biến client lẫn đích `rewrites()` trong `routes-manifest.json`). Đổi env lúc chạy rồi `pm2 restart` **KHÔNG ăn** — bắt buộc **build lại FE**. Sửa: `.env.production` + `deploy.sh` → `https://api.mmo-coin.com`.
+- **`sameSite` KHÔNG cần đổi.** `mmo-coin.com` và `api.mmo-coin.com` cùng registrable domain ⇒ **same-site**, nên `sameSite:'lax'` vẫn gửi cookie bình thường. (Nếu chọn phương án giữ API ở domain cũ thì mới phải đổi sang `'none'` + chịu rủi ro trình duyệt chặn cookie bên thứ ba — đã cân nhắc và loại.)
+- `deploy/nginx-dpboss.conf` → **đổi tên** `deploy/nginx-mmo-coin.conf`, `server_name` mới cho cả 2 block. Domain cũ bỏ hẳn, không redirect.
+- Đổi thêm: `auth.config.ts` (comment `COOKIE_DOMAIN` + `SMTP_FROM` default), `.env.example`, `next.config.js` (ghi rõ đây là biến **build-time**), header comment của `deploy.sh`/`ecosystem.config.js`.
+- **Email tài khoản KHÔNG đổi theo domain** — `admin@dpboss.pet` vẫn đăng nhập được bình thường trên `mmo-coin.com`; email chỉ là định danh. Đã ghi rõ trong `deploy.sh` để không ai chạy `seed:admin` tạo nhầm tài khoản thứ hai.
+- **404 `Cannot POST /api/auth/login` kèm `x-powered-by: Express` KHÔNG phải API chết** — đó là nginx đưa sang **nhầm app** (thiếu server block → rơi vào `default_server` của app khác trên VPS dùng chung). Phân biệt bằng cách hỏi thẳng app, bỏ qua nginx: `curl http://127.0.0.1:8075/api/health`. Đã thêm vào mục 9 của `docs/deployment.md` + comment đầu file nginx.
+- ⚠️ **Biến export trong `~/.bashrc` THẮNG default của `ecosystem.config.js`** (`process.env.X || 'default'`). Nếu server còn `export COOKIE_DOMAIN='.dpboss.pet'` thì bản sửa này vô hiệu và lỗi y nguyên. Tương tự, `apps/web/.env.local` trên server (nếu có) **ưu tiên cao hơn** `.env.production` → âm thầm đầu độc build.
+
+---
+
 ## 2026-08-06 — Fix vòng lặp 429 vô hạn (job affiliate) — nguyên nhân là THIẾU dấu tiến triển, không phải rate limit
 
 > Log prod `shop 75562647841: 429` lặp lại đúng cùng một shop_id mỗi ~23 giây, **không bao giờ dứt**. Job vẫn báo `lastStatus='ok'` và ghi job log `"1 shop · 0 yes · 0 app · 0 chặn"` nên nhìn từ web tưởng đang chạy tốt.

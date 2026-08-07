@@ -33,7 +33,7 @@ BE (`apps/api`, NestJS) hiện đã mở global prefix **`api`** (`app.setGlobal
   làm mới hoàn toàn ở tiểu dự án #1 trước khi #5 (API mobile) có thể bắt đầu.
   - *điền dần ở Phase 5:* loại token cụ thể (JWT hay opaque token), thời hạn sống, cơ chế refresh
     token, endpoint cấp/thu hồi token.
-- Dùng chung 1 tầng auth cho **cả web khách mới** (`dpboss.pet`, tiểu dự án #6) **lẫn mobile app**
+- Dùng chung 1 tầng auth cho **cả web khách mới** (`mmo-coin.com`, tiểu dự án #6) **lẫn mobile app**
   (tiểu dự án #5) — không tách 2 API riêng theo client.
 
 ## 2. Versioning

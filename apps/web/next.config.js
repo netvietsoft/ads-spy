@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 // Đích rewrite /api → backend. Ưu tiên API_ORIGIN (server-side); nếu thiếu, dùng NEXT_PUBLIC_API_ORIGIN
-// (deploy.sh chỉ set biến này → prod tự trỏ api.dpboss.pet, khỏi 500 vì rơi về localhost:3100).
+// (deploy.sh + apps/web/.env.production set biến này → prod tự trỏ api.mmo-coin.com, khỏi 500 vì rơi
+// về localhost:3100). Đây là biến BUILD-TIME: Next nướng giá trị vào .next, đổi env lúc chạy KHÔNG ăn
+// — đổi domain là phải BUILD LẠI, không chỉ restart.
 const API = process.env.API_ORIGIN || process.env.NEXT_PUBLIC_API_ORIGIN || 'http://localhost:3100';
 
 const nextConfig = {

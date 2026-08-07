@@ -1,5 +1,5 @@
 // PM2 — chạy: pm2 start ecosystem.config.js
-// Server dpboss.pet: Web (Next) :3062 -> dpboss.pet ; API (Nest) :8075 -> api.dpboss.pet
+// Server mmo-coin.com: Web (Next) :3062 -> mmo-coin.com ; API (Nest) :8075 -> api.mmo-coin.com
 // Dừng: pm2 delete ecosystem.config.js | Log: pm2 logs | Lưu tự chạy lại: pm2 save && pm2 startup
 module.exports = {
   apps: [
@@ -15,8 +15,11 @@ module.exports = {
         //   export SH_MYSQL_URL='mysql://shop:PASS@127.0.0.1:3306/shophunter'
         SH_MYSQL_URL: process.env.SH_MYSQL_URL || 'mysql://root@127.0.0.1:3306/shophunter', SH_CACHE_TTL_HOURS: '6',
         // Auth SaaS: APP_BASE_URL https → cookie Secure + link reset/OAuth đúng; COOKIE_DOMAIN chia sẻ cookie web↔api subdomain.
-        APP_BASE_URL: process.env.APP_BASE_URL || 'https://dpboss.pet',
-        COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || '.dpboss.pet',
+        // ⚠️ COOKIE_DOMAIN PHẢI khớp domain đang phục vụ. Trình duyệt VỨT BỎ Set-Cookie có Domain của
+        // site khác → login trả 201 nhưng không có cookie → /api/auth/me 401 → middleware đá về /login
+        // (vòng lặp đăng nhập, không báo lỗi gì). Đúng lỗi khi đổi domain 2026-08-07.
+        APP_BASE_URL: process.env.APP_BASE_URL || 'https://mmo-coin.com',
+        COOKIE_DOMAIN: process.env.COOKIE_DOMAIN || '.mmo-coin.com',
         // Traffic AITDK (Aff Library tự điền Traffic/Bounce/Time). Thiếu key → API trả 503 "Chưa cấu hình
         // SECRET_KEY", việc quét vẫn chạy bình thường. Set trước khi pm2 start (KHÔNG hardcode — repo public):
         //   export AITDK_SECRET_KEY='...'

@@ -27,8 +27,8 @@ Monorepo **npm workspaces** (`package.json` gốc: `"name": "google-ads-spy"`,
 
 | App | Package | Framework | Cổng local (dev) | Cổng VPS (PM2) | Domain VPS |
 |---|---|---|---|---|---|
-| `apps/api` | `@gas/api` | NestJS 10 | **3100** (mặc định trong `main.ts` khi không set `PORT`) | **8075** (`ecosystem.config.js` env `PORT='8075'`) | `api.dpboss.pet` |
-| `apps/web` | `@gas/web` | Next.js 15 (app router) + React 19 | **3101** (`next dev -p 3101` / `next start -p 3101`) | **3062** (`ecosystem.config.js` gọi thẳng binary `next` với `args: 'start -p 3062'`, KHÔNG qua script `start` của `package.json`) | `dpboss.pet` |
+| `apps/api` | `@gas/api` | NestJS 10 | **3100** (mặc định trong `main.ts` khi không set `PORT`) | **8075** (`ecosystem.config.js` env `PORT='8075'`) | `api.mmo-coin.com` |
+| `apps/web` | `@gas/web` | Next.js 15 (app router) + React 19 | **3101** (`next dev -p 3101` / `next start -p 3101`) | **3062** (`ecosystem.config.js` gọi thẳng binary `next` với `args: 'start -p 3062'`, KHÔNG qua script `start` của `package.json`) | `mmo-coin.com` |
 
 Ghi chú xác minh: các số cổng trên khớp đúng giá trị brief ban đầu đưa ra (3100/8075 cho API,
 3101/3062 cho web) — không có sai lệch cần sửa.
@@ -37,7 +37,7 @@ BE mount toàn bộ route dưới prefix `app.setGlobalPrefix('api')` (tức `/a
 (`enableCors({ origin: true })`), nhận body tới 25MB (phục vụ import xlsx/csv của ShopHunter), và có
 3 exception filter toàn cục (`GoogleBlockedFilter`, `FbBlockedFilter`, `TtBlockedFilter`) trả **503**
 thân thiện khi nguồn ngoài chặn IP. FE gọi BE qua rewrite same-origin `/api/*` → `API_ORIGIN` (mặc
-định `http://localhost:3100`; bản build VPS bake `NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet`).
+định `http://localhost:3100`; bản build VPS bake `NEXT_PUBLIC_API_ORIGIN=https://api.mmo-coin.com`).
 
 Các module chính trong `apps/api/src/` (khai trong `app.module.ts`):
 
@@ -86,7 +86,7 @@ flowchart LR
     TIKTOK(["TikTok\nCreative Center"])
     SHAPI(["ShopHunter API\n+ Shopify storefront"])
 
-    UI -- "rewrite /api/* (next.config.js)\nAPI_ORIGIN :3100 local / api.dpboss.pet VPS" --> BE
+    UI -- "rewrite /api/* (next.config.js)\nAPI_ORIGIN :3100 local / api.mmo-coin.com VPS" --> BE
     SEARCH --> SQLITE
     FB --> SQLITE
     FAV --> SQLITE
@@ -102,12 +102,12 @@ flowchart LR
 Theo spec thiết kế (`docs/superpowers/specs/2026-07-27-saas-refactor-phase0-design.md`), các quyết
 định kiến trúc đã chốt cho chặng SaaS:
 
-- **App hiện tại (`dpboss.pet`, tức `apps/web` như mô tả ở mục 2) → đổi vai trò thành Admin**, chuyển
-  sang subdomain **`admin.dpboss.pet`**: khu quản trị nội bộ + toàn bộ tính năng hiện có (Google/FB/
+- **App hiện tại (`mmo-coin.com`, tức `apps/web` như mô tả ở mục 2) → đổi vai trò thành Admin**, chuyển
+  sang subdomain **`admin.mmo-coin.com`**: khu quản trị nội bộ + toàn bộ tính năng hiện có (Google/FB/
   TikTok/ShopHunter). Đây là đổi **vai trò**, chưa di chuyển vật lý thư mục (`apps/web` vẫn giữ
   nguyên tên/đường dẫn để không phá PM2/`ecosystem.config.js`/`deploy.sh`) — dời cấu trúc vật lý sang
   `FE/`/`BE/` để sau, ở phase dựng FE khách (phase 6, xem mục 4 phân rã dưới).
-- **FE khách hàng MỚI tại `dpboss.pet`** (chiếm lại domain gốc) — re-skin dựa trên giao diện hiện tại,
+- **FE khách hàng MỚI tại `mmo-coin.com`** (chiếm lại domain gốc) — re-skin dựa trên giao diện hiện tại,
   **đa ngôn ngữ (i18n)**, dành cho người dùng thuê bao (không phải quản trị viên).
 - **BE (NestJS, `apps/api`) mở rộng `/api`** thành API có **auth token** (versioned), dùng **chung**
   cho web khách mới lẫn mobile app. Khác với hiện tại: `/api` bây giờ chỉ là prefix nội bộ, không auth,
@@ -140,11 +140,11 @@ Thứ tự triển khai (phụ thuộc tuần tự, mỗi tiểu dự án có sp
 ```mermaid
 flowchart TB
     subgraph Clients["Khách hàng"]
-        FEKHACH["FE khách mới\ndpboss.pet (i18n vi/en)"]
+        FEKHACH["FE khách mới\nmmo-coin.com (i18n vi/en)"]
         MOBILE["Mobile app\n(phase 5)"]
     end
 
-    ADMIN["Admin (= apps/web hiện tại)\nadmin.dpboss.pet"]
+    ADMIN["Admin (= apps/web hiện tại)\nadmin.mmo-coin.com"]
 
     subgraph BEAPI["apps/api — BE mở /api (versioned, auth token)"]
         CORE["Core hiện có:\nsearch/google, facebook, tiktok,\nshophunter, favorites"]

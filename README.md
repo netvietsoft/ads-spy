@@ -25,7 +25,7 @@ Dự án đang trong giai đoạn **chuyển từ công cụ nội bộ (1 ngư�
 Monorepo **npm workspaces** (`package.json` gốc: `"workspaces": ["apps/*"]`):
 
 - `apps/api` — **NestJS** (BE): tra cứu/scrape Google Ads Transparency, Facebook Ad Library, TikTok Creative Center, ShopHunter; lưu Prisma/SQLite (Google/FB/TikTok) + MySQL riêng (ShopHunter). Xem [apps/api/README.md](apps/api/README.md).
-- `apps/web` — **Next.js** (Admin FE hiện tại — theo kế hoạch SaaS sẽ đổi vai trò sang `admin.dpboss.pet`, xem [docs/kien-truc.md](docs/kien-truc.md) mục 3). Xem [apps/web/README.md](apps/web/README.md).
+- `apps/web` — **Next.js** (Admin FE hiện tại — theo kế hoạch SaaS sẽ đổi vai trò sang `admin.mmo-coin.com`, xem [docs/kien-truc.md](docs/kien-truc.md) mục 3). Xem [apps/web/README.md](apps/web/README.md).
 - `docs/` — tài liệu kiến trúc/roadmap/module/DB/deploy.
 
 ## Yêu cầu

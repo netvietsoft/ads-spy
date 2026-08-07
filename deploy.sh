@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Deploy Ads Spy lên server dpboss.pet bằng PM2.
+# Deploy Ads Spy lên server mmo-coin.com bằng PM2.
 # Chạy TRÊN SERVER: cd /home/netviet/projects-deploy/ads-spy && bash deploy.sh
 #
 # ⚠️ LẦN ĐẦU deploy tầng SaaS (auth mới = email/mật khẩu + Prisma User/Session — SITE_PASSWORD cũ ĐÃ BỎ):
 #   sau khi chạy script, TẠO ADMIN 1 LẦN (nếu không sẽ không đăng nhập được):
-#     SEED_ADMIN_EMAIL='admin@dpboss.pet' SEED_ADMIN_PASSWORD='<mật khẩu mạnh>' npm --workspace @gas/api run seed:admin
+#     SEED_ADMIN_EMAIL='admin@mmo-coin.com' SEED_ADMIN_PASSWORD='<mật khẩu mạnh>' npm --workspace @gas/api run seed:admin
+#   (Đổi domain KHÔNG cần đổi email tài khoản đang có — email chỉ là định danh đăng nhập. Tài khoản
+#    hiện tại vẫn là admin@dpboss.pet và vẫn dùng được bình thường trên mmo-coin.com.)
 #   KHÔNG đưa seed vào script: upsert sẽ RESET mật khẩu admin về giá trị env MỖI lần deploy.
 set -e
 
 # Domain công khai của API (browser gọi tới) — subdomain riêng -> API :8075.
-export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://api.dpboss.pet}"
+export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://api.mmo-coin.com}"
 
 echo "==> [1/6] Kéo code mới (ép về origin/main, bỏ thay đổi local như package-lock)"
 git fetch origin
@@ -68,4 +70,4 @@ else
   pm2 save
 fi
 
-echo "✅ Xong. Web :3062 (dpboss.pet) · API :8075 (api.dpboss.pet) — kiểm tra: pm2 status && pm2 logs"
+echo "✅ Xong. Web :3062 (mmo-coin.com) · API :8075 (api.mmo-coin.com) — kiểm tra: pm2 status && pm2 logs"

@@ -44,7 +44,7 @@ Spec/plan chi tiết: `docs/superpowers/specs/` + `docs/superpowers/plans/`. Nh�
 
 ### Gốc P5/P6 (bao trùm bởi S1–S3)
 - [ ] **P5 — API mobile:** đóng gói `/api/v1` versioned + auth token cho app; áp `@RequiresModule/@RequiresFeature` + recordCap/checkQuota lên endpoint tool thật. (S2 là bước đầu.)
-- [ ] **P6 — FE khách + i18n:** (S1 đã gộp app khách + i18n vào web); còn deploy + tách domain `dpboss.pet` / `admin.dpboss.pet` (tuỳ chọn — 1 FE có thể deploy chung, phân vùng theo role).
+- [ ] **P6 — FE khách + i18n:** (S1 đã gộp app khách + i18n vào web); còn deploy + tách domain `mmo-coin.com` / `admin.mmo-coin.com` (tuỳ chọn — 1 FE có thể deploy chung, phân vùng theo role).
 
 ## Hardening / nợ kỹ thuật (hoãn có chủ đích — ghi từ review các phase)
 **Chặn trước khi mở cho khách thật (P5/P6):**

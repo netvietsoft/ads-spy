@@ -7,8 +7,8 @@ Báo cáo/Cài đặt) đều render cùng component `Home`, chọn tab theo `us
 
 Theo kế hoạch SaaS đã chốt ([docs/kien-truc.md](../../docs/kien-truc.md) mục 3), app này **giữ nguyên
 code/đường dẫn**, chỉ đổi **vai trò** thành **Admin FE**, chuyển sang phục vụ ở subdomain
-**`admin.dpboss.pet`** (thay vì `dpboss.pet` như hiện tại) — việc này **chưa triển khai**, chỉ là kế
-hoạch. Domain gốc `dpboss.pet` sẽ được dựng lại thành 1 FE khách hàng **mới** (Phase 6, đa ngôn ngữ),
+**`admin.mmo-coin.com`** (thay vì `mmo-coin.com` như hiện tại) — việc này **chưa triển khai**, chỉ là kế
+hoạch. Domain gốc `mmo-coin.com` sẽ được dựng lại thành 1 FE khách hàng **mới** (Phase 6, đa ngôn ngữ),
 xem [docs/frontend.md](../../docs/frontend.md) mục 5–6 và [docs/roadmap.md](../../docs/roadmap.md).
 
 ## Cấu trúc `app/`
@@ -66,7 +66,7 @@ build-time, không sửa được sau khi đã build), và phải **`rm -rf .nex
 
 ```bash
 rm -rf .next
-NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build
+NEXT_PUBLIC_API_ORIGIN=https://api.mmo-coin.com npm run build
 ```
 
 Chi tiết quy trình deploy đầy đủ (PM2, nginx, Cloudflare, quy tắc bắt buộc): xem

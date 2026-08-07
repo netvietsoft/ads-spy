@@ -1,6 +1,10 @@
 export const authConfig = {
   cookieName: process.env.AUTH_COOKIE_NAME || 'gas_session',
-  // Prod đặt COOKIE_DOMAIN='.dpboss.pet' → cookie phiên chia sẻ giữa dpboss.pet (web) và api.dpboss.pet (tool tabs gọi thẳng).
+  // Prod đặt COOKIE_DOMAIN='.mmo-coin.com' → cookie phiên chia sẻ giữa mmo-coin.com (web) và
+  // api.mmo-coin.com (tool tabs gọi thẳng). 2 host này cùng registrable domain nên là SAME-SITE,
+  // vì vậy sameSite:'lax' ở cookie.util.ts vẫn gửi được cookie — đừng đổi sang 'none'.
+  // ⚠️ Giá trị này PHẢI khớp domain đang phục vụ: trình duyệt vứt bỏ Set-Cookie mang Domain của site
+  // khác, và triệu chứng là login 201 nhưng /api/auth/me 401 → vòng lặp về /login, không báo lỗi gì.
   // Local để trống → host-only (localhost, không cần domain).
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   sessionTtlDays: Number(process.env.SESSION_TTL_DAYS || 30),
@@ -19,6 +23,6 @@ export const authConfig = {
     port: Number(process.env.SMTP_PORT || 587),
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
-    from: process.env.SMTP_FROM || 'no-reply@dpboss.pet',
+    from: process.env.SMTP_FROM || 'no-reply@mmo-coin.com',
   },
 };

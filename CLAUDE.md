@@ -85,8 +85,8 @@ lập (User/Auth, gói sub, thanh toán, dashboard admin, API mobile, FE khách 
 ### Cấu trúc repo — hiện tại → mục tiêu
 
 Monorepo npm workspaces: `apps/api` (NestJS, BE) + `apps/web` (Next.js, FE) + `docs/`. Mục tiêu kiến
-trúc SaaS: `apps/web` hiện tại → **Admin** (`admin.dpboss.pet`); FE khách hàng **mới** tại
-`dpboss.pet` (đa ngôn ngữ, i18n); `apps/api` mở `/api` (versioned, auth token) dùng chung cho web
+trúc SaaS: `apps/web` hiện tại → **Admin** (`admin.mmo-coin.com`); FE khách hàng **mới** tại
+`mmo-coin.com` (đa ngôn ngữ, i18n); `apps/api` mở `/api` (versioned, auth token) dùng chung cho web
 khách + mobile app. Chi tiết đầy đủ: [`docs/kien-truc.md`](docs/kien-truc.md) +
 [`docs/roadmap.md`](docs/roadmap.md).
 

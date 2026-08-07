@@ -1,7 +1,7 @@
 # Frontend — `apps/web`
 
 > Mô tả **FE hiện tại** (`apps/web`, Next.js 15 app router + React 19) — sẽ đổi **vai trò** thành
-> **Admin FE** (`admin.dpboss.pet`) khi SaaS hoàn thiện (mục 5), song song với **kế hoạch FE khách
+> **Admin FE** (`admin.mmo-coin.com`) khi SaaS hoàn thiện (mục 5), song song với **kế hoạch FE khách
 > hàng mới** (Phase 6, mục 6). Đối chiếu code thật trong `apps/web/app/**` (`page.tsx`, `layout.tsx`,
 > `middleware.ts`, `components/`, `globals.css`) — cập nhật 2026-07-27.
 
@@ -144,8 +144,8 @@ Theo quyết định kiến trúc đã chốt ở spec Phase 0
 ([`docs/superpowers/specs/2026-07-27-saas-refactor-phase0-design.md`](./superpowers/specs/2026-07-27-saas-refactor-phase0-design.md)):
 
 - `apps/web` (mô tả ở mục 1–4 phía trên) **giữ nguyên toàn bộ code/đường dẫn vật lý** — chỉ đổi **vai
-  trò** thành **Admin FE**, chuyển sang phục vụ ở subdomain **`admin.dpboss.pet`** (thay vì
-  `dpboss.pet` như hiện tại). Không đổi tên thư mục để không phá PM2 (`ads-spy-web`),
+  trò** thành **Admin FE**, chuyển sang phục vụ ở subdomain **`admin.mmo-coin.com`** (thay vì
+  `mmo-coin.com` như hiện tại). Không đổi tên thư mục để không phá PM2 (`ads-spy-web`),
   `ecosystem.config.js`, `deploy.sh`.
 - Toàn bộ 9 tab hiện có (Google/Facebook/TikTok/ShopHunter/Local DB/Track/Import/Báo cáo/Cài đặt) tiếp
   tục là công cụ **quản trị nội bộ**, dùng bởi Admin/Manager sau khi có subsystem User & Auth (Phase
@@ -158,7 +158,7 @@ Theo quyết định kiến trúc đã chốt ở spec Phase 0
 Theo phân rã tiểu dự án ở [`kien-truc.md`](./kien-truc.md) mục 3 (tiểu dự án #6, phụ thuộc 1–5):
 
 - Một **app Next.js mới** (không phải `apps/web` hiện tại) được dựng riêng, phục vụ tại domain gốc
-  **`dpboss.pet`** (domain này hiện đang do `apps/web`/Admin chiếm, sẽ nhường lại khi FE khách ra
+  **`mmo-coin.com`** (domain này hiện đang do `apps/web`/Admin chiếm, sẽ nhường lại khi FE khách ra
   đời).
 - **Re-skin** dựa trên giao diện hiện tại (mục 1–4 ở trên) — layout/component pattern tương tự
   (TopNav, panel theo nguồn dữ liệu, responsive ≤760px, theme sáng/tối) nhưng giao diện hướng tới

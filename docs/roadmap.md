@@ -16,8 +16,8 @@ Chuyển `google-ads-spy` từ tool nội bộ → phần mềm SaaS cho thuê b
 
 ## Quyết định kiến trúc đã chốt (từ spec)
 
-- App hiện tại (dpboss.pet) → thành **Admin** (`admin.dpboss.pet`): khu quản trị + backend hiện có.
-- **FE khách hàng MỚI** tại `dpboss.pet` — re-skin giao diện dựa trên hiện tại, đa ngôn ngữ (i18n).
+- App hiện tại (mmo-coin.com) → thành **Admin** (`admin.mmo-coin.com`): khu quản trị + backend hiện có.
+- **FE khách hàng MỚI** tại `mmo-coin.com` — re-skin giao diện dựa trên hiện tại, đa ngôn ngữ (i18n).
 - **BE** (NestJS, `apps/api`) mở `/api` (versioned, auth token) → dùng chung cho web khách + mobile app.
 - Dữ liệu giữ nền: MySQL `sh_*` + Prisma/SQLite (fbSetting…); thêm bảng SaaS (users / subscriptions / payments) ở phase sau.
 

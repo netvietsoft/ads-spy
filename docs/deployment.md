@@ -1,21 +1,27 @@
 # Deployment — VPS / PM2 / nginx / Cloudflare
 
 > Gộp nội dung cũ từ `DEPLOY.md` + `docs/archive/11-restart-stack.md` (phiên 2026-07-23) thành 1
-> tài liệu. Đối chiếu trực tiếp `deploy.sh`, `ecosystem.config.js`, `deploy/nginx-dpboss.conf`,
+> tài liệu. Đối chiếu trực tiếp `deploy.sh`, `ecosystem.config.js`, `deploy/nginx-mmo-coin.conf`,
 > `package.json` (root + `apps/api` + `apps/web`), `apps/api/src/shophunter/sh.mysql.ts` — cập nhật
 > 2026-07-27. Không có giá trị mật khẩu/token thật nào trong tài liệu này — chỉ tên biến ENV.
+>
+> **2026-08-07 — đổi domain production:** `dpboss.pet` → `mmo-coin.com`, `api.dpboss.pet` →
+> `api.mmo-coin.com`. Domain cũ **bỏ hẳn** (không redirect, không chạy song song). Các đoạn kể lại sự
+> cố cũ trong tài liệu này vẫn giữ tên `dpboss.pet` vì lúc đó domain thật là như vậy — chỉ lệnh mẫu và
+> mô tả cơ chế hiện tại mới dùng domain mới. Đổi domain cần build lại FE + sửa `COOKIE_DOMAIN`
+> (mục 9, 2 bẫy cuối).
 
 ## 1. Hạ tầng hiện tại
 
-- **VPS:** domain `dpboss.pet`, SSH quen dùng `netviet@netviettest` (host alias), thư mục deploy
+- **VPS:** domain `mmo-coin.com`, SSH quen dùng `netviet@netviettest` (host alias), thư mục deploy
   `/home/netviet/projects-deploy/ads-spy`. Yêu cầu: **Node.js >= 20** (khuyến nghị 22/24), **RAM >=
   2GB** (Facebook scraping chạy Chromium thật, khá tốn RAM).
 - **2 process PM2** (định nghĩa trong `ecosystem.config.js`):
 
 | PM2 name | `cwd` | Script chạy | Cổng | Domain (qua nginx) |
 |---|---|---|---|---|
-| `ads-spy-api` | `./apps/api` | `dist/main.js` (Node trực tiếp) | **8075** | `api.dpboss.pet` |
-| `ads-spy-web` | `./apps/web` | `../../node_modules/next/dist/bin/next start -p 3062` (binary `next` hoisted, KHÔNG qua script `start` của `apps/web/package.json` — script đó tự set `-p 3101`) | **3062** | `dpboss.pet` |
+| `ads-spy-api` | `./apps/api` | `dist/main.js` (Node trực tiếp) | **8075** | `api.mmo-coin.com` |
+| `ads-spy-web` | `./apps/web` | `../../node_modules/next/dist/bin/next start -p 3062` (binary `next` hoisted, KHÔNG qua script `start` của `apps/web/package.json` — script đó tự set `-p 3101`) | **3062** | `mmo-coin.com` |
 
 - **MySQL trên VPS**: cài qua `sudo apt-get install -y mysql-server` — chạy như **service hệ thống
   thật** (systemd), khác hẳn máy dev Windows (xem mục 6).
@@ -37,11 +43,14 @@ sudo npm i -g pm2
 bash deploy.sh
 pm2 startup    # (chạy 1 lần) để PM2 tự bật lại khi VPS reboot
 
-# 4) Nginx + SSL cho cả 2 domain (file cấu hình thật: deploy/nginx-dpboss.conf)
-sudo cp deploy/nginx-dpboss.conf /etc/nginx/sites-available/dpboss.pet
-sudo ln -s /etc/nginx/sites-available/dpboss.pet /etc/nginx/sites-enabled/
+# 4) Nginx + SSL cho cả 2 domain (file cấu hình thật: deploy/nginx-mmo-coin.conf)
+sudo cp deploy/nginx-mmo-coin.conf /etc/nginx/sites-available/mmo-coin.com
+sudo ln -s /etc/nginx/sites-available/mmo-coin.com /etc/nginx/sites-enabled/
+# Máy đã deploy domain cũ: GỠ symlink cũ đi, để 2 file cùng khai báo server_name/default_server
+# là routing khó đoán (xem bẫy "nginx đưa sang nhầm app" ở mục 9).
+sudo rm -f /etc/nginx/sites-enabled/dpboss.pet
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d dpboss.pet -d api.dpboss.pet     # cấp HTTPS cho cả 2
+sudo certbot --nginx -d mmo-coin.com -d api.mmo-coin.com     # cấp HTTPS cho cả 2
 ```
 
 ## 3. Cập nhật code (deploy thường xuyên)
@@ -53,7 +62,7 @@ Có **2 cách**, tuỳ mức thay đổi — cả hai đều có trong lịch s�
 Nội dung thật của `deploy.sh` (6 bước, `set -e`):
 
 ```bash
-export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://api.dpboss.pet}"
+export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://api.mmo-coin.com}"
 
 # [1/6] Kéo code mới — ép về origin/main, bỏ mọi thay đổi local (kể cả package-lock)
 git fetch origin
@@ -108,7 +117,7 @@ cd apps/api && npm run build
 #    KHÔNG xoá .next trước khi build: build ra dist TẠM, chỉ swap khi build THÀNH CÔNG.
 #    (Xoá trước rồi build fail = mất cả bản mới lẫn bản cũ → web down. Đã xảy ra 2026-08-05.)
 cd ../web && rm -rf .next-new \
-  && NEXT_DIST_DIR=.next-new NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build \
+  && NEXT_DIST_DIR=.next-new NEXT_PUBLIC_API_ORIGIN=https://api.mmo-coin.com npm run build \
   && test -f .next-new/BUILD_ID \
   && pm2 stop ads-spy-web && rm -rf .next && mv .next-new .next \
   && git checkout -- next-env.d.ts tsconfig.json   # next build tự sửa 2 file này, xem ghi chú dưới
@@ -156,7 +165,7 @@ pm2 status ads-spy-api ads-spy-web
    > `pm2 reload ecosystem.config.js` (mà `deploy.sh` dùng) **KHÔNG vi phạm quy tắc này** — nó chỉ tác
    > động 2 app định nghĩa trong file đó. Điều bị cấm là `all`. Bản trước của quy tắc cấm luôn cả
    > `ecosystem.config.js` nên tự mâu thuẫn với chính `deploy.sh`.
-3. **Sau mỗi lần đổi FE: purge cache Cloudflare (dpboss.pet → Caching → Purge Everything) rồi hard
+3. **Sau mỗi lần đổi FE: purge cache Cloudflare (mmo-coin.com → Caching → Purge Everything) rồi hard
    refresh trình duyệt (Ctrl+Shift+R).** Không purge → Cloudflare giữ HTML/chunk cũ → vẫn lỗi
    `ChunkLoadError` dù server đã đúng.
 4. `NEXT_PUBLIC_API_ORIGIN` được Next.js **nhúng lúc build** (biến build-time, không phải runtime) —
@@ -164,7 +173,9 @@ pm2 status ads-spy-api ads-spy-web
    trị prod nay nằm trong `apps/web/.env.production` (đã commit — chỉ là URL công khai) nên mọi
    `next build` trên server tự đúng dù quên `export`. Kiểm nhanh sau build:
    `grep -o 'http[^"]*api/:path\*' apps/web/.next/routes-manifest.json` → phải ra
-   `https://api.dpboss.pet/api/:path*`, nếu ra `localhost:3100` là build đã lỗi (mọi `/api/*` sẽ 500).
+   `https://api.mmo-coin.com/api/:path*`, nếu ra `localhost:3100` là build đã lỗi (mọi `/api/*` sẽ 500).
+   Ra domain **cũ** (`api.dpboss.pet`) tức là `.next` còn là bản build trước khi đổi domain — phải
+   build lại, không sửa được bằng restart (mục 9, bẫy đổi domain).
 5. **`pm2 save` ghi ĐÈ dump list — xem `pm2 list` trước khi save.** `pm2 save` lưu danh sách process
    **hiện tại** vào `~/.pm2/dump.pm2`; bản cũ chỉ còn ở `dump.pm2.bak`, nên **save 2 lần là mất hẳn**.
    Nếu daemon PM2 vừa bị dựng lại và đang thiếu app, `pm2 save` **xoá vĩnh viễn** định nghĩa các app đó ⇒
@@ -174,16 +185,21 @@ pm2 status ads-spy-api ads-spy-web
 
 ## 5. nginx + routing
 
-Nginx đứng trước 2 domain, file thật `deploy/nginx-dpboss.conf` (đặt tại
-`/etc/nginx/sites-available/dpboss.pet` trên VPS):
+Nginx đứng trước 2 domain, file thật `deploy/nginx-mmo-coin.conf` (đặt tại
+`/etc/nginx/sites-available/mmo-coin.com` trên VPS — đổi tên từ `nginx-dpboss.conf` ngày 2026-08-07):
 
 | Domain | `proxy_pass` | Timeout | Ghi chú |
 |---|---|---|---|
-| `dpboss.pet` | `http://127.0.0.1:3062` | mặc định | Web (Next), có forward `Upgrade`/`Connection` cho websocket/HMR. |
-| `api.dpboss.pet` | `http://127.0.0.1:8075` | `proxy_read_timeout 180s; proxy_send_timeout 180s;` | Timeout dài vì scraping Facebook chạy 30–60s; `client_max_body_size 20m` (import Excel/CSV ShopHunter). |
+| `mmo-coin.com` | `http://127.0.0.1:3062` | mặc định | Web (Next), có forward `Upgrade`/`Connection` cho websocket/HMR. |
+| `api.mmo-coin.com` | `http://127.0.0.1:8075` | `proxy_read_timeout 180s; proxy_send_timeout 180s;` | Timeout dài vì scraping Facebook chạy 30–60s; `client_max_body_size 20m` (import Excel/CSV ShopHunter). |
 
-Cấp SSL bằng `certbot --nginx -d dpboss.pet -d api.dpboss.pet` (mục 2). Cloudflare nằm phía trước
+Cấp SSL bằng `certbot --nginx -d mmo-coin.com -d api.mmo-coin.com` (mục 2). Cloudflare nằm phía trước
 nginx (DNS proxy) — mỗi lần đổi FE nhớ purge cache (mục 4.3).
+
+> ⚠️ **Thiếu `server` block cho `api.mmo-coin.com` KHÔNG ra lỗi kết nối** — VPS chạy chung nhiều app,
+> request rơi vào `default_server` của app khác và trả 404 trông như API hỏng. Nhận dạng + phân biệt:
+> mục 9 (bẫy "nginx đưa sang nhầm app"). Sau khi đổi domain nhớ gỡ symlink cũ
+> `/etc/nginx/sites-enabled/dpboss.pet` (mục 2 bước 4).
 
 ## 6. Database & migrate
 
@@ -210,7 +226,9 @@ Hệ thống có **2 kho dữ liệu tách biệt**, quy trình migrate khác nh
 
 | Biến | Dùng ở | Ghi chú |
 |---|---|---|
-| `NEXT_PUBLIC_API_ORIGIN` | build FE (`apps/web`) | Build-time, mặc định `https://api.dpboss.pet` trong `deploy.sh`. |
+| `NEXT_PUBLIC_API_ORIGIN` | build FE (`apps/web`) | Build-time, mặc định `https://api.mmo-coin.com` trong `deploy.sh` và `apps/web/.env.production`. |
+| `APP_BASE_URL` | `ads-spy-api` (auth) | Mặc định `https://mmo-coin.com` trong `ecosystem.config.js`. Bắt đầu bằng `https` → cookie phiên bật cờ `Secure`; cũng là gốc của link reset mật khẩu / callback OAuth. |
+| `COOKIE_DOMAIN` | `ads-spy-api` (auth) | Mặc định `.mmo-coin.com` — dấu chấm đầu để chia sẻ cookie phiên giữa `mmo-coin.com` và `api.mmo-coin.com`. **PHẢI khớp domain đang phục vụ**, sai là vòng lặp đăng nhập (mục 9). |
 | `SH_MYSQL_URL` | `ads-spy-api` (ShopHunter) | Connection string MySQL thật của VPS — KHÔNG dùng giá trị mặc định `root@127.0.0.1` (không mật khẩu) trên production. |
 | `GOOGLE_PROXY` | `ads-spy-api` (Google Ads Transparency) | Cần vì IP datacenter thường bị Google chặn (`/sorry`); Facebook KHÔNG cần proxy (dùng Chromium + cookie thật). |
 | `AITDK_SECRET_KEY` | `ads-spy-api` (Traffic) | Thiếu → `/api/traffic/*` trả **503 "Chưa cấu hình SECRET_KEY"**; quét Aff Library vẫn chạy nhưng cột Traffic/Bounce/Time trống. `apps/api` **không đọc `.env`** nên bắt buộc export. |
@@ -237,8 +255,9 @@ cho thấy đủ process (quy tắc 4.5).
 
 ```bash
 ls -la apps/web/.next/BUILD_ID                      # PHẢI tồn tại — không có = chưa có bản build FE
-curl -s https://api.dpboss.pet/api/health           # health check (HealthController, prefix /api toàn cục)
-curl -s -o /dev/null -w "web %{http_code}\n" https://dpboss.pet/   # FE còn sống không
+curl -s https://api.mmo-coin.com/api/health         # health check (HealthController, prefix /api toàn cục)
+curl -s http://127.0.0.1:8075/api/health            # hỏi thẳng app, bỏ qua nginx — tách lỗi app vs routing
+curl -s -o /dev/null -w "web %{http_code}\n" https://mmo-coin.com/   # FE còn sống không
 pm2 status ads-spy-api ads-spy-web                  # cả 2 process phải "online" VÀ ↺ không tăng
 pm2 logs ads-spy-api --lines 30 --nostream          # log khởi động/cron gần nhất
 free -h                                             # RAM — crawl + MySQL nặng, dễ OOM → 502
@@ -251,12 +270,12 @@ free -h                                             # RAM — crawl + MySQL nặ
 
 ## 9. Troubleshooting
 
-- **`dpboss.pet` không mở được / 502 · `pm2 status` báo `ads-spy-web` online nhưng `↺` tăng liên tục**
+- **`mmo-coin.com` không mở được / 502 · `pm2 status` báo `ads-spy-web` online nhưng `↺` tăng liên tục**
   → xem `pm2 logs ads-spy-web --lines 30 --nostream`. Nếu thấy
   **`Could not find a production build in the '.next' directory`** thì `.next` đã bị xoá mà build chưa
   thành công (đúng sự cố 2026-08-05).
   Fix: `pm2 stop ads-spy-web` (dừng vòng lặp cho log sạch) → chạy lại bước 3 mục 3.2 và **lấy cho được
-  lỗi build thật**: `NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet npm run build 2>&1 | tail -40`
+  lỗi build thật**: `NEXT_PUBLIC_API_ORIGIN=https://api.mmo-coin.com npm run build 2>&1 | tail -40`
   (không có `2>&1 | tail` thì chỉ thấy đoạn kết của npm, vô dụng). Thấy `Killed` /
   `JS heap out of memory` là **OOM** → thêm `NODE_OPTIONS="--max-old-space-size=2048"`, hoặc tạm dừng
   app nặng khác trên VPS trong lúc build. Build xong: `pm2 restart ads-spy-web --update-env` + purge
@@ -281,24 +300,57 @@ free -h                                             # RAM — crawl + MySQL nặ
 - **502 khi cào lớn** → kiểm `free -h` (RAM) + `pm2 logs ads-spy-api`; việc nặng (harvest/enrich/
   catalog ShopHunter) chạy nền, tránh gọi API đồng bộ nặng trực tiếp.
 - **MỌI `/api/*` ra 502 (kể cả `/api/auth/me`), trang thường vẫn mở được** → `ads-spy-api` chết,
-  không phải lỗi FE. Chuỗi thật: nginx `dpboss.pet` → Next :3062 → rewrite `/api/*` →
-  `https://api.dpboss.pet` → nginx → :8075 **đã chết** → nginx trả 502, Next chuyển nguyên 502 về
+  không phải lỗi FE. Chuỗi thật: nginx `mmo-coin.com` → Next :3062 → rewrite `/api/*` →
+  `https://api.mmo-coin.com` → nginx → :8075 **đã chết** → nginx trả 502, Next chuyển nguyên 502 về
   browser. Xem `pm2 logs ads-spy-api --lines 30 --nostream`:
   - `@prisma/client did not initialize yet` → vừa `npm ci`/`npm install` mà thiếu generate (xem ghi
     chú ở mục 3.2). Fix: `npm --workspace @gas/api exec prisma generate && pm2 restart ads-spy-api`.
   - Phân biệt với FE build sai origin: build sai (`localhost:3100`) cho **500**, không phải 502 —
     thấy 502 tức là `routes-manifest.json` vẫn đúng, lỗi nằm ở API.
+- **`POST https://api.mmo-coin.com/api/auth/login` ra 404, response có header `x-powered-by: Express` và
+  body `Cannot POST /api/auth/login`** → **nginx đưa request sang NHẦM APP**, KHÔNG phải API chết.
+  VPS chạy chung nhiều app; thiếu `server` block cho `api.mmo-coin.com` thì nginx không từ chối mà
+  đẩy request vào `default_server` — tức app khác. Header `x-powered-by: Express` chính là dấu vân
+  tay: `ads-spy-api` là NestJS và có prefix `/api` toàn cục, route `POST /api/auth/login` **tồn tại**,
+  nên chữ `Cannot POST` đó là của app lạ trả lời. Phân biệt bằng 2 lệnh (đừng đụng vào code app):
+  ```bash
+  curl http://127.0.0.1:8075/api/health                  # hỏi thẳng app, bỏ qua nginx.
+                                                         # 200 = API sống ⇒ lỗi 100% ở nginx routing
+  sudo nginx -T | grep -E "server_name|proxy_pass"       # domain nào thực sự đi về cổng nào
+  ```
+  Fix: cài đúng `deploy/nginx-mmo-coin.conf` (mục 2 bước 4 / mục 5), gỡ symlink domain cũ
+  `/etc/nginx/sites-enabled/dpboss.pet`, rồi `sudo nginx -t && sudo systemctl reload nginx`.
+- **Sau khi ĐỔI DOMAIN: login trả `201` nhưng bị đá ngược về `/login` mãi (vòng lặp đăng nhập, không
+  báo lỗi gì), `/api/auth/me` trả 401** → cookie phiên bị trình duyệt **VỨT BỎ** vì `Set-Cookie` mang
+  `Domain` của site khác. Đổi domain có **2 việc bắt buộc**, thiếu cái nào cũng ra triệu chứng câm:
+  1. **Build lại FE.** `NEXT_PUBLIC_API_ORIGIN` là **build-time** — Next nướng nó vào `.next`, restart
+     hay đổi env đều vô ích. `.next` cũ vẫn gọi API ở domain cũ (giờ đã chết). Kiểm bằng lệnh `grep`
+     ở mục 4.4; build lại theo mục 3.2 bước 3 rồi purge Cloudflare.
+  2. **`COOKIE_DOMAIN` phải khớp domain mới** (`.mmo-coin.com`, mục 7) — cùng với `APP_BASE_URL`
+     (`https://mmo-coin.com`). Đọc bởi `apps/api/src/auth/auth.config.ts`. Vì đây là env đọc **1 lần
+     lúc app khởi động**, phải `pm2 delete ads-spy-api && pm2 start ecosystem.config.js --only
+     ads-spy-api` chứ `pm2 restart --update-env` không chắc ăn (mục 7).
+
+  Kiểm nhanh cookie có được cấp đúng domain không:
+  ```bash
+  curl -si -X POST https://api.mmo-coin.com/api/auth/login \
+    -H 'Content-Type: application/json' -d '{"email":"...","password":"..."}' | grep -i set-cookie
+  # phải thấy Domain=.mmo-coin.com — thấy domain cũ (hoặc không thấy Set-Cookie) là đúng lỗi này
+  ```
 
 ## 10. Kế hoạch (chưa triển khai) — SaaS
 
 > Mục này là **plan**, chưa có code — đối chiếu `docs/kien-truc.md` mục 3 (kiến trúc mục tiêu SaaS)
 > và design spec `docs/superpowers/specs/2026-07-27-saas-refactor-phase0-design.md`.
+> Spec/roadmap viết trước 2026-08-07 nên còn ghi `admin.dpboss.pet` — đọc thành `admin.mmo-coin.com`.
 
-- **Subdomain `admin.dpboss.pet`**: khi tách vai trò Admin ra khỏi domain gốc `dpboss.pet` (app hiện
-  tại = `apps/web` giữ nguyên tên/đường dẫn để không phá `ecosystem.config.js`/`deploy.sh` hiện có),
-  cần thêm 1 block `server` mới trong nginx cho `admin.dpboss.pet` → cùng cổng **3062** (không đổi
-  cổng, chỉ thêm domain trỏ tới cùng process `ads-spy-web`) + xin thêm SSL certbot cho subdomain đó.
-- **Deploy FE khách hàng mới** (chiếm lại domain gốc `dpboss.pet` cho người dùng thuê bao, đa ngôn
+- **Subdomain `admin.mmo-coin.com`**: khi tách vai trò Admin ra khỏi domain gốc `mmo-coin.com` (app
+  hiện tại = `apps/web` giữ nguyên tên/đường dẫn để không phá `ecosystem.config.js`/`deploy.sh` hiện
+  có), cần thêm 1 block `server` mới trong nginx cho `admin.mmo-coin.com` → cùng cổng **3062** (không
+  đổi cổng, chỉ thêm domain trỏ tới cùng process `ads-spy-web`) + xin thêm SSL certbot cho subdomain
+  đó. Vì `COOKIE_DOMAIN` là `.mmo-coin.com`, subdomain này dùng chung cookie phiên sẵn — không phải
+  đổi gì thêm ở auth.
+- **Deploy FE khách hàng mới** (chiếm lại domain gốc `mmo-coin.com` cho người dùng thuê bao, đa ngôn
   ngữ) sẽ là **1 app/process PM2 mới** (chưa có tên/cổng — sẽ định nghĩa khi tới tiểu dự án 6 trong
-  lộ trình SaaS), deploy sau khi Admin đã dời sang `admin.dpboss.pet`. Chưa có quyết định cổng/tên
+  lộ trình SaaS), deploy sau khi Admin đã dời sang `admin.mmo-coin.com`. Chưa có quyết định cổng/tên
   process cụ thể tại thời điểm viết tài liệu này.

@@ -218,7 +218,7 @@ gọi qua rewrite same-origin (`next.config.js` → `API_ORIGIN`). Mục tiêu P
     (93 route liệt kê ở mục 4) đều KHÔNG có auth — khi mở public phải rà lại từng route xem có cần gate
     theo gói thuê bao (subsystem #2) hay không, tránh lộ toàn bộ dữ liệu ShopHunter/Facebook/Google đã
     cào cho người dùng chưa trả phí.
-- **Dùng chung cho mobile:** theo spec, `/api` mở rộng sẽ phục vụ **cả** web khách mới (`dpboss.pet`,
+- **Dùng chung cho mobile:** theo spec, `/api` mở rộng sẽ phục vụ **cả** web khách mới (`mmo-coin.com`,
   tiểu dự án #6) lẫn app mobile (tiểu dự án #5) — cùng một tầng auth token, không tách 2 API riêng.
 - Dữ liệu nền giữ nguyên (MySQL `sh_*` + Prisma/SQLite) — Phase 5 chỉ thêm lớp xác thực/versioning phía
   trước, không đổi schema dữ liệu hiện có.

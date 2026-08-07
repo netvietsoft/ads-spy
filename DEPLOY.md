@@ -4,11 +4,11 @@ Hướng dẫn cài `ads-spy` (Google Ads Transparency + Facebook Ad Library) l�
 
 ---
 
-## ⚡ Triển khai nhanh cho server dpboss.pet (192.168.1.4)
+## ⚡ Triển khai nhanh cho server mmo-coin.com (192.168.1.4)
 
-Cấu hình: **Web (Next) :3062 → https://dpboss.pet**, **API (Nest) :8075 → https://api.dpboss.pet**,
-thư mục `/home/netviet/projects-deploy/ads-spy`, chạy bằng **PM2**. (DNS: trỏ cả `dpboss.pet` và
-`api.dpboss.pet` về 192.168.1.4.)
+Cấu hình: **Web (Next) :3062 → https://mmo-coin.com**, **API (Nest) :8075 → https://api.mmo-coin.com**,
+thư mục `/home/netviet/projects-deploy/ads-spy`, chạy bằng **PM2**. (DNS: trỏ cả `mmo-coin.com` và
+`api.mmo-coin.com` về 192.168.1.4.)
 
 ```bash
 # 1) Lần đầu: clone vào đúng thư mục
@@ -23,12 +23,16 @@ sudo npm i -g pm2
 bash deploy.sh
 pm2 startup    # (chạy 1 lần) để PM2 tự bật khi reboot
 
-# 4) Nginx + SSL cho dpboss.pet
-sudo cp deploy/nginx-dpboss.conf /etc/nginx/sites-available/dpboss.pet
-sudo ln -s /etc/nginx/sites-available/dpboss.pet /etc/nginx/sites-enabled/
+# 4) Nginx + SSL cho mmo-coin.com
+sudo cp deploy/nginx-mmo-coin.conf /etc/nginx/sites-available/mmo-coin.com
+sudo ln -s /etc/nginx/sites-available/mmo-coin.com /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d dpboss.pet -d api.dpboss.pet     # cấp HTTPS cho cả 2
+sudo certbot --nginx -d mmo-coin.com -d api.mmo-coin.com     # cấp HTTPS cho cả 2
 ```
+
+> Server từng chạy domain cũ (dpboss.pet): gỡ symlink cũ trước khi reload, tránh 2 file nginx trùng
+> `default_server`/`server_name` gây routing khó đoán —
+> `sudo rm -f /etc/nginx/sites-enabled/dpboss.pet`.
 
 **Cập nhật về sau:** `cd /home/netviet/projects-deploy/ads-spy && bash deploy.sh`
 
@@ -41,13 +45,13 @@ GOOGLE_PROXY="http://user:pass@proxy-host:port" pm2 restart ads-spy-api --update
 ```
 Không có proxy thì phần **Google** sẽ báo "Google chặn IP máy chủ". Phần **Facebook** không cần proxy (chạy Chromium + cookie).
 
-**Đăng nhập Facebook trên server:** mở https://dpboss.pet → tab Facebook Ads → "Đăng nhập bằng
+**Đăng nhập Facebook trên server:** mở https://mmo-coin.com → tab Facebook Ads → "Đăng nhập bằng
 cookie" → dán cookie (nick phụ). Cookie lưu vào DB, sống qua restart.
 
-> Ghi chú: `deploy.sh` build web với `NEXT_PUBLIC_API_ORIGIN=https://api.dpboss.pet`; nginx:
-> `dpboss.pet` → Web :3062, `api.dpboss.pet` → API :8075 (timeout 180s cho FB scraping).
+> Ghi chú: `deploy.sh` build web với `NEXT_PUBLIC_API_ORIGIN=https://api.mmo-coin.com`; nginx:
+> `mmo-coin.com` → Web :3062, `api.mmo-coin.com` → API :8075 (timeout 180s cho FB scraping).
 > Đổi cổng trong `ecosystem.config.js`. Cần RAM ≥ 2GB cho Chromium.
-> CORS đã bật (`origin: true`) nên web ở dpboss.pet gọi api.dpboss.pet OK.
+> CORS đã bật (`origin: true`) nên web ở mmo-coin.com gọi api.mmo-coin.com OK.
 
 ### MySQL cho ShopHunter
 Tab **ShopHunter** dùng MySQL riêng (khác `dev.db`/Prisma của Google/FB) để cache shop/product.
