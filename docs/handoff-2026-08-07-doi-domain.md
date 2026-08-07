@@ -134,6 +134,25 @@ Hệ quả kiến trúc quan trọng nhất của đường vòng same-origin, d
 ngày 2026-08-05. Khi sửa được DNS `api.mmo-coin.com` và bỏ đường same-origin thì trần này biến mất
 (block API có 180s), nhưng **chỉ nâng lại sau khi đã đo**.
 
+## 5c. Kiến trúc `/backend-api/*` — 3 điều kiện phải đủ CẢ BA
+
+Thiết kế (user đề ra, tốt hơn đường same-origin qua Next): nginx `/backend-api/*` → backend `:8075` trực
+tiếp, `/*` → Next. Bỏ được trần ~30s của Next, bớt một chặng proxy, **không cần** `api.mmo-coin.com`.
+
+| # | Điều kiện | Kiểm bằng |
+|---|---|---|
+| 1 | nginx có khối `location ^~ /backend-api/` với `proxy_pass …:8075/` (dấu `/` cuối cắt tiền tố) | `curl -H 'Host: mmo-coin.com' http://127.0.0.1/backend-api/api/health` → **200** |
+| 2 | **Cloudflare Cache Rule: `URI Path starts with /backend-api/` → Bypass cache** | `curl "https://mmo-coin.com/backend-api/api/health?x=$(date +%s)"` vs không có `?x=` — hai kết quả khác nhau = đang bị cache |
+| 3 | FE build với `NEXT_PUBLIC_API_ORIGIN=https://mmo-coin.com/backend-api` | `grep -l backend-api apps/web/.next/static/chunks/*.js \| wc -l` → **≥1** |
+
+⚠️ **Thứ tự bắt buộc: 1 → 2 → 3.** Làm (3) trước khi (1)+(2) xong thì **mọi** API call 307 về `/login`.
+
+**Điều kiện 2 là mặt trái của thiết kế này**, dễ quên nhất: đặt API dưới một *path* của domain web khiến
+nó dùng chung chính sách cache với website — một response API bị cache là dữ liệu sai cho mọi người. Với
+`api.mmo-coin.com` thì tắt cache cả hostname là xong; nay không còn lựa chọn đó.
+Đã xảy ra thật 2026-08-07: Cloudflare cache **cái 307** mà `/backend-api/*` trả về *trước khi* khối nginx
+tồn tại → nginx đã đúng (nội bộ 200) mà qua domain vẫn 307.
+
 ## 6. Bẫy vận hành đã trả giá — đọc trước khi deploy
 
 - **`pm2 start` trên app đang online là lệnh RỖNG** ("already running") → **không nạp code mới**. Deploy
