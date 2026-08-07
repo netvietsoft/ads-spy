@@ -4,6 +4,37 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-07 — AITDK trả `{"err":1005}` cho MỌI request: key/tài khoản, KHÔNG sửa được bằng code
+
+> Kết luận sau khi loại trừ hết mọi giả thuyết khác. Ghi lại để không ai điều tra lại từ đầu.
+
+**Bằng chứng** — script độc lập chạy trên VPS (không qua app), dùng đúng bộ `HEADERS` của `traffic.service.ts`:
+
+| Gọi | Kết quả |
+|---|---|
+| `serp gptzero.me` | `HTTP 400 {"err":1005}` |
+| `bulk gptzero.me` | `HTTP 400 {"err":1005}` |
+| `serp tmgindustrial.com` | `HTTP 400 {"err":1005}` |
+| `bulk tmgindustrial.com` | `HTTP 400 {"err":1005}` |
+
+**`gptzero.me` là đối chứng quyết định**: chính key này đã lấy được dữ liệu thật của nó ngày 2026-07-29 — dump 30KB còn trong `Traffic tool/raw_response_20260729_182901.txt`.
+
+**Đã loại trừ:**
+- **Domain** — đối chứng từng chạy được nay cũng lỗi.
+- **Endpoint/gói** — `serp` và `bulk` lỗi giống nhau.
+- **Code app** — script chạy ngoài app, cùng lỗi.
+- **Key sai** — chỉ có MỘT key: `.env.local` và key hardcode trong `Traffic tool/deepseek_python_*.py` trùng nhau (`sha256[:12] = 859f66272d37`).
+- **Signature/version** — cùng cơ chế `GET\npath\nnormalizedQuery\nts\nnonce\nsecret`, cùng sort key + urlencode, cùng `VERSION=2.7.0` với bản Python đã chạy được.
+- **Cloudflare** — nhận JSON của ứng dụng, không phải trang `Just a moment...`.
+
+⇒ **Còn lại: key hết hạn / hết quota / bị thu hồi.** Việc cần làm nằm ở tài khoản AITDK, không ở repo.
+
+**Hai bẫy chẩn đoán đã mất thời gian, ghi lại:**
+1. **Thiếu `User-Agent` là bị Cloudflare chặn 403 `Just a moment...`** — script test đầu của tôi chỉ gửi `Accept` nên 403 cho *cả hai* key, khiến tôi tưởng key bị chặn. Phải copy **nguyên bộ `HEADERS`** ở `traffic.service.ts` mới tái hiện được đúng như app.
+2. **Từ máy dev (ngoài VPS) KHÔNG tái hiện được** — Cloudflare chặn 403 bất kể header. Mọi thử nghiệm AITDK phải chạy trên VPS.
+
+---
+
 ## 2026-08-07 — Regression của chính tôi: thêm 1 cột KHÔNG index vào `ORDER BY` → 124s/lượt job
 
 > `processlist` trên prod cho thấy 3 câu treo, và **không câu nào nằm trên `sh_product_list` 18M dòng** — cả ba đều trên **`sh_shop`**. Tôi đã bắt sai job (dặn tắt `productrev`, thực tế phải tắt **`affiliate`**).
