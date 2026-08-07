@@ -30,5 +30,12 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp|css|js)$).*)'],
+  // ⚠️ Danh sách đuôi file này PHẢI phủ mọi tài nguyên tĩnh trong `public/`, không chỉ ảnh/css/js.
+  // Thiếu `json` đã gây lỗi thật (2026-08-07): `/sh-categories.json` (725KB, đọc bởi CategoryPicker,
+  // LocalDbPanel, ShCategories) bị middleware gác như một TRANG → thiếu/hết cookie phiên là **307 về
+  // /login**; mà `fetch` TỰ ĐI THEO redirect nên FE nhận về **trang HTML của /login** rồi gọi `.json()`
+  // → "Unexpected token '<', "<!DOCTYPE "... is not valid JSON". Thông báo đó không hề nhắc tới auth
+  // nên rất khó truy ngược — dấu hiệu thật nằm ở status **307** của chính request đó.
+  // Thêm luôn txt/woff/woff2/map để không lặp lại với favicon manifest, font, source map.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp|css|js|json|txt|woff|woff2|map)$).*)'],
 };
