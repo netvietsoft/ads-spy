@@ -252,13 +252,21 @@ merchant khác**, không phải secret của mình.
 
 ### Còn mở
 
-- [ ] **Khôi phục prod web** — mục 1. Cần lấy lỗi build thật rồi mới kết luận OOM hay không.
-      (Sau khi deploy bản này thì `deploy.sh` mới sẽ không gây lại tình trạng đó.)
-- [ ] **Xác minh ~45 app PM2 kia** còn chạy không (mục 2) + khai báo lại + `pm2 save`.
-- [ ] Cân nhắc cho các suite MySQL chạy `--runInBand` hoặc tách schema theo worker (mục 5, nhóm 1).
-- [ ] `prisma generate` sau khi đổi ổ/đổi chỗ repo (mục 3) — rẻ, `deploy.sh:26` vốn đã làm.
+> 📌 **Cập nhật 2026-08-07** — phiên sau đã xử lý phần lớn mục này. Task còn sống nay nằm ở
+> [`handoff-2026-08-07-doi-domain.md`](handoff-2026-08-07-doi-domain.md) mục 4. Đọc file đó trước.
+
+- [x] ~~**Khôi phục prod web**~~ — đã lên. Nguyên nhân build fail không cần truy nữa: `deploy.sh` nay
+      build vào dist tạm rồi mới swap nên build fail không còn làm sập site.
+- [x] ~~**Xác minh ~45 app PM2**~~ — `pm2 list` hiện **đủ ~40 app**, daemon đã tự phục hồi. Không còn
+      rủi ro reboot mất app.
+- [x] ~~**Cân nhắc `--runInBand`**~~ — đã đặt `maxWorkers: 1` trong `jest.config.js`; tuần tự vừa **xanh**
+      vừa **nhanh hơn** (65,2s vs 129,6s).
+- [x] ~~`prisma generate` sau khi đổi ổ~~ — auth/SQLite chạy bình thường (`/api/auth/me` 200), không
+      dính nhánh fallback.
 - [ ] Rotate: 2 token Apify, JWT UpPromote, JWT Goaffpro, token Refersion, cookie+CSRF Collabs, **mật
-      khẩu MySQL `shop`** và mật khẩu admin prod — tất cả đã từng dán vào chat.
+      khẩu MySQL `shop`** và mật khẩu admin prod — tất cả đã từng dán vào chat. **Bổ sung 2026-08-07:**
+      key AITDK `541737bb-…` và 2 session `gas_session` admin.
+      → theo dõi ở handoff 08-07 mục 4.
 - [ ] Cân nhắc xoá thư mục `apps/web/app/traffictool/` khỏi đĩa (đã gitignore, nhưng vẫn còn
       `proxy.txt` 19 dòng credential nằm đó).
 

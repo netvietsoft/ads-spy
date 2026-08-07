@@ -35,6 +35,29 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-07 — Bắt thông báo lỗi tự nói ra nguyên nhân (MySQL + AITDK) · 4xx không còn bị coi là proxy hỏng
+
+> Cùng một loại bug đã sửa 4 lần trong repo này: thông báo lỗi bỏ mất đúng thứ duy nhất giúp chẩn đoán. Hôm nay nó làm mất **3 vòng hỏi-đáp** với 2 chỗ khác nhau.
+
+- **`ShBlockedError` giấu mã lỗi MySQL** (`00a6ed2`). Mọi endpoint MySQL trả `"ShopHunter DB (MySQL) không kết nối được. Kiểm tra MySQL/SH_MYSQL_URL."` — không mã lỗi, không user/host. Nguyên nhân thật (`ER_ACCESS_DENIED_ERROR` cho `'shop'@'localhost'`) chỉ được `console.warn` **một lần lúc boot** trong `onModuleInit`; `ensureReady()` bắt lỗi rồi ném đi mà **không log gì** ⇒ lỗi lúc chạy không để lại dấu vết, và grep theo `"ExceptionsHandler"` (phản xạ tự nhiên) **lọc mất** đúng dòng cần.
+  → nay `ensureReady()` log ở **mọi** lần fail, kèm mã lỗi + `user@host:port/db` (**bỏ mật khẩu** — repo public, log hay bị dán ra ngoài); message ném ra kèm mã: `… không kết nối được (ER_ACCESS_DENIED_ERROR). Xem log …`.
+- **`AITDK HTTP 400` vứt body của AITDK** (`1d5310c`). Body **đã nằm trong biến `text`** ở dòng ngay trên rồi bị bỏ. Nay kèm 200 ký tự đầu (đã thu gọn whitespace) + đi trực tiếp hay qua proxy — và chính nhờ nó mới đọc được `{"err":1005}` để chốt vụ AITDK.
+- **4xx của AITDK bị coi là proxy hỏng** (`717adc1`) — hai lỗi thật, đúng bất kể `1005` nghĩa là gì:
+  1. 4xx rơi chung vào nhánh `!response.ok` vốn gọi `markProxyFailed()` rồi `continue` sang proxy kế ⇒ **proxy KHOẺ bị đánh dấu chết oan** chỉ vì một domain gõ sai (`google.come`), làm hỏng trạng thái cả pool **dùng chung với Google scraping**; và vẫn nướng thêm `MAX_PROXY_ATTEMPTS` lượt gọi dù đổi proxy **không bao giờ** sửa được 4xx.
+  2. Lỗi tham số trả về client dưới dạng **502 Bad Gateway** ⇒ người dùng tưởng hạ tầng sập. Nay trả **400** kèm nguyên văn body; 502 chỉ còn cho lỗi hạ tầng thật (5xx/timeout/mạng).
+
+---
+
+## 2026-08-07 — Hai chỗ hạ tầng lộ ra sau khi chuyển API sang same-origin
+
+- **`.env.production` giữ cấu hình HỎNG nên mỗi lần build lại là dựng lại lỗi login** (`f5bc6de`). File này được commit với `https://api.mmo-coin.com`, mà bản ghi DNS `api` ở Cloudflare trỏ về origin khác (404 `Cannot POST /api/auth/login` kèm `x-powered-by: Express` của app khác trên VPS dùng chung). Bước `[1/6]` của `deploy.sh` làm `git reset --hard` nên **khôi phục file đó** → build lại FE là login gãy lại. Đã gãy đúng như vậy sau một lượt build.
+  → nay `.env.production` giữ đúng thứ đang chạy được: `NEXT_PUBLIC_API_ORIGIN=https://mmo-coin.com` + **`API_ORIGIN=http://127.0.0.1:8075`**. Dòng thứ hai là **bắt buộc**: thiếu nó thì `next.config.js` rơi về `NEXT_PUBLIC_API_ORIGIN` và Next rewrite `/api/*` về **chính nó** → vòng lặp vô tận. Kèm hướng dẫn + lệnh kiểm `200` để đổi lại về kiến trúc 2 domain khi DNS được sửa.
+  > **Bài học**: biết một cấu hình trong repo đang hỏng thì phải **sửa repo**, không phải ghi chú "khi nào xong thì bảo tôi" — vì `git reset --hard` sẽ khôi phục nó mỗi lần deploy.
+- **Block nginx WEB thiếu `proxy_read_timeout` + `client_max_body_size`** (`9728b42`). Từ khi FE gọi same-origin, **mọi** request API đi qua block `mmo-coin.com` chứ không qua block `api.mmo-coin.com` nữa — nhưng 2 chỉ thị đó chỉ được đặt ở block API. Hệ quả: block web dùng mặc định **60s** và **1m**, nên request dài (scraping FB 30-60s) bị cắt, và import Excel/CSV sẽ 413. Đã chép sang block web kèm ghi chú tại sao phải có ở **cả hai**.
+  > Ghi lại một chi tiết đọc log dễ nhầm: **Cloudflare THAY body của response 502 bằng trang lỗi riêng** (`error code: 502`), nên lỗi 502 do **chính API** sinh ra trông y hệt lỗi hạ tầng. Muốn thấy body thật phải gọi thẳng `127.0.0.1:8075` — đó là lệnh đầu tiên nên chạy với bất kỳ 5xx nào.
+
+---
+
 ## 2026-08-07 — Regression của chính tôi: thêm 1 cột KHÔNG index vào `ORDER BY` → 124s/lượt job
 
 > `processlist` trên prod cho thấy 3 câu treo, và **không câu nào nằm trên `sh_product_list` 18M dòng** — cả ba đều trên **`sh_shop`**. Tôi đã bắt sai job (dặn tắt `productrev`, thực tế phải tắt **`affiliate`**).
