@@ -1762,7 +1762,13 @@ export class ShMysql implements OnModuleInit {
           AND (affiliate_checked_at IS NULL OR affiliate_checked_at < ?)
           AND (affiliate_status IS NULL OR affiliate_status != 'blocked' OR affiliate_checked_at < ?)
           AND COALESCE(affiliate_try_count, 0) < ${SH_AFF_MAX_TRIES}
-        ORDER BY affiliate_try_count ASC, affiliate_checked_at ASC LIMIT ?`,
+        ORDER BY affiliate_checked_at ASC LIMIT ?`,
+      // ORDER BY CHỈ theo affiliate_checked_at để còn dùng được idx_sh_shop_aff_check: index đã sắp sẵn
+      // nên MySQL lấy đủ LIMIT rồi DỪNG. Bản 78a0513 của tôi thêm "affiliate_try_count ASC" lên trước —
+      // cột đó KHÔNG có index nên MySQL phải filesort TOÀN bảng, mà SELECT lại chứa JSON_EXTRACT(raw,…)
+      // nên nó đọc cả cột LONGTEXT ~1GB: đo trên prod 2026-08-07 = 124 GIÂY mỗi lượt job, các lượt chồng
+      // nhau làm nghẽn cả DB. Bỏ nó đi VÔ HẠI: vế WHERE try_count < 3 ở trên đã loại shop lỗi lặp rồi,
+      // thứ tự theo try_count chỉ là trang trí. (Bài học: đừng thêm cột không index vào ORDER BY.)
       [cutoff, cutoff, limit],
     );
     return (rows as any[]).map((r) => ({ shopId: r.shop_id, url: r.url }));

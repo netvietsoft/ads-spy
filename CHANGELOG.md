@@ -4,6 +4,23 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-07 — Regression của chính tôi: thêm 1 cột KHÔNG index vào `ORDER BY` → 124s/lượt job
+
+> `processlist` trên prod cho thấy 3 câu treo, và **không câu nào nằm trên `sh_product_list` 18M dòng** — cả ba đều trên **`sh_shop`**. Tôi đã bắt sai job (dặn tắt `productrev`, thực tế phải tắt **`affiliate`**).
+
+- **Nguyên nhân**: bản `78a0513` (2026-08-06) của tôi đổi `getShopsNeedingAffiliate` thành `ORDER BY affiliate_try_count ASC, affiliate_checked_at ASC`. Cột `affiliate_try_count` **không có index** → MySQL phải **filesort**, tức lấy HẾT các dòng khớp rồi mới sort, mỗi dòng kèm `JSON_EXTRACT(raw, '$.url')` trên bảng **1.090MB**, trước khi cắt `LIMIT 20`. Prod đo được **124 giây mỗi lượt**, job chạy liên tục nên các lượt chồng nhau và nghẽn cả DB.
+- **Sửa**: bỏ `affiliate_try_count` khỏi `ORDER BY`, giữ nguyên vế `WHERE COALESCE(affiliate_try_count,0) < 3`. Thứ tự theo try_count chỉ là trang trí — vế WHERE đã loại shop lỗi lặp rồi.
+- **Đo `EXPLAIN` + chạy thật, local (46.982 dòng / 1.090MB):**
+  | `ORDER BY` | EXPLAIN | Thời gian |
+  |---|---|---|
+  | cũ (`try_count, checked_at`) | `key=idx_sh_shop_aff_check` + **`Using filesort`** | **37ms** |
+  | mới (chỉ `checked_at`) | cùng key, **hết filesort** | **2ms** |
+  ⇒ **18×**. Cả hai đều dùng index để LỌC; khác nhau ở chỗ bản mới đọc theo thứ tự index nên **dừng ở dòng thứ 20**, còn bản cũ phải đọc cả 954 dòng khớp.
+- **Bài học**: thêm một cột vào `ORDER BY` mà cột đó không có index sẽ **âm thầm** biến truy vấn dùng-index thành filesort. Nguy hiểm gấp bội khi SELECT có `JSON_EXTRACT` trên LONGTEXT, vì filesort buộc đọc cả blob. `EXPLAIN` phát hiện ngay bằng chữ `Using filesort` — đáng ra tôi phải chạy `EXPLAIN` khi sửa `ORDER BY`, không chỉ chạy test cho xanh.
+- **Hai chỗ chậm CÓ TỪ TRƯỚC trên `sh_shop`, chưa sửa** (đo prod, mỗi câu ~110s): dropdown Nước dùng `SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw,'$.country'))` (bản products đã chuyển sang cột thật từ 2026-07-23, bản **shops thì chưa**), và `queryLocalShops` sort theo biểu thức JSON nên không index nào đỡ được. Hướng đúng là promote `country`/`revenue` thành **cột thật có index** như đã làm cho `sh_product_list` — chưa làm, cần quyết định riêng.
+
+---
+
 ## 2026-08-07 — SỰ CỐ PROD do chính bản "tối ưu" hôm qua: 7 câu COUNT zombie làm treo cả API
 
 > Triệu chứng: mọi `/api/sh/*` trả **500 `Internal Server Error` dạng TEXT TRẦN** (chữ ký của Next, không phải Nest — Nest luôn trả JSON), `ads-spy-api` **không ghi một dòng log lỗi nào**, `/api/health` vẫn 200 tức thì. Request treo đủ 120s rồi chết (`HTTP=000`).
