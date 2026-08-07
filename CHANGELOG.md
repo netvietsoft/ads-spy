@@ -4,6 +4,28 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-07 — SỰ CỐ PROD do chính bản "tối ưu" hôm qua: 7 câu COUNT zombie làm treo cả API
+
+> Triệu chứng: mọi `/api/sh/*` trả **500 `Internal Server Error` dạng TEXT TRẦN** (chữ ký của Next, không phải Nest — Nest luôn trả JSON), `ads-spy-api` **không ghi một dòng log lỗi nào**, `/api/health` vẫn 200 tức thì. Request treo đủ 120s rồi chết (`HTTP=000`).
+
+- **Nguyên nhân**, thấy được từ `information_schema.processlist`:
+  | Truy vấn | Số bản | Đã chạy |
+  |---|---|---|
+  | `SELECT COUNT(*) FROM sh_product_list` | **7** | 5.754–8.721s (**1,6–2,4 giờ**) |
+  | `SELECT p.product_id… LEFT JOIN sh_product_revsync` | **7** | cùng khoảng |
+  | `queryLocalShops` (bảng 26k dòng) | 1 | **441s** — bị bỏ đói |
+- **`COUNT(*)` không lọc trên `sh_product_list` KHÔNG khả thi ở prod**: bảng có **18.174.111 dòng** (gấp **3,4 lần** local 5,3M nơi tôi đo 38,7s khi lạnh và kết luận "an toàn"). Ở prod nó **không bao giờ xong**.
+- **Cái phóng ra nó là bản `78a0513` (2026-08-06) của tôi** — nạp sẵn cache COUNT ở `onModuleInit`. Cộng với sự thật **kill client KHÔNG huỷ truy vấn trong MySQL**, mỗi lần `pm2 restart` để lại một zombie và phóng thêm một câu mới → 7 câu giành I/O, bỏ đói cả bảng 26k dòng → API treo → Next hết chờ upstream, tự trả 500 text trần (nên API không có gì để log).
+- **Sửa**:
+  - `cachedCount` tách 2 đường: **không có WHERE → dùng số ước lượng InnoDB** (`information_schema.TABLES.TABLE_ROWS`, ~2ms); **có WHERE → `COUNT(*)` thật** vì lúc đó bám index (đo: nước 124ms · bậc doanh thu 28ms · FULLTEXT 184ms).
+  - Mọi `COUNT(*)` thật kèm hint **`MAX_EXECUTION_TIME(15000)`**, và truy vấn của job `productrev` kèm **`(60000)`** → MySQL **tự huỷ** câu bất thường, không thể sống sót thành zombie qua các lần restart.
+  - **Bỏ hẳn nạp-sẵn-lúc-boot** — giờ vô nghĩa vì đường không-lọc chỉ mất 2ms.
+- **Đổi lại**: con số "N sản phẩm" ở màn hình không-lọc là **ước lượng, lệch ~10-15%**. Hôm qua tôi đã cân nhắc và LOẠI phương án này vì độ lệch đó; số đo prod cho thấy quyết định đó sai — một con số lệch 15% tốt hơn hẳn một API treo. Muốn số chính xác thì lọc (có WHERE).
+- **Bài học ghi lại**: đừng suy chi phí prod từ số đo local. Cùng một câu SQL, cùng một schema, 5,3M dòng → 38,7s; 18,17M dòng → không bao giờ xong. Và mọi truy vấn nặng chạm bảng lớn phải có `MAX_EXECUTION_TIME`, vì restart không dọn được nó.
+- Test: **82/82 suite · 644/644** xanh; thêm 2 test canh đúng bất biến này — *không lọc thì TUYỆT ĐỐI không có câu `COUNT(*)` nào chạm DB*, và *có lọc thì câu COUNT phải kèm `MAX_EXECUTION_TIME`*.
+
+---
+
 ## 2026-08-07 — Đổi domain production: `dpboss.pet` → `mmo-coin.com` (bỏ hẳn domain cũ)
 
 > Web `mmo-coin.com` :3062 · API `api.mmo-coin.com` :8075. Đổi domain có **2 cái bẫy độc lập** — sửa một cái vẫn không đăng nhập được, nên phải làm cả hai cùng lúc.

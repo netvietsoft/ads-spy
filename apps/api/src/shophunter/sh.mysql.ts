@@ -165,12 +165,12 @@ export class ShMysql implements OnModuleInit {
   async onModuleInit() {
     try {
       await this.connect();
-      // Nạp sẵn COUNT(*) sh_product_list vào cache ngay sau khi kết nối, chạy NỀN (void — không chặn boot).
-      // Thiếu bước này thì request /localdb/products ĐẦU TIÊN sau mỗi lần restart phải tự chờ COUNT:
-      // đo thật 981ms khi buffer pool ấm, 38,7s khi lạnh (bảng 5,3M dòng, index-scan idx_pl_country).
-      // Dùng đúng khoá mà trang mặc định gọi (không lọc gì); total không phụ thuộc sort/trang nên mọi
-      // sort đều dùng lại được cache này.
-      void this.cachedCount('sh_product_list', '', [], 0).catch(() => { /* lỗi thì để request tự thử lại */ });
+      // KHÔNG nạp sẵn COUNT ở đây nữa. Bản 2026-08-06 có `void this.cachedCount('sh_product_list', …)`
+      // để request đầu sau restart khỏi chờ COUNT — dựa trên số đo LOCAL (5,3M dòng, 38,7s khi lạnh).
+      // Trên prod bảng có 18,17M dòng và câu COUNT đó KHÔNG BAO GIỜ xong (>2,4 giờ), mà kill client
+      // không huỷ truy vấn trong MySQL → mỗi lần restart thêm 1 zombie; 2026-08-07 có 7 câu cùng chạy,
+      // bỏ đói mọi truy vấn khác và làm API treo hoàn toàn. Nay count không-lọc dùng số ước lượng
+      // (tức thì) nên chẳng còn gì phải nạp sẵn. Bài học: đừng suy ra chi phí prod từ số đo local.
     } catch (err) {
       console.warn('[ShMysql] MySQL không sẵn sàng, ShopHunter sẽ thử lại khi có request:', (err as Error).message);
     }
@@ -1061,8 +1061,8 @@ export class ShMysql implements OnModuleInit {
     if (!load) {
       load = (async () => {
         await this.ensureReady();
-        const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM ${table} ${whereSql}`, params);
-        const n = Number((cnt as any[])[0].n) || 0;
+        // KHÔNG lọc → dùng số ƯỚC LƯỢNG; có lọc → COUNT thật (bám index, rẻ). Xem 2 hàm dưới.
+        const n = whereSql ? await this.exactCount(table, whereSql, params) : await this.estimateRows(table);
         this.countCache.set(key, { n, t: Date.now() });
         return n;
       })().finally(() => this.countLoading.delete(key));
@@ -1072,6 +1072,32 @@ export class ShMysql implements OnModuleInit {
     // (trừ lần đầu sau khi restart, lúc cache còn rỗng).
     if (cached) { load.catch(() => { /* giữ số cũ khi refresh lỗi */ }); return cached.n; }
     return load;
+  }
+
+  // `COUNT(*)` KHÔNG có WHERE buộc MySQL index-scan TOÀN bảng. Trên prod `sh_product_list` có
+  // **18,17 triệu dòng**: câu COUNT chạy **>2,4 GIỜ mà không xong**. Tệ hơn, kill client KHÔNG huỷ
+  // truy vấn trong MySQL — nên mỗi `pm2 restart` lại phóng thêm một câu nữa; 2026-08-07 đã đếm được
+  // **7 câu COUNT zombie** cùng chạy, giành hết I/O và bỏ đói cả truy vấn trên bảng 26k dòng
+  // (`sh_shop` mất 441s) → API treo → Next trả 500 text trần. Số ước lượng của InnoDB lấy tức thì
+  // (~2ms), lệch khoảng 10-15% — hoàn toàn chấp nhận cho con số "N sản phẩm" hiển thị, đổi lại API
+  // không bao giờ treo vì nó nữa. Muốn số CHÍNH XÁC thì lọc (có WHERE) — lúc đó COUNT bám index.
+  private async estimateRows(table: string): Promise<number> {
+    const [rows] = await this.pool!.query(
+      'SELECT TABLE_ROWS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+      [table],
+    );
+    return Number((rows as any[])[0]?.n) || 0;
+  }
+
+  // Có WHERE → COUNT bám index nên rẻ (đo thật: nước 124ms · bậc doanh thu 28ms · FULLTEXT 184ms).
+  // Vẫn chặn cứng bằng MAX_EXECUTION_TIME: một câu bất thường sẽ bị MySQL tự huỷ sau 15s, KHÔNG BAO GIỜ
+  // sống sót thành zombie qua các lần restart như sự cố 2026-08-07.
+  private async exactCount(table: string, whereSql: string, params: any[]): Promise<number> {
+    const [cnt] = await this.pool!.query(
+      `SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) AS n FROM ${table} ${whereSql}`,
+      params,
+    );
+    return Number((cnt as any[])[0].n) || 0;
   }
 
   async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number }): Promise<{ items: any[]; total: number }> {
@@ -1144,7 +1170,11 @@ export class ShMysql implements OnModuleInit {
     await this.ensureReady();
     const cutoff = Date.now() - staleMs;
     const [rows] = await this.pool!.query(
-      `SELECT p.product_id, p.shop_id FROM sh_product_list p
+      // MAX_EXECUTION_TIME: câu này là nửa còn lại của đám zombie 2026-08-07 — 7 bản cùng chạy
+      // 1,6-2,4 GIỜ trên sh_product_list 18,17M dòng. Job `productrev` gọi nó mỗi vòng, mà kill
+      // client không huỷ truy vấn trong MySQL nên cứ restart là chồng thêm một bản. 60s là quá đủ cho
+      // một lô; quá thì MySQL tự huỷ, job bỏ lượt đó và thử lại — thà mất một lượt hơn treo cả DB.
+      `SELECT /*+ MAX_EXECUTION_TIME(60000) */ p.product_id, p.shop_id FROM sh_product_list p
         LEFT JOIN sh_product_revsync r ON r.product_id = p.product_id
         WHERE p.revenue_month IS NOT NULL AND p.shop_id IS NOT NULL
           AND (r.synced_at IS NULL OR r.synced_at < ?)

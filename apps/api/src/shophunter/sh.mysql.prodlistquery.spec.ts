@@ -42,8 +42,10 @@ describe('queryLocalProducts tren sh_product_list', () => {
     expect(item.product_handle).toBe('join-product');
   });
 
-  // COUNT(*) trên sh_product_list (5,3M dòng) đo được 981ms khi buffer pool ấm và 38,7s khi lạnh →
-  // đó là toàn bộ 6s của /api/sh/local/products trên prod. 2 test dưới canh 2 tính chất đã thêm.
+  // COUNT(*) trên sh_product_list đo được 981ms (buffer pool ấm) / 38,7s (lạnh) ở LOCAL 5,3M dòng.
+  // Trên PROD 18,17M dòng thì nó KHÔNG BAO GIỜ xong (>2,4 giờ) và mỗi restart chồng thêm 1 zombie →
+  // 2026-08-07 có 7 câu cùng chạy, bỏ đói cả DB, API treo. Vì vậy count KHÔNG-LỌC nay dùng số ước
+  // lượng, còn count CÓ-LỌC mới chạy COUNT thật (bám index). 3 test dưới canh đúng 3 tính chất đó.
   // Dùng WHERE product_id LIKE 'test_plq_%' (range trên PK) để COUNT rẻ — KHÔNG count cả bảng trong test.
   describe('cachedCount', () => {
     const WHERE = 'WHERE product_id LIKE ?';
@@ -51,11 +53,42 @@ describe('queryLocalProducts tren sh_product_list', () => {
       const orig = pool.query.bind(pool);
       const state = { n: 0, restore: () => { pool.query = orig; } };
       pool.query = (sql: any, ...rest: any[]) => {
-        if (typeof sql === 'string' && sql.startsWith('SELECT COUNT(*) AS n FROM sh_product_list')) state.n++;
+        // Khớp theo NỘI DUNG chứ không startsWith: câu COUNT nay có hint /*+ MAX_EXECUTION_TIME(...) */
+        // chèn ngay sau SELECT, nên so đầu chuỗi là trượt.
+        if (typeof sql === 'string' && /COUNT\(\*\) AS n FROM sh_product_list/.test(sql)) state.n++;
         return orig(sql, ...rest);
       };
       return state;
     };
+
+    // Đây là test QUAN TRỌNG NHẤT trong nhóm: nó canh chính xác thứ đã làm sập prod 2026-08-07.
+    it('KHÔNG lọc → TUYỆT ĐỐI không chạy COUNT(*) trên bảng 18M dòng, dùng số ước lượng', async () => {
+      const pool = (m as any).pool;
+      (m as any).countCache.clear(); (m as any).countLoading.clear();
+      const spy = spyCount(pool);
+      try {
+        const n = await (m as any).cachedCount('sh_product_list', '', [], 300000);
+        expect(spy.n).toBe(0); // không một câu COUNT(*) nào chạm DB
+        expect(typeof n).toBe('number');
+        expect(n).toBeGreaterThan(0); // vẫn trả về con số dùng được cho phân trang
+      } finally { spy.restore(); }
+    });
+
+    it('CÓ lọc → chạy COUNT thật và kèm chặn MAX_EXECUTION_TIME để không thành zombie', async () => {
+      const pool = (m as any).pool;
+      (m as any).countCache.clear(); (m as any).countLoading.clear();
+      const orig = pool.query.bind(pool);
+      let sqlSeen = '';
+      pool.query = (sql: any, ...rest: any[]) => {
+        if (typeof sql === 'string' && /COUNT\(\*\) AS n FROM sh_product_list/.test(sql)) sqlSeen = sql;
+        return orig(sql, ...rest);
+      };
+      try {
+        const n = await (m as any).cachedCount('sh_product_list', WHERE, [P + '%'], 300000);
+        expect(n).toBeGreaterThanOrEqual(3); // 3 fixture của chính test này
+        expect(sqlSeen).toMatch(/MAX_EXECUTION_TIME\(\d+\)/); // MySQL tự huỷ nếu câu chạy quá lâu
+      } finally { pool.query = orig; }
+    });
 
     it('5 request ĐỒNG THỜI chỉ chạy 1 COUNT (dedup in-flight) — trước đây là 5 COUNT chồng nhau', async () => {
       const pool = (m as any).pool;
@@ -75,7 +108,7 @@ describe('queryLocalProducts tren sh_product_list', () => {
       const orig = pool.query.bind(pool);
       let bgDone = false;
       pool.query = async (sql: any, ...rest: any[]) => {
-        if (typeof sql === 'string' && sql.startsWith('SELECT COUNT(*) AS n FROM sh_product_list')) {
+        if (typeof sql === 'string' && /COUNT\(\*\) AS n FROM sh_product_list/.test(sql)) { // khớp cả khi có hint MAX_EXECUTION_TIME
           await new Promise((r) => setTimeout(r, 1500)); // giả lập COUNT chậm như trên prod
           const out = await orig(sql, ...rest); bgDone = true; return out;
         }
