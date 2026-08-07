@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { isAbsolute, resolve } from 'path';
@@ -124,6 +124,7 @@ export class TrafficService {
     const available = this.getAvailableProxies();
     const proxyAttempts = Math.min(available.length, MAX_PROXY_ATTEMPTS);
     let lastError: unknown;
+    let clientError: Error | null = null; // 4xx của AITDK — xem ghi chú ở nhánh dưới
 
     for (let attempt = 0; attempt <= proxyAttempts; attempt++) {
       const proxy = attempt < proxyAttempts ? this.nextProxy() : null;
@@ -141,13 +142,25 @@ export class TrafficService {
           await this.delay(5_000);
           continue;
         }
+        // Body của AITDK ĐÃ nằm trong `text` ở trên — kèm nó vào message. Trước đây chỉ ném
+        // "AITDK HTTP 400", tức vứt đúng phần giải thích tại sao 400 (sai signature? timestamp lệch?
+        // domain không hợp lệ?) → 2026-08-07 phải soi tận code mới biết body bị bỏ. An toàn: secret
+        // KHÔNG nằm trong response (request chỉ gửi hash signature), và đã cắt còn 200 ký tự.
+        const detail = text.replace(/\s+/g, ' ').trim().slice(0, 200);
+
+        // 4xx (trừ 429 đã xử lý ở trên) = AITDK từ chối CHÍNH REQUEST/DOMAIN, không phải lỗi đường
+        // truyền. Trước đây nhánh này rơi chung vào `!response.ok`: markProxyFailed + `continue` →
+        // (1) proxy KHOẺ bị đánh dấu chết oan chỉ vì một domain sai chính tả, làm hỏng trạng thái cả
+        // pool, và (2) vẫn nướng thêm MAX_PROXY_ATTEMPTS lượt gọi dù đổi proxy không bao giờ sửa được
+        // 4xx. Nay: DỪNG ngay, KHÔNG đổ lỗi cho proxy, và trả 400 cho client thay vì 502 — vì 502
+        // ("Bad Gateway") khiến người dùng tưởng hạ tầng sập, trong khi lỗi nằm ở tham số gửi lên.
+        if (response.status >= 400 && response.status < 500) {
+          clientError = new BadRequestException(`AITDK từ chối yêu cầu — HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+          break;
+        }
+
         if (!response.ok) {
           if (proxy) this.markProxyFailed(proxy);
-          // Body của AITDK ĐÃ nằm trong `text` ở trên — kèm nó vào message. Trước đây chỉ ném
-          // "AITDK HTTP 400", tức vứt đúng phần giải thích tại sao 400 (sai signature? timestamp lệch?
-          // domain không hợp lệ?) → 2026-08-07 phải soi tận code mới biết body bị bỏ. An toàn: secret
-          // KHÔNG nằm trong response (request chỉ gửi hash signature), và đã cắt còn 200 ký tự.
-          const detail = text.replace(/\s+/g, ' ').trim().slice(0, 200);
           lastError = new Error(`AITDK HTTP ${response.status}${detail ? ` — ${detail}` : ''} (${proxy ? 'qua proxy' : 'gọi trực tiếp'})`);
           continue;
         }
@@ -166,6 +179,9 @@ export class TrafficService {
       }
     }
 
+    // 4xx đi trước: nó là kết luận CHẮC CHẮN (đổi proxy/thử lại không đổi được gì), còn lastError chỉ là
+    // lỗi tạm của lượt cuối. Ném 400 để phân biệt "yêu cầu sai" với "không gọi được AITDK" (502).
+    if (clientError) throw clientError;
     throw new BadGatewayException(lastError instanceof Error ? lastError.message : 'Không gọi được AITDK');
   }
 
