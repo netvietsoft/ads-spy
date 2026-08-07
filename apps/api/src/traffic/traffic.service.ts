@@ -143,7 +143,12 @@ export class TrafficService {
         }
         if (!response.ok) {
           if (proxy) this.markProxyFailed(proxy);
-          lastError = new Error(`AITDK HTTP ${response.status}`);
+          // Body của AITDK ĐÃ nằm trong `text` ở trên — kèm nó vào message. Trước đây chỉ ném
+          // "AITDK HTTP 400", tức vứt đúng phần giải thích tại sao 400 (sai signature? timestamp lệch?
+          // domain không hợp lệ?) → 2026-08-07 phải soi tận code mới biết body bị bỏ. An toàn: secret
+          // KHÔNG nằm trong response (request chỉ gửi hash signature), và đã cắt còn 200 ký tự.
+          const detail = text.replace(/\s+/g, ' ').trim().slice(0, 200);
+          lastError = new Error(`AITDK HTTP ${response.status}${detail ? ` — ${detail}` : ''} (${proxy ? 'qua proxy' : 'gọi trực tiếp'})`);
           continue;
         }
         const result = this.parseSse(text);
