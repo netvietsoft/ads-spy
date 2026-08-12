@@ -9,6 +9,25 @@ export const CURRENCY_USD: Record<string, number> = {
   EGP: 0.019488, NGN: 0.000728503, UAH: 0.022335, KES: 0.0077332, PKR: 0.0036015, BDT: 0.0081028,
 };
 
+// Biểu thức SQL nhân doanh thu (tiền tệ gốc) × tỉ giá → USD, theo mã tiền tệ ở curExpr.
+// Số trong CASE là hằng trong file này (không phải input) → an toàn về SQL injection.
+// Đặt ở đây (không phải sh.mysql.ts) để sh.shop-derived.ts dùng được mà không vòng import.
+export function rateCaseSql(curExpr: string): string {
+  const cases = Object.entries(CURRENCY_USD).filter(([k]) => k !== 'USD').map(([k, v]) => `WHEN '${k}' THEN ${v}`).join(' ');
+  return `CASE UPPER(${curExpr}) ${cases} ELSE 1 END`;
+}
+
+// Dấu nhận dạng bảng tỉ giá hiện tại. Cột dẫn xuất quy đổi USD được ghi kèm dấu này vào COMMENT của cột,
+// nhờ vậy phát hiện được khi bảng tỉ giá trong code đã đổi mà cột trong DB vẫn tính theo tỉ giá CŨ —
+// trường hợp đó index chứa giá trị sai và sắp xếp sẽ sai mà không có dấu hiệu nào.
+export const RATE_TAG: string = Object.entries(CURRENCY_USD)
+  .map(([k, v]) => `${k}${v}`)
+  .join('')
+  .split('')
+  .reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)
+  .toString(36)
+  .replace('-', 'z');
+
 export function rateUsd(currency?: string | null): number {
   return CURRENCY_USD[String(currency || 'USD').toUpperCase().trim()] ?? 1;
 }

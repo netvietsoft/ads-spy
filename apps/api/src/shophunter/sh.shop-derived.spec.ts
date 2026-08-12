@@ -1,4 +1,4 @@
-import { SHOP_DERIVED_COLUMNS, SHOP_DERIVED_INDEXES, buildShopDerivedAlter } from './sh.shop-derived';
+import { SHOP_DERIVED_COLUMNS, SHOP_SORT_COLUMNS, SHOP_DERIVED_INDEXES, buildShopDerivedAlter } from './sh.shop-derived';
 import { SHOP_LOCAL_SORTS } from './sh.mysql';
 
 // Cột THẬT của sh_shop mà biểu thức sắp xếp được phép nhắc tới (ngoài các cột dẫn xuất).
@@ -14,7 +14,7 @@ function columnsIn(expr: string): string[] {
 }
 
 describe('sh.shop-derived', () => {
-  const derivedNames = SHOP_DERIVED_COLUMNS.map((c) => c.name);
+  const derivedNames = [...SHOP_DERIVED_COLUMNS, ...SHOP_SORT_COLUMNS].map((c) => c.name);
 
   it('không còn biểu thức sắp xếp nào đọc raw JSON', () => {
     // Đây là toàn bộ mục đích của thay đổi: sort/lọc trên sh_shop chạm cột nhỏ, không mở LONGTEXT.
@@ -44,9 +44,33 @@ describe('sh.shop-derived', () => {
     }
   });
 
-  it('mọi cột đều là STORED, không VIRTUAL', () => {
-    // VIRTUAL tính lúc đọc → vẫn phải mở raw, tức không sửa được gì.
+  it('cột bóc từ raw phải STORED; cột sắp xếp phải VIRTUAL', () => {
+    // Bóc từ raw: VIRTUAL sẽ tính lúc đọc → vẫn phải mở LONGTEXT, tức không sửa được gì ⇒ phải STORED.
     for (const c of SHOP_DERIVED_COLUMNS) expect(`${c.name}: ${c.def}`).toContain('STORED');
+    // Cột sắp xếp: chỉ tính từ các cột nhỏ nên VIRTUAL là đủ, và VIRTUAL mới thêm được mà KHÔNG chép lại
+    // bảng (STORED thì phải chép — lần đầu đã ngốn ~3,8 giờ trên prod). Giá trị nằm trong index.
+    for (const c of SHOP_SORT_COLUMNS) {
+      expect(`${c.name}: ${c.def}`).toContain('VIRTUAL');
+      expect(`${c.name}: ${c.def}`).not.toContain('STORED');
+    }
+  });
+
+  it('chỉ thêm cột sắp xếp/index → ALTER phải khai ALGORITHM=INPLACE', () => {
+    // Chốt an toàn: MySQL báo lỗi ngay nếu không làm được tại chỗ, thay vì âm thầm chép bảng 2,4 GB.
+    // Thiếu chốt này ở lần đầu (2026-08-12) nên prod mất ~3,8 giờ và API chết theo.
+    const sql = buildShopDerivedAlter(SHOP_SORT_COLUMNS.map((c) => c.name), SHOP_DERIVED_INDEXES.map((i) => i.name))!;
+    expect(sql).toContain('ALGORITHM=INPLACE'); // chốt: MySQL báo lỗi ngay nếu buộc phải COPY
+  });
+
+  it('có cột STORED thì KHÔNG được khai INPLACE', () => {
+    // Khai INPLACE trong khi MySQL buộc phải COPY thì ALTER lỗi — cài đặt mới sẽ không dựng được bảng.
+    const sql = buildShopDerivedAlter(['revenue_month'], [])!;
+    expect(sql).not.toContain('ALGORITHM');
+  });
+
+  it('mọi index đều trỏ vào một cột có thật', () => {
+    const known = new Set([...derivedNames, ...REAL_COLS, 'revenue']);
+    for (const i of SHOP_DERIVED_INDEXES) expect(`${i.name} → ${i.col}`).toBe(known.has(i.col) ? `${i.name} → ${i.col}` : `${i.name} → cột không tồn tại: ${i.col}`);
   });
 
   it('gộp mọi cột thiếu vào ĐÚNG MỘT câu ALTER', () => {

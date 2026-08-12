@@ -3,14 +3,11 @@ import mysql from 'mysql2/promise';
 import { ShBlockedError } from './sh.client';
 import { PrismaService } from '../prisma.service';
 import { rawToListRow, listRowTuple, LIST_COLS, ListRow } from './sh.product-list';
-import { CURRENCY_USD } from './sh.currency';
-import { SHOP_DERIVED_COLUMNS, SHOP_DERIVED_INDEXES, SHOP_DERIVED_AUTO_ALTER_MAX_MB, buildShopDerivedAlter } from './sh.shop-derived';
-
-// Biểu thức SQL nhân doanh thu (tiền tệ gốc) × tỉ giá → USD, theo mã tiền tệ ở curExpr. Số trong CASE là hằng code → an toàn.
-function rateCaseSql(curExpr: string): string {
-  const cases = Object.entries(CURRENCY_USD).filter(([k]) => k !== 'USD').map(([k, v]) => `WHEN '${k}' THEN ${v}`).join(' ');
-  return `CASE UPPER(${curExpr}) ${cases} ELSE 1 END`;
-}
+import { rateCaseSql, RATE_TAG } from './sh.currency';
+import {
+  SHOP_DERIVED_COLUMNS, SHOP_SORT_COLUMNS, SHOP_DERIVED_INDEXES,
+  SHOP_DERIVED_AUTO_ALTER_MAX_MB, buildShopDerivedAlter,
+} from './sh.shop-derived';
 
 type Table = 'sh_shop' | 'sh_product';
 
@@ -29,12 +26,14 @@ const SHOP_CUR_EXPR = 'COALESCE(storefront_currency, shop_currency)';
 // đúng loại bug mà reconcileShopRevenue() phải đi vá. Nhân lúc chạy trên hai cột nhỏ tốn ~300ms (đo 2026-08-12,
 // so với 9.165ms khi đọc JSON) và LUÔN đúng. Đổi lại: biểu thức có phép nhân nên không index được — chấp nhận.
 const usdRevExpr = (col: string) => `(${col} * ${rateCaseSql(SHOP_CUR_EXPR)})`;
-// Vế phải là CỘT DẪN XUẤT (STORED GENERATED, xem sh.shop-derived.ts), không còn JSON_EXTRACT(raw, …).
-// Giá trị y hệt biểu thức JSON cũ nên thứ tự sắp xếp không đổi — chỉ khác là không phải mở LONGTEXT nữa.
+// Mọi vế phải là MỘT TÊN CỘT CÓ INDEX (xem sh.shop-derived.ts) — không phải biểu thức.
+// Đây là điều kiện để MySQL dùng được index: đo prod 2026-08-12 trên cùng một câu LIMIT 100,
+// cột có index 3,0s / cột không index 245s (bảng 2,4 GB, buffer pool chỉ 128 MB nên tất cả đọc từ đĩa).
+// Ngoại lệ duy nhất là `aff` — biểu thức, không index, nhưng gần như không ai sort theo nó.
 export const SHOP_LOCAL_SORTS: Record<string, string> = {
-  revenue_day: usdRevExpr('revenue_day'),
-  revenue_week: usdRevExpr('revenue_week'),
-  revenue_month: usdRevExpr('revenue_month'),
+  revenue_day: 'revenue_usd_day',
+  revenue_week: 'revenue_usd_week',
+  revenue_month: 'revenue_usd_month',
   growth_day: 'growth_day',
   growth_week: 'growth_week',
   growth_month: 'growth_month',
@@ -45,7 +44,7 @@ export const SHOP_LOCAL_SORTS: Record<string, string> = {
   fetched_at: 'fetched_at',
   aff: "((affiliate_status='yes')*2 + (affiliate_status='app'))", // sort Aff: yes(link) > app(cài) > no
   // "Tăng trưởng đều" = sàn tăng trưởng thấp nhất trong 3 kỳ (ngày/tuần/tháng) — cao = tăng ổn định mọi mốc, không phải spike 1 kỳ.
-  growth_steady: 'LEAST(growth_day, growth_week, growth_month)',
+  growth_steady: 'growth_steady',
 };
 export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   revenue_day: 'revenue_day', revenue_week: 'revenue_week', revenue_month: 'revenue_month',
@@ -53,10 +52,16 @@ export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   // "Doanh số đều" = doanh thu/ngày thấp nhất quy đổi từ 3 kỳ — cao = bán đều mỗi ngày, không phải bán dồn 1 đợt.
   revenue_steady: 'LEAST(COALESCE(revenue_day,0), COALESCE(revenue_week,0)/7, COALESCE(revenue_month,0)/30)',
 };
+// DESC (mặc định, và là chiều gần như luôn được dùng) sinh ra ORDER BY MỘT khoá duy nhất → dùng được index.
+// Trước đây luôn thêm vế `(expr) IS NULL` ở đầu, và **chính vế đó chặn index**: ORDER BY hai khoá thì MySQL
+// bỏ index và filesort toàn bảng. Với DESC nó còn là vế DƯ — MySQL vốn đã xếp NULL xuống CUỐI khi DESC,
+// nên bỏ đi cho kết quả y hệt. Đo prod 2026-08-12: cột có index 3,0s so với 245s khi phải quét bảng.
+// ASC thì NULL nằm TRƯỚC nên vẫn cần vế đó để đẩy NULL xuống cuối; ASC hiếm dùng nên chấp nhận filesort.
 export function buildOrderBy(sort: string, dir: string, map: Record<string, string>, def: string): string {
   const expr = Object.prototype.hasOwnProperty.call(map, sort) ? map[sort] : map[def];
-  const d = String(dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-  return `ORDER BY (${expr}) IS NULL, (${expr}) ${d}`;
+  return String(dir).toLowerCase() === 'asc'
+    ? `ORDER BY (${expr}) IS NULL, ${expr} ASC`
+    : `ORDER BY ${expr} DESC`;
 }
 
 export interface HarvestState {
@@ -494,15 +499,28 @@ export class ShMysql implements OnModuleInit {
   // Log ở CẢ HAI đầu là cố ý: sự cố 2026-08-07 tốn nhiều lượt hỏi-đáp chỉ vì "API treo" mà log không nói vì sao.
   private async ensureShopDerived(pool: mysql.Pool): Promise<void> {
     const [cols] = await pool.query(
-      "SELECT COLUMN_NAME n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sh_shop'",
+      "SELECT COLUMN_NAME n, COLUMN_COMMENT c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sh_shop'",
     );
     const [idx] = await pool.query(
       "SELECT DISTINCT INDEX_NAME n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sh_shop'",
     );
-    const haveCol = new Set((cols as any[]).map((r) => r.n));
+    const haveCol = new Map((cols as any[]).map((r) => [r.n as string, String(r.c || '')]));
     const haveIdx = new Set((idx as any[]).map((r) => r.n));
-    const missingCols = SHOP_DERIVED_COLUMNS.map((c) => c.name).filter((n) => !haveCol.has(n));
+    const wanted = [...SHOP_DERIVED_COLUMNS, ...SHOP_SORT_COLUMNS];
+    const missingCols = wanted.map((c) => c.name).filter((n) => !haveCol.has(n));
     const missingIdx = SHOP_DERIVED_INDEXES.map((i) => i.name).filter((n) => !haveIdx.has(n));
+    // Cột quy đổi USD tính theo bảng tỉ giá TẠI THỜI ĐIỂM tạo. Đổi CURRENCY_USD mà không dựng lại cột thì
+    // index vẫn giữ giá trị theo tỉ giá cũ → sắp xếp sai mà KHÔNG có dấu hiệu nào. COMMENT mang dấu tỉ giá.
+    const staleRates = SHOP_SORT_COLUMNS
+      .filter((c) => c.def.includes('rates=') && haveCol.has(c.name) && haveCol.get(c.name) !== `rates=${RATE_TAG}`)
+      .map((c) => c.name);
+    if (staleRates.length) {
+      // CHỈ báo động, KHÔNG tự dựng lại: đây là việc của người vận hành (chạy migration), vì nó dựng lại index.
+      console.error(
+        `[ShMysql] sh_shop: bảng tỉ giá trong code đã đổi nhưng cột ${staleRates.join(', ')} còn tính theo tỉ giá CŨ ` +
+          '→ sắp xếp theo doanh thu USD đang SAI. Chạy: npm run migrate:sh-shop --workspace @gas/api',
+      );
+    }
     const sql = buildShopDerivedAlter(missingCols, missingIdx);
     if (!sql) return;
 
@@ -1125,9 +1143,14 @@ export class ShMysql implements OnModuleInit {
       `SELECT shop_id, raw, storefront_currency, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path, affiliate_status, affiliate_link FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, o.limit, o.offset],
     );
-    const [cnt] = await this.pool!.query(`SELECT COUNT(*) AS n FROM sh_shop ${whereSql}`, params);
+    // COUNT qua cachedCount y như queryLocalProducts. Trước đây chỗ này gọi `SELECT COUNT(*)` TRỰC TIẾP:
+    // đo local chỉ 687ms nên đã bị bỏ qua, nhưng đo PROD 2026-08-12 là **22,9 GIÂY** — cộng thẳng vào
+    // mỗi lần tải trang. Lý do local nhanh: bảng 1 GB nằm trong buffer pool; prod bảng 2,4 GB mà
+    // innodb_buffer_pool_size chỉ **128 MB** (chứa 5%) nên COUNT phải quét index từ đĩa.
+    // cachedCount: không lọc → số ƯỚC LƯỢNG tức thì; có lọc → COUNT thật + cache 5' + stale-while-revalidate.
+    const total = await this.cachedCount('sh_shop', whereSql, params, 300000);
     const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at), _up_category: r.up_category ?? null, _up_category_path: r.up_category_path ?? null, _affiliate: r.affiliate_status ?? null, _affiliate_link: r.affiliate_link ?? null, _storefront_currency: r.storefront_currency ?? null })); // eslint-disable-line
-    return { items, total: Number((cnt as any[])[0].n) || 0 };
+    return { items, total };
   }
 
   // Đọc bảng list nhẹ sh_product_list (không JSON, có FULLTEXT ft_name + index revenue/price/country/category) — nhanh cho sort/lọc/tìm.
