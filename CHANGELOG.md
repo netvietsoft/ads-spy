@@ -63,6 +63,34 @@ Test `sh.shop-derived.spec.ts` chặn 4 hồi quy tốn kém: biểu thức sort
 (chỉ lộ ra thành lỗi 500 lúc chạy), dùng lại `CAST` thay `JSON_VALUE`, và tách ALTER thành nhiều câu
 (mỗi câu là một lần chép lại bảng 1 GB).
 
+### Phát hiện lớn hơn cả: prod đi qua Cloudflare **Tunnel**, không phải DNS → nginx
+
+Truy vụ `Unexpected token '<', "<!DOCTYPE "` ở Local DB shop tới cùng thì ra nguyên nhân chẳng liên quan
+gì tới `sh_shop`: **`/backend-api/*` chưa bao giờ tới nginx.**
+
+VPS chạy **9 Cloudflare Tunnel**. Tunnel của dự án (`cloudflared-tunnel-ads-spy.service`) có Public
+Hostname `mmo-coin.com` trỏ **thẳng vào Next `localhost:3062`**, nên nginx bị bỏ qua hoàn toàn:
+
+- `/api/*` → Next → rewrite của Next → API ⇒ **chạy** (nên đăng nhập bình thường, càng khó nghi)
+- `/backend-api/*` → Next → không có route ⇒ trả HTML/307 về `/login` ⇒ FE parse HTML thành JSON
+
+⇒ **Commit `f87e6c5` ("API dưới `/backend-api/*` → backend TRỰC TIẾP, bỏ Next khỏi đường API") chưa hề
+có hiệu lực kể từ 2026-08-07.** Thứ thật sự gánh việc suốt thời gian đó là
+`experimental.proxyTimeout = 180000`. Sửa bằng cách đổi Public Hostname sang `http://localhost:80` — sau
+đó `/backend-api/api/health` trả `200 application/json`, và giai đoạn "bỏ Next khỏi đường API" mới xong thật.
+
+**Bài học về phương pháp, quan trọng hơn bản thân bug.** Suốt nhiều lượt tôi dùng
+`curl -H 'Host: mmo-coin.com' http://127.0.0.1/…` → 200 để kết luận "nginx đúng rồi". Trên máy có tunnel,
+phép thử đó **không chứng minh gì**: nó đo đường mà lưu lượng thật không đi qua. Tôi đã đo cái mình *tưởng*
+đang chạy chứ không phải cái *đang* chạy. Phép thử đúng là **probe** — gắn chuỗi lạ vào URL rồi tìm trong
+access log của nginx; nó trả lời trực tiếp câu "request có tới nginx không". Cũng đừng tin
+`?x=<timestamp>` để loại trừ cache Cloudflare: nếu bật "ignore query string" thì thêm tham số vẫn ra đúng
+object đã cache — tôi đã đưa phép thử đó như bằng chứng dứt khoát, điều đó sai.
+
+Đã ghi vào [`docs/deployment.md` §1](docs/deployment.md) (sơ đồ đường đi + cách probe) và cảnh báo ở đầu
+[`deploy/nginx-mmo-coin.conf`](deploy/nginx-mmo-coin.conf) — repo trước đây **không hề nhắc tới tunnel**,
+đó là lý do gốc khiến việc chẩn đoán đi sai hướng.
+
 ### Sự cố khi deploy chính thay đổi này — API chết ~110 phút, và hai lớp vá
 
 **Diễn biến:** migration đang chép bảng thì `pm2 restart ads-spy-api` được chạy. Tiến trình mới đứng chờ

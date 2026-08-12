@@ -23,6 +23,45 @@
 | `ads-spy-api` | `./apps/api` | `dist/main.js` (Node trực tiếp) | **8075** | `api.mmo-coin.com` |
 | `ads-spy-web` | `./apps/web` | `../../node_modules/next/dist/bin/next start -p 3062` (binary `next` hoisted, KHÔNG qua script `start` của `apps/web/package.json` — script đó tự set `-p 3101`) | **3062** | `mmo-coin.com` |
 
+### ⚠️ Đường đi của lưu lượng: Cloudflare **Tunnel**, KHÔNG phải DNS trỏ vào IP
+
+**Đây là thứ quan trọng nhất của mục này. Thiếu nó là chẩn đoán sai hàng giờ (đã xảy ra 2026-08-12).**
+
+```
+Trình duyệt → Cloudflare → cloudflared (Tunnel) → nginx :80 → ┬→ /backend-api/* → API :8075
+                                                              └→ /*             → Next :3062
+```
+
+- VPS **không mở cổng 443** (`ss -tlnp` chỉ thấy nginx ở `:80`). HTTPS do Cloudflare đảm nhiệm, còn
+  cloudflared nối ra Cloudflare bằng kết nối đi (outbound) — **không có cổng nào vào từ Internet**.
+- Tunnel của dự án là service systemd **`cloudflared-tunnel-ads-spy.service`**, chạy dạng
+  `tunnel run --token …` ⇒ **mapping nằm trên dashboard**, KHÔNG có file cấu hình nào trên VPS. Sửa ở:
+  **Zero Trust → Networks → Tunnels → Ads-Spy → Configure → Public Hostname**.
+  (`/etc/cloudflared/config.yml` trên máy này là của tunnel KHÁC — love-pdf/runscribe. Đừng sửa nhầm.)
+- Public Hostname `mmo-coin.com` **PHẢI trỏ `http://localhost:80`** (nginx). Nếu trỏ thẳng
+  `http://localhost:3062` (Next) thì **toàn bộ cấu hình nginx bị bỏ qua** — kể cả khối
+  `location ^~ /backend-api/`, timeout 180s và `client_max_body_size 20m`.
+- VPS chạy **9 tunnel** cho nhiều dự án khác nhau. Token tunnel là **thông tin xác thực** — đừng in ra
+  (`pgrep -a cloudflared` in trọn token vào terminal).
+
+> **Sự cố 2026-08-12 — vì sao mất nhiều giờ:** `mmo-coin.com` trỏ thẳng vào Next, nên `/backend-api/*`
+> rơi vào Next → không có route → trả HTML/307 về `/login` → FE parse HTML thành JSON →
+> `Unexpected token '<', "<!DOCTYPE "`. Trong khi đó `/api/*` vẫn chạy (Next tự rewrite sang API) nên
+> đăng nhập bình thường, càng khó nghi. Hệ quả nặng hơn: commit `f87e6c5` "bỏ Next khỏi đường API"
+> **chưa bao giờ có hiệu lực** kể từ 2026-08-07 — thứ đang gánh việc là `experimental.proxyTimeout`.
+>
+> Cách chẩn đoán SAI đã dùng: `curl -H 'Host: mmo-coin.com' http://127.0.0.1/…` trả 200 rồi kết luận
+> "nginx đúng". Trên máy có tunnel, phép thử đó **không chứng minh gì** — nó đo đường mà lưu lượng thật
+> không đi qua.
+>
+> **Cách ĐÚNG — probe: gắn chuỗi lạ vào URL rồi tìm nó trong log nginx.** Đây là phép thử duy nhất trả
+> lời được "Cloudflare có thật sự đi qua nginx không":
+>
+> ```bash
+> curl -s -o /dev/null "https://mmo-coin.com/api/health?probe=PROBE1"; sleep 2
+> sudo grep -rl "PROBE1" /var/log/nginx/ || echo "KHONG THAY -> Cloudflare khong di qua nginx"
+> ```
+
 - **MySQL trên VPS**: cài qua `sudo apt-get install -y mysql-server` — chạy như **service hệ thống
   thật** (systemd), khác hẳn máy dev Windows (xem mục 6).
 - Repo public trên GitHub (`netvietsoft/ads-spy`) → **không bao giờ hardcode mật khẩu/token** vào
