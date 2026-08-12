@@ -4,6 +4,75 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-12 (phần 2) — index hoá sắp xếp: 245s → 2ms, và ba hồi quy tự tạo phải vá ngay
+
+Phần 1 (dưới) bỏ được việc đọc `raw`, nhưng **chưa đủ trên prod**. Đo prod (`sh_shop` 49.186 dòng /
+2.402 MB, `innodb_buffer_pool_size` **chỉ 128 MB** = chứa 5% bảng ⇒ mọi thứ đọc từ đĩa):
+
+| Câu | Thời gian |
+|---|---|
+| `ORDER BY revenue` — **có** index | **3,0s** |
+| `ORDER BY revenue_month` — **không** index | **108s**, lần hai **245s** |
+| `SELECT COUNT(*)` (gọi MỖI request, không cache) | **22,9s** |
+
+⇒ Ở kích thước này, "có index hay không" quyết định tất cả: index scan đọc đúng `LIMIT` dòng, quét bảng
+đọc trọn 2,4 GB.
+
+**Ba việc đã làm:**
+
+1. **Cột sắp xếp `VIRTUAL` generated + 14 index** — `revenue_usd_month/week/day` (= `revenue_X` × tỉ giá),
+   `growth_steady`. `VIRTUAL` nên `ADD COLUMN` chỉ là metadata và `ADD INDEX` là `INPLACE`: quét bảng MỘT
+   lượt, **không chép lại 2,4 GB** như nhóm `STORED` (đã ngốn 3,8 giờ). Đo local: 696s cho 4 cột + 11 index.
+2. **`buildOrderBy` nhánh DESC bỏ vế `(expr) IS NULL`** — vế đó là khoá sắp xếp THỨ HAI, và **hai khoá là
+   MySQL bỏ index**. Với DESC nó còn dư (MySQL vốn xếp NULL xuống cuối). `EXPLAIN` sau khi sửa:
+   `type=index key=idx_sh_shop_rev_usd_month rows=100 Backward index scan; Using index`.
+3. **Lọc bậc doanh thu, sắp xếp, báo cáo bậc và số hiển thị nay dùng CHUNG `revenue_usd_month`.** Trước đó
+   lọc theo cột `revenue` (app ghi, `COALESCE` giữ giá trị CŨ khi raw mới thiếu field) còn sắp xếp/hiển thị
+   theo `revenue_month` (generated, luôn theo raw hiện tại) ⇒ bấm bậc "10k–50k" có thể ra shop mà cột Tháng
+   hiện `—`. Phát hiện bởi rà soát đối kháng.
+
+Kết quả local: DT tháng 178ms · DT tuần 2ms · tăng trưởng 2ms · tăng trưởng đều 2ms · FB 2ms · lọc US +
+DT tháng 361ms. Giá trị quy đổi khớp chính xác: GBP 10.560.295 × 1,3374 = 14.123.338,53.
+
+### Ba hồi quy do chính tôi tạo ra trong lúc sửa — và cái gì bắt được chúng
+
+| Hồi quy | Ai bắt được | Hậu quả nếu lọt |
+|---|---|---|
+| `exactCount` chạy dưới `MAX_EXECUTION_TIME(15000)` **không có try/catch** | rà soát đối kháng (viết test chứng minh) | COUNT quá hạn → MySQL trả LỖI → lan tới controller (không try/catch) → **HTTP 500, danh sách rỗng, vĩnh viễn** vì cache không bao giờ ấm |
+| Nhánh không lọc trả thẳng số ước lượng InnoDB | **người dùng, ngay sau deploy** | Web hiện "24k shop" trong khi có 49k (ước lượng 24.983 vs đếm thật 49.186 — **lệch 49%**), phân trang dừng ở nửa dữ liệu |
+| Sửa hồi quy trên bằng "đếm thật ở nền" | **một test CŨ** | Suýt bật lại sự cố 2026-08-07: COUNT không lọc trên `sh_product_list` (prod 18,17M dòng) chạy >2,4 GIỜ, mỗi restart phóng thêm một zombie |
+
+Cái thứ ba đáng ghi nhất: bản sửa **đúng cho `sh_shop`** (49k dòng, ước lượng lệch 49% nên phải đếm thật)
+nhưng **sai cho `sh_product_list`** (18M dòng, đếm thật không bao giờ xong). Nay chốt theo **kích thước
+bảng** (`COUNT_EXACT_MAX_ROWS = 500_000`), không phải một quy tắc chung: bảng vừa thì đếm thật ở nền (hạn
+120s vì 15s không đủ cho 22,9s), bảng lớn thì tuyệt đối không chạm COUNT.
+
+**Ba bài học lặp lại cùng một kiểu — đo local rồi kết luận cho prod:**
+
+| | Local | Prod |
+|---|---|---|
+| Thời gian ALTER | 27 phút | **3,8 giờ** |
+| `COUNT(*)` không lọc | 687ms → "không phải nút thắt" | **22,9s** mỗi request |
+| Sai số ước lượng InnoDB | không ai để ý | **lệch 49%** → hiện 24k thay vì 49k |
+
+Chính `sh.mysql.ts` đã có sẵn dòng *"đừng suy ra chi phí prod từ số đo local"* — vấp ba lần trong một ngày.
+
+**Chốt an toàn mới, để lần sau lỗi tự lộ ra thay vì âm thầm:**
+
+- Câu ALTER chỉ-VIRTUAL khai `ALGORITHM=INPLACE, LOCK=SHARED` → MySQL **báo lỗi ngay** nếu buộc phải COPY.
+  Thử `LOCK=NONE` thì MySQL 8.4 từ chối tức thì: *"LOCK=NONE is not supported. Reason: ADD COLUMN
+  col...VIRTUAL, ADD INDEX(col)."* — đúng loại phản hồi tức thì mà lần đầu không có.
+- Cột quy đổi USD mang `COMMENT rates=<RATE_TAG>`: đổi `CURRENCY_USD` mà không chạy lại migration thì index
+  giữ giá trị theo tỉ giá CŨ và sắp xếp sai **không có dấu hiệu nào** — nay script tự dựng lại, app log lỗi.
+
+**Bonus tìm thấy khi test timeout:** 6 chỗ vẫn `JSON_UNQUOTE(JSON_EXTRACT(raw,'$.url'))` trong khi
+`shop_url` đã là cột STORED từ phần 1 — tôi thêm cột rồi quên dùng. Đổi sang cột: suite catalog từ
+**timeout >60s xuống 12s**, và đó cũng là câu job catalog/affiliate chạy trên prod.
+
+Test: **85/85 suite · 667/667**. `sh.mysql.count.spec.ts` khoá cả ba hồi quy trên.
+
+---
+
 ## 2026-08-12 — Local DB shop: bỏ hẳn việc đọc JSON `raw` khi sắp xếp/lọc (9.165ms → 293ms)
 
 **Triệu chứng:** danh sách shop trong Local DB tải rất lâu, càng nhiều dữ liệu càng chậm.

@@ -142,10 +142,18 @@ export const ORDER_BUCKETS: { key: string; lo: number; hi: number | null }[] = [
 const ORDER_FIELD: Record<string, string> = {
   day: 'sale_count_day', week: 'sale_count_week', month: 'sale_count_month',
 };
-// Cột DOANH THU theo kỳ, đi cặp với ORDER_FIELD (báo cáo bậc số đơn cần cả hai).
-const REVENUE_FIELD: Record<string, string> = {
-  day: 'revenue_day', week: 'revenue_week', month: 'revenue_month',
+// Cột DOANH THU (đã quy đổi USD) theo kỳ, đi cặp với ORDER_FIELD — báo cáo bậc số đơn cần cả hai.
+// Dùng cột revenue_usd_* thay vì tự nhân tỉ giá: cùng một định nghĩa với bộ lọc bậc, với sắp xếp và với
+// số hiển thị ở FE, nên báo cáo và danh sách không thể lệch nhau nữa.
+const REVENUE_USD_FIELD: Record<string, string> = {
+  day: 'revenue_usd_day', week: 'revenue_usd_week', month: 'revenue_usd_month',
 };
+
+// Ngưỡng để cachedCount được phép đếm THẬT khi không có bộ lọc. Trên bảng lớn hơn ngưỡng thì chỉ dùng số
+// ước lượng — đếm thật ở đó không bao giờ xong và để lại COUNT zombie (sự cố 2026-08-07, xem cachedCount).
+// 500k nằm giữa hai thái cực đo được, cách xa cả hai đầu: sh_shop ~49k (BẮT BUỘC đếm thật, ước lượng lệch
+// 49%) và sh_product_list 4,5M ở local / 18,17M trên prod (TUYỆT ĐỐI không đếm).
+const COUNT_EXACT_MAX_ROWS = 500_000;
 
 export interface OrderBucketReport {
   buckets: { key: string; lo: number; hi: number | null }[];
@@ -534,8 +542,8 @@ export class ShMysql implements OnModuleInit {
     const mb = Math.round((Number((sz as any[])[0]?.b) || 0) / 1048576);
     if (mb > SHOP_DERIVED_AUTO_ALTER_MAX_MB) {
       console.error(
-        `[ShMysql] sh_shop (${mb} MB) thiếu ${missingCols.length} cột dẫn xuất nhưng KHÔNG tự ALTER: ` +
-          `bảng lớn hơn ${SHOP_DERIVED_AUTO_ALTER_MAX_MB} MB, chép lại sẽ mất rất lâu. ` +
+        `[ShMysql] sh_shop (${mb} MB) thiếu ${missingCols.length} cột dẫn xuất + ${missingIdx.length} index ` +
+          `nhưng KHÔNG tự ALTER: bảng lớn hơn ${SHOP_DERIVED_AUTO_ALTER_MAX_MB} MB, chép lại sẽ mất rất lâu. ` +
           'CHẠY TAY: npm run migrate:sh-shop --workspace @gas/api (xem docs/deployment.md §6.1). ' +
           'Tới lúc đó Local DB shop sẽ báo "Unknown column"; phần còn lại của API vẫn chạy bình thường.',
       );
@@ -778,7 +786,7 @@ export class ShMysql implements OnModuleInit {
   }
   async getShopUrl(shopId: string): Promise<string | null> {
     await this.ensureReady();
-    const [rows] = await this.pool!.query("SELECT JSON_UNQUOTE(JSON_EXTRACT(raw,'$.url')) url FROM sh_shop WHERE shop_id = ?", [shopId]);
+    const [rows] = await this.pool!.query("SELECT shop_url url FROM sh_shop WHERE shop_id = ?", [shopId]);
     return (rows as any[])[0]?.url || null;
   }
   async setStorefrontCurrency(shopId: string, currency: string): Promise<void> {
@@ -1119,9 +1127,14 @@ export class ShMysql implements OnModuleInit {
     if (o.aff) { where.push("affiliate_status IN ('yes','app')"); } // shop có affiliate (link công khai hoặc app đã cài)
     if (o.fav) { where.push('shop_id IN (SELECT shop_id FROM sh_fav_shop)'); } // chỉ shop đã thả tim
     // Lọc bậc doanh thu theo USD (khớp báo cáo bậc): revenue(gốc) × tỉ giá tiền tệ thật.
-    const revUsd = `(revenue * ${rateCaseSql(SHOP_CUR_EXPR)})`;
-    if (o.revMin != null) { where.push(`${revUsd} >= ?`); params.push(o.revMin); }
-    if (o.revMax != null) { where.push(`${revUsd} < ?`); params.push(o.revMax); }
+    // Lọc theo ĐÚNG cột dùng để sắp xếp và hiển thị. Trước đây lọc bằng `(revenue * tỉ giá)` — cột `revenue`
+    // do app ghi và merge bằng `COALESCE(VALUES(revenue), revenue)` nên giá trị CŨ sống sót khi raw mới thiếu
+    // field, còn `revenue_month` là generated nên luôn theo raw hiện tại. Hai cột lệch nhau ⇒ bấm bậc
+    // "10k-50k" có thể ra shop mà cột Tháng hiển thị "—" và bị đẩy xuống cuối, hoặc shop hiển thị $30.000
+    // lại không xuất hiện trong bậc đó. Phát hiện bởi rà soát đối kháng 2026-08-12.
+    // Đổi sang revenue_usd_month còn được thêm: cột này CÓ INDEX nên lọc bậc thành range scan thay vì quét bảng.
+    if (o.revMin != null) { where.push('revenue_usd_month >= ?'); params.push(o.revMin); }
+    if (o.revMax != null) { where.push('revenue_usd_month < ?'); params.push(o.revMax); }
     // Lọc theo số lượng SKU của shop.
     if (o.skuMin != null) { where.push('sku_count >= ?'); params.push(o.skuMin); }
     if (o.skuMax != null) { where.push('sku_count <= ?'); params.push(o.skuMax); }
@@ -1162,31 +1175,40 @@ export class ShMysql implements OnModuleInit {
     const ttl = whereSql ? ttlMs : Math.max(ttlMs, 1800000);
     const cached = this.countCache.get(key);
     if (cached && Date.now() - cached.t < ttl) return cached.n;
+    await this.ensureReady();
+
+    if (!whereSql) {
+      const est = await this.estimateRows(table).catch(() => 0);
+      // BẢNG QUÁ LỚN → TUYỆT ĐỐI không chạm COUNT thật, kể cả ở nền. Prod `sh_product_list` có 18,17M dòng:
+      // COUNT không lọc chạy **>2,4 GIỜ mà không xong**, và kill client KHÔNG huỷ truy vấn trong MySQL nên
+      // mỗi `pm2 restart` lại phóng thêm một zombie — 2026-08-07 đếm được 7 câu cùng chạy, giành hết I/O và
+      // bỏ đói cả truy vấn trên bảng 26k dòng. Ước lượng là con số duy nhất khả thi ở kích thước này.
+      if (est > COUNT_EXACT_MAX_ROWS) return est;
+      // BẢNG VỪA (sh_shop ~49k) → PHẢI đếm thật, vì ước lượng lệch quá nhiều để hiển thị: đo prod
+      // 2026-08-12 ước lượng 24.983 so với đếm thật 49.186 (**lệch 49%** — InnoDB suy từ vài trang mẫu, mà
+      // mỗi dòng ~96KB nên mẫu quá ít). Người dùng thấy "24k shop" trong khi có 49k và phân trang dừng ở
+      // nửa dữ liệu. Đếm ở NỀN nên không ai chờ (prod 22,9s), hạn 120s vì 15s không đủ.
+      void this.loadCount(key, table, whereSql, params, 120000).catch(() => 0);
+      return cached ? cached.n : est; // số cũ (dù hết hạn) vẫn chính xác hơn ước lượng
+    }
+
+    // CÓ LỌC: request đang chờ đúng con số này → đếm thật, hạn 15s.
+    const load = this.loadCount(key, table, whereSql, params, 15000);
+    if (cached) { load.catch(() => { /* giữ số cũ khi refresh lỗi */ }); return cached.n; }
+    return load;
+  }
+
+  // Chạy (hoặc tái dùng) một lượt đếm thật cho key này rồi ghi vào cache. Gộp các lần gọi trùng để nhiều
+  // request đồng thời chỉ sinh MỘT câu COUNT — thiếu chỗ này thì mỗi request là một câu quét bảng.
+  private loadCount(key: string, table: string, whereSql: string, params: any[], maxMs: number): Promise<number> {
     let load = this.countLoading.get(key);
     if (!load) {
       load = (async () => {
-        await this.ensureReady();
-        // Không lọc: COUNT thật vẫn đắt nhưng chạy ở NỀN (xem dưới) nên không ai phải chờ → cho hạn 120s,
-        // vì 15s KHÔNG đủ (prod đo 22,9s) và hết hạn thì lại rơi về số ước lượng lệch một nửa.
-        // Có lọc: có request đang chờ kết quả → giữ hạn 15s.
-        const n = await this.exactCount(table, whereSql, params, whereSql ? 15000 : 120000);
+        const n = await this.exactCount(table, whereSql, params, maxMs);
         this.countCache.set(key, { n, t: Date.now() });
         return n;
       })().finally(() => this.countLoading.delete(key));
       this.countLoading.set(key, load);
-    }
-    // Có số cũ → trả NGAY, để COUNT làm mới chạy nền. Request không bao giờ phải chờ COUNT nữa.
-    if (cached) { load.catch(() => { /* giữ số cũ khi refresh lỗi */ }); return cached.n; }
-
-    // Chưa có số nào và KHÔNG lọc → trả số ƯỚC LƯỢNG ngay, để COUNT thật chạy nền.
-    // Vì sao không trả luôn số ước lượng như trước: nó lệch QUÁ nhiều. Đo prod 2026-08-12 trên sh_shop —
-    // ước lượng 24.983 so với đếm thật 49.186, tức **lệch 49%**: InnoDB suy từ vài trang mẫu, mà bảng này
-    // mỗi dòng ~96KB nên số trang mẫu quá ít. Người dùng thấy "24k shop" trong khi có 49k, và phân trang
-    // dừng sớm ở nửa dữ liệu. Nay ước lượng chỉ dùng cho ĐÚNG request đầu sau restart; xong COUNT nền là
-    // mọi request sau có số chính xác.
-    if (!whereSql) {
-      load.catch(() => { /* COUNT nền lỗi thì lần sau thử lại */ });
-      return this.estimateRows(table).catch(() => 0);
     }
     return load;
   }
@@ -1471,7 +1493,9 @@ export class ShMysql implements OnModuleInit {
         const row = (r as any[])[0] || {};
         return REVENUE_BUCKETS.map((_, i) => Number(row['b' + i]) || 0);
       };
-      const shops = await countByBucket('sh_shop', `(revenue * ${rateCaseSql(SHOP_CUR_EXPR)})`);
+      // Cùng cột với bộ lọc bậc trong queryLocalShops và với số hiển thị ở FE — trước đây báo cáo đếm theo
+      // `revenue * tỉ giá` còn danh sách lọc theo cột khác, nên số trong báo cáo và số shop mở ra không khớp.
+      const shops = await countByBucket('sh_shop', 'revenue_usd_month');
       const products = await countByBucket('sh_product_list', 'revenue_month');
       return {
         buckets: REVENUE_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })),
@@ -1503,7 +1527,7 @@ export class ShMysql implements OnModuleInit {
     const agg = (rows as any[]).map((r) => ({ shopId: String(r.shop_id), orders: Number(r.orders) || 0 }));
     if (!agg.length) return [];
     const [srows] = await this.pool!.query(
-      "SELECT shop_id, shop_name, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) AS url FROM sh_shop WHERE shop_id IN (?)",
+      "SELECT shop_id, shop_name, shop_url AS url FROM sh_shop WHERE shop_id IN (?)",
       [agg.map((a) => a.shopId)],
     );
     const info = new Map((srows as any[]).map((r: any) => [String(r.shop_id), { shopTitle: r.shop_name ?? null, url: r.url ?? null }]));
@@ -1522,7 +1546,7 @@ export class ShMysql implements OnModuleInit {
         cntExpr = `${period}_count`; revExpr = `${period}_rev`; table = 'sh_product_sales';
       } else {
         cntExpr = ORDER_FIELD[period] || ORDER_FIELD.month;
-        revExpr = usdRevExpr(REVENUE_FIELD[period] || REVENUE_FIELD.month);
+        revExpr = REVENUE_USD_FIELD[period] || REVENUE_USD_FIELD.month;
         table = 'sh_shop';
       }
       // Tính cnt + rev(USD) MỘT LẦN/dòng trong subquery (tránh đánh giá rateCase 36 lần/dòng).
@@ -1760,8 +1784,8 @@ export class ShMysql implements OnModuleInit {
     const cutoff = Date.now() - staleMs;
     const [rows] = await this.pool!.query(
       // NULL (chưa từng sync) xếp đầu trong ASC → ưu tiên trước, rồi tới sync cũ nhất.
-      `SELECT shop_id, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) AS url FROM sh_shop
-        WHERE JSON_EXTRACT(raw, '$.url') IS NOT NULL
+      `SELECT shop_id, shop_url AS url FROM sh_shop
+        WHERE shop_url IS NOT NULL
           AND (catalog_synced_at IS NULL OR catalog_synced_at < ?)
           AND (catalog_status IS NULL OR catalog_status != 'blocked' OR catalog_synced_at < ?)
         ORDER BY catalog_synced_at ASC LIMIT ?`,
@@ -1894,8 +1918,8 @@ export class ShMysql implements OnModuleInit {
     await this.ensureReady();
     const cutoff = Date.now() - staleMs;
     const [rows] = await this.pool!.query(
-      `SELECT shop_id, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) AS url FROM sh_shop
-        WHERE JSON_EXTRACT(raw, '$.url') IS NOT NULL
+      `SELECT shop_id, shop_url AS url FROM sh_shop
+        WHERE shop_url IS NOT NULL
           AND (affiliate_checked_at IS NULL OR affiliate_checked_at < ?)
           AND (affiliate_status IS NULL OR affiliate_status != 'blocked' OR affiliate_checked_at < ?)
           AND COALESCE(affiliate_try_count, 0) < ${SH_AFF_MAX_TRIES}

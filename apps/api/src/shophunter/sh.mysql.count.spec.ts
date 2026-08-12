@@ -21,13 +21,13 @@ describe('ShMysql — đếm tổng: không được 500, cũng không được 
   };
 
   // pool giả: câu COUNT gọi onCount (ghi lại hạn MAX_EXECUTION_TIME), câu information_schema trả ước lượng.
-  const stub = (m: ShMysql, onCount: (maxMs: number) => any) => {
+  const stub = (m: ShMysql, onCount: (maxMs: number) => any, uocLuong = UOC_LUONG) => {
     (m as any).ensureReady = async () => { /* khỏi chạm MySQL thật */ };
     (m as any).pool = {
       query: async (sql: string) => {
         const hit = /MAX_EXECUTION_TIME\((\d+)\)/.exec(sql);
         if (hit) return onCount(Number(hit[1]));
-        if (sql.includes('information_schema.TABLES')) return [[{ n: UOC_LUONG }]];
+        if (sql.includes('information_schema.TABLES')) return [[{ n: uocLuong }]];
         throw new Error('câu không mong đợi: ' + sql);
       },
     };
@@ -55,6 +55,19 @@ describe('ShMysql — đếm tổng: không được 500, cũng không được 
       await (m as any).cachedCount('sh_shop', '', [], 300000);
       await settle();
       expect(hans).toEqual([120000]);
+    });
+
+    it('BẢNG QUÁ LỚN → TUYỆT ĐỐI không chạm COUNT, kể cả ở nền', async () => {
+      // Sự cố 2026-08-07: COUNT không lọc trên sh_product_list (prod 18,17M dòng) chạy >2,4 GIỜ không xong,
+      // mà kill client KHÔNG huỷ query trong MySQL → mỗi pm2 restart phóng thêm một zombie; đếm được 7 câu
+      // cùng chạy, bỏ đói mọi truy vấn khác. Bản sửa "đếm thật ở nền" cho sh_shop suýt bật lại đúng bug này
+      // trên bảng lớn — chính một test cũ đã chặn lại. Ngưỡng theo KÍCH THƯỚC, không phải quy tắc chung.
+      const m = new ShMysql({} as any);
+      let goi = 0;
+      stub(m, () => { goi++; throw new Error('KHÔNG được chạy COUNT trên bảng 18M dòng'); }, 18_170_000);
+      await expect((m as any).cachedCount('sh_product_list', '', [], 300000)).resolves.toBe(18_170_000);
+      await settle();
+      expect(goi).toBe(0);
     });
 
     it('COUNT nền lỗi thì vẫn trả ước lượng, không reject', async () => {

@@ -272,6 +272,18 @@ bộ lọc 2.493ms → 1ms). Định nghĩa: `apps/api/src/shophunter/sh.shop-de
 **Vì sao không để boot tự làm:** thêm cột STORED buộc MySQL **chép lại cả bảng** (`ALGORITHM=COPY` —
 INSTANT/INPLACE không hỗ trợ).
 
+**Hai loại migration, chi phí khác nhau MỘT TRỜI MỘT VỰC** — xem script in ra dòng nào:
+
+| Script in ra | Thuật toán | Ghi vào `sh_shop` | Thời gian (local 46.982 dòng) |
+|---|---|---|---|
+| `⚠️ Có cột STORED → CHÉP LẠI BẢNG` | `COPY` | **chặn** | 1.601s · **prod 3,8 GIỜ** |
+| `Chạy TẠI CHỖ (ALGORITHM=INPLACE, LOCK=SHARED)` | `INPLACE` | **chặn** | 696s (4 cột VIRTUAL + 11 index) · 10,5s (3 index trên cột STORED) |
+
+Cả hai đều **cho ĐỌC bình thường** → website không sập. Loại `INPLACE` không chép bảng nên nhanh hơn hẳn;
+chi phí của nó do **index trên cột VIRTUAL** quyết định (phải tính biểu thức tỉ giá từng dòng), không phải
+tổng số index. Thấy dòng `⚠️ Có cột STORED` mà không định thêm cột STORED nào thì **dừng lại** — có gì đó
+khác dự kiến.
+
 **Mất bao lâu — đừng ước theo dung lượng.** Số đo thật 2026-08-12:
 
 | Môi trường | Bảng | Thời gian |

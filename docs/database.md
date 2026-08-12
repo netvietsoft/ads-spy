@@ -87,6 +87,31 @@ Cột gốc: `shop_id VARCHAR(32)` (PK), `raw LONGTEXT` (JSON thô từ ShopHunt
 Vì sao GENERATED chứ không phải cột phẳng do app ghi: `sh_shop` có **ba đường ghi** và cách cũ **đã lệch
 thật** một lần (xem `reconcileShopRevenue()`). Generated column không đường ghi nào bỏ qua được.
 
+**Cột SẮP XẾP (`VIRTUAL GENERATED`, CÓ INDEX)** — nhóm riêng, thêm 2026-08-12 phần 2:
+
+| Cột | Công thức |
+|---|---|
+| `revenue_usd_month` / `_week` / `_day` `DECIMAL(30,6)` | `revenue_X × tỉ giá(COALESCE(storefront_currency, shop_currency))` |
+| `growth_steady` `DECIMAL(30,6)` | `LEAST(growth_day, growth_week, growth_month)` |
+
+`VIRTUAL` chứ không `STORED` vì `ADD COLUMN … VIRTUAL` chỉ là metadata và `ADD INDEX` trên nó là `INPLACE`
+— quét bảng **một lượt**, không chép lại 2,4 GB như nhóm STORED (đã mất 3,8 giờ trên prod). Giá trị nằm
+trong index nên sắp xếp không phải tính lại.
+
+⚠️ **Ba cột `revenue_usd_*` mang `COMMENT rates=<RATE_TAG>`.** Đổi `CURRENCY_USD` trong `sh.currency.ts` mà
+không chạy lại `npm run migrate:sh-shop` thì index giữ giá trị theo tỉ giá **CŨ** và sắp xếp sai **không có
+dấu hiệu nào**. Script so `COMMENT` với tag hiện tại và tự dựng lại; app ghi `console.error`.
+
+⚠️ **`revenue` (cột phẳng) KHÁC `revenue_month` (generated).** `revenue` do app ghi và merge bằng
+`COALESCE(VALUES(revenue), revenue)` nên giá trị cũ sống sót khi raw mới thiếu field. Từ 2026-08-12 mọi chỗ
+người dùng thấy — lọc bậc doanh thu, sắp xếp, báo cáo phân bố bậc — đều dùng `revenue_usd_month`; `revenue`
+chỉ còn cho `reconcileShopRevenue()`. **Đừng lẫn hai cột này**, trước đây lọc và sắp xếp dùng hai cột khác
+nhau nên bấm bậc "10k–50k" ra shop mà cột Tháng hiện `—`.
+
+**Chi phí dựng index (đo local 46.982 dòng):** 3 index trên cột STORED = **10,5s**; 4 cột VIRTUAL + 11 index
+= **696s**. Chi phí do index trên cột **VIRTUAL** quyết định (phải tính biểu thức tỉ giá từng dòng), không
+phải tổng số index.
+
 ⚠️ Hai bẫy khi sửa nhóm cột này — cả hai đều đã cắn một lần, chi tiết ở [CHANGELOG 2026-08-12](../CHANGELOG.md):
 dùng `JSON_VALUE(... NULL ON ERROR)` chứ **không** `CAST(JSON_EXTRACT(...))` (JSON `null` làm hỏng ALTER),
 và bọc `NULLIF(..., 'null')` cho cột chuỗi (`JSON_UNQUOTE` của JSON `null` ra **chuỗi** `"null"`).
