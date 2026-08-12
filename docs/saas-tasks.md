@@ -56,6 +56,16 @@ Spec/plan chi tiết: `docs/superpowers/specs/` + `docs/superpowers/plans/`. Nh�
 - [ ] **OAuth non-staff vào admin app:** callback Google set session + về `/home` cho mọi role; khi tách admin/khách (P6), admin app phải chặn/điều hướng role `user`.
 - [ ] **recordCap=0 vs null:** khi hiển thị/áp quota ở P5/P6, phải kiểm `access!=='none'` trước khi đọc `recordCap` (0 = chặn, không phải unlimited).
 
+**Từ phiên 2026-08-12 — chi tiết + số đo ở [`handoff-2026-08-12-toi-uu-sh-shop.md`](./handoff-2026-08-12-toi-uu-sh-shop.md):**
+- [ ] **🔴 Rotate token 9 Cloudflare Tunnel + mật khẩu admin** — đã bị in plaintext ra terminal. Zero Trust → Networks → Tunnels → từng tunnel → refresh token → cập nhật service. **Ưu tiên cao nhất, độc lập mọi việc khác.**
+- [ ] **Chạy lại rà soát đối kháng phần bị cắt** — 58/78 agent chết vì hết hạn mức phiên; hàng chục phát hiện đã nêu nhưng chưa ai kiểm ⇒ bộ thay đổi `sh_shop` **chưa được rà soát trọn vẹn**.
+- [ ] **`innodb_buffer_pool_size` 128 MB → ~1 GB** — bảng `sh_shop` 2.402 MB nên buffer pool chứa 5% ⇒ mọi truy vấn đọc đĩa. Tăng tốc *mọi* query, nhưng ảnh hưởng app khác trên VPS ⇒ cần quyết định.
+- [ ] **Cache Rule Cloudflare**: `URI Path starts with /backend-api/` → Bypass cache (giờ mới có ý nghĩa vì `/backend-api/*` đã thật sự đi qua nginx; origin đã gửi `Cache-Control: no-store`).
+- [ ] **`ensureTables()` gọi 60 lượt `information_schema`** (~0,5s/lượt khi máy tải ≈ 30s mỗi lần kết nối) → gộp thành 2 lượt, boot về ~1s và hết cảnh test chập chờn ở mốc timeout 30s. **Bẫy:** snapshot chung sẽ SAI cho bảng được `CREATE TABLE` sau đó trong cùng `connect()` — phải coi bảng không có trong snapshot là "mới" và hỏi riêng.
+- [ ] **FE kiểm `content-type` trước `.json()`** — riêng phiên 12/08 lỗi `Unexpected token '<', "<!DOCTYPE "` xuất hiện **4 lần với 4 nguyên nhân khác nhau** (middleware gác `.json`, Cloudflare cache HTML, timeout 524, tunnel trỏ sai Next); mỗi lần phải đào lại từ đầu vì thông báo không nói request nào / mã bao nhiêu.
+- [ ] **Thao tác >30s → `202 + jobId` + queue/worker PM2** (giai đoạn "SAU" trong kế hoạch 3 bước).
+- [ ] `reportRevenueBuckets` vẫn ~16s — do `sh_product_list` (4,5M local / 18M prod), không phải `sh_shop` (phần đó nay 71ms). Đã cache 24h trong DB nên chưa gấp.
+
 **Nhỏ (không chặn merge):**
 - [ ] Revenue series gom ngày theo UTC còn defaultRange theo local → nhãn ngày có thể lệch 1 ngày ở deploy non-UTC (tổng không đổi).
 - [ ] `UsersAdminService.list` N+1 `plan.findUnique` mỗi sub (≤100 dòng/trang) → cân nhắc batch.

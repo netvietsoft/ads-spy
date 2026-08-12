@@ -103,11 +103,27 @@ khách + mobile app. Chi tiết đầy đủ: [`docs/kien-truc.md`](docs/kien-tr
 
 - **KHÔNG BAO GIỜ `pm2 restart all`** — VPS chạy chung nhiều app khác. Luôn restart riêng từng process:
   `pm2 restart ads-spy-api` / `pm2 restart ads-spy-web`.
-- FE (`apps/web`) phải `rm -rf .next` trước khi build lại, rồi purge cache Cloudflare (Purge
-  Everything) sau mỗi lần đổi FE — không làm là dính chunk/HTML cũ.
+- FE (`apps/web`): **KHÔNG `rm -rf .next` trước khi build** — build fail sau khi đã xoá là mất cả bản mới
+  lẫn bản cũ ⇒ web down (đã xảy ra 2026-08-05). Build ra `NEXT_DIST_DIR=.next-new`, kiểm `.next-new/BUILD_ID`
+  tồn tại rồi mới swap (`deploy.sh` làm đúng vậy). Sau mỗi lần đổi FE vẫn phải purge Cloudflare (Purge
+  Everything), không thì dính chunk/HTML cũ.
+- **Lưu lượng prod đi qua Cloudflare TUNNEL, KHÔNG phải DNS → nginx.** Tunnel
+  `cloudflared-tunnel-ads-spy.service` chạy bằng token ⇒ mapping nằm trên dashboard (Zero Trust → Networks →
+  Tunnels → Ads-Spy → Public Hostname), **phải trỏ `http://localhost:80`**. Trỏ thẳng `:3062` là toàn bộ
+  `deploy/nginx-*.conf` bị bỏ qua. VPS **không mở cổng 443**. ⚠️ `curl -H 'Host: …' http://127.0.0.1/…` trả
+  200 **KHÔNG chứng minh gì** — phải probe: gắn chuỗi lạ vào URL rồi `grep` trong `/var/log/nginx/`.
+- **`sh_shop` có cột generated + index (`npm run migrate:sh-shop`).** Chạy migration **TRƯỚC** `pm2 restart`,
+  và **không restart trong lúc ALTER chạy** — `CREATE TABLE IF NOT EXISTS` ở đầu `connect()` sẽ chờ metadata
+  lock, làm API không mở nổi cổng (prod chết ~4 giờ ngày 2026-08-12). Luôn khai `ALGORITHM=` khi ALTER bảng lớn
+  để MySQL báo lỗi ngay thay vì âm thầm chép bảng hàng giờ.
+- **Đừng suy chi phí prod từ số đo local.** Prod ÍT dòng hơn local nhưng bảng nặng gấp 2,2 lần và
+  `innodb_buffer_pool_size` chỉ 128 MB ⇒ cùng một câu chạy chậm hơn tới 8 lần. Hỏi dung lượng bảng prod
+  trước khi đưa bất kỳ con số thời gian nào.
 - Repo **public** trên GitHub — không hardcode mật khẩu/token/proxy vào file có commit
-  (`ecosystem.config.js`, `deploy.sh`...); mọi secret đọc từ biến môi trường.
-- Chi tiết đầy đủ: [`docs/deployment.md`](docs/deployment.md).
+  (`ecosystem.config.js`, `deploy.sh`...); mọi secret đọc từ biến môi trường. Cũng đừng chạy
+  `pgrep -a cloudflared` (in trọn token tunnel ra terminal).
+- Chi tiết đầy đủ: [`docs/deployment.md`](docs/deployment.md) ·
+  [`docs/handoff-2026-08-12-toi-uu-sh-shop.md`](docs/handoff-2026-08-12-toi-uu-sh-shop.md).
 
 ### Bộ docs
 
