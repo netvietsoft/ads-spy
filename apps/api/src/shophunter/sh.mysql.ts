@@ -4,7 +4,7 @@ import { ShBlockedError } from './sh.client';
 import { PrismaService } from '../prisma.service';
 import { rawToListRow, listRowTuple, LIST_COLS, ListRow } from './sh.product-list';
 import { CURRENCY_USD } from './sh.currency';
-import { SHOP_DERIVED_COLUMNS, SHOP_DERIVED_INDEXES, buildShopDerivedAlter } from './sh.shop-derived';
+import { SHOP_DERIVED_COLUMNS, SHOP_DERIVED_INDEXES, SHOP_DERIVED_AUTO_ALTER_MAX_MB, buildShopDerivedAlter } from './sh.shop-derived';
 
 // Biểu thức SQL nhân doanh thu (tiền tệ gốc) × tỉ giá → USD, theo mã tiền tệ ở curExpr. Số trong CASE là hằng code → an toàn.
 function rateCaseSql(curExpr: string): string {
@@ -175,17 +175,36 @@ export class ShMysql implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    try {
-      await this.connect();
-      // KHÔNG nạp sẵn COUNT ở đây nữa. Bản 2026-08-06 có `void this.cachedCount('sh_product_list', …)`
-      // để request đầu sau restart khỏi chờ COUNT — dựa trên số đo LOCAL (5,3M dòng, 38,7s khi lạnh).
-      // Trên prod bảng có 18,17M dòng và câu COUNT đó KHÔNG BAO GIỜ xong (>2,4 giờ), mà kill client
-      // không huỷ truy vấn trong MySQL → mỗi lần restart thêm 1 zombie; 2026-08-07 có 7 câu cùng chạy,
-      // bỏ đói mọi truy vấn khác và làm API treo hoàn toàn. Nay count không-lọc dùng số ước lượng
-      // (tức thì) nên chẳng còn gì phải nạp sẵn. Bài học: đừng suy ra chi phí prod từ số đo local.
-    } catch (err) {
-      console.warn('[ShMysql] MySQL không sẵn sàng, ShopHunter sẽ thử lại khi có request:', (err as Error).message);
-    }
+    // KHÔNG `await` — CỐ Ý. Nest chỉ gọi app.listen() SAU khi mọi onModuleInit xong, nên await ở đây
+    // biến "MySQL chậm" thành "API không mở cổng". try/catch bắt được LỖI nhưng không cứu được TREO.
+    //
+    // Đã xảy ra thật 2026-08-12: một ALTER trên sh_shop (chép bảng 2,4 GB, ~110 phút) đang chạy thì
+    // ads-spy-api restart. Câu `CREATE TABLE IF NOT EXISTS sh_shop` ngay đầu connect() phải chờ metadata
+    // lock của ALTER đó → onModuleInit treo → Nest KHÔNG BAO GIỜ listen → mọi thứ 000, kể cả /api/health
+    // và đăng nhập (vốn dùng Prisma/SQLite, chẳng liên quan gì MySQL). Cả API chết vì MỘT bảng bận.
+    //
+    // Nay kết nối chạy nền: API listen ngay. MySQL bận thì chỉ các route ShopHunter phải chờ, còn
+    // health/auth/Google/FB/TikTok vẫn phục vụ bình thường.
+    //
+    // Cũng KHÔNG nạp sẵn COUNT ở đây. Bản 2026-08-06 có `void this.cachedCount('sh_product_list', …)`
+    // để request đầu sau restart khỏi chờ COUNT — dựa trên số đo LOCAL (5,3M dòng, 38,7s khi lạnh).
+    // Trên prod bảng có 18,17M dòng và câu COUNT đó KHÔNG BAO GIỜ xong (>2,4 giờ), mà kill client
+    // không huỷ truy vấn trong MySQL → mỗi lần restart thêm 1 zombie; 2026-08-07 có 7 câu cùng chạy,
+    // bỏ đói mọi truy vấn khác và làm API treo hoàn toàn. Nay count không-lọc dùng số ước lượng
+    // (tức thì) nên chẳng còn gì phải nạp sẵn. Bài học: đừng suy ra chi phí prod từ số đo local.
+    void this.ensureConnected().catch((err) => {
+      console.warn('[ShMysql] MySQL chưa sẵn sàng lúc boot, sẽ thử lại khi có request:', (err as Error).message);
+    });
+  }
+
+  // Gộp mọi lần gọi connect() đang bay vào MỘT promise. Cần có vì onModuleInit không còn await nữa:
+  // thiếu nó thì request đến trong lúc đang kết nối sẽ mở pool thứ hai và chạy lại toàn bộ DDL.
+  // Thất bại thì xoá promise để lần sau thử lại (giữ đúng hành vi "thử lại khi có request" như trước).
+  private connecting: Promise<void> | null = null;
+  private async ensureConnected(): Promise<void> {
+    if (this.pool) return;
+    if (!this.connecting) this.connecting = this.connect().finally(() => { this.connecting = null; });
+    return this.connecting;
   }
 
   private async connect(): Promise<void> {
@@ -383,7 +402,7 @@ export class ShMysql implements OnModuleInit {
   private async ensureReady(): Promise<void> {
     if (this.pool) return;
     try {
-      await this.connect();
+      await this.ensureConnected();
     } catch (err) {
       // Nguyên nhân THẬT (vd ER_ACCESS_DENIED_ERROR) trước đây chỉ được console.warn MỘT LẦN lúc boot
       // trong onModuleInit, còn mỗi request lỗi chỉ ném ra "Kiểm tra MySQL/SH_MYSQL_URL" — phải đào
@@ -469,9 +488,9 @@ export class ShMysql implements OnModuleInit {
   // Cột dẫn xuất của sh_shop (STORED GENERATED — xem sh.shop-derived.ts). GỘP mọi cột/index còn thiếu vào
   // MỘT câu ALTER: mỗi lần thêm cột STORED là một lần MySQL chép lại CẢ BẢNG, nên 15 câu riêng = chép 15 lần.
   //
-  // Chỗ này CÓ THỂ làm boot chậm (bảng ~1 GB) và khoá ghi sh_shop trong lúc chép. Không né được: thiếu cột thì
-  // mọi truy vấn Local DB shop hỏng ngay với "Unknown column". Cách tránh chờ là chạy `npm run migrate:sh-shop`
-  // TRƯỚC khi restart (docs/deployment.md) — khi đó hàm này thấy đủ và không làm gì.
+  // CHỈ tự ALTER khi bảng còn nhỏ (xem SHOP_DERIVED_AUTO_ALTER_MAX_MB) — bảng lớn thì báo động và bỏ qua,
+  // vì tự chép vài GB lúc khởi động là cách chắc chắn nhất để làm chết API. Cách đúng: chạy
+  // `npm run migrate:sh-shop` TRƯỚC khi restart (docs/deployment.md §6.1) — khi đó hàm này thấy đủ, không làm gì.
   // Log ở CẢ HAI đầu là cố ý: sự cố 2026-08-07 tốn nhiều lượt hỏi-đáp chỉ vì "API treo" mà log không nói vì sao.
   private async ensureShopDerived(pool: mysql.Pool): Promise<void> {
     const [cols] = await pool.query(
@@ -486,10 +505,25 @@ export class ShMysql implements OnModuleInit {
     const missingIdx = SHOP_DERIVED_INDEXES.map((i) => i.name).filter((n) => !haveIdx.has(n));
     const sql = buildShopDerivedAlter(missingCols, missingIdx);
     if (!sql) return;
-    console.warn(
-      `[ShMysql] sh_shop thiếu ${missingCols.length} cột dẫn xuất + ${missingIdx.length} index → chạy ALTER. ` +
-        'MySQL sẽ chép lại bảng, request phải chờ. Lần sau chạy "npm run migrate:sh-shop" trước khi restart để khỏi chờ.',
+
+    // Bảng đã LỚN thì TỪ CHỐI tự ALTER, chỉ báo động. Chép một bảng vài GB mất hàng chục phút tới hàng
+    // giờ (prod 2,4 GB = ~110 phút) — không phải việc được làm lén trong lúc khởi động.
+    // Hệ quả khi bỏ qua: các truy vấn Local DB shop lỗi "Unknown column", NHƯNG API vẫn chạy và mọi tính
+    // năng khác (đăng nhập, Google/FB/TikTok) vẫn phục vụ. Hỏng một tính năng còn hơn chết cả API.
+    const [sz] = await pool.query(
+      "SELECT DATA_LENGTH b FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sh_shop'",
     );
+    const mb = Math.round((Number((sz as any[])[0]?.b) || 0) / 1048576);
+    if (mb > SHOP_DERIVED_AUTO_ALTER_MAX_MB) {
+      console.error(
+        `[ShMysql] sh_shop (${mb} MB) thiếu ${missingCols.length} cột dẫn xuất nhưng KHÔNG tự ALTER: ` +
+          `bảng lớn hơn ${SHOP_DERIVED_AUTO_ALTER_MAX_MB} MB, chép lại sẽ mất rất lâu. ` +
+          'CHẠY TAY: npm run migrate:sh-shop --workspace @gas/api (xem docs/deployment.md §6.1). ' +
+          'Tới lúc đó Local DB shop sẽ báo "Unknown column"; phần còn lại của API vẫn chạy bình thường.',
+      );
+      return;
+    }
+    console.warn(`[ShMysql] sh_shop (${mb} MB) thiếu ${missingCols.length} cột dẫn xuất + ${missingIdx.length} index → tự ALTER.`);
     const t0 = Date.now();
     await pool.query(sql);
     console.warn(`[ShMysql] sh_shop: thêm cột dẫn xuất xong sau ${((Date.now() - t0) / 1000).toFixed(1)}s.`);

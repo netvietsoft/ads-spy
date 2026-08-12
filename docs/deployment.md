@@ -253,9 +253,31 @@ Trong lúc chép:
   rollback — kiểm `df -h` trước.
 - **Đừng Ctrl-C.** Huỷ giữa chừng buộc MySQL rollback cả bảng tạm, mất thêm chừng ấy thời gian nữa.
 
-Chạy lại bao nhiêu lần cũng được: script chỉ thêm phần còn thiếu, đủ rồi thì thoát ngay. Nếu lỡ restart
-trước khi migrate, không hỏng gì — chỉ là boot đầu tiên chậm bằng đúng thời gian chép, và log
-`ads-spy-api` sẽ ghi rõ `[ShMysql] sh_shop thiếu … cột dẫn xuất → chạy ALTER`.
+Chạy lại bao nhiêu lần cũng được: script chỉ thêm phần còn thiếu, đủ rồi thì thoát ngay.
+
+> ### ⛔ TUYỆT ĐỐI KHÔNG `pm2 restart ads-spy-api` TRONG LÚC ALTER ĐANG CHẠY
+>
+> **Đã làm chết prod ~110 phút ngày 2026-08-12.** Câu `CREATE TABLE IF NOT EXISTS sh_shop` ở đầu
+> `connect()` cũng cần metadata lock, nên tiến trình mới **đứng chờ chính cái ALTER đang chép**. Lúc đó
+> `onModuleInit` còn `await` nên Nest không bao giờ gọi `app.listen()` → **toàn bộ API trả `HTTP 000`**,
+> kể cả `/api/health` và đăng nhập (vốn dùng Prisma/SQLite, không liên quan MySQL).
+>
+> Restart thêm lần nữa **không cứu được** — chỉ xếp thêm một tiến trình vào hàng đợi khoá. Cách duy nhất
+> là **chờ ALTER xong**; sau đó API tự đọc lại, thấy đủ cột, bỏ qua ALTER và khởi động sạch.
+>
+> Xem tiến độ thật (`root` dùng auth_socket nên phải qua `sudo`, `mysql -u root -p` sẽ báo `ERROR 1698`):
+>
+> ```bash
+> sudo mysql -e "SELECT p.TIME giay, ROUND(100*s.WORK_COMPLETED/s.WORK_ESTIMATED,1) phan_tram, ROUND(p.TIME*(s.WORK_ESTIMATED-s.WORK_COMPLETED)/s.WORK_COMPLETED/60) con_lai_phut FROM information_schema.PROCESSLIST p, performance_schema.events_stages_current s WHERE p.INFO LIKE 'ALTER%'"
+> ```
+
+Từ bản vá 2026-08-12, hai lớp bảo vệ đã có sẵn nên tình huống trên khó lặp lại:
+
+1. `onModuleInit` **không `await`** việc kết nối MySQL nữa → API luôn mở cổng, MySQL bận thì chỉ route
+   ShopHunter phải chờ, đăng nhập và các module khác vẫn phục vụ.
+2. `ensureShopDerived` **từ chối tự ALTER** khi `sh_shop` lớn hơn `SHOP_DERIVED_AUTO_ALTER_MAX_MB`
+   (200 MB) — thay vào đó ghi log `console.error` chỉ đúng lệnh cần chạy. Lúc chưa migrate, Local DB shop
+   báo `Unknown column`, phần còn lại của API vẫn chạy bình thường.
 
 ## 7. Biến môi trường cần set trên VPS (chỉ tên biến — KHÔNG chứa giá trị thật)
 

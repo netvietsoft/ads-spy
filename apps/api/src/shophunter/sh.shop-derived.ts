@@ -88,6 +88,13 @@ export const SHOP_DERIVED_INDEXES: { name: string; col: string }[] = [
   { name: 'idx_sh_shop_country', col: 'shop_country' },
 ];
 
+// Ngưỡng để ensureTables() được phép TỰ chạy ALTER lúc khởi động. Lớn hơn ngưỡng thì chỉ báo động và bỏ qua.
+// 200 MB ≈ vài nghìn dòng — tức DB mới dựng hoặc máy dev, chép trong vài giây. Prod (2,4 GB) và cả DB dev
+// đã cào nhiều (1,07 GB) đều VƯỢT ngưỡng, nên bắt buộc chạy `npm run migrate:sh-shop` bằng tay.
+// Vì sao phải có ngưỡng: 2026-08-12 API restart giữa lúc ALTER chạy → kẹt metadata lock → Nest không
+// listen được → TOÀN BỘ API chết ~110 phút, kể cả đăng nhập (Prisma/SQLite, không liên quan MySQL).
+export const SHOP_DERIVED_AUTO_ALTER_MAX_MB = 200;
+
 // Một câu ALTER DUY NHẤT cho mọi cột/index còn thiếu. Gộp là BẮT BUỘC, không phải để gọn: mỗi ALTER thêm
 // cột STORED là một lần chép lại bảng 1 GB — chạy 15 câu riêng nghĩa là chép 15 lần.
 export function buildShopDerivedAlter(missingCols: string[], missingIdx: string[]): string | null {

@@ -63,6 +63,35 @@ Test `sh.shop-derived.spec.ts` chặn 4 hồi quy tốn kém: biểu thức sort
 (chỉ lộ ra thành lỗi 500 lúc chạy), dùng lại `CAST` thay `JSON_VALUE`, và tách ALTER thành nhiều câu
 (mỗi câu là một lần chép lại bảng 1 GB).
 
+### Sự cố khi deploy chính thay đổi này — API chết ~110 phút, và hai lớp vá
+
+**Diễn biến:** migration đang chép bảng thì `pm2 restart ads-spy-api` được chạy. Tiến trình mới đứng chờ
+metadata lock ngay ở `CREATE TABLE IF NOT EXISTS sh_shop` (câu đầu trong `connect()`), mà `onModuleInit`
+lúc đó còn `await` nên Nest **không bao giờ gọi `app.listen()`** → toàn bộ API trả `HTTP 000`.
+
+**Điều đáng ghi nhất: thiệt hại vượt xa phạm vi hỏng.** Chỉ MỘT bảng MySQL bận mà `/api/health` và
+`/api/auth/me` cũng chết, dù hai thứ đó chạy trên Prisma/SQLite và không đụng gì tới MySQL. Đăng nhập
+sập vì một bảng của ShopHunter đang bị khoá.
+
+**Vá 1 — `onModuleInit` không `await` kết nối MySQL nữa.** Kết nối chạy nền, API listen ngay. Kèm
+`ensureConnected()` gộp các lần gọi đồng thời vào một promise (bắt buộc, vì nay request có thể ập tới
+lúc đang kết nối; thiếu nó thì mỗi request mở thêm một pool và chạy lại toàn bộ DDL).
+
+**Vá 2 — `ensureShopDerived` từ chối tự ALTER bảng lớn** (`SHOP_DERIVED_AUTO_ALTER_MAX_MB = 200`), chỉ
+ghi `console.error` kèm đúng lệnh cần chạy. Hỏng một tính năng (`Unknown column` ở Local DB shop) còn hơn
+chết cả API.
+
+Test `sh.mysql.boot.spec.ts` khoá cả hai: `connect()` treo vĩnh viễn thì `onModuleInit` vẫn phải trả về.
+
+**Ước lượng sai của tôi, ghi lại để không lặp:** báo ~27 phút (số local) trong khi prod mất ~110 phút.
+Prod chỉ có **~25k dòng** (ít hơn local 46.982) nhưng bảng nặng **2.402 MB** vì mỗi dòng mang thêm
+`detail_raw` ~95KB. Ước theo **số dòng** sai hoàn toàn; theo **dung lượng** gần hơn nhưng vẫn hụt vì VPS
+chạy chung 42 tiến trình PM2. Đúng bài học đã ghi sẵn ngay trong `sh.mysql.ts`: *"đừng suy ra chi phí prod
+từ số đo local"* — phải hỏi dung lượng bảng prod TRƯỚC khi đưa con số.
+
+Bonus: `performance_schema.events_stages_current` trên prod **có** báo `WORK_COMPLETED/WORK_ESTIMATED`
+(local thì không) → tính được % và ETA thật. Lệnh cụ thể ở [`docs/deployment.md` §6.1](docs/deployment.md).
+
 ---
 
 ## 2026-08-07 — AITDK trả `{"err":1005}` cho MỌI request: key/tài khoản, KHÔNG sửa được bằng code
