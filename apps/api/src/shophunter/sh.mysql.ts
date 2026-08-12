@@ -1157,22 +1157,37 @@ export class ShMysql implements OnModuleInit {
   // COUNT(*) có cache ngắn theo (bảng + điều kiện WHERE + params). table/whereSql là literal do code dựng (không phải input) → an toàn.
   private async cachedCount(table: string, whereSql: string, params: any[], ttlMs: number): Promise<number> {
     const key = `${table}|${whereSql}|${JSON.stringify(params)}`;
+    // Tổng KHÔNG lọc đổi rất chậm (harvest thêm vài nghìn shop/ngày) mà COUNT thật lại đắt (prod 22,9s)
+    // → giữ ít nhất 30 phút, khỏi quét lại index mỗi 5 phút trên máy có buffer pool 128 MB.
+    const ttl = whereSql ? ttlMs : Math.max(ttlMs, 1800000);
     const cached = this.countCache.get(key);
-    if (cached && Date.now() - cached.t < ttlMs) return cached.n;
+    if (cached && Date.now() - cached.t < ttl) return cached.n;
     let load = this.countLoading.get(key);
     if (!load) {
       load = (async () => {
         await this.ensureReady();
-        // KHÔNG lọc → dùng số ƯỚC LƯỢNG; có lọc → COUNT thật (bám index, rẻ). Xem 2 hàm dưới.
-        const n = whereSql ? await this.exactCount(table, whereSql, params) : await this.estimateRows(table);
+        // Không lọc: COUNT thật vẫn đắt nhưng chạy ở NỀN (xem dưới) nên không ai phải chờ → cho hạn 120s,
+        // vì 15s KHÔNG đủ (prod đo 22,9s) và hết hạn thì lại rơi về số ước lượng lệch một nửa.
+        // Có lọc: có request đang chờ kết quả → giữ hạn 15s.
+        const n = await this.exactCount(table, whereSql, params, whereSql ? 15000 : 120000);
         this.countCache.set(key, { n, t: Date.now() });
         return n;
       })().finally(() => this.countLoading.delete(key));
       this.countLoading.set(key, load);
     }
-    // Có số cũ → trả NGAY, để COUNT làm mới chạy nền. Request không bao giờ phải chờ COUNT nữa
-    // (trừ lần đầu sau khi restart, lúc cache còn rỗng).
+    // Có số cũ → trả NGAY, để COUNT làm mới chạy nền. Request không bao giờ phải chờ COUNT nữa.
     if (cached) { load.catch(() => { /* giữ số cũ khi refresh lỗi */ }); return cached.n; }
+
+    // Chưa có số nào và KHÔNG lọc → trả số ƯỚC LƯỢNG ngay, để COUNT thật chạy nền.
+    // Vì sao không trả luôn số ước lượng như trước: nó lệch QUÁ nhiều. Đo prod 2026-08-12 trên sh_shop —
+    // ước lượng 24.983 so với đếm thật 49.186, tức **lệch 49%**: InnoDB suy từ vài trang mẫu, mà bảng này
+    // mỗi dòng ~96KB nên số trang mẫu quá ít. Người dùng thấy "24k shop" trong khi có 49k, và phân trang
+    // dừng sớm ở nửa dữ liệu. Nay ước lượng chỉ dùng cho ĐÚNG request đầu sau restart; xong COUNT nền là
+    // mọi request sau có số chính xác.
+    if (!whereSql) {
+      load.catch(() => { /* COUNT nền lỗi thì lần sau thử lại */ });
+      return this.estimateRows(table).catch(() => 0);
+    }
     return load;
   }
 
@@ -1206,18 +1221,18 @@ export class ShMysql implements OnModuleInit {
   // cột KHÔNG index: ô tìm (shop_name/shop_url LIKE), aff, bậc doanh thu `revenue * CASE(...)`, bậc số đơn.
   // Hạ cấp xuống số ƯỚC LƯỢNG là lựa chọn có ý thức: tổng hiển thị cao hơn thực tế (ước lượng không tính
   // WHERE) nên phân trang có thể có trang rỗng ở cuối — vẫn hơn hẳn mất sạch dữ liệu.
-  private async exactCount(table: string, whereSql: string, params: any[]): Promise<number> {
+  private async exactCount(table: string, whereSql: string, params: any[], maxMs = 15000): Promise<number> {
     try {
       const [cnt] = await this.pool!.query(
-        `SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) AS n FROM ${table} ${whereSql}`,
+        `SELECT /*+ MAX_EXECUTION_TIME(${Math.floor(maxMs)}) */ COUNT(*) AS n FROM ${table} ${whereSql}`,
         params,
       );
       return Number((cnt as any[])[0].n) || 0;
     } catch (err) {
       const e = err as { code?: string; message?: string };
       console.warn(
-        `[ShMysql] COUNT có lọc trên ${table} không xong trong 15s (${e?.code || e?.message || 'lỗi'}) ` +
-          '→ dùng số ƯỚC LƯỢNG toàn bảng. Tổng hiển thị sẽ CAO hơn thực tế; danh sách vẫn đúng.',
+        `[ShMysql] COUNT trên ${table} không xong trong ${Math.round(maxMs / 1000)}s (${e?.code || e?.message || 'lỗi'}) ` +
+          '→ dùng số ƯỚC LƯỢNG của InnoDB. Số này có thể lệch RẤT nhiều (đo sh_shop: 24.983 so với 49.186 thật).',
       );
       return this.estimateRows(table);
     }
