@@ -214,13 +214,48 @@ Hệ thống có **2 kho dữ liệu tách biệt**, quy trình migrate khác nh
   bộ bảng (`sh_shop`, `sh_product`, `sh_job_log`, …) được tạo bằng `CREATE TABLE IF NOT EXISTS`
   ngay trong code (`apps/api/src/shophunter/sh.mysql.ts`, chạy lúc module khởi động) — tự tạo cả
   database (`CREATE DATABASE IF NOT EXISTS shophunter`) nếu chưa có, miễn user MySQL có quyền tạo
-  DB. **Không cần bước migrate riêng nào cho kho này khi deploy.**
+  DB. Thêm cột/index thông thường là `ADD COLUMN` (INSTANT) / `ADD INDEX` (INPLACE) nên chạy lúc boot
+  không sao — **trừ một ngoại lệ duy nhất ở mục 6.1 dưới đây.**
 - **MySQL local (máy dev, Windows)**: dùng **Laragon**, `mysqld` **không chạy như Windows service**
   — phải tự start thủ công trước khi chạy app dev (`mysqld.exe` trong thư mục Laragon, hoặc bật
   Laragon rồi start MySQL). Khác với VPS (mục 1) chạy MySQL như service hệ thống thật.
 - `SH_MYSQL_URL` rỗng/không set → fallback mặc định `mysql://root@127.0.0.1:3306/shophunter`
   (dùng cho local dev, root không mật khẩu). Trên VPS **phải** set `SH_MYSQL_URL` với user/password
   MySQL thật của VPS đó (xem mục 7 — không hardcode).
+
+### 6.1 Ngoại lệ: cột dẫn xuất của `sh_shop` — PHẢI chạy TRƯỚC khi restart
+
+`sh_shop` có 15 **cột dẫn xuất** (`revenue_month`, `growth_month`, `shop_country`, `shop_url`, …) kiểu
+**STORED GENERATED**: MySQL tự tính từ `raw` ở mọi đường ghi. Có chúng thì sắp xếp/lọc Local DB không phải
+mở LONGTEXT nữa (đo 2026-08-12: sort doanh thu 9.165ms → 294ms, báo cáo tổng hợp 10.883ms → 52ms, dropdown
+bộ lọc 2.493ms → 1ms). Định nghĩa: `apps/api/src/shophunter/sh.shop-derived.ts`.
+
+**Vì sao không để boot tự làm:** thêm cột STORED buộc MySQL **chép lại cả bảng** (`ALGORITHM=COPY` —
+INSTANT/INPLACE không hỗ trợ). Đo local (46.982 dòng / 1,07 GB): **1.601s ≈ 27 phút**. `ensureTables()` vẫn làm được
+việc này lúc boot, nhưng khi đó **mọi request phải chờ** hết ngần ấy thời gian.
+
+Thứ tự đúng — chạy migration khi tiến trình CŨ vẫn đang phục vụ:
+
+```bash
+cd ~/projects-deploy/ads-spy
+git pull                       # hoặc: git reset --hard origin/main
+npm ci --workspaces --include-workspace-root
+npm run build --workspace @gas/api      # script migration đọc định nghĩa cột từ dist/
+npm run migrate:sh-shop --workspace @gas/api
+pm2 restart ads-spy-api        # CHỈ restart sau khi migration in "✅ Xong"
+```
+
+Trong lúc chép:
+
+- **Đọc vẫn bình thường** — website không sập, người dùng không thấy gì.
+- **Ghi vào `sh_shop` bị chặn** — job harvest/affiliate đứng chờ rồi tự chạy tiếp. Không sao.
+- **Cần chỗ trống ≥ kích thước bảng** (script tự in ra con số). Hết đĩa giữa chừng là ALTER hỏng và
+  rollback — kiểm `df -h` trước.
+- **Đừng Ctrl-C.** Huỷ giữa chừng buộc MySQL rollback cả bảng tạm, mất thêm chừng ấy thời gian nữa.
+
+Chạy lại bao nhiêu lần cũng được: script chỉ thêm phần còn thiếu, đủ rồi thì thoát ngay. Nếu lỡ restart
+trước khi migrate, không hỏng gì — chỉ là boot đầu tiên chậm bằng đúng thời gian chép, và log
+`ads-spy-api` sẽ ghi rõ `[ShMysql] sh_shop thiếu … cột dẫn xuất → chạy ALTER`.
 
 ## 7. Biến môi trường cần set trên VPS (chỉ tên biến — KHÔNG chứa giá trị thật)
 

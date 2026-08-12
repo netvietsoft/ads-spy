@@ -3,7 +3,9 @@ import { rowToHarvestState, buildOrderBy, SHOP_LOCAL_SORTS } from './sh.mysql';
 describe('buildOrderBy', () => {
   it('map key hợp lệ + dir desc, NULL xuống cuối', () => {
     const s = buildOrderBy('revenue_month', 'desc', SHOP_LOCAL_SORTS, 'revenue_month');
-    expect(s).toContain('month_current_period_revenue');
+    // So với chính biểu thức trong map, không so với một chuỗi chép tay: 2026-08-12 đổi từ
+    // JSON_EXTRACT sang cột dẫn xuất đã làm 3 test ở đây đỏ dù hành vi buildOrderBy không hề đổi.
+    expect(s).toContain(SHOP_LOCAL_SORTS.revenue_month);
     expect(s).toContain('IS NULL');
     expect(s.trim().endsWith('DESC')).toBe(true);
   });
@@ -13,12 +15,12 @@ describe('buildOrderBy', () => {
   it('sort không whitelist / injection → dùng default (không chèn input)', () => {
     const s = buildOrderBy('x; DROP TABLE sh_shop', 'desc', SHOP_LOCAL_SORTS, 'revenue_month');
     expect(s).not.toContain('DROP');
-    expect(s).toContain('month_current_period_revenue'); // = default
+    expect(s).toContain(SHOP_LOCAL_SORTS.revenue_month); // = default
   });
   it('sort = key kế thừa từ Object.prototype (constructor/toString/__proto__) → dùng default', () => {
     for (const key of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
       const s = buildOrderBy(key, 'desc', SHOP_LOCAL_SORTS, 'revenue_month');
-      expect(s).toContain('month_current_period_revenue'); // = default, không lọt qua prototype chain
+      expect(s).toContain(SHOP_LOCAL_SORTS.revenue_month); // = default, không lọt qua prototype chain
     }
   });
   it('dir lạ → mặc định DESC', () => {

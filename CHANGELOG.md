@@ -4,6 +4,67 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-12 — Local DB shop: bỏ hẳn việc đọc JSON `raw` khi sắp xếp/lọc (9.165ms → 293ms)
+
+**Triệu chứng:** danh sách shop trong Local DB tải rất lâu, càng nhiều dữ liệu càng chậm.
+
+**Nguyên nhân:** `sh_shop` nặng **1,07 GB cho 47k dòng** — mỗi dòng một `raw` LONGTEXT ~23KB. Mọi biểu
+thức sắp xếp/lọc đều là `JSON_EXTRACT(raw, …)`, nên MySQL phải **mở toàn bộ LONGTEXT của cả bảng** cho
+từng câu. Đo trên local:
+
+| Câu (đo lạnh, `sh_shop` 46.982 dòng / 1,07 GB) | Trước | Sau | Nhanh hơn |
+|---|---|---|---|
+| Báo cáo tổng hợp (SUM 6 trường) | **10.883ms** | **52ms** | **209×** |
+| Lọc nước = US | **10.483ms** | **330ms** | **32×** |
+| Trang 1, sort doanh thu tháng | **9.165ms** | **294ms** | **31×** |
+| Sort tăng trưởng tháng | **4.754ms** | **194ms** | **24×** |
+| Tìm theo domain (ô tìm kiếm) | **2.728ms** | **198ms** | **14×** |
+| Dropdown bộ lọc (DISTINCT nước) | **2.493ms** | **1ms** | **2.493×** |
+
+`EXPLAIN` xác nhận lọc nước đã chuyển từ quét toàn bảng sang index seek: `type=ref key=idx_sh_shop_country`.
+
+Điểm mấu chốt: **không phải filesort gây chậm** — filesort vẫn còn sau khi sửa. Cái chết là filesort
+**phải kéo theo LONGTEXT**. Đo đối chứng: cùng câu đó sort trên một cột thật chỉ mất 293ms.
+
+**Cách sửa:** thêm 15 **cột dẫn xuất STORED GENERATED** cho `sh_shop`
+(`apps/api/src/shophunter/sh.shop-derived.ts`) — MySQL tự tính từ `raw`.
+
+**Vì sao GENERATED chứ không phải cột thường do app ghi:** `sh_shop` có **ba đường ghi**
+(`upsertShop`, `upsertListingShop`, bulk import) và cách "app tự ghi cột phẳng" **đã lệch thật một lần** —
+xem `reconcileShopRevenue()`: *"Search bản cũ chỉ ghi raw (không ghi cột phẳng) → báo cáo phân bố bậc xếp
+shop sai bậc"*. Generated column không lệch được, kể cả với đường ghi thêm về sau.
+
+**Vì sao KHÔNG lưu sẵn doanh thu đã quy đổi USD** (dù index được và nhanh hơn ~20 lần): tỉ giá là hằng
+trong `sh.currency.ts` còn `storefront_currency` do job ghi **sau**, nên cột "USD" sẽ lệch mỗi lần một
+trong hai thay đổi — đúng loại bug vừa nói ở trên. Nhân lúc chạy trên hai cột nhỏ tốn ~300ms và **luôn
+đúng**; 293ms so với 8ms không ai cảm nhận được, còn số liệu doanh thu sai thì có.
+
+**Hai bẫy gặp khi làm, ghi lại để khỏi mất công lần nữa:**
+
+1. **`CAST(JSON_EXTRACT(...) AS DECIMAL)` ở SELECT chỉ là CẢNH BÁO, ở generated column là LỖI.** Phải
+   phân biệt *thiếu key* (→ SQL NULL, CAST ra NULL, không sao) với *giá trị là JSON `null`* (→ ném
+   `ER_INVALID_JSON_VALUE_FOR_CAST`). Vì tính generated column là thao tác **GHI** nên strict mode chặn.
+   Sort cũ vẫn "chạy" suốt thời gian qua chỉ vì SELECT nuốt cảnh báo. Đã chuyển sang
+   `JSON_VALUE(... RETURNING ... NULL ON ERROR)`.
+   → **Đổi thứ hạng có chủ ý:** dòng JSON `null` trước xếp như **0**, nay xếp như "không có dữ liệu" nên
+   bị đẩy xuống cuối. Ảnh hưởng `growth_*` (15.046/42.065 shop), `active_ad_count` (120), `fb_followers`
+   (297). **Doanh thu và số đơn không có dòng nào là JSON null → thứ tự giống hệt trước.** Coi "chưa biết
+   tăng trưởng" là 0% vốn sai: nó xếp trên mọi shop đang giảm.
+2. **`JSON_UNQUOTE` của JSON `null` trả về CHUỖI `"null"`** (4 dòng `country`, 118 dòng `currency`) → bộ
+   lọc coi đó là mã nước hợp lệ. Đã bọc `NULLIF(..., 'null')`. Cũng dùng `LEFT()` chứ không `CAST(... AS
+   CHAR(n))` vì `raw.country` có rác dài (10 dòng > 8 ký tự) mà CAST vượt độ dài thì ném lỗi.
+
+**Migration PHẢI chạy trước khi restart** — thêm cột STORED buộc MySQL chép lại cả bảng
+(`ALGORITHM=COPY`, đo local **1.601s ≈ 27 phút** cho 1,07 GB). Chạy `npm run migrate:sh-shop` khi tiến trình cũ
+vẫn đang phục vụ; đọc vẫn bình thường, chỉ job ghi phải chờ. Quy trình đầy đủ:
+[`docs/deployment.md` §6.1](docs/deployment.md).
+
+Test `sh.shop-derived.spec.ts` chặn 4 hồi quy tốn kém: biểu thức sort quay lại đọc `raw`, gõ sai tên cột
+(chỉ lộ ra thành lỗi 500 lúc chạy), dùng lại `CAST` thay `JSON_VALUE`, và tách ALTER thành nhiều câu
+(mỗi câu là một lần chép lại bảng 1 GB).
+
+---
+
 ## 2026-08-07 — AITDK trả `{"err":1005}` cho MỌI request: key/tài khoản, KHÔNG sửa được bằng code
 
 > Kết luận sau khi loại trừ hết mọi giả thuyết khác. Ghi lại để không ai điều tra lại từ đầu.

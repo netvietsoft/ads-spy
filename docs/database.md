@@ -71,6 +71,26 @@ Cột gốc: `shop_id VARCHAR(32)` (PK), `raw LONGTEXT` (JSON thô từ ShopHunt
 | `up_category` / `up_category_path` | Danh mục do **user gắn tay** khi import, đẩy sang từ `sh_imported` khi enrich — tách khỏi `category` (danh mục lấy từ harvest). |
 | `shop_name`, `items_sold`, `followers`, `rating`, `category`, `rank_pos`, `revenue_chart`, `detail_raw`, `logo_url`, `detail_fetched_at` | Cột phẳng khác bóc từ `raw`/detail để list/sort không phải `JSON_EXTRACT` mỗi lần đọc. |
 
+**Cột DẪN XUẤT (`STORED GENERATED`)** — khác hẳn nhóm trên: **MySQL tự tính từ `raw`**, app không ghi.
+Định nghĩa duy nhất ở [`apps/api/src/shophunter/sh.shop-derived.ts`](../apps/api/src/shophunter/sh.shop-derived.ts).
+
+| Cột | Nguồn trong `raw` |
+|---|---|
+| `revenue_month` / `revenue_week` / `revenue_day` `DECIMAL(30,6)` | `*_current_period_revenue` — sort doanh thu (nhân tỉ giá lúc chạy để ra USD). |
+| `growth_month` / `growth_week` / `growth_day` `DECIMAL(30,6)` | `*_revenue_percent_change` — sort tăng trưởng + `growth_steady`. |
+| `sale_count_month` / `sale_count_week` / `sale_count_day` `BIGINT` | `*_current_period_sale_count` — lọc/báo cáo bậc số đơn. |
+| `sku_count`, `active_ad_count`, `fb_followers` `DECIMAL(30,6)` | cùng tên trong `raw` — sort + lọc SKU. |
+| `shop_country` `VARCHAR(8)` | `$.country` — lọc theo nước (**có index** `idx_sh_shop_country`) + dropdown bộ lọc. |
+| `shop_currency` `VARCHAR(8)` | `$.currency` — fallback khi chưa có `storefront_currency`. |
+| `shop_url` `VARCHAR(255)` | `$.url` — ô tìm kiếm tìm theo domain. |
+
+Vì sao GENERATED chứ không phải cột phẳng do app ghi: `sh_shop` có **ba đường ghi** và cách cũ **đã lệch
+thật** một lần (xem `reconcileShopRevenue()`). Generated column không đường ghi nào bỏ qua được.
+
+⚠️ Hai bẫy khi sửa nhóm cột này — cả hai đều đã cắn một lần, chi tiết ở [CHANGELOG 2026-08-12](../CHANGELOG.md):
+dùng `JSON_VALUE(... NULL ON ERROR)` chứ **không** `CAST(JSON_EXTRACT(...))` (JSON `null` làm hỏng ALTER),
+và bọc `NULLIF(..., 'null')` cho cột chuỗi (`JSON_UNQUOTE` của JSON `null` ra **chuỗi** `"null"`).
+
 ### `sh_product`
 `product_id VARCHAR(32)` (PK), `raw LONGTEXT`, `fetched_at BIGINT`, cộng thêm `product_title VARCHAR(512)`, `shop_id VARCHAR(32)` (để search/đếm theo shop), `source VARCHAR(16)`, `product_revenue_synced_at BIGINT` (mốc lần cuối job đồng bộ chuỗi doanh thu ngày sản phẩm — tương đương `revenue_synced_at` bên `sh_shop`).
 
@@ -92,6 +112,14 @@ Cột doanh thu ở đây là **do user upload** (từ file TSV/Excel), không p
 ## 3. Quy ước
 
 - **Không `ALTER` bảng lớn đang "nóng"** (`sh_shop`, `sh_product`, `sh_product_list` — hàng triệu tới ~4 triệu dòng): thêm cột trực tiếp trên các bảng này có thể khiến MySQL rebuild toàn bảng (`ADD COLUMN` không phải luôn `INSTANT`/`INPLACE` tuỳ kiểu cột), khoá metadata và treo cả app hàng chục phút. Thay vào đó, mốc/số liệu mới được lưu ở **bảng phụ riêng** tạo tức thì, ví dụ `sh_product_revsync`/`sh_product_sales` (thay vì thêm cột `product_revenue_synced_at`-kiểu vào `sh_product_list`). Comment thật trong code (`sh.mysql.ts` dòng ~327-328): *"bảng RIÊNG (không ALTER sh_product_list 4M dòng: ADD COLUMN ở đó bị MySQL rebuild toàn bảng ~20 phút + khoá metadata, treo cả app)"*.
+- **Ngoại lệ có chủ ý (2026-08-12): 15 cột dẫn xuất `STORED GENERATED` của `sh_shop`.** Kiểu cột này
+  MySQL **bắt buộc** dùng `ALGORITHM=COPY` — đúng thứ quy ước trên cấm. Vẫn làm vì đổi lại là bỏ hẳn việc
+  đọc LONGTEXT khi sort/lọc (9.165ms → 294ms) và loại vĩnh viễn một lớp bug lệch dữ liệu. Cách giữ đúng
+  *tinh thần* của quy ước — tức **không treo app**: ALTER không chạy lúc boot mà chạy bằng
+  `npm run migrate:sh-shop` **trước** khi restart, lúc tiến trình cũ vẫn phục vụ; trong ~27 phút chép bảng
+  thì **đọc vẫn bình thường**, chỉ job ghi phải chờ. Quy trình: [deployment.md §6.1](./deployment.md).
+  Bảng phụ vẫn là lựa chọn mặc định cho mọi trường hợp khác — ngoại lệ này chỉ vì cần *bất biến do DB giữ*,
+  thứ mà bảng phụ không cho được.
 - Cột/index vẫn được thêm bằng `ALTER TABLE` trên `sh_shop`/`sh_product` khi cần (nhiều cột phẳng ở mục 2 được thêm kiểu này), nhưng luôn qua `ensureColumn()`/`ensureIndex()` — kiểm tra `information_schema` trước, chỉ chạy khi cột/index thật sự chưa có (idempotent, an toàn chạy lại mỗi lần app khởi động). Riêng `revenue_synced_at` trên `sh_shop` **cố tình không đánh index** (bảng ~130MB, build chậm) vì job revsync chạy nền, filesort chấp nhận được.
 - **Collation:** DB tạo bằng `CREATE DATABASE ... CHARACTER SET utf8mb4` (không set `COLLATE` tường minh) → nhận collation mặc định của MySQL server cho `utf8mb4`, trên MySQL 8.0 là `utf8mb4_0900_ai_ci`. Code **không hard-code** giả định này: khi tạo bảng phụ phải khớp collation với bảng gốc (ví dụ `sh_product_revsync`/`sh_product_sales` phải khớp `sh_product_list.product_id`), hàm `columnCollation()` dò collation **thật** của cột đối chiếu tại thời điểm chạy rồi mới `CREATE`/`ALTER MODIFY` cho khớp — vì môi trường thật (VPS) từng có dữ liệu migrate lẫn `utf8mb4_unicode_ci` với `utf8mb4_0900_ai_ci`, gây lỗi `"Illegal mix of collations"` khi `JOIN` (đã xảy ra và fix, xem `CHANGELOG.md` mục "Fix collation JOIN (2e03203)"). Tên collation dò được lọc qua regex `^[a-z0-9_]+$` trước khi ghép vào SQL để chặn injection.
 - `sh_shop_revenue_daily`/`sh_product_revenue_daily`: quy ước **append-only**, không `DELETE`, chỉ `UPSERT` theo khoá ghép ngày — xem mục 2.

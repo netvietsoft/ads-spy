@@ -12,7 +12,8 @@
     "postinstall": "prisma generate",
     "fb:login": "node scripts/fb-login.mjs",
     "seed:admin": "node scripts/create-admin.mjs",
-    "seed:catalog": "node scripts/seed-catalog.mjs"
+    "seed:catalog": "node scripts/seed-catalog.mjs",
+    "migrate:sh-shop": "node scripts/migrate-sh-shop-derived.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

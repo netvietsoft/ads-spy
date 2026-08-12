@@ -4,6 +4,7 @@ import { ShBlockedError } from './sh.client';
 import { PrismaService } from '../prisma.service';
 import { rawToListRow, listRowTuple, LIST_COLS, ListRow } from './sh.product-list';
 import { CURRENCY_USD } from './sh.currency';
+import { SHOP_DERIVED_COLUMNS, SHOP_DERIVED_INDEXES, buildShopDerivedAlter } from './sh.shop-derived';
 
 // Biểu thức SQL nhân doanh thu (tiền tệ gốc) × tỉ giá → USD, theo mã tiền tệ ở curExpr. Số trong CASE là hằng code → an toàn.
 function rateCaseSql(curExpr: string): string {
@@ -20,25 +21,31 @@ const LAST_SNAPSHOT_SETTING_KEY = 'shophunter_last_snapshot_imported';
 // được (429/lỗi mạng); quét ra kết quả là reset về 0. Bằng 3 để khớp ngưỡng aff_try_count của afflib.
 export const SH_AFF_MAX_TRIES = 3;
 
-const numExpr = (path: string) => `CAST(JSON_EXTRACT(raw, '${path}') AS DECIMAL(30,6))`;
-// Doanh thu shop quy đổi USD để SẮP XẾP đúng (dữ liệu lưu theo tiền tệ gốc, trộn nhiều loại). Tiền tệ thật = storefront_currency, fallback raw.currency.
-const SHOP_CUR_EXPR = `COALESCE(storefront_currency, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')))`;
-const usdRevExpr = (path: string) => `(${numExpr(path)} * ${rateCaseSql(SHOP_CUR_EXPR)})`;
+// Tiền tệ thật của shop: storefront_currency (job storefront ghi đè khi cào được) → fallback shop_currency.
+const SHOP_CUR_EXPR = 'COALESCE(storefront_currency, shop_currency)';
+// Doanh thu quy đổi USD để SẮP XẾP đúng — dữ liệu lưu theo tiền tệ GỐC, trộn nhiều loại.
+// CHỦ Ý không lưu sẵn giá trị đã quy đổi (dù nhanh hơn ~20 lần vì index được): tỉ giá là hằng trong
+// sh.currency.ts và storefront_currency do job ghi SAU, nên cột "USD" sẽ lệch mỗi lần một trong hai thay đổi —
+// đúng loại bug mà reconcileShopRevenue() phải đi vá. Nhân lúc chạy trên hai cột nhỏ tốn ~300ms (đo 2026-08-12,
+// so với 9.165ms khi đọc JSON) và LUÔN đúng. Đổi lại: biểu thức có phép nhân nên không index được — chấp nhận.
+const usdRevExpr = (col: string) => `(${col} * ${rateCaseSql(SHOP_CUR_EXPR)})`;
+// Vế phải là CỘT DẪN XUẤT (STORED GENERATED, xem sh.shop-derived.ts), không còn JSON_EXTRACT(raw, …).
+// Giá trị y hệt biểu thức JSON cũ nên thứ tự sắp xếp không đổi — chỉ khác là không phải mở LONGTEXT nữa.
 export const SHOP_LOCAL_SORTS: Record<string, string> = {
-  revenue_day: usdRevExpr('$.day_current_period_revenue'),
-  revenue_week: usdRevExpr('$.week_current_period_revenue'),
-  revenue_month: usdRevExpr('$.month_current_period_revenue'),
-  growth_day: numExpr('$.day_revenue_percent_change'),
-  growth_week: numExpr('$.week_revenue_percent_change'),
-  growth_month: numExpr('$.month_revenue_percent_change'),
-  followers: numExpr('$.fb_followers'),
-  ads: numExpr('$.active_ad_count'),
-  sku: numExpr('$.sku_count'),
+  revenue_day: usdRevExpr('revenue_day'),
+  revenue_week: usdRevExpr('revenue_week'),
+  revenue_month: usdRevExpr('revenue_month'),
+  growth_day: 'growth_day',
+  growth_week: 'growth_week',
+  growth_month: 'growth_month',
+  followers: 'fb_followers',
+  ads: 'active_ad_count',
+  sku: 'sku_count',
   harvested_at: 'harvested_at',
   fetched_at: 'fetched_at',
   aff: "((affiliate_status='yes')*2 + (affiliate_status='app'))", // sort Aff: yes(link) > app(cài) > no
   // "Tăng trưởng đều" = sàn tăng trưởng thấp nhất trong 3 kỳ (ngày/tuần/tháng) — cao = tăng ổn định mọi mốc, không phải spike 1 kỳ.
-  growth_steady: `LEAST(${numExpr('$.day_revenue_percent_change')}, ${numExpr('$.week_revenue_percent_change')}, ${numExpr('$.month_revenue_percent_change')})`,
+  growth_steady: 'LEAST(growth_day, growth_week, growth_month)',
 };
 export const PRODUCT_LOCAL_SORTS: Record<string, string> = {
   revenue_day: 'revenue_day', revenue_week: 'revenue_week', revenue_month: 'revenue_month',
@@ -126,8 +133,13 @@ export const ORDER_BUCKETS: { key: string; lo: number; hi: number | null }[] = [
   { key: '9k-10k', lo: 9000, hi: 10000 },
   { key: '10k+', lo: 10000, hi: null },
 ];
+// Cột SỐ ĐƠN theo kỳ trên sh_shop (cột dẫn xuất — xem sh.shop-derived.ts), trước đây là đường dẫn JSON trong raw.
 const ORDER_FIELD: Record<string, string> = {
-  day: '$.day_current_period_sale_count', week: '$.week_current_period_sale_count', month: '$.month_current_period_sale_count',
+  day: 'sale_count_day', week: 'sale_count_week', month: 'sale_count_month',
+};
+// Cột DOANH THU theo kỳ, đi cặp với ORDER_FIELD (báo cáo bậc số đơn cần cả hai).
+const REVENUE_FIELD: Record<string, string> = {
+  day: 'revenue_day', week: 'revenue_week', month: 'revenue_month',
 };
 
 export interface OrderBucketReport {
@@ -219,6 +231,7 @@ export class ShMysql implements OnModuleInit {
     await this.ensureColumn(pool, 'sh_shop', 'harvested_at', 'harvested_at BIGINT');
     // Tiền tệ THẬT của shop lấy từ storefront /meta.json (ShopHunter hay gắn sai `currency`) — dùng để quy đổi USD.
     await this.ensureColumn(pool, 'sh_shop', 'storefront_currency', 'storefront_currency VARCHAR(8)');
+    await this.ensureShopDerived(pool);
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_revenue', 'revenue');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_harvested', 'harvested_at');
     await this.ensureIndex(pool, 'sh_shop', 'idx_sh_shop_fetched', 'fetched_at');
@@ -451,6 +464,35 @@ export class ShMysql implements OnModuleInit {
     if ((rows as any[]).length === 0) {
       await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (\`${column}\`)`);
     }
+  }
+
+  // Cột dẫn xuất của sh_shop (STORED GENERATED — xem sh.shop-derived.ts). GỘP mọi cột/index còn thiếu vào
+  // MỘT câu ALTER: mỗi lần thêm cột STORED là một lần MySQL chép lại CẢ BẢNG, nên 15 câu riêng = chép 15 lần.
+  //
+  // Chỗ này CÓ THỂ làm boot chậm (bảng ~1 GB) và khoá ghi sh_shop trong lúc chép. Không né được: thiếu cột thì
+  // mọi truy vấn Local DB shop hỏng ngay với "Unknown column". Cách tránh chờ là chạy `npm run migrate:sh-shop`
+  // TRƯỚC khi restart (docs/deployment.md) — khi đó hàm này thấy đủ và không làm gì.
+  // Log ở CẢ HAI đầu là cố ý: sự cố 2026-08-07 tốn nhiều lượt hỏi-đáp chỉ vì "API treo" mà log không nói vì sao.
+  private async ensureShopDerived(pool: mysql.Pool): Promise<void> {
+    const [cols] = await pool.query(
+      "SELECT COLUMN_NAME n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sh_shop'",
+    );
+    const [idx] = await pool.query(
+      "SELECT DISTINCT INDEX_NAME n FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sh_shop'",
+    );
+    const haveCol = new Set((cols as any[]).map((r) => r.n));
+    const haveIdx = new Set((idx as any[]).map((r) => r.n));
+    const missingCols = SHOP_DERIVED_COLUMNS.map((c) => c.name).filter((n) => !haveCol.has(n));
+    const missingIdx = SHOP_DERIVED_INDEXES.map((i) => i.name).filter((n) => !haveIdx.has(n));
+    const sql = buildShopDerivedAlter(missingCols, missingIdx);
+    if (!sql) return;
+    console.warn(
+      `[ShMysql] sh_shop thiếu ${missingCols.length} cột dẫn xuất + ${missingIdx.length} index → chạy ALTER. ` +
+        'MySQL sẽ chép lại bảng, request phải chờ. Lần sau chạy "npm run migrate:sh-shop" trước khi restart để khỏi chờ.',
+    );
+    const t0 = Date.now();
+    await pool.query(sql);
+    console.warn(`[ShMysql] sh_shop: thêm cột dẫn xuất xong sau ${((Date.now() - t0) / 1000).toFixed(1)}s.`);
   }
 
   private async ensureIndexMulti(pool: mysql.Pool, table: string, indexName: string, colsSql: string): Promise<void> {
@@ -1006,7 +1048,7 @@ export class ShMysql implements OnModuleInit {
     await this.ensureReady();
     let orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
     const where: string[] = []; const params: any[] = [];
-    if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
+    if (o.country) { where.push('shop_country = ?'); params.push(o.country); } // cột dẫn xuất có index (idx_sh_shop_country) → seek, không quét bảng
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); } // gồm cả danh mục con
     // Ô tìm nhận CẢ BA: tên shop, domain, và SHOP ID. Tên + domain đã có sẵn; shop_id thì trước đây
     // KHÔNG khớp gì (đo thật: q=100000956793 → 0 kết quả) vì id không nằm trong shop_name lẫn raw.url.
@@ -1015,10 +1057,10 @@ export class ShMysql implements OnModuleInit {
     if (o.q) {
       const q = String(o.q).trim();
       if (/^\d{5,}$/.test(q)) {
-        where.push("(shop_id = ? OR shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)");
+        where.push('(shop_id = ? OR shop_name LIKE ? OR shop_url LIKE ?)');
         params.push(q, '%' + q + '%', '%' + q + '%');
       } else {
-        where.push("(shop_name LIKE ? OR JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url')) LIKE ?)");
+        where.push('(shop_name LIKE ? OR shop_url LIKE ?)');
         params.push('%' + q + '%', '%' + q + '%');
       }
     }
@@ -1028,12 +1070,12 @@ export class ShMysql implements OnModuleInit {
     const revUsd = `(revenue * ${rateCaseSql(SHOP_CUR_EXPR)})`;
     if (o.revMin != null) { where.push(`${revUsd} >= ?`); params.push(o.revMin); }
     if (o.revMax != null) { where.push(`${revUsd} < ?`); params.push(o.revMax); }
-    // Lọc theo số lượng SKU của shop (raw.$.sku_count — không có cột riêng).
-    if (o.skuMin != null) { where.push(`${numExpr('$.sku_count')} >= ?`); params.push(o.skuMin); }
-    if (o.skuMax != null) { where.push(`${numExpr('$.sku_count')} <= ?`); params.push(o.skuMax); }
+    // Lọc theo số lượng SKU của shop.
+    if (o.skuMin != null) { where.push('sku_count >= ?'); params.push(o.skuMin); }
+    if (o.skuMax != null) { where.push('sku_count <= ?'); params.push(o.skuMax); }
     // Lọc bậc SỐ ĐƠN theo kỳ (bảng xếp hạng doanh số) + sắp xếp theo số đơn giảm dần.
     if (o.cntPeriod && (o.cntMin != null || o.cntMax != null)) {
-      const cntExpr = `CAST(JSON_EXTRACT(raw, '${ORDER_FIELD[o.cntPeriod] || ORDER_FIELD.month}') AS SIGNED)`;
+      const cntExpr = ORDER_FIELD[o.cntPeriod] || ORDER_FIELD.month;
       if (o.cntMin != null) { where.push(`${cntExpr} >= ?`); params.push(o.cntMin); }
       if (o.cntMax != null) { where.push(`${cntExpr} < ?`); params.push(o.cntMax); }
       orderBy = `ORDER BY ${cntExpr} DESC`;
@@ -1043,6 +1085,9 @@ export class ShMysql implements OnModuleInit {
       // Cờ "đã harvest" dùng detail_fetched_at (BIGINT) thay vì detail_raw (LONGTEXT ~95KB/dòng):
       // nếu để detail_raw trong SELECT, filesort (sort theo doanh thu/JSON) kéo cả blob vào bộ đệm sort → 27s.
       // detail_fetched_at luôn set cùng detail_raw (xem upsertShop) → tương đương, mà sort chỉ còn ~250ms.
+      // `raw` thì CỐ Ý giữ lại: items dựng bằng {...JSON.parse(r.raw)} nên bỏ đi là gãy hợp đồng với FE.
+      // Nó không phải nút thắt — khi ORDER BY chỉ đụng cột dẫn xuất, MySQL chỉ đọc raw cho đúng số dòng
+      // của LIMIT (đo 2026-08-12: vẫn 293ms dù raw nằm trong SELECT).
       `SELECT shop_id, raw, storefront_currency, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path, affiliate_status, affiliate_link FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, o.limit, o.offset],
     );
@@ -1241,7 +1286,8 @@ export class ShMysql implements OnModuleInit {
         const okCountry = (arr: string[]) => arr.filter((v) => /^[A-Za-z]{2,3}$/.test(v)); // bỏ data rác (vd HTML banner) khỏi dropdown Nước
         let out: { countries: string[]; categories: string[] };
         if (type === 'shops') {
-          const countries = await distinct("SELECT DISTINCT JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) v FROM sh_shop ORDER BY v");
+          // Cột dẫn xuất có index → quét index thay vì mở LONGTEXT cả bảng (đo 2026-08-12: 2.493ms → vài ms).
+          const countries = await distinct('SELECT DISTINCT shop_country v FROM sh_shop WHERE shop_country IS NOT NULL ORDER BY shop_country');
           const categories = await distinct('SELECT DISTINCT up_category v FROM sh_shop WHERE up_category IS NOT NULL ORDER BY up_category'); // danh mục user gắn (ORDER BY cột trong SELECT — DISTINCT không cho order theo cột ngoài)
           out = { countries: okCountry(countries), categories };
         } else {
@@ -1266,16 +1312,15 @@ export class ShMysql implements OnModuleInit {
   async reportAggregate(o: { country?: string; category?: string }): Promise<any> {
     await this.ensureReady();
     const where: string[] = []; const params: any[] = [];
-    if (o.country) { where.push("JSON_UNQUOTE(JSON_EXTRACT(raw, '$.country')) = ?"); params.push(o.country); }
+    if (o.country) { where.push('shop_country = ?'); params.push(o.country); }
     if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
-    const dec = (p: string) => `CAST(JSON_EXTRACT(raw, '${p}') AS DECIMAL(30,2))`;
-    const sig = (p: string) => `CAST(JSON_EXTRACT(raw, '${p}') AS SIGNED)`;
     const [r] = await this.pool!.query(
+      // SUM trên cột dẫn xuất — trước đây 6 lần JSON_EXTRACT/dòng buộc mở LONGTEXT toàn bảng.
       `SELECT COUNT(*) shops,
-         SUM(${dec('$.day_current_period_revenue')}) dayRev,     SUM(${sig('$.day_current_period_sale_count')}) daySales,
-         SUM(${dec('$.week_current_period_revenue')}) weekRev,   SUM(${sig('$.week_current_period_sale_count')}) weekSales,
-         SUM(${dec('$.month_current_period_revenue')}) monthRev, SUM(${sig('$.month_current_period_sale_count')}) monthSales
+         SUM(revenue_day) dayRev,     SUM(sale_count_day) daySales,
+         SUM(revenue_week) weekRev,   SUM(sale_count_week) weekSales,
+         SUM(revenue_month) monthRev, SUM(sale_count_month) monthSales
        FROM sh_shop ${whereSql}`,
       params,
     );
@@ -1333,8 +1378,7 @@ export class ShMysql implements OnModuleInit {
         const row = (r as any[])[0] || {};
         return REVENUE_BUCKETS.map((_, i) => Number(row['b' + i]) || 0);
       };
-      const shopCur = `COALESCE(storefront_currency, JSON_UNQUOTE(JSON_EXTRACT(raw, '$.currency')))`;
-      const shops = await countByBucket('sh_shop', `(revenue * ${rateCaseSql(shopCur)})`);
+      const shops = await countByBucket('sh_shop', `(revenue * ${rateCaseSql(SHOP_CUR_EXPR)})`);
       const products = await countByBucket('sh_product_list', 'revenue_month');
       return {
         buckets: REVENUE_BUCKETS.map((b) => ({ key: b.key, lo: b.lo, hi: b.hi })),
@@ -1375,7 +1419,8 @@ export class ShMysql implements OnModuleInit {
 
   private orderBucketCache = new Map<string, { t: number; data: OrderBucketReport }>();
   // Bảng xếp hạng SỐ ĐƠN theo kỳ (day/week/month): số lượng + trung bình đơn + tổng doanh thu (USD) mỗi bậc.
-  // shop: quét sh_shop raw JSON (46k, DT×tỉ giá tiền tệ thật). sản phẩm: bảng phụ sh_product_sales (job productrev ghi dần). Cache 5'.
+  // shop: quét cột dẫn xuất sale_count_*/revenue_* của sh_shop (46k, DT×tỉ giá tiền tệ thật) — KHÔNG còn mở raw.
+  // sản phẩm: bảng phụ sh_product_sales (job productrev ghi dần). Cache 5'.
   async reportOrderBuckets(type: 'shops' | 'products', period: 'day' | 'week' | 'month', force = false): Promise<OrderBucketReport> {
     await this.ensureReady();
     const compute = async (): Promise<OrderBucketReport> => {
@@ -1383,9 +1428,8 @@ export class ShMysql implements OnModuleInit {
       if (type === 'products') {
         cntExpr = `${period}_count`; revExpr = `${period}_rev`; table = 'sh_product_sales';
       } else {
-        const f = ORDER_FIELD[period] || ORDER_FIELD.month;
-        cntExpr = `CAST(JSON_EXTRACT(raw, '${f}') AS SIGNED)`;
-        revExpr = `(CAST(JSON_EXTRACT(raw, '${f.replace('sale_count', 'revenue')}') AS DECIMAL(30,2)) * ${rateCaseSql(SHOP_CUR_EXPR)})`;
+        cntExpr = ORDER_FIELD[period] || ORDER_FIELD.month;
+        revExpr = usdRevExpr(REVENUE_FIELD[period] || REVENUE_FIELD.month);
         table = 'sh_shop';
       }
       // Tính cnt + rev(USD) MỘT LẦN/dòng trong subquery (tránh đánh giá rateCase 36 lần/dòng).
@@ -1451,8 +1495,8 @@ export class ShMysql implements OnModuleInit {
   async reconcileShopRevenue(): Promise<number> {
     await this.ensureReady();
     const [r] = await this.pool!.query(
-      `UPDATE sh_shop SET revenue = CAST(JSON_EXTRACT(raw, '$.month_current_period_revenue') AS DECIMAL(20,2))
-        WHERE JSON_EXTRACT(raw, '$.month_current_period_revenue') IS NOT NULL`,
+      // Đọc từ cột dẫn xuất revenue_month (MySQL tự tính từ raw) thay vì tự bóc JSON lần nữa.
+      'UPDATE sh_shop SET revenue = revenue_month WHERE revenue_month IS NOT NULL',
     );
     await this.refreshAnalysis().catch(() => {}); // revenue shop đổi → tính lại + ghi đè cache báo cáo
     return Number((r as any).affectedRows) || 0;

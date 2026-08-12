@@ -56,6 +56,7 @@ gọi API gốc. 61 endpoint REST (xem mục 4), 7 job nền (mục 3).
 | File | Vai trò |
 |---|---|
 | `sh.mysql.ts` | Lớp truy cập MySQL (`sh_*`): pool `mysql2/promise`, SQL sort động (`SHOP_LOCAL_SORTS`/`PRODUCT_LOCAL_SORTS`, quy đổi doanh thu ra USD), CRUD toàn bộ bảng harvest/import/report/setting/job-log. |
+| `sh.shop-derived.ts` | Định nghĩa **duy nhất** 15 cột dẫn xuất `STORED GENERATED` của `sh_shop` + câu ALTER gộp. Dùng chung bởi `ensureTables()` và `scripts/migrate-sh-shop-derived.mjs` — sửa một chỗ, cả hai theo. Xem [database.md](./database.md). |
 | `sh.service.ts` | Nghiệp vụ chính: `catalogSyncStep`, `enrichProductRevenueRun`, `syncProductPriceRevenue`, `affiliateSyncStep`, parse file import (TSV/Excel), snapshot. |
 | `sh.controller.ts` | `@Controller()` (prefix rỗng, mọi route tự khai literal bắt đầu `sh/…`) — 61 route REST, có `@UseFilters(ShBlockedFilter)` chặn lỗi 503 thân thiện toàn controller. |
 | `sh.jobs.service.ts` | Orchestrator 7 job nền (`JOB_NAMES`, `DEFAULT_CFG`, vòng lặp `loop/step`, cfg lưu DB, bật/tắt/chạy-ngay từ web) — chi tiết mục 3. |
