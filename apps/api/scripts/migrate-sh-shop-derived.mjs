@@ -57,7 +57,7 @@ console.log(sql + '\n');
 console.log('⚠️  MySQL sẽ CHÉP LẠI BẢNG sang bảng tạm rồi thay thế. Nghĩa là:');
 console.log(`   • cần ÍT NHẤT ~${size.mb} MB trống trên ổ chứa datadir — hết chỗ giữa chừng là ALTER hỏng (kiểm: df -h)`);
 console.log('   • job GHI vào sh_shop phải chờ tới khi xong; ĐỌC (website) vẫn bình thường');
-console.log('   • chạy lâu: mỗi dòng phải parse lại JSON cho từng cột. Đo local 46.982 dòng / 1,07 GB: ~27 phút.');
+console.log('   • chạy lâu: mỗi dòng phải parse lại JSON cho từng cột. Đo local 1,07 GB: ~27 phút. Đo prod 2,4 GB trên VPS dùng chung: ~3,8 GIỜ. Ước theo dung lượng là KHÔNG ĐỦ — tải I/O của máy quyết định phần lớn.');
 console.log('   • cứ để chạy, đừng Ctrl-C — huỷ giữa chừng thì MySQL phải rollback cả bảng tạm.\n');
 
 const t0 = Date.now();

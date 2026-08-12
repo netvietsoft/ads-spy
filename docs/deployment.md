@@ -231,7 +231,21 @@ mở LONGTEXT nữa (đo 2026-08-12: sort doanh thu 9.165ms → 294ms, báo cáo
 bộ lọc 2.493ms → 1ms). Định nghĩa: `apps/api/src/shophunter/sh.shop-derived.ts`.
 
 **Vì sao không để boot tự làm:** thêm cột STORED buộc MySQL **chép lại cả bảng** (`ALGORITHM=COPY` —
-INSTANT/INPLACE không hỗ trợ). Đo local (46.982 dòng / 1,07 GB): **1.601s ≈ 27 phút**. `ensureTables()` vẫn làm được
+INSTANT/INPLACE không hỗ trợ).
+
+**Mất bao lâu — đừng ước theo dung lượng.** Số đo thật 2026-08-12:
+
+| Môi trường | Bảng | Thời gian |
+|---|---|---|
+| Local (Windows/Laragon) | 46.982 dòng · 1.073 MB | **1.601s ≈ 27 phút** |
+| **Prod (VPS dùng chung)** | ~25.000 dòng · **2.402 MB** | **hơn 13.600s ≈ 3,8 GIỜ** |
+
+Prod chỉ *ít dòng hơn* local nhưng bảng nặng gấp 2,2 lần (mỗi dòng mang thêm `detail_raw` ~95KB) — vậy
+mà chậm gấp **~8 lần**, vì VPS chạy chung 42 tiến trình PM2. Tệ hơn: tốc độ **tụt dần** trong lúc chạy —
+đạt 80% ở mốc 7.363s rồi mất thêm hơn 6.000s cho 20% còn lại, nên `WORK_COMPLETED` ngoại suy tuyến tính
+sẽ luôn báo lạc quan quá mức. ⇒ **Coi đây là việc tính bằng GIỜ trên prod, và chọn lúc VPS rảnh.**
+
+`ensureTables()` vẫn làm được
 việc này lúc boot, nhưng khi đó **mọi request phải chờ** hết ngần ấy thời gian.
 
 Thứ tự đúng — chạy migration khi tiến trình CŨ vẫn đang phục vụ:

@@ -55,7 +55,7 @@ trong hai thay đổi — đúng loại bug vừa nói ở trên. Nhân lúc ch�
    CHAR(n))` vì `raw.country` có rác dài (10 dòng > 8 ký tự) mà CAST vượt độ dài thì ném lỗi.
 
 **Migration PHẢI chạy trước khi restart** — thêm cột STORED buộc MySQL chép lại cả bảng
-(`ALGORITHM=COPY`, đo local **1.601s ≈ 27 phút** cho 1,07 GB). Chạy `npm run migrate:sh-shop` khi tiến trình cũ
+(`ALGORITHM=COPY`, đo local **1.601s ≈ 27 phút** cho 1,07 GB, còn **prod mất hơn 3,8 GIỜ** cho 2,4 GB). Chạy `npm run migrate:sh-shop` khi tiến trình cũ
 vẫn đang phục vụ; đọc vẫn bình thường, chỉ job ghi phải chờ. Quy trình đầy đủ:
 [`docs/deployment.md` §6.1](docs/deployment.md).
 

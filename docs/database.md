@@ -116,7 +116,7 @@ Cột doanh thu ở đây là **do user upload** (từ file TSV/Excel), không p
   MySQL **bắt buộc** dùng `ALGORITHM=COPY` — đúng thứ quy ước trên cấm. Vẫn làm vì đổi lại là bỏ hẳn việc
   đọc LONGTEXT khi sort/lọc (9.165ms → 294ms) và loại vĩnh viễn một lớp bug lệch dữ liệu. Cách giữ đúng
   *tinh thần* của quy ước — tức **không treo app**: ALTER không chạy lúc boot mà chạy bằng
-  `npm run migrate:sh-shop` **trước** khi restart, lúc tiến trình cũ vẫn phục vụ; trong ~27 phút chép bảng
+  `npm run migrate:sh-shop` **trước** khi restart, lúc tiến trình cũ vẫn phục vụ; trong nhiều giờ chép bảng
   thì **đọc vẫn bình thường**, chỉ job ghi phải chờ. Quy trình: [deployment.md §6.1](./deployment.md).
   Bảng phụ vẫn là lựa chọn mặc định cho mọi trường hợp khác — ngoại lệ này chỉ vì cần *bất biến do DB giữ*,
   thứ mà bảng phụ không cho được.
