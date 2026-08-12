@@ -1194,12 +1194,33 @@ export class ShMysql implements OnModuleInit {
   // Có WHERE → COUNT bám index nên rẻ (đo thật: nước 124ms · bậc doanh thu 28ms · FULLTEXT 184ms).
   // Vẫn chặn cứng bằng MAX_EXECUTION_TIME: một câu bất thường sẽ bị MySQL tự huỷ sau 15s, KHÔNG BAO GIỜ
   // sống sót thành zombie qua các lần restart như sự cố 2026-08-07.
+  //
+  // ⚠️ BẮT BUỘC có try/catch. MAX_EXECUTION_TIME huỷ câu và MySQL trả **LỖI** (ER_QUERY_TIMEOUT 3024),
+  // KHÔNG trả kết quả một phần. Để lỗi đó lan lên là giết cả endpoint:
+  //   exactCount → cachedCount (chỉ nuốt lỗi khi ĐÃ có số cũ trong cache) → queryLocalShops reject
+  //   → sh.service → sh.controller (không try/catch) → filter mặc định Nest → **HTTP 500, danh sách rỗng**
+  // Và vì câu đó không bao giờ xong nên cache KHÔNG BAO GIỜ ấm ⇒ lỗi vĩnh viễn, không phải một lần.
+  //
+  // Đã suýt đưa lên prod ngày 2026-08-12: đổi `SELECT COUNT(*)` trần (không giới hạn thời gian — chậm
+  // 22,9s nhưng CÓ dữ liệu) sang cachedCount, tức biến "chậm" thành "hỏng". Trúng đúng các bộ lọc trên
+  // cột KHÔNG index: ô tìm (shop_name/shop_url LIKE), aff, bậc doanh thu `revenue * CASE(...)`, bậc số đơn.
+  // Hạ cấp xuống số ƯỚC LƯỢNG là lựa chọn có ý thức: tổng hiển thị cao hơn thực tế (ước lượng không tính
+  // WHERE) nên phân trang có thể có trang rỗng ở cuối — vẫn hơn hẳn mất sạch dữ liệu.
   private async exactCount(table: string, whereSql: string, params: any[]): Promise<number> {
-    const [cnt] = await this.pool!.query(
-      `SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) AS n FROM ${table} ${whereSql}`,
-      params,
-    );
-    return Number((cnt as any[])[0].n) || 0;
+    try {
+      const [cnt] = await this.pool!.query(
+        `SELECT /*+ MAX_EXECUTION_TIME(15000) */ COUNT(*) AS n FROM ${table} ${whereSql}`,
+        params,
+      );
+      return Number((cnt as any[])[0].n) || 0;
+    } catch (err) {
+      const e = err as { code?: string; message?: string };
+      console.warn(
+        `[ShMysql] COUNT có lọc trên ${table} không xong trong 15s (${e?.code || e?.message || 'lỗi'}) ` +
+          '→ dùng số ƯỚC LƯỢNG toàn bảng. Tổng hiển thị sẽ CAO hơn thực tế; danh sách vẫn đúng.',
+      );
+      return this.estimateRows(table);
+    }
   }
 
   async queryLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number }): Promise<{ items: any[]; total: number }> {
