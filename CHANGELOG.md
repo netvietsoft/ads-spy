@@ -4,6 +4,67 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-13 — Affiliate: 22k shop đã có sẵn hoa hồng trong DB nhưng chưa ai nối hai bảng
+
+Yêu cầu: xem sâu hơn về chương trình affiliate của shop Shopify (bán hàng gì, ngành gì, %hoa hồng, nội
+quy). Đo trước khi làm thì phần lớn **đã có sẵn, chỉ chưa được nối**:
+
+| | Trong DB |
+|---|---|
+| `aff_program` (job affnet cào) | 32.898 chương trình · **31.183 có `commission_pct`** · `web` có ở 99,5% |
+| `aff_library` (kho xem ở `/afflibrary`) | 36.241 domain · **`commission_pct` TRỐNG 100%** |
+| Nối được qua `web` | **23.467 domain**, trong đó **22.219 có hoa hồng** |
+
+**Nguyên nhân không phải lỗi SQL.** Hàm `prefillFromProgram(web)` vốn vẫn đúng, nhưng chỉ chạy cho **MỘT
+domain vừa được thêm** (gọi từ đúng một chỗ) — nên 36k dòng có sẵn không bao giờ được điền. Lỗ hổng
+**phủ sóng**, không phải logic. Thêm `prefillFromProgramBulk()` chạy cho cả kho.
+
+Kết quả đo local sau khi chạy (8,8s cho 23.046 domain):
+
+| Cột `aff_library` | Trước | Sau |
+|---|---|---|
+| `commission_pct` | **0** | **21.822** |
+| `cookie_days` | 0 | **22.235** |
+| `join_url` | 9.883 | **32.285** |
+| `aff_platform` | 2.224 | **24.992** |
+
+**Ngành hàng** lấy từ `sh_shop.up_category` (có cho 44.942/46.982 shop) — hiện ở `/afflibrary` (qua
+`shop_id`) và đã có sẵn ở `/localdb/shops`. **Thông tin chương trình** (nền tảng · %hoa hồng · cookie ·
+link đăng ký) nay hiện cả ở `/localdb/shops`.
+
+**Hai quyết định về hiệu năng, rút từ sự cố hôm qua:**
+- Cả hai chỗ bổ sung dữ liệu đều là **truy vấn PHỤ có giới hạn** (`WHERE … IN (…)` theo đúng số dòng của
+  trang, ≤500), **không LEFT JOIN vào câu chính** — JOIN trước LIMIT trên `sh_shop` 2,4 GB là đúng cái bẫy
+  đã đo 245s ngày 12/08.
+- Tra `aff_program` theo **cả `web` lẫn `www.web`** thay vì bọc `LOWER()/TRIM()` quanh cột: bọc hàm là mất
+  index, biến truy vấn rẻ thành quét 32.898 dòng mỗi lần tải trang. Thêm luôn `idx_prog_web` — trước đây
+  `web` **không có index** dù là khoá nối duy nhất, nên mỗi lần `prefillFromProgram` gọi theo domain là một
+  lượt quét toàn bảng.
+
+**Hai lỗi tự tạo, bắt được khi tự kiểm chứ không phải khi chạy thật:**
+1. Truyền 4 tham số cho 3 placeholder → lệch vị trí, MySQL báo lỗi cú pháp ngay.
+2. **Không idempotent**: điều kiện ứng viên chỉ hỏi `al.<cột> IS NULL`, mà `payout` gần như luôn NULL (chỉ
+   10 dòng điền được) nên **mọi** dòng khớp lại mãi; cộng với `updated_at = NOW()` đặt vô điều kiện ⇒ chạy
+   lần hai vẫn đụng 23.045 dòng và **bơm `updated_at`, làm hỏng cột "Update"**. Sửa: điều kiện phải là "ô
+   đích NULL **VÀ** chương trình có giá trị cho nó", dùng chung cho cả câu chọn ứng viên lẫn câu UPDATE.
+   Sau khi sửa: lần chạy thứ hai `{webs: 0, filled: 0}`.
+
+Bỏ luôn `.catch(() => {})` nuốt sạch lỗi của `prefillFromProgram` — một lỗi thường trực ở đó (sai
+collation, mất quyền) sẽ khiến cột affiliate trống mãi mà không ai biết vì sao.
+
+**CHƯA làm — nội quy/luật chương trình.** `terms_text` đã lưu 10.348 dòng nhưng **không đủ để list**: đo
+thấy chỉ 35% nhắc thanh toán, 8% nhắc cookie, **1% nhắc cấm PPC**, **1% nhắc cấm trademark**. Mẫu thật cho
+thấy vì sao — bản dài nhất là **HTML thô đầy inline style**, bản ngắn nhất **2 ký tự (`"ce"`)**, trung bình
+1.676 ký tự, chỉ 476 dòng vượt 5.000. Đó là **đoạn giới thiệu trên trang đăng ký**, không phải điều khoản
+thật (nằm ở trang riêng, phải cào thêm). Viết bộ rút trích luật từ dữ liệu này sẽ cho ra danh sách gần
+rỗng — nên hoãn sang Phần 2 thay vì làm cho có.
+
+Test: **87/87 suite · 678/678**. Hai spec mới khoá: giữ index (không bọc hàm quanh cột `web`), khớp bất kể
+`www.`/hoa-thường, `aff_program` chưa tồn tại không được làm hỏng trang Local DB, mọi cột qua `COALESCE`
+(không đè sửa tay), và chỉ đụng dòng thật sự có gì để điền.
+
+---
+
 ## 2026-08-12 (phần 2) — index hoá sắp xếp: 245s → 2ms, và ba hồi quy tự tạo phải vá ngay
 
 Phần 1 (dưới) bỏ được việc đọc `raw`, nhưng **chưa đủ trên prod**. Đo prod (`sh_shop` 49.186 dòng /

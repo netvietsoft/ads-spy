@@ -13,6 +13,24 @@ const REV_GARBAGE = 1e8;
 const moneyCap = (n: any) => (typeof n === 'number' && Math.abs(n) >= REV_GARBAGE ? '—' : money(n));
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 // Rút gọn đường dẫn danh mục sâu: chỉ hiện "gốc › lá" (giữ full ở tooltip).
+// Chương trình affiliate của shop, BE gắn từ aff_program (xem attachAffProgram ở sh.mysql.ts).
+// Hiện %hoa hồng ngay cạnh dấu ✓ vì đó là con số người dùng cần nhất; nền tảng/cookie/link để trong tooltip
+// cho khỏi chật cột. Độ phủ thấp là bình thường — chỉ ~1.260/46.982 shop nằm trong mạng affiliate đã cào.
+const affProg = (s: any) => {
+  if (s._aff_commission_pct == null && !s._aff_platform) return null;
+  const tip = [
+    s._aff_platform ? `Nền tảng: ${s._aff_platform}` : '',
+    s._aff_commission_pct != null ? `Hoa hồng: ${s._aff_commission_pct}%` : '',
+    s._aff_cookie_days != null ? `Cookie: ${s._aff_cookie_days} ngày` : '',
+    s._aff_payout != null ? `Ngưỡng thanh toán: ${s._aff_payout}` : '',
+    s._aff_join_url ? `Đăng ký: ${s._aff_join_url}` : '',
+  ].filter(Boolean).join('\n');
+  return (
+    <span title={tip} style={{ color: 'var(--accent-2)', fontWeight: 700, fontSize: 11, marginRight: 4 }}>
+      {s._aff_commission_pct != null ? `${s._aff_commission_pct}%` : s._aff_platform}
+    </span>
+  );
+};
 const shortCat = (path: string) => {
   const parts = path.split(/\s*>\s*/).filter(Boolean);
   return parts.length <= 2 ? parts.join(' › ') : `${parts[0]} › ${parts[parts.length - 1]}`;
@@ -90,6 +108,7 @@ function ShopRowCard({ s, fav, catNames }: { s: any; fav: boolean; catNames: Rec
           {/* Chỉ gắn badge khi ĐÃ harvest. Trước đây shop chưa harvest bị dán chữ "local" — không nói
               thêm điều gì (mọi dòng ở trang này đều từ DB local) mà chiếm chỗ. */}
           {s._harvested ? <span className="badge-harvest">✓ harvest</span> : null}
+          {affProg(s)}
           {s._affiliate === 'yes' && s._affiliate_link ? <a href={s._affiliate_link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-2)', fontWeight: 700, fontSize: 12 }}>aff ✓</a> : s._affiliate === 'app' ? <span style={{ color: '#e0a800', fontSize: 11 }}>aff app</span> : null}
         </span>
         <span className="fbplat" style={{ marginLeft: 'auto', textAlign: 'right' }}><Upd ms={s._fetched_at ?? s._harvested_at} /></span>
@@ -382,7 +401,7 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
                 <tr key={s.shop_id} onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{favIds.has(String(s.shop_id)) && <span style={{ color: '#e0384f', marginRight: 4 }} title="Shop yêu thích">♥</span>}{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url ? <a href={`https://${String(s.url).replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer" title="Mở shop" onClick={(e) => e.stopPropagation()}>{s.url}</a> : ''}</div></td>
-                  <td>{s._affiliate === 'yes' && s._affiliate_link
+                  <td>{affProg(s)}{s._affiliate === 'yes' && s._affiliate_link
                     ? <a href={s._affiliate_link} target="_blank" rel="noreferrer" title={`Trang affiliate: ${s._affiliate_link}`} onClick={(e) => e.stopPropagation()} style={{ color: 'var(--accent-2)', fontWeight: 700 }}>✓</a>
                     : s._affiliate === 'app' ? <span title="Có cài app affiliate nhưng không tìm thấy link công khai" style={{ color: '#e0a800', fontSize: 11, fontWeight: 700 }}>app</span>
                     : s._affiliate === 'no' ? <span style={{ opacity: 0.35 }}>—</span>

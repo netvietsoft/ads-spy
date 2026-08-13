@@ -768,6 +768,8 @@ export interface AffLibRow {
   sku?: number | null; found?: number;
   join_url?: string | null; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string | null;
   aff_status?: string | null; aff_platform?: string | null;
+  // Ngành hàng lấy từ sh_shop qua shop_id (BE gắn ở attachCategory) — chỉ có khi dòng đã khớp được shop.
+  up_category?: string | null; up_category_path?: string | null;
   dns_ok?: number | null; aff_try_count?: number | null; aff_last_error?: string | null;
   created_at?: number | null; updated_at?: number | null;
   traffic_visits?: number | null; traffic_bounce?: number | null; traffic_duration_sec?: number | null; traffic_rank?: number | null;
@@ -869,6 +871,11 @@ export async function affLibDelete(web: string): Promise<{ ok: boolean }> {
 }
 export async function affLibSyncLocaldb(): Promise<{ ok: boolean; synced: number }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/sync-localdb`, { method: 'POST' }));
+}
+// Điền hoa hồng/cookie/link/nền tảng cho cả kho từ aff_program (affnet đã cào). Chỉ điền ô trống,
+// không đè giá trị sửa tay; chạy lại nhiều lần vô hại. Đo local 2026-08-13: 23.046 dòng trong 8,8s.
+export async function affLibPrefillProgram(): Promise<{ ok: boolean; webs: number; filled: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/prefill-program`, { method: 'POST' }));
 }
 export async function affLibDetectStart(): Promise<AffLibDetectStatus> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/detect/start`, { method: 'POST' }));

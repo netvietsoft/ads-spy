@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ShMysql } from '../shophunter/sh.mysql';
 import { AffnetMysql } from '../affnet/affnet.mysql';
+import { NET_PLATFORM_NAME } from '../affnet/affnet.types';
 import { platformOfLink } from '../shophunter/affiliate.client';
 import { CURRENCY_USD } from '../shophunter/sh.currency';
 
@@ -315,23 +316,97 @@ export class AffLibMysql {
     }
   }
 
+  // Biểu thức SQL đổi net → tên nền tảng hiển thị, dùng chung map NET_PLATFORM_NAME (affnet.types.ts).
+  // `aff_program.net` là HOST ('goaffpro.com') còn `aff_library.aff_platform` là TÊN ('GoAffPro') do
+  // afflib.detect sinh ra — không ánh xạ thì cùng một nền tảng hiện hai kiểu và bộ lọc bị tách đôi.
+  private static netToPlatformSql(col: string): string {
+    const cases = Object.entries(NET_PLATFORM_NAME)
+      .map(([net, name]) => `WHEN '${net}' THEN '${name}'`)
+      .join(' ');
+    return `CASE ${col} ${cases} ELSE ${col} END`;
+  }
+
+  // Điền HÀNG LOẠT affiliate từ aff_program cho cả kho. Hàm `prefillFromProgram` bên dưới chỉ chạy cho
+  // MỘT domain vừa được thêm, nên 36.241 dòng có sẵn chưa bao giờ được điền: đo 2026-08-13 thấy
+  // `aff_library.commission_pct` TRỐNG 100% trong khi aff_program có 31.183 dòng có hoa hồng và
+  // 23.467 domain nối được. Đây là lỗ hổng PHỦ SÓNG, không phải lỗi logic — câu UPDATE vốn vẫn đúng.
+  //
+  // Chỉ điền ô đang NULL (`COALESCE`) → KHÔNG BAO GIỜ đè giá trị người dùng sửa tay qua updateAffiliate.
+  // Chạy theo LÔ thay vì một câu UPDATE 22k dòng: giữ thời gian khoá ghi ngắn (bài học 2026-08-12).
+  async prefillFromProgramBulk(o?: { batch?: number; maxBatches?: number }): Promise<{ webs: number; filled: number }> {
+    const pool = await this.sh.getPool();
+    const batch = Math.min(5000, Math.max(100, Number(o?.batch) || 2000));
+    const maxBatches = Math.min(500, Math.max(1, Number(o?.maxBatches) || 100));
+    const plat = AffLibMysql.netToPlatformSql('net'); // dùng trong AGG — subquery không đặt bí danh bảng
+    // "Có gì đó để điền" = ô đích đang NULL VÀ chương trình có giá trị cho nó. Điều kiện này dùng ở CẢ hai
+    // câu (chọn ứng viên và UPDATE) nên hai bên không thể lệch nhau.
+    // Không được chỉ hỏi `al.<cột> IS NULL`: `payout` gần như luôn NULL (chỉ 10 dòng điền được) nên mọi
+    // dòng sẽ khớp lại mãi mãi, lần chạy thứ hai vẫn đụng 23k dòng.
+    const HAS_WORK = `(
+        (al.join_url IS NULL AND p.join_url IS NOT NULL)
+     OR (al.commission_pct IS NULL AND p.commission_pct IS NOT NULL)
+     OR (al.payout IS NULL AND p.payout IS NOT NULL)
+     OR (al.cookie_days IS NULL AND p.cookie_days IS NOT NULL)
+     OR (al.note IS NULL AND p.notes IS NOT NULL)
+     OR (al.aff_platform IS NULL AND p.platform IS NOT NULL))`;
+    const AGG = `SELECT web, MAX(join_url) join_url, MAX(commission_pct) commission_pct,
+                        MAX(payout_threshold) payout, MAX(cookie_days) cookie_days, MAX(notes) notes,
+                        MAX(${plat}) platform
+                 FROM aff_program`;
+    let lastWeb = '';
+    let webs = 0;
+    let filled = 0;
+    for (let i = 0; i < maxBatches; i++) {
+      const [cand] = await pool.query(
+        `SELECT al.web FROM aff_library al JOIN (${AGG} GROUP BY web) p ON p.web = al.web
+          WHERE al.web > ? AND ${HAS_WORK}
+          ORDER BY al.web LIMIT ?`,
+        [lastWeb, batch],
+      );
+      const list = (cand as any[]).map((r) => r.web as string);
+      if (!list.length) break;
+      lastWeb = list[list.length - 1];
+      webs += list.length;
+      const [res] = await pool.query(
+        `UPDATE aff_library al
+         JOIN (${AGG} WHERE web IN (?) GROUP BY web) p ON p.web = al.web
+         SET al.join_url = COALESCE(al.join_url, p.join_url),
+             al.commission_pct = COALESCE(al.commission_pct, p.commission_pct),
+             al.payout = COALESCE(al.payout, p.payout),
+             al.cookie_days = COALESCE(al.cookie_days, p.cookie_days),
+             al.note = COALESCE(al.note, p.notes),
+             al.aff_platform = COALESCE(al.aff_platform, p.platform),
+             al.updated_at = ?
+         WHERE al.web IN (?) AND ${HAS_WORK}`,
+        [list, Date.now(), list],
+      );
+      filled += Number((res as any).changedRows) || 0;
+    }
+    return { webs, filled };
+  }
+
   // Prefill affiliate từ aff_program (affnet crawl) nếu aff_library chưa có — best-effort.
   async prefillFromProgram(web: string): Promise<void> {
     const pool = await this.sh.getPool();
     await pool
       .query(
         `UPDATE aff_library al
-         LEFT JOIN (SELECT web, MAX(join_url) join_url, MAX(commission_pct) commission_pct, MAX(payout_threshold) payout, MAX(cookie_days) cookie_days, MAX(notes) notes
+         LEFT JOIN (SELECT web, MAX(join_url) join_url, MAX(commission_pct) commission_pct, MAX(payout_threshold) payout, MAX(cookie_days) cookie_days, MAX(notes) notes,
+                           MAX(${AffLibMysql.netToPlatformSql('net')}) platform
                     FROM aff_program WHERE web = ? GROUP BY web) p ON p.web = al.web COLLATE utf8mb4_unicode_ci
          SET al.join_url = COALESCE(al.join_url, p.join_url),
              al.commission_pct = COALESCE(al.commission_pct, p.commission_pct),
              al.payout = COALESCE(al.payout, p.payout),
              al.cookie_days = COALESCE(al.cookie_days, p.cookie_days),
-             al.note = COALESCE(al.note, p.notes)
+             al.note = COALESCE(al.note, p.notes),
+             al.aff_platform = COALESCE(al.aff_platform, p.platform)
          WHERE al.web = ?`,
         [web, web],
       )
-      .catch(() => {}); // aff_program có thể chưa có dữ liệu → bỏ qua
+      // Trước đây là `.catch(() => {})` — nuốt SẠCH. Một lỗi thường trực ở đây (sai collation, thiếu cột,
+      // mất quyền) sẽ khiến cột affiliate trống mãi mà không ai biết vì sao. Vẫn không ném ra (đây là
+      // best-effort, không được làm hỏng luồng thêm domain) nhưng PHẢI để lại dấu vết.
+      .catch((e) => console.warn(`[AffLib] prefillFromProgram(${web}) lỗi: ${(e as Error)?.message}`));
   }
 
   // Sửa cột affiliate. CHỈ cập nhật khoá có mặt trong patch (phân biệt "vắng" với "null=xoá") → cho phép xoá giá trị.
@@ -377,7 +452,31 @@ export class AffLibMysql {
        LIMIT ? OFFSET ?`,
       [pageSize, (page - 1) * pageSize],
     );
-    return { items: rows as any[], total, page, pageSize, sort, dir: dir.toLowerCase(), filter };
+    const items = await this.attachCategory(rows as any[]);
+    return { items, total, page, pageSize, sort, dir: dir.toLowerCase(), filter };
+  }
+
+  // Gắn NGÀNH HÀNG (up_category) vào các dòng đã lấy, tra theo shop_id.
+  //
+  // CỐ Ý là truy vấn PHỤ chứ không LEFT JOIN sang sh_shop trong câu chính: sh_shop nặng 2,4 GB trên prod
+  // và buffer pool chỉ 128 MB, nên JOIN trước LIMIT có thể buộc MySQL tra PK cho cả 36k dòng aff_library
+  // rồi mới sắp xếp. Ở đây số khoá bị chặn cứng bằng đúng số dòng của TRANG (≤500) → luôn rẻ.
+  // Cùng khuôn mẫu reportShopOrdersByRange đang dùng (gom trước, tra tên/url sau).
+  private async attachCategory(rows: any[]): Promise<any[]> {
+    const ids = [...new Set(rows.map((r) => r.shop_id).filter(Boolean))];
+    if (!ids.length) return rows;
+    const pool = await this.sh.getPool();
+    const [cats] = await pool.query(
+      'SELECT shop_id, up_category, up_category_path FROM sh_shop WHERE shop_id IN (?)',
+      [ids],
+    );
+    const byId = new Map((cats as any[]).map((c) => [String(c.shop_id), c]));
+    for (const r of rows) {
+      const c = r.shop_id ? byId.get(String(r.shop_id)) : null;
+      r.up_category = c?.up_category ?? null;
+      r.up_category_path = c?.up_category_path ?? null;
+    }
+    return rows;
   }
 
   // Lấy ĐÚNG các dòng theo danh sách web (cùng shape với listRows để FE hiện được ngay).
@@ -393,7 +492,7 @@ export class AffLibMysql {
        ORDER BY al.updated_at DESC, al.web ASC`,
       [webs],
     );
-    return rows as any[];
+    return this.attachCategory(rows as any[]);
   }
 
   // (A) Đồng bộ shop CÓ AFFILIATE từ Local DB vào aff_library. Trả số shop đã đồng bộ.

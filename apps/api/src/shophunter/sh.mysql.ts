@@ -4,6 +4,7 @@ import { ShBlockedError } from './sh.client';
 import { PrismaService } from '../prisma.service';
 import { rawToListRow, listRowTuple, LIST_COLS, ListRow } from './sh.product-list';
 import { rateCaseSql, RATE_TAG } from './sh.currency';
+import { NET_PLATFORM_NAME } from '../affnet/affnet.types';
 import {
   SHOP_DERIVED_COLUMNS, SHOP_SORT_COLUMNS, SHOP_DERIVED_INDEXES,
   SHOP_DERIVED_AUTO_ALTER_MAX_MB, buildShopDerivedAlter,
@@ -1153,7 +1154,7 @@ export class ShMysql implements OnModuleInit {
       // `raw` thì CỐ Ý giữ lại: items dựng bằng {...JSON.parse(r.raw)} nên bỏ đi là gãy hợp đồng với FE.
       // Nó không phải nút thắt — khi ORDER BY chỉ đụng cột dẫn xuất, MySQL chỉ đọc raw cho đúng số dòng
       // của LIMIT (đo 2026-08-12: vẫn 293ms dù raw nằm trong SELECT).
-      `SELECT shop_id, raw, storefront_currency, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path, affiliate_status, affiliate_link FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
+      `SELECT shop_id, raw, shop_url, storefront_currency, (detail_fetched_at IS NOT NULL) AS harvested, harvested_at, fetched_at, up_category, up_category_path, affiliate_status, affiliate_link FROM sh_shop ${whereSql} ${orderBy} LIMIT ? OFFSET ?`,
       [...params, o.limit, o.offset],
     );
     // COUNT qua cachedCount y như queryLocalProducts. Trước đây chỗ này gọi `SELECT COUNT(*)` TRỰC TIẾP:
@@ -1163,7 +1164,51 @@ export class ShMysql implements OnModuleInit {
     // cachedCount: không lọc → số ƯỚC LƯỢNG tức thì; có lọc → COUNT thật + cache 5' + stale-while-revalidate.
     const total = await this.cachedCount('sh_shop', whereSql, params, 300000);
     const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at), _up_category: r.up_category ?? null, _up_category_path: r.up_category_path ?? null, _affiliate: r.affiliate_status ?? null, _affiliate_link: r.affiliate_link ?? null, _storefront_currency: r.storefront_currency ?? null })); // eslint-disable-line
+    await this.attachAffProgram(rows as any[], items);
     return { items, total };
+  }
+
+  // Gắn thông tin CHƯƠNG TRÌNH AFFILIATE (hoa hồng, cookie, link đăng ký, nền tảng) vào các shop của TRANG.
+  //
+  // Truy vấn PHỤ, không JOIN vào câu chính: sh_shop nặng 2,4 GB trên prod, JOIN trước LIMIT là buộc MySQL
+  // tra cả bảng rồi mới sắp xếp — đúng cái bẫy đã đo hôm 2026-08-12 (245s). Ở đây số khoá bị chặn bằng
+  // đúng số dòng của trang (≤100).
+  //
+  // Tra theo CẢ HAI dạng `web` và `www.web` thay vì bọc LOWER/TRIM quanh cột: bọc hàm là mất index
+  // `idx_prog_web` vừa thêm, biến truy vấn rẻ thành quét 32.898 dòng mỗi lần tải trang.
+  //
+  // Độ phủ thấp là BÌNH THƯỜNG, không phải bug: đo 2026-08-13 chỉ 1.260/46.982 shop khớp — phần lớn shop
+  // trong sh_shop đơn giản là chưa nằm trong các mạng affiliate đã cào. Kho /afflibrary mới là nơi phủ cao.
+  private async attachAffProgram(rows: any[], items: any[]): Promise<void> {
+    const norm = (u: unknown) => String(u || '').trim().toLowerCase().replace(/^www\./, '');
+    const keys = [...new Set(rows.map((r) => norm(r.shop_url)).filter(Boolean))];
+    if (!keys.length) return;
+    const candidates = [...keys, ...keys.map((k) => `www.${k}`)];
+    let byWeb = new Map<string, any>();
+    try {
+      const [progs] = await this.pool!.query(
+        `SELECT web, MAX(net) net, MAX(join_url) join_url, MAX(commission_pct) commission_pct,
+                MAX(cookie_days) cookie_days, MAX(payout_threshold) payout
+           FROM aff_program WHERE web IN (?) GROUP BY web`,
+        [candidates],
+      );
+      byWeb = new Map((progs as any[]).map((p) => [norm(p.web), p]));
+    } catch (err) {
+      // aff_program do module affnet tạo — DB chưa từng chạy affnet thì bảng chưa tồn tại. Không được để
+      // điều đó làm hỏng cả trang Local DB: thiếu thông tin chương trình chỉ là thiếu vài cột phụ.
+      console.warn(`[ShMysql] không đọc được aff_program: ${(err as Error)?.message}`);
+      return;
+    }
+    if (!byWeb.size) return;
+    rows.forEach((r, i) => {
+      const p = byWeb.get(norm(r.shop_url));
+      if (!p) return;
+      items[i]._aff_platform = NET_PLATFORM_NAME[p.net] || p.net || null;
+      items[i]._aff_join_url = p.join_url ?? null;
+      items[i]._aff_commission_pct = p.commission_pct == null ? null : Number(p.commission_pct);
+      items[i]._aff_cookie_days = p.cookie_days == null ? null : Number(p.cookie_days);
+      items[i]._aff_payout = p.payout == null ? null : Number(p.payout);
+    });
   }
 
   // Đọc bảng list nhẹ sh_product_list (không JSON, có FULLTEXT ft_name + index revenue/price/country/category) — nhanh cho sort/lọc/tìm.

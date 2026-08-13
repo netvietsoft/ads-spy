@@ -298,6 +298,13 @@ export class AffLibService {
     return this.db.syncFromLocalDbAff();
   }
 
+  // (A2) Điền hoa hồng/cookie/link/nền tảng cho CẢ KHO từ aff_program. Trước đây chỉ có bản chạy theo
+  // TỪNG domain (gọi lúc thêm domain mới), nên dữ liệu cũ không bao giờ được điền — đo 2026-08-13:
+  // aff_library.commission_pct trống 100% dù aff_program có 31.183 dòng có hoa hồng.
+  prefillProgram(): Promise<{ webs: number; filled: number }> {
+    return this.db.prefillFromProgramBulk();
+  }
+
   // (B) Job phát hiện affiliate cho domain chưa kiểm.
   // Job nền: sau MỖI LÔ quét xong thì điền traffic cho cả lô (1 lần gọi AITDK cho ~50 domain, không phải
   // 50 lần). Callback để AffLibDetect không phải biết tới TrafficService.

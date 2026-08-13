@@ -2,11 +2,16 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, affLibRevScan, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
+import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, affLibRevScan, affLibPrefillProgram, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
 import { toUsd } from '../currency';
 import { useIsMobile } from '../useIsMobile';
 import { TrafficHistoryModal } from './TrafficHistoryModal';
 
+// Rút gọn đường dẫn danh mục "A > B > C" thành "A › C" (khớp cách LocalDbPanel hiển thị).
+const shortCat = (path: string) => {
+  const parts = path.split(/\s*>\s*/).filter(Boolean);
+  return parts.length <= 2 ? parts.join(' › ') : `${parts[0]} › ${parts[parts.length - 1]}`;
+};
 const money = (n?: number | null) => (n == null ? '—' : '$' + Math.round(n).toLocaleString('en-US'));
 const usdNum = (n?: number | null, cur?: string | null) => (n == null ? null : (toUsd(n, cur || 'USD') as number));
 const usd = (n?: number | null, cur?: string | null) => money(usdNum(n, cur));
@@ -117,6 +122,11 @@ function AffLibCard({ r, onDetect, onEdit, onTraffic, onDel, scanning }: {
         <span>Tuần <b>{usd(r.rev_week, cur)}</b></span>
         <span>Ngày <b>{usd(r.rev_day, cur)}</b></span>
         <span>SKU <b>{r.sku ?? '—'}</b></span>
+        {/* Ngành hàng lấy từ sh_shop qua shop_id (xem attachCategory ở afflib.mysql.ts). Chỉ 14.369/36.241
+            dòng có shop_id nên nhiều dòng sẽ trống — đó là do chưa khớp được shop, không phải lỗi. */}
+        {(r.up_category_path || r.up_category) && (
+          <span title={r.up_category_path || r.up_category || ''}>🏷 <b>{shortCat(r.up_category_path || r.up_category || '')}</b></span>
+        )}
       </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         <span>Traffic <b>{numfmt(r.traffic_visits)}</b></span>
@@ -225,6 +235,16 @@ export function AffLibraryPanel() {
   const sync = async () => {
     setBusy(true); setErr(null);
     try { const r = await affLibSyncLocaldb(); alert(`Đã đồng bộ ${r.synced} shop có affiliate từ Local DB.`); await load(1); }
+    catch (e) { setErr((e as Error).message); }
+    setBusy(false);
+  };
+
+  // Điền hoa hồng/cookie/link/nền tảng từ aff_program cho CẢ KHO. Dữ liệu đã có sẵn từ job affnet nhưng
+  // trước đây chỉ chảy sang khi THÊM domain mới, nên toàn bộ dòng cũ để trống (đo 2026-08-13: commission_pct
+  // trống 100% dù aff_program có 31.183 dòng có hoa hồng).
+  const prefill = async () => {
+    setBusy(true); setErr(null);
+    try { const r = await affLibPrefillProgram(); alert(`Đã điền ${r.filled}/${r.webs} domain từ dữ liệu affnet.`); await load(page); }
     catch (e) { setErr((e as Error).message); }
     setBusy(false);
   };
@@ -390,6 +410,7 @@ export function AffLibraryPanel() {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="srcbtn active" onClick={scan} disabled={loading} title="Quét các domain vừa dán ở ô bên cạnh">{loading ? 'Đang…' : 'Scan now'}</button>
           <button className="srcbtn" onClick={sync} disabled={busy} title="Kéo shop affiliate_status='yes' từ Local DB vào kho">Syn DB</button>
+          <button className="srcbtn" onClick={prefill} disabled={busy} title="Điền %hoa hồng, cookie, link đăng ký, nền tảng từ dữ liệu affnet đã cào. Chỉ điền ô đang trống — không đè giá trị bạn sửa tay. Chạy lại nhiều lần vô hại.">Điền hoa hồng</button>
         </div>
       </div>
 

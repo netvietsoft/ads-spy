@@ -201,6 +201,10 @@ export class AffnetMysql {
       PRIMARY KEY (net, slug))`);
     // Index cho programList lọc theo khoảng %commit / theo status.
     await this.ensureIndexMulti(pool, 'aff_program', 'idx_net_pct', 'net, commission_pct');
+    // `web` là khoá nối duy nhất sang aff_library/sh_shop (PK ở đây là net+slug). Thiếu index thì mỗi
+    // lần tra `WHERE web = ?` phải quét toàn bảng — `prefillFromProgram` gọi theo TỪNG domain nên đó là
+    // một lượt quét 32.898 dòng cho mỗi domain. Bảng nhỏ nên index này gần như miễn phí.
+    await this.ensureIndexMulti(pool, 'aff_program', 'idx_prog_web', 'web');
     await this.ensureIndexMulti(pool, 'aff_program', 'idx_net_status', 'net, status');
 
     // Traffic dán tay theo DOMAIN (web) — KHÔNG theo net/slug, vì 1 domain có thể là web của nhiều chương

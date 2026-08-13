@@ -23,6 +23,14 @@ export class AffLibController {
     return { ok: true, synced };
   }
 
+  // (A2) Điền hoa hồng/cookie/link/nền tảng từ aff_program (affnet đã cào) cho CẢ KHO.
+  // Chỉ điền ô đang trống — không đè giá trị sửa tay. Chạy lại nhiều lần vô hại.
+  @Post('prefill-program')
+  async prefillProgram() {
+    const r = await this.svc.prefillProgram();
+    return { ok: true, ...r };
+  }
+
   // (B) Job phát hiện affiliate cho domain chưa kiểm (chạy nền, poll status).
   @Post('detect/start')
   detectStart() {

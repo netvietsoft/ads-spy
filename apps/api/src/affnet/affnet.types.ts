@@ -1,5 +1,16 @@
 // DTO thuần cho module affnet — không import Nest/mysql/playwright.
 
+// `aff_program.net` là HOST của mạng; các nơi hiển thị lại dùng TÊN ('GoAffPro'). Đặt map ở đây — file
+// không phụ thuộc gì — để afflib.mysql.ts và sh.mysql.ts dùng CHUNG một nguồn. Nhân bản ở hai file là
+// cách chắc chắn để hai chỗ lệch nhau rồi bộ lọc theo nền tảng bị tách đôi.
+// Net lạ (mạng thêm sau) giữ nguyên host thay vì về null — thà hiện 'newnet.com' còn hơn mất thông tin.
+export const NET_PLATFORM_NAME: Record<string, string> = {
+  'goaffpro.com': 'GoAffPro',
+  'uppromote.com': 'UpPromote',
+  'affiliatly.com': 'Affiliatly',
+  'getrewardful.com': 'Rewardful',
+};
+
 export interface ParsedProgram {
   programName: string | null;
   brand: string | null;
