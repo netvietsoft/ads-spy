@@ -2,7 +2,7 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, affLibRevScan, affLibPrefillProgram, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
+import { affLibScan, affLibRows, affLibUpdate, affLibDelete, affSaveTraffic, affLibSyncLocaldb, affLibDetectStart, affLibDetectStatus, affLibDetectStop, affLibDnsCheck, affLibDetectOne, affLibBulkDelete, affLibBulkRetry, affLibTrafficFill, affLibRevScan, affLibPrefillProgram, affLibTermsScan, AffLibRow, AffLibDetectStatus, AffLibDir, AffLibFilter } from '../api';
 import { toUsd } from '../currency';
 import { useIsMobile } from '../useIsMobile';
 import { TrafficHistoryModal } from './TrafficHistoryModal';
@@ -141,6 +141,21 @@ function AffLibCard({ r, onDetect, onEdit, onTraffic, onDel, scanning }: {
           {r.join_url && <a href={r.join_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: '#2563eb' }}>link đăng ký</a>}
         </div>
       )}
+      {/* NỘI QUY chương trình — trích đoạn nguyên văn từ trang điều khoản của chính shop, không phải cờ
+          bật/tắt. Chỉ ~30% shop có trang điều khoản dùng được (đo 2026-08-13), nên phần lớn dòng sẽ trống. */}
+      {r.terms_rules && r.terms_rules.length > 0 && (
+        <div className="fbbody" style={{ fontSize: 12, borderLeft: '2px solid var(--accent-2)', paddingLeft: 8, marginTop: 4 }}>
+          <div style={{ opacity: 0.7, marginBottom: 2 }}>
+            Nội quy chương trình ({r.terms_rules.length})
+            {r.terms_url && <a href={r.terms_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, color: '#2563eb' }}>nguồn</a>}
+          </div>
+          {r.terms_rules.map((x) => (
+            <div key={x.key} style={{ marginBottom: 2 }}>
+              <b>{x.label}:</b> <span style={{ opacity: 0.85 }}>{x.excerpt}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {r.note && <div className="fbbody" style={{ fontSize: 12 }}>{r.note}</div>}
       <div className="fbfoot" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex', gap: 6 }}>
@@ -246,6 +261,18 @@ export function AffLibraryPanel() {
     setBusy(true); setErr(null);
     try { const r = await affLibPrefillProgram(); alert(`Đã điền ${r.filled}/${r.webs} domain từ dữ liệu affnet.`); await load(page); }
     catch (e) { setErr((e as Error).message); }
+    setBusy(false);
+  };
+
+  // Cào nội quy theo LÔ. Không tự lặp: một lô ~40 domain đã mất ~100s, lặp tự động dễ đụng trần 100s của
+  // Cloudflare. Người dùng bấm lại, `remaining` cho biết còn bao nhiêu.
+  const termsScan = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await affLibTermsScan(40);
+      alert(`Quét ${r.scanned} shop: ${r.found} có nội quy · ${r.thin} trang mỏng · ${r.notfound} không có trang.\nCòn lại ${r.remaining} — bấm tiếp để quét lô sau.`);
+      await load(page);
+    } catch (e) { setErr((e as Error).message); }
     setBusy(false);
   };
 
@@ -411,6 +438,7 @@ export function AffLibraryPanel() {
           <button className="srcbtn active" onClick={scan} disabled={loading} title="Quét các domain vừa dán ở ô bên cạnh">{loading ? 'Đang…' : 'Scan now'}</button>
           <button className="srcbtn" onClick={sync} disabled={busy} title="Kéo shop affiliate_status='yes' từ Local DB vào kho">Syn DB</button>
           <button className="srcbtn" onClick={prefill} disabled={busy} title="Điền %hoa hồng, cookie, link đăng ký, nền tảng từ dữ liệu affnet đã cào. Chỉ điền ô đang trống — không đè giá trị bạn sửa tay. Chạy lại nhiều lần vô hại.">Điền hoa hồng</button>
+          <button className="srcbtn" onClick={termsScan} disabled={busy} title="Cào trang điều khoản thật của từng shop rồi rút trích nội quy (thanh toán, cookie, giới hạn địa lý, thuế, sản phẩm loại trừ…). Chạy theo lô, bấm lại tới khi hết. Đo thật: ~30% shop có trang điều khoản dùng được.">Cào nội quy</button>
         </div>
       </div>
 

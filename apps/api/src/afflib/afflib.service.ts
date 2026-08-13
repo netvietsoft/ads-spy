@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AffLibMysql, AffLibSnapshot } from './afflib.mysql';
 import { AffLibDetect } from './afflib.detect';
+import { TERMS_PATHS, TERMS_HEADERS, analyzeTermsPage, sitemapPageMaps, sitemapAffiliateUrls } from './afflib.terms';
+import { shopifyHttp } from '../shophunter/shopify.client';
+import { makeProxiedGet } from '../shophunter/shopify.proxy-get';
 import { resolveDomains } from './afflib.dns';
 import { TrafficService } from '../traffic/traffic.service';
 import { ShService, summarizeShopChart } from '../shophunter/sh.service';
@@ -296,6 +299,111 @@ export class AffLibService {
   // (A) Đồng bộ shop có aff từ Local DB — CẢ 'yes' lẫn 'app' (có app affiliate, chưa dò ra link).
   sync(): Promise<number> {
     return this.db.syncFromLocalDbAff();
+  }
+
+  // (A3) Cào ĐIỀU KHOẢN thật của chương trình affiliate cho một LÔ domain, rồi rút trích luật.
+  //
+  // Theo khuôn traffic-fill/rev-scan: endpoint xử lý một lô rồi trả về, FE bấm tiếp — không dựng job nền
+  // có state. Khảo sát 2026-08-13: trung vị 1,8s/domain, độ phủ 65%, không gặp chặn trong 80 domain.
+  //
+  // Thứ tự tìm trang QUAN TRỌNG: đoán đường dẫn trước (rẻ, trúng 40%), thất bại mới đọc sitemap
+  // (thêm 25%). Bỏ bước sitemap là mất hơn một phần ba độ phủ.
+  async termsScan(limit = 100): Promise<{ scanned: number; found: number; thin: number; notfound: number; error: number; remaining: number }> {
+    const webs = await this.db.nextTermsBatch(limit);
+    const proxies = (await this.shDb.listProxiesFull(true).catch(() => []))
+      .filter((r: any) => (r.type || 'http') === 'http')
+      .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+    const get = proxies.length === 0 ? shopifyHttp.get : makeProxiedGet(() => proxies);
+    //  chứ không phải : controller bọc thêm {ok:true} nên hai chữ ok đụng nhau, mà "tìm được" cũng đúng nghĩa hơn.
+    const stat = { scanned: 0, found: 0, thin: 0, notfound: 0, error: 0, remaining: 0 };
+
+    // Chạy song song có giới hạn — cùng mức 6 luồng đã đo trong khảo sát.
+    const queue = [...webs];
+    await Promise.all(
+      Array.from({ length: 6 }, async () => {
+        for (;;) {
+          const web = queue.shift();
+          if (!web) return;
+          const r = await this.termsScanOne(web, get).catch((e) => ({ status: 'error' as const, err: String((e as Error)?.message).slice(0, 200) }));
+          stat.scanned++;
+          if (r.status === 'ok') stat.found++;
+          else stat[r.status]++;
+        }
+      }),
+    );
+    stat.remaining = await this.db.termsRemaining();
+    return stat;
+  }
+
+  // Cào + phân tích 1 domain. LUÔN ghi kết quả (kể cả thất bại) để hàng đợi tiến lên — không ghi là domain
+  // hỏng nằm lại vĩnh viễn và mỗi lô sau lại thử đúng chúng.
+  private async termsScanOne(
+    web: string,
+    get: (url: string, headers?: any) => Promise<{ status: number; body: string }>,
+  ): Promise<{ status: 'ok' | 'thin' | 'notfound' | 'error'; err?: string }> {
+    let bestThin: { url: string; via: string; res: ReturnType<typeof analyzeTermsPage> } | null = null;
+
+    const tryUrl = async (url: string, via: 'path' | 'sitemap') => {
+      const r = await get(url, TERMS_HEADERS).catch(() => null);
+      if (!r || r.status !== 200 || !r.body) return null;
+      const res = analyzeTermsPage(r.body);
+      if (res.usable) return { url, via, res };
+      // Nhớ lại trang "gần đạt" để nếu không tìm được trang nào tốt hơn thì vẫn ghi status='thin'
+      // kèm lý do — khác hẳn "không tìm thấy gì", và cho biết có đáng chỉnh ngưỡng hay không.
+      if (!bestThin || res.text.length > bestThin.res.text.length) bestThin = { url, via, res };
+      return null;
+    };
+
+    try {
+      let hit: { url: string; via: string; res: ReturnType<typeof analyzeTermsPage> } | null = null;
+      for (const p of TERMS_PATHS) {
+        hit = await tryUrl(`https://${web}${p}`, 'path');
+        if (hit) break;
+      }
+      if (!hit) {
+        // Không đoán được → đọc sitemap để TÌM đúng trang, kể cả khi shop đặt tên khác
+        // (ambassador/creator/partner…). Đây là phần mang lại 25/65 độ phủ.
+        const root = await get(`https://${web}/sitemap.xml`, TERMS_HEADERS).catch(() => null);
+        if (root && root.status === 200 && root.body) {
+          const maps = sitemapPageMaps(root.body).slice(0, 2);
+          const urls: string[] = [];
+          for (const sm of maps) {
+            const s = await get(sm, TERMS_HEADERS).catch(() => null);
+            if (s && s.status === 200 && s.body) urls.push(...sitemapAffiliateUrls(s.body));
+          }
+          for (const u of urls.slice(0, 4)) {
+            hit = await tryUrl(u, 'sitemap');
+            if (hit) break;
+          }
+        }
+      }
+
+      if (hit) {
+        await this.db.saveTerms(web, {
+          status: 'ok', sourceUrl: hit.url, foundVia: hit.via, text: hit.res.text, rules: hit.res.rules,
+          commissionPct: hit.res.numbers.commissionPct, cookieDays: hit.res.numbers.cookieDays,
+          payoutThreshold: hit.res.numbers.payoutThreshold,
+        });
+        return { status: 'ok' };
+      }
+      if (bestThin) {
+        const b = bestThin as { url: string; via: string; res: ReturnType<typeof analyzeTermsPage> };
+        await this.db.saveTerms(web, {
+          status: 'thin', sourceUrl: b.url, foundVia: b.via, text: b.res.text, rules: b.res.rules,
+          err: `mỏng: ${b.res.text.length} ký tự, ${b.res.rules.length} luật`,
+        });
+        return { status: 'thin' };
+      }
+      await this.db.saveTerms(web, { status: 'notfound', err: 'không tìm thấy trang điều khoản' });
+      return { status: 'notfound' };
+    } catch (e) {
+      await this.db.saveTerms(web, { status: 'error', err: String((e as Error)?.message) }).catch(() => {});
+      return { status: 'error', err: String((e as Error)?.message) };
+    }
+  }
+
+  termsRemaining(): Promise<number> {
+    return this.db.termsRemaining();
   }
 
   // (A2) Điền hoa hồng/cookie/link/nền tảng cho CẢ KHO từ aff_program. Trước đây chỉ có bản chạy theo

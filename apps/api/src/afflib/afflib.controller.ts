@@ -31,6 +31,19 @@ export class AffLibController {
     return { ok: true, ...r };
   }
 
+  // (A3) Cào ĐIỀU KHOẢN thật của chương trình (trang của chính shop) rồi rút trích luật, theo LÔ.
+  // Trả `remaining` để FE biết bấm tiếp hay đã xong — cùng khuôn traffic-fill/rev-scan.
+  @Post('terms-scan')
+  async termsScan(@Body() b: { limit?: number }) {
+    const r = await this.svc.termsScan(Number(b?.limit) || 100);
+    return { ok: true, ...r };
+  }
+
+  @Get('terms-remaining')
+  async termsRemaining() {
+    return { ok: true, remaining: await this.svc.termsRemaining() };
+  }
+
   // (B) Job phát hiện affiliate cho domain chưa kiểm (chạy nền, poll status).
   @Post('detect/start')
   detectStart() {

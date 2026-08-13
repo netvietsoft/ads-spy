@@ -770,6 +770,11 @@ export interface AffLibRow {
   aff_status?: string | null; aff_platform?: string | null;
   // Ngành hàng lấy từ sh_shop qua shop_id (BE gắn ở attachCategory) — chỉ có khi dòng đã khớp được shop.
   up_category?: string | null; up_category_path?: string | null;
+  // Điều khoản chương trình cào từ trang của chính shop (BE gắn ở attachTerms).
+  // `terms_rules` là danh sách luật kèm TRÍCH ĐOẠN — không phải cờ bật/tắt.
+  terms_status?: 'ok' | 'thin' | 'notfound' | 'error' | null;
+  terms_url?: string | null;
+  terms_rules?: { key: string; label: string; excerpt: string }[] | null;
   dns_ok?: number | null; aff_try_count?: number | null; aff_last_error?: string | null;
   created_at?: number | null; updated_at?: number | null;
   traffic_visits?: number | null; traffic_bounce?: number | null; traffic_duration_sec?: number | null; traffic_rank?: number | null;
@@ -876,6 +881,13 @@ export async function affLibSyncLocaldb(): Promise<{ ok: boolean; synced: number
 // không đè giá trị sửa tay; chạy lại nhiều lần vô hại. Đo local 2026-08-13: 23.046 dòng trong 8,8s.
 export async function affLibPrefillProgram(): Promise<{ ok: boolean; webs: number; filled: number }> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/prefill-program`, { method: 'POST' }));
+}
+// Cào ĐIỀU KHOẢN thật của chương trình (trang của chính shop) rồi rút trích luật, theo LÔ.
+// `remaining` giảm đơn điệu nhờ cooldown 6h phía BE → gọi lặp tới khi về 0 là an toàn, không lặp vô hạn.
+export async function affLibTermsScan(limit = 100): Promise<{ ok: boolean; scanned: number; found: number; thin: number; notfound: number; error: number; remaining: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/aff-lib/terms-scan`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }),
+  }));
 }
 export async function affLibDetectStart(): Promise<AffLibDetectStatus> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/detect/start`, { method: 'POST' }));

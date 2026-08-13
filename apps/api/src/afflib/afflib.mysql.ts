@@ -5,6 +5,8 @@ import { NET_PLATFORM_NAME } from '../affnet/affnet.types';
 import { platformOfLink } from '../shophunter/affiliate.client';
 import { CURRENCY_USD } from '../shophunter/sh.currency';
 
+// rules_json do chính ta ghi nên gần như luôn hợp lệ — nhưng một dòng hỏng KHÔNG được làm sập cả trang.
+const safeJson = (s: string) => { try { return JSON.parse(s); } catch { return null; } };
 const num = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v));
 // Chuẩn hoá url shop trong SQL (khớp normalizeDomain phía service): lower, bỏ scheme/www, cắt path.
 const WEB_EXPR = "SUBSTRING_INDEX(TRIM(LEADING 'www.' FROM REPLACE(REPLACE(LOWER(JSON_UNQUOTE(JSON_EXTRACT(raw, '$.url'))), 'https://', ''), 'http://', '')), '/', 1)";
@@ -91,6 +93,26 @@ export class AffLibMysql {
       join_url VARCHAR(1024), commission_pct DOUBLE, payout DOUBLE, cookie_days INT, note VARCHAR(512),
       created_at BIGINT, updated_at BIGINT
     ) CHARACTER SET utf8mb4`);
+    // ĐIỀU KHOẢN chương trình, cào từ trang của CHÍNH SHOP (không phải blurb API của mạng).
+    // Bảng RIÊNG chứ không thêm cột vào aff_library: nội dung dài (MEDIUMTEXT) mà aff_library được đọc ở
+    // mọi trang danh sách — nhét blob vào đó là kéo cả kho chậm theo, đúng bài học sh_shop.raw ngày 12/08.
+    await pool.query(`CREATE TABLE IF NOT EXISTS aff_terms (
+      web VARCHAR(255) PRIMARY KEY,
+      source_url VARCHAR(1024),
+      found_via VARCHAR(12),          -- 'path' = đoán đường dẫn · 'sitemap' = tìm qua sitemap.xml
+      terms_text MEDIUMTEXT,          -- NỘI DUNG CHÍNH đã tách khỏi nav/footer
+      text_len INT,
+      rules_json TEXT,                -- [{key,label,excerpt}] — trích đoạn để FE LIST RA được
+      rules_count INT,
+      commission_pct DOUBLE, cookie_days INT, payout_threshold DOUBLE,
+      status VARCHAR(12) NOT NULL,    -- 'ok' | 'thin' | 'notfound' | 'error'
+      err VARCHAR(255),
+      tries INT NOT NULL DEFAULT 0,
+      scanned_at BIGINT NOT NULL
+    ) CHARACTER SET utf8mb4`);
+    // KHÔNG thêm index phụ: hàng đợi lấy aff_library làm bảng chính rồi LEFT JOIN aff_terms theo KHOÁ
+    // CHÍNH `web` — index (status, scanned_at) không được dùng tới, chỉ tốn thêm chi phí ghi.
+
     // Cột phát hiện affiliate (P1.5) — thêm sau nếu bảng đã tạo từ P1.
     await this.ensureColumn(pool, 'aff_status', 'aff_status VARCHAR(16)');
     await this.ensureColumn(pool, 'aff_platform', 'aff_platform VARCHAR(40)');
@@ -452,8 +474,93 @@ export class AffLibMysql {
        LIMIT ? OFFSET ?`,
       [pageSize, (page - 1) * pageSize],
     );
-    const items = await this.attachCategory(rows as any[]);
+    const items = await this.attachTerms(await this.attachCategory(rows as any[]));
     return { items, total, page, pageSize, sort, dir: dir.toLowerCase(), filter };
+  }
+
+  // Domain đã quét trong vòng ngần này thì KHÔNG lấy lại. Đây là cơ chế chặn lặp vô hạn, không phải tối ưu:
+  // thiếu nó thì domain 'notfound' ở lại hàng đợi ngay sau khi quét, `remaining` KHÔNG GIẢM, và bên gọi
+  // (FE bấm "tiếp" cho tới khi hết) lặp mãi trên đúng những domain vừa xử lý. Cùng bài học đã ghi ở
+  // REV_JOB_COND. Thử lại (tối đa 3 lần) diễn ra ở lần chạy SAU, cách nhau ít nhất 6 giờ.
+  private static readonly TERMS_RETRY_COOLDOWN_MS = 6 * 3600_000;
+
+  // Hàng đợi cào điều khoản: domain ĐÃ xác định có affiliate, DNS chưa chết, chưa quét (hoặc đã quá cooldown).
+  // `tries < 3` giữ đúng quy ước của kho: thử đủ 3 lần không ra thì thôi, khỏi tắc hàng đợi mãi ở lô đầu
+  // (cùng lý do đã có QUEUE_COND cho detect).
+  async nextTermsBatch(limit: number): Promise<string[]> {
+    await this.ensureTables();
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query(
+      `SELECT al.web FROM aff_library al LEFT JOIN aff_terms t ON t.web = al.web
+        WHERE al.aff_status = 'yes' AND (al.dns_ok IS NULL OR al.dns_ok = 1)
+          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < 3 AND t.scanned_at < ?))
+        ORDER BY al.rev_month DESC LIMIT ?`,
+      [Date.now() - AffLibMysql.TERMS_RETRY_COOLDOWN_MS, Math.min(1000, Math.max(1, limit))],
+    );
+    return (rows as any[]).map((r) => r.web as string);
+  }
+
+  // Còn bao nhiêu domain trong hàng đợi — để FE biết bấm tiếp hay đã xong.
+  async termsRemaining(): Promise<number> {
+    await this.ensureTables();
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query(
+      `SELECT COUNT(*) n FROM aff_library al LEFT JOIN aff_terms t ON t.web = al.web
+        WHERE al.aff_status = 'yes' AND (al.dns_ok IS NULL OR al.dns_ok = 1)
+          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < 3 AND t.scanned_at < ?))`,
+      [Date.now() - AffLibMysql.TERMS_RETRY_COOLDOWN_MS],
+    );
+    return Number((r as any[])[0].n) || 0;
+  }
+
+  // Ghi kết quả cào 1 domain. LUÔN ghi kể cả khi thất bại (tăng `tries`) — nếu chỉ ghi lúc thành công thì
+  // domain hỏng nằm lại hàng đợi vĩnh viễn và mỗi lô lại thử đúng chúng, không bao giờ tiến (bài học từ
+  // rev_scan_at của chính kho này).
+  async saveTerms(web: string, p: {
+    status: 'ok' | 'thin' | 'notfound' | 'error';
+    sourceUrl?: string | null; foundVia?: string | null; text?: string | null;
+    rules?: { key: string; label: string; excerpt: string }[] | null;
+    commissionPct?: number | null; cookieDays?: number | null; payoutThreshold?: number | null;
+    err?: string | null;
+  }): Promise<void> {
+    const pool = await this.sh.getPool();
+    await pool.query(
+      `INSERT INTO aff_terms (web, source_url, found_via, terms_text, text_len, rules_json, rules_count,
+                              commission_pct, cookie_days, payout_threshold, status, err, tries, scanned_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+       ON DUPLICATE KEY UPDATE
+         source_url=VALUES(source_url), found_via=VALUES(found_via), terms_text=VALUES(terms_text),
+         text_len=VALUES(text_len), rules_json=VALUES(rules_json), rules_count=VALUES(rules_count),
+         commission_pct=VALUES(commission_pct), cookie_days=VALUES(cookie_days),
+         payout_threshold=VALUES(payout_threshold), status=VALUES(status), err=VALUES(err),
+         tries=aff_terms.tries+1, scanned_at=VALUES(scanned_at)`,
+      [
+        web, p.sourceUrl ?? null, p.foundVia ?? null, p.text ?? null, p.text ? p.text.length : null,
+        p.rules ? JSON.stringify(p.rules) : null, p.rules ? p.rules.length : null,
+        p.commissionPct ?? null, p.cookieDays ?? null, p.payoutThreshold ?? null,
+        p.status, p.err ? String(p.err).slice(0, 250) : null, Date.now(),
+      ],
+    );
+  }
+
+  // Gắn điều khoản vào các dòng của TRANG. Cùng lý do như attachCategory: truy vấn PHỤ có giới hạn, và
+  // ở đây còn một lý do nữa — KHÔNG lấy `terms_text` (MEDIUMTEXT) vào danh sách, chỉ lấy luật đã rút trích.
+  private async attachTerms(rows: any[]): Promise<any[]> {
+    const webs = [...new Set(rows.map((r) => r.web).filter(Boolean))];
+    if (!webs.length) return rows;
+    const pool = await this.sh.getPool();
+    const [ts] = await pool.query(
+      'SELECT web, rules_json, rules_count, source_url, status FROM aff_terms WHERE web IN (?)',
+      [webs],
+    );
+    const byWeb = new Map((ts as any[]).map((t) => [String(t.web), t]));
+    for (const r of rows) {
+      const t = byWeb.get(String(r.web));
+      r.terms_status = t?.status ?? null;
+      r.terms_url = t?.source_url ?? null;
+      r.terms_rules = t?.rules_json ? safeJson(t.rules_json) : null;
+    }
+    return rows;
   }
 
   // Gắn NGÀNH HÀNG (up_category) vào các dòng đã lấy, tra theo shop_id.
@@ -492,7 +599,7 @@ export class AffLibMysql {
        ORDER BY al.updated_at DESC, al.web ASC`,
       [webs],
     );
-    return this.attachCategory(rows as any[]);
+    return this.attachTerms(await this.attachCategory(rows as any[]));
   }
 
   // (A) Đồng bộ shop CÓ AFFILIATE từ Local DB vào aff_library. Trả số shop đã đồng bộ.

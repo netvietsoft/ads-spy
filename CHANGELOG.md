@@ -4,6 +4,71 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-13 (phần 2) — Cào NỘI QUY chương trình affiliate: 30% thật, không phải 65% như khảo sát
+
+Cào trang điều khoản của **chính shop** rồi rút trích luật kèm **trích đoạn nguyên văn** (không phải cờ
+bật/tắt). Bảng riêng `aff_terms`, endpoint `POST /api/aff-lib/terms-scan` theo lô, nút **"Cào nội quy"**.
+
+### Khảo sát báo 65%, thực tế 30% — và tôi đã tự cảnh báo điều đó
+
+Doc khảo sát ghi rõ *"các con số độ phủ là cận TRÊN"* vì nó chấm điểm trên text **cả trang** (gồm menu +
+footer). Khi làm thật với bóc nội dung chính, con số rơi xuống **30%** (12/40). Cảnh báo đó đã trả giá đúng
+như dự đoán — nhưng nhờ ghi lại nên không ai bị bất ngờ.
+
+### Tách nội dung chính: cắt theo THẺ là không đủ
+
+Cắt `<nav>/<header>/<footer>` chỉ ăn với theme dùng thẻ ngữ nghĩa. Đo sau khi đã cắt theo thẻ:
+
+| Trang | Ký tự | Luật | Thực chất |
+|---|---|---|---|
+| `milton.in` | 35.423 | 1 | mega-menu sản phẩm |
+| `blissclub.com` | 20.547 | **0** | trang liệt kê sản phẩm |
+
+⇒ Đổi sang lọc theo **khối văn xuôi**: đổi ranh giới khối thành dấu phân cách rồi bỏ khối dưới 8 từ. Mục
+menu ("Bottles & Flasks", "Go to item 1") rụng sạch, câu điều khoản giữ nguyên. `milton.in` **35.423 →
+9.529** ký tự.
+
+### Ngưỡng phải hiệu chỉnh bằng trang thật, và ĐỘ DÀI là tín hiệu tồi
+
+| Trang | Ký tự | Luật | |
+|---|---|---|---|
+| `bluettipower.com` | 2.913 | 3 | trang thật ✅ |
+| `stix.golf` | 2.952 | 2 | trang thật ✅ — ngưỡng ≥3 loại **oan** |
+| `milton.in` | 9.529 | 1 | rác ❌ |
+| `blissclub.com` | 11.120 | 0 | rác ❌ |
+
+**Trang rác dài GẤP 3-4 LẦN trang thật.** Số nhóm luật mới là tín hiệu, không phải độ dài. Hạ ngưỡng
+xuống **≥2 luật** → tỉ lệ 13% lên **30%** mà không nhận thêm trang rác nào trong mẫu.
+
+### Hai lỗi chỉ lộ ra khi CHẠY THẬT, không lộ khi khảo sát
+
+1. **`shopifyHttp.get` trả 403 cho trang HTML.** Lớp HTTP đó chỉnh cho endpoint JSON của Shopify
+   (`products.json`); khảo sát dùng `fetch` thường nên không thấy. Lần chạy đầu ra **0/20**. Truyền header
+   trình duyệt thì `vanonbatteries.com/pages/affiliate-program`: **403 → 200 (263KB)** — và vẫn giữ được
+   proxy xoay.
+2. **`remaining` không giảm ⇒ bên gọi lặp vô hạn.** Điều kiện hàng đợi `status <> 'ok' AND tries < 3` giữ
+   domain `notfound` lại NGAY sau khi quét, nên mỗi lô lại trả về đúng những domain vừa xử lý. Thêm
+   **cooldown 6 giờ** — đúng cơ chế mà `REV_JOB_COND` của chính kho này đã ghi là "chặn lặp vô hạn".
+
+### Số đo cuối
+
+| | |
+|---|---|
+| Tỉ lệ lấy được | **30%** (12/40) · thêm 24 trang "mỏng" được ghi kèm lý do |
+| Tốc độ | ~2,6s/domain ⇒ **~71 phút** cho 9.882 domain ở 6 luồng |
+| Trích đoạn ví dụ | *"Unless parcels get delivered, Referral payment will not be cleared"* · *"We reserve the right to reject orders that do not comply…"* |
+
+Taxonomy theo **số đo**, không theo sách vở: hoa hồng · thanh toán/ngưỡng · địa lý · thuế · cookie · coupon ·
+sản phẩm loại trừ · xét duyệt · huỷ-hoàn tiền. **BỎ** cấm-PPC (8%), cấm-trademark (4%), cấm-tự-mua (0%) —
+luật của mạng lớn chứ không phải shop Shopify nhỏ.
+
+Test: **88 suite · 693 test** (1 suite timeout khi chạy full — `sh.mysql.coverage`, chạy riêng PASS 9,9s;
+đó là chuyện `ensureTables()` gọi 60 lượt `information_schema`, đã ghi thành việc riêng). Spec mới
+`afflib.terms.spec.ts` 15 test khoá: bỏ mảnh vụn menu, không dính khối thành câu ma, chặn số vô lý
+(hoa hồng >90%, cookie >365 ngày), taxonomy không chứa nhóm rỗng, và trang dài-mà-ít-luật vẫn bị loại.
+
+---
+
 ## 2026-08-13 — Affiliate: 22k shop đã có sẵn hoa hồng trong DB nhưng chưa ai nối hai bảng
 
 Yêu cầu: xem sâu hơn về chương trình affiliate của shop Shopify (bán hàng gì, ngành gì, %hoa hồng, nội
