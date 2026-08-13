@@ -558,6 +558,23 @@ export class AffLibMysql {
         p.status, p.err ? String(p.err).slice(0, 250) : null, Date.now(),
       ],
     );
+
+    // Tóm tắt vào `note` của aff_library — cột đó đã hiện sẵn ở BẢNG desktop và trong file Excel xuất ra,
+    // nên đây là cách nhanh nhất để nội dung cào được nhìn thấy ở mọi nơi mà không đổi cấu trúc bảng.
+    // CHỈ ghi khi note đang TRỐNG: 22.837/36.241 dòng đã có note (do "Điền hoa hồng" lấy từ blurb của mạng)
+    // và người dùng còn sửa tay được qua updateAffiliate — đè lên là xoá cả hai.
+    if (p.status === 'ok' && p.rules && p.rules.length) {
+      const num = [
+        p.commissionPct != null ? `${p.commissionPct}%` : '',
+        p.cookieDays != null ? `cookie ${p.cookieDays}d` : '',
+        p.payoutThreshold != null ? `payout $${p.payoutThreshold}` : '',
+      ].filter(Boolean).join(' · ');
+      const note = `${num ? `${num} — ` : ''}Nội quy: ${p.rules.map((r) => r.label).join(', ')}`.slice(0, 500);
+      await pool.query(
+        "UPDATE aff_library SET note = ?, updated_at = ? WHERE web = ? AND (note IS NULL OR TRIM(note) = '')",
+        [note, Date.now(), web],
+      );
+    }
   }
 
   // Gắn điều khoản vào các dòng của TRANG. Cùng lý do như attachCategory: truy vấn PHỤ có giới hạn, và

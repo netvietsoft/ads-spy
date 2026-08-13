@@ -9,7 +9,7 @@ import { isGlobalBlock } from './sh.harvest.util';
 import { AffnetService } from '../affnet/affnet.service';
 import { AffLibService } from '../afflib/afflib.service';
 
-export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh', 'affdiscover', 'afffetch', 'afflibrev'] as const;
+export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh', 'affdiscover', 'afffetch', 'afflibrev', 'affterms'] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 const DESC: Record<JobName, string> = {
@@ -22,6 +22,7 @@ const DESC: Record<JobName, string> = {
   refresh: 'Làm mới shop CŨ (detail harvest quá "Cũ hơn" ngày), ưu tiên DOANH THU cao→thấp → lấy lại detail/similar/top-products/chart + doanh thu. Cần token.',
   affdiscover: 'Phát hiện dự án (subdomain) của các net affiliate qua 4 nguồn passive-DNS miễn phí. Poll LẶP để tích luỹ — nguồn chính trả mẫu ngẫu nhiên mỗi lần.',
   afflibrev: 'Scan Revenue cho domain trong Aff Library còn THIẾU doanh thu tháng: nhận diện Shopify (ShopHunter + probe storefront) → lấy shop_id → cào doanh thu. Domain kết luận KHÔNG phải Shopify bị loại trừ vĩnh viễn. Cào lại sau staleDays ngày.',
+  affterms: 'Cào ĐIỀU KHOẢN chương trình affiliate từ trang của chính shop (đoán /pages/affiliate* → không có thì đọc sitemap.xml), tách nội dung chính khỏi menu/footer rồi rút trích nội quy kèm trích đoạn → aff_terms, tóm tắt vào cột Note. Đo thật: ~30% shop có trang dùng được; ~2,6s/domain. Domain không ra kết quả được thử lại tối đa 3 lần, cách nhau 6 giờ.',
   afffetch: 'Mở từng trang campaign bằng Chromium (chờ Cloudflare) → lấy %hoa hồng/web/điều khoản. Xoay proxy dùng chung (Cài đặt → Proxy): mỗi proxy 1 làn IP, giãn 10s/làn. Không proxy → 1 làn trực tiếp (chậm hơn).',
 };
 
@@ -53,6 +54,8 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   refresh: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, staleDays: 7, activeStart: 8, activeEnd: 23 },
   affdiscover: { paceMs: 8000, daily: 200, activeStart: 0, activeEnd: 24 },
   afffetch: { batch: 30, paceMs: 10000, daily: 3000, concurrency: 3, activeStart: 0, activeEnd: 24 },
+  // batch 20 ≈ 50s/lô (2,6s/domain). daily 2000 ≈ đủ phủ 9.883 domain trong ~5 ngày mà không đập liên tục.
+  affterms: { batch: 20, daily: 2000, paceMs: 3000, concurrency: 6, activeStart: 0, activeEnd: 24 },
   afflibrev: { batch: 20, daily: 500, paceMs: 1500, staleDays: 1, activeStart: 0, activeEnd: 24 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
@@ -74,7 +77,7 @@ export interface JobView {
 @Injectable()
 export class ShJobsService implements OnModuleInit {
   private readonly logger = new Logger('ShJobs');
-  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank(), affdiscover: this.blank(), afffetch: this.blank(), afflibrev: this.blank() };
+  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank(), affdiscover: this.blank(), afffetch: this.blank(), afflibrev: this.blank(), affterms: this.blank() };
   private catalogProxies: ProxyForGet[] = [];
   private origShopifyGet: typeof shopifyHttp.get | null = null;
 
@@ -91,7 +94,7 @@ export class ShJobsService implements OnModuleInit {
   private sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
   async onModuleInit(): Promise<void> {
-    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'affdiscover', 'afffetch', 'afflibrev'] as JobName[]) {
+    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'affdiscover', 'afffetch', 'afflibrev', 'affterms'] as JobName[]) {
       try { if (await this.isEnabled(name)) this.start(name); } catch { /* MySQL/Prisma chưa sẵn sàng — bỏ qua, bật lại từ web */ }
     }
   }
@@ -287,6 +290,7 @@ export class ShJobsService implements OnModuleInit {
     if (name === 'affdiscover') return this.stepAffDiscover(force);
     if (name === 'afffetch') return this.stepAffFetch(force);
     if (name === 'afflibrev') return this.stepAffLibRev(force);
+    if (name === 'affterms') return this.stepAffTerms(force);
     return this.stepEnrich();
   }
 
@@ -308,6 +312,32 @@ export class ShJobsService implements OnModuleInit {
     if (!r.scanned) { this.mem.afflibrev.lastStatus = 'idle'; await this.mysql.appendJobLog('afflibrev', 'info', 'Không còn domain nào thiếu doanh thu; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
     this.mem.afflibrev.lastStatus = 'ok';
     await this.mysql.appendJobLog('afflibrev', 'info', `Quét ${r.scanned}: +${r.revved} có doanh thu, ${r.shopify} shopify chưa ra id, ${r.notShopify} không phải shopify; còn ${r.remaining}`).catch(() => {});
+    return { pace: cfg.paceMs };
+  }
+
+  // Cào ĐIỀU KHOẢN chương trình affiliate cho Aff Library, chạy dần cho tới hết kho.
+  //
+  // Vì sao phải là JOB chứ không phải nút bấm: hàng đợi là 9.883 domain có affiliate (và sẽ tăng khi
+  // detect quét thêm trong 36.241 domain của kho). Ở ~2,6s/domain, bấm tay từng lô 40 là hàng trăm lần
+  // bấm. Job nền dùng lại nguyên bộ điều khiển sẵn có: bật/tắt, nhịp, hạn ngày, khung giờ ở tab Cài đặt.
+  //
+  // KHÔNG cần proxy như afflibrev: đo 2026-08-13 trên 80 domain không gặp lần chặn nào (403/429). Nếu về
+  // sau bị chặn thì thêm 'affterms' vào needsProxy() là đủ — termsScan đã tự dùng pool proxy khi có.
+  private async stepAffTerms(force = false): Promise<{ pace: number }> {
+    const cfg = await this.getJobCfg('affterms');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.affterms.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('affterms');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.affterms.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: Awaited<ReturnType<AffLibService['termsScan']>>;
+    try { r = await this.afflib.termsScan(cfg.batch); }
+    catch (e) { this.mem.affterms.lastStatus = 'error'; await this.mysql.appendJobLog('affterms', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, r.scanned).catch(() => {});
+    this.mem.affterms.lastRunAt = Date.now();
+    this.mem.affterms.stats = { quet: r.scanned, ra_noi_quy: r.found, trang_mong: r.thin, khong_co: r.notfound, loi: r.error, con_lai: r.remaining };
+    // Hết hàng đợi → nghỉ dài. `remaining` giảm đơn điệu nhờ cooldown 6h nên vòng lặp chắc chắn dừng.
+    if (!r.scanned) { this.mem.affterms.lastStatus = 'idle'; await this.mysql.appendJobLog('affterms', 'info', 'Hết domain cần cào điều khoản; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    this.mem.affterms.lastStatus = 'ok';
+    await this.mysql.appendJobLog('affterms', 'info', `Quét ${r.scanned}: +${r.found} ra nội quy, ${r.thin} trang mỏng, ${r.notfound} không có trang; còn ${r.remaining}`).catch(() => {});
     return { pace: cfg.paceMs };
   }
 

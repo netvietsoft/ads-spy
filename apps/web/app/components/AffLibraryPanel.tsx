@@ -565,7 +565,21 @@ export function AffLibraryPanel() {
                 <td style={td}>{dur(r.traffic_duration_sec)}</td>
                 <td style={td}>{r.payout ?? '—'}</td>
                 <td style={td}>{r.cookie_days == null ? '—' : r.cookie_days + 'd'}</td>
-                <td style={{ ...td, whiteSpace: 'normal', maxWidth: 140 }}>{r.note || '—'}</td>
+                {/* Nội quy cào được hiện Ở ĐÂY cho bản desktop — trước đây chỉ có trong thẻ mobile nên
+                    người dùng mở trên máy tính không thấy gì. Trích đoạn đầy đủ nằm trong tooltip vì cột
+                    hẹp; tóm tắt cũng đã được ghi vào chính cột `note` nên vẫn thấy khi xuất Excel. */}
+                <td style={{ ...td, whiteSpace: 'normal', maxWidth: 140 }}>
+                  {r.terms_rules && r.terms_rules.length > 0 && (
+                    <div title={r.terms_rules.map((x) => `• ${x.label}: ${x.excerpt}`).join('\n\n')}
+                         style={{ color: 'var(--accent-2)', fontWeight: 600, marginBottom: 2, cursor: 'help' }}>
+                      📋 {r.terms_rules.length} nội quy
+                      {r.terms_url && /^https?:\/\//i.test(r.terms_url) && (
+                        <a href={r.terms_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 4, color: '#2563eb', fontWeight: 400 }}>nguồn</a>
+                      )}
+                    </div>
+                  )}
+                  {r.note || (r.terms_rules?.length ? '' : '—')}
+                </td>
                 <td style={td}>
                   {updTime(r.updated_at)
                     ? <><div>{updTime(r.updated_at)!.date}</div><div style={{ opacity: 0.7 }}>{updTime(r.updated_at)!.time}</div></>
