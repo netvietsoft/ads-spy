@@ -4,6 +4,70 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-13 (phần 3) — Vá SSRF, bỏ kiểm schema mỗi request, và đưa việc cào vào job nền
+
+### Rà soát bảo mật báo XSS — loại lỗ hổng SAI, nhưng nguyên nhân gốc thì ĐÚNG và nặng hơn
+
+Bản rà soát tự động báo *"XSS qua `javascript:` trong `href`"* ở `terms_url`. Truy đường đi thì **XSS đúng
+như mô tả không tới được**: `source_url` chỉ ghi SAU khi HTTP trả 200, mà URL `javascript:` thì client
+HTTPS của Node ném lỗi chứ không bao giờ trả 200.
+
+Nhưng nguyên nhân nó chỉ ra là thật: `sitemapLocs` trả URL tuỳ ý từ sitemap **do chính shop viết**, rồi ta
+`get()` thẳng. Bản đầu chỉ lọc theo **từ khoá trong đường dẫn**, không kiểm scheme lẫn host:
+
+| Rủi ro | Kịch bản |
+|---|---|
+| **SSRF** | sitemap ghi `http://127.0.0.1:8075/…` hay `http://169.254.169.254/…` → API tự gọi nội bộ. **Nguy nhất khi không có proxy** — request phát ra từ chính máy API |
+| **Gán sai nguồn** | sitemap trỏ `https://evil.com/affiliate-terms` → ta lưu và hiển thị như "điều khoản chính thức" của shop |
+
+Thêm `sameSiteUrl()`: chỉ nhận `http(s)` **và** host đúng của shop (hoặc subdomain/`www`). Kiểm thật: trong
+5 URL độc hại chỉ `https://ca.a.com/pages/affiliate` đi qua — chặn cả `a.com.evil.com` (hậu tố lừa). Thêm
+chốt lớp hai ở FE (chỉ render `<a href>` khi scheme là http(s)) vì **dòng lưu TRƯỚC bản vá vẫn còn trong DB**.
+
+**Bài học:** khi dữ liệu đến từ bên thứ ba, lọc theo *nội dung* (từ khoá) không thay được chặn theo *nguồn*
+(scheme + host).
+
+### "Mỗi lần vào /afflibrary như phải scan lại" — kiểm schema chạy ở MỖI request
+
+Người dùng báo. FE không hề tự scan — `useEffect` chỉ đọc danh sách. Thủ phạm ở BE: `listRows` (và
+`nextTermsBatch`, `termsRemaining`…) đều gọi `ensureTables()` **trên mỗi request**, mà hàm đó là
+`CREATE TABLE IF NOT EXISTS` cho ~6 bảng + hàng chục `ensureColumn`, mỗi cái một truy vấn `information_schema`.
+
+| Đo local | Trước | Sau |
+|---|---|---|
+| `ensureTables` | 1.338ms · 3.242ms · 938ms — **không hề rẻ đi ở lần sau** | 343ms → **0ms** → **0ms** |
+| `listRows` | 1.844ms · 713ms · 1.032ms | **~150ms đều đặn** |
+| Bộ test đầy đủ | 232s | **81s** |
+
+Nhớ promise của lần chạy đầu ở **cả hai lớp** (`AffLibMysql` và `AffnetMysql`) — `affnet.service` gọi ở 3 chỗ
+và `AffLibMysql` gọi lồng vào, nhớ mỗi lớp ngoài là chưa đủ. Lỗi thì xoá promise để lần sau thử lại.
+
+Đây là loại lỗi **không ghi ra lỗi nào cả** — chỉ lộ khi có người dùng thật để ý là trang chậm bất thường.
+
+### Ba phản hồi người dùng
+
+1. **Desktop không thấy nội quy** — lỗi của tôi: khối hiển thị nằm trong `AffLibCard` (thẻ MOBILE). Nay cột
+   Note của bảng desktop hiện chip `📋 N nội quy` + tooltip liệt kê trích đoạn + link nguồn.
+2. **Ghi vào cột Note** — cột này vốn đã hiện ở bảng desktop VÀ trong Excel xuất ra. Dạng:
+   `10% · payout $100 — Nội quy: Hoa hồng, Thời hạn cookie, Huỷ / hoàn tiền`.
+   **CHỈ ghi khi Note trống**: 22.837/36.241 dòng đã có Note (do "Điền hoa hồng" lấy blurb của mạng) và người
+   dùng còn sửa tay được — đè lên là xoá cả hai.
+3. **Job nền `affterms`** — hàng đợi 9.883 domain ở ~2,6s/domain thì bấm tay từng lô 40 là hàng trăm lần bấm.
+   Thêm vào ĐÚNG bộ máy job sẵn có (job thứ 11) nên hưởng nguyên bộ điều khiển tab Cài đặt: bật/tắt · batch ·
+   nhịp · hạn ngày · khung giờ. Mặc định `batch 20 · daily 2000 · paceMs 3000` → phủ hết trong ~5 ngày.
+
+### Test chập chờn — nguyên nhân đã biết, chưa sửa
+
+Lần chạy đầy đủ có **1 suite timeout ở mốc 30s, và suite đó ĐỔI mỗi lần chạy** (`affnet.mysql` →
+`sh.mysql.schema` → `sh.mysql.prodrev`), luôn PASS khi chạy riêng. Nguyên nhân: `ShMysql.connect()` chạy
+**60 lượt `information_schema` cho MỖI spec** (mỗi spec tạo instance riêng). Bản vá hôm nay bỏ được kiểu
+lặp-mỗi-request ở `AffLibMysql`/`AffnetMysql`; `ShMysql` là chỗ còn lại — cũng chính là thứ làm boot mất ~31s.
+
+Suýt mất một vòng chẩn đoán vì chuyện này, đúng như comment mà chính spec `affnet.mysql.spec.ts` đã ghi sẵn
+để cảnh báo.
+
+---
+
 ## 2026-08-13 (phần 2) — Cào NỘI QUY chương trình affiliate: 30% thật, không phải 65% như khảo sát
 
 Cào trang điều khoản của **chính shop** rồi rút trích luật kèm **trích đoạn nguyên văn** (không phải cờ
