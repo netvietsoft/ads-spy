@@ -80,7 +80,24 @@ export interface AffLibSnapshot {
 export class AffLibMysql {
   constructor(private readonly sh: ShMysql, private readonly affnet: AffnetMysql) {}
 
-  async ensureTables(): Promise<void> {
+  // Đảm bảo schema — CHỈ CHẠY MỘT LẦN cho mỗi tiến trình.
+  //
+  // Trước đây mỗi request đều chạy lại: listRows/nextTermsBatch/… đều gọi ensureTables, mà nó là
+  // `CREATE TABLE IF NOT EXISTS` cho ~6 bảng + hàng chục `ensureColumn`, mỗi cái một truy vấn
+  // information_schema. Đo local 2026-08-13: **0,9-3,2 giây MỖI LẦN GỌI** — trên prod (buffer pool 128 MB)
+  // còn chậm hơn. Người dùng mô tả đúng triệu chứng: "mỗi lần vào /afflibrary là một lần như phải scan lại".
+  //
+  // Schema KHÔNG đổi lúc chạy, nên kiểm lại ở mỗi request là lãng phí thuần tuý. Giữ promise của lần chạy
+  // đầu; lỗi thì xoá để lần sau thử lại (không kẹt vĩnh viễn ở một lần lỗi mạng lúc khởi động).
+  private tablesReady: Promise<void> | null = null;
+  ensureTables(): Promise<void> {
+    if (!this.tablesReady) {
+      this.tablesReady = this.doEnsureTables().catch((e) => { this.tablesReady = null; throw e; });
+    }
+    return this.tablesReady;
+  }
+
+  private async doEnsureTables(): Promise<void> {
     // Tạo bảng affnet (aff_domain_traffic + aff_program) trước — vì listRows JOIN + prefill dùng chúng,
     // mà affnet chỉ tạo bảng lazy khi có thao tác affnet (DB mới chưa dùng affnet → thiếu bảng → JOIN lỗi 1146).
     await this.affnet.ensureTables().catch(() => {});

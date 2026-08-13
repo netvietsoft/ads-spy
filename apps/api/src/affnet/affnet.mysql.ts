@@ -129,7 +129,18 @@ export class AffnetMysql {
     }
   }
 
-  async ensureTables(): Promise<void> {
+  // Cùng lý do như AffLibMysql.ensureTables: chạy MỘT LẦN mỗi tiến trình, không phải mỗi request.
+  // affnet.service gọi nó ở 3 chỗ và AffLibMysql.ensureTables cũng gọi lồng vào — nếu chỉ nhớ ở lớp ngoài
+  // thì các đường vào affnet vẫn trả giá đủ.
+  private tablesReady: Promise<void> | null = null;
+  ensureTables(): Promise<void> {
+    if (!this.tablesReady) {
+      this.tablesReady = this.doEnsureTables().catch((e) => { this.tablesReady = null; throw e; });
+    }
+    return this.tablesReady;
+  }
+
+  private async doEnsureTables(): Promise<void> {
     const pool = await this.sh.getPool();
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_net (
       net VARCHAR(255) PRIMARY KEY,

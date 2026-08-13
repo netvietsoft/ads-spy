@@ -5,6 +5,40 @@ import { AffLibMysql } from './afflib.mysql';
 // Bối cảnh (đo 2026-08-13): aff_library.commission_pct TRỐNG 100% (36.241 dòng) trong khi aff_program có
 // 31.183 dòng có hoa hồng và 23.467 domain nối được. Nguyên nhân KHÔNG phải lỗi SQL — câu UPDATE per-domain
 // vẫn đúng — mà là PHỦ SÓNG: nó chỉ chạy khi thêm domain mới nên dữ liệu cũ không bao giờ được điền.
+describe('AffLibMysql.ensureTables — chỉ chạy MỘT LẦN mỗi tiến trình', () => {
+  // Trước 2026-08-13 nó chạy lại ở MỖI request: listRows/nextTermsBatch/… đều gọi, mà nó là
+  // CREATE TABLE IF NOT EXISTS cho ~6 bảng + hàng chục ensureColumn (mỗi cái một truy vấn
+  // information_schema). Đo local: 0,9-3,2 GIÂY mỗi lần gọi. Người dùng mô tả đúng triệu chứng:
+  // "mỗi lần vào /afflibrary là một lần như phải scan lại". Sau khi nhớ kết quả: 343ms → 0ms,
+  // listRows 713-1844ms → ~150ms.
+  const stub = () => {
+    const calls: string[] = [];
+    // ensureColumn đọc [0].n của câu COUNT → trả n=1 để nó coi như cột đã có và bỏ qua ALTER.
+    const db = new AffLibMysql({ getPool: async () => ({ query: async (sql: string) => { calls.push(sql); return [[{ n: 1 }]]; } }) } as any,
+      { ensureTables: async () => { calls.push('AFFNET'); } } as any);
+    return { db, calls };
+  };
+
+  it('gọi 3 lần chỉ chạy DDL một lần', async () => {
+    const { db, calls } = stub();
+    await db.ensureTables();
+    const sau1 = calls.length;
+    await db.ensureTables();
+    await db.ensureTables();
+    expect(sau1).toBeGreaterThan(5); // lần đầu có làm việc thật
+    expect(calls.length).toBe(sau1); // hai lần sau KHÔNG thêm truy vấn nào
+  });
+
+  it('lỗi thì lần sau thử lại, không kẹt vĩnh viễn', async () => {
+    // Một lần lỗi mạng lúc khởi động không được khoá schema mãi mãi.
+    let lan = 0;
+    const db = new AffLibMysql({ getPool: async () => { lan++; if (lan === 1) throw new Error('mất mạng'); return { query: async () => [[{ n: 1 }]] }; } } as any,
+      { ensureTables: async () => {} } as any);
+    await expect(db.ensureTables()).rejects.toThrow('mất mạng');
+    await expect(db.ensureTables()).resolves.toBeUndefined();
+  });
+});
+
 describe('AffLibMysql.prefillFromProgramBulk', () => {
   // pool giả: SELECT ứng viên trả `cands` lần lượt từng mẻ, UPDATE trả changedRows cố định.
   const stub = (db: AffLibMysql, cands: string[][]) => {
