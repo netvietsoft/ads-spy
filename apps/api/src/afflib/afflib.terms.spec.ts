@@ -112,17 +112,46 @@ describe('afflib.terms — sitemap', () => {
     <sitemap><loc>https://a.com/sitemap_pages_1.xml</loc></sitemap></sitemapindex>`;
 
   it('chỉ lấy sitemap con của trang tĩnh, bỏ sitemap sản phẩm', () => {
-    expect(sitemapPageMaps(XML)).toEqual(['https://a.com/sitemap_pages_1.xml']);
+    expect(sitemapPageMaps(XML, 'a.com')).toEqual(['https://a.com/sitemap_pages_1.xml']);
   });
 
   it('bắt cả tên gọi khác ngoài "affiliate" — chính chỗ này mang lại 25/65 độ phủ', () => {
     const pages = `<urlset><url><loc>https://a.com/pages/about-us</loc></url>
       <url><loc>https://a.com/pages/ambassador-program</loc></url>
       <url><loc>https://a.com/pages/creator-terms</loc></url></urlset>`;
-    const hits = sitemapAffiliateUrls(pages);
+    const hits = sitemapAffiliateUrls(pages, 'a.com');
     expect(hits).toHaveLength(2);
     expect(hits.join()).toContain('ambassador-program');
     expect(hits.join()).not.toContain('about-us');
+  });
+
+  // ⚠️ Sitemap là dữ liệu do SHOP tự viết — không được tin scheme lẫn host.
+  it('CHẶN SSRF: bỏ URL trỏ vào nội bộ / metadata cloud', () => {
+    // Không chặn thì API tự đi gọi chính nó hoặc endpoint metadata — nguy nhất khi KHÔNG có proxy,
+    // lúc đó request phát ra từ chính máy API.
+    const evil = `<urlset>
+      <url><loc>http://127.0.0.1:8075/api/sh/local/affiliate</loc></url>
+      <url><loc>http://169.254.169.254/latest/meta-data/affiliate</loc></url>
+      <url><loc>http://localhost/pages/affiliate</loc></url></urlset>`;
+    expect(sitemapAffiliateUrls(evil, 'a.com')).toEqual([]);
+  });
+
+  it('CHẶN gán sai nguồn: bỏ URL sang host khác', () => {
+    // Sitemap trỏ evil.com thì ta sẽ lưu và hiển thị nó như "điều khoản chính thức" của shop.
+    const x = `<urlset><url><loc>https://evil.com/pages/affiliate-terms</loc></url>
+      <url><loc>https://a.com.evil.com/pages/affiliate</loc></url></urlset>`;
+    expect(sitemapAffiliateUrls(x, 'a.com')).toEqual([]);
+  });
+
+  it('vẫn nhận subdomain và www của chính shop', () => {
+    const x = `<urlset><url><loc>https://ca.a.com/pages/affiliate-program</loc></url>
+      <url><loc>https://www.a.com/pages/affiliate-terms</loc></url></urlset>`;
+    expect(sitemapAffiliateUrls(x, 'a.com')).toHaveLength(2);
+  });
+
+  it('URL méo trong sitemap thì bỏ, không đoán', () => {
+    const x = '<urlset><url><loc>not a url affiliate</loc></url></urlset>';
+    expect(sitemapAffiliateUrls(x, 'a.com')).toEqual([]);
   });
 });
 

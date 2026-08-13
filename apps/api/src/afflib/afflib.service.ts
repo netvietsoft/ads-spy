@@ -365,11 +365,11 @@ export class AffLibService {
         // (ambassador/creator/partner…). Đây là phần mang lại 25/65 độ phủ.
         const root = await get(`https://${web}/sitemap.xml`, TERMS_HEADERS).catch(() => null);
         if (root && root.status === 200 && root.body) {
-          const maps = sitemapPageMaps(root.body).slice(0, 2);
+          const maps = sitemapPageMaps(root.body, web).slice(0, 2);
           const urls: string[] = [];
           for (const sm of maps) {
             const s = await get(sm, TERMS_HEADERS).catch(() => null);
-            if (s && s.status === 200 && s.body) urls.push(...sitemapAffiliateUrls(s.body));
+            if (s && s.status === 200 && s.body) urls.push(...sitemapAffiliateUrls(s.body, web));
           }
           for (const u of urls.slice(0, 4)) {
             hit = await tryUrl(u, 'sitemap');

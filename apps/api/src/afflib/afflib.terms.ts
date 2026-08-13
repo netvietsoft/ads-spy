@@ -108,8 +108,29 @@ export function proseOnly(html: string): string {
 export function sitemapLocs(xml: string): string[] {
   return [...xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)].map((m) => decode(m[1]));
 }
-export const sitemapPageMaps = (xml: string): string[] => sitemapLocs(xml).filter((u) => /pages/i.test(u));
-export const sitemapAffiliateUrls = (xml: string): string[] => sitemapLocs(xml).filter((u) => SITEMAP_SLUG.test(u));
+// ⚠️ Nội dung sitemap là dữ liệu của BÊN THỨ BA — shop tự viết. Không được tin scheme lẫn host.
+// Chỉ nhận http(s) VÀ đúng host của chính shop (hoặc subdomain của nó). Hai rủi ro bị chặn ở đây:
+//  · SSRF: sitemap ghi `http://127.0.0.1:8075/…` hay `http://169.254.169.254/…` là API tự đi gọi nội bộ
+//    — nguy nhất khi KHÔNG có proxy, lúc đó request phát ra từ chính máy API.
+//  · Gán sai nguồn: sitemap trỏ `https://evil.com/affiliate-terms` thì ta lưu và hiển thị nó như
+//    "điều khoản chính thức" của shop.
+// Lọc theo từ khoá trong đường dẫn là KHÔNG đủ — đó là thiếu sót của bản đầu (2026-08-13).
+export function sameSiteUrl(u: string, web: string): boolean {
+  try {
+    const p = new URL(u);
+    if (p.protocol !== 'https:' && p.protocol !== 'http:') return false;
+    const host = p.hostname.toLowerCase().replace(/^www\./, '');
+    const base = String(web || '').toLowerCase().replace(/^www\./, '');
+    return !!base && (host === base || host.endsWith(`.${base}`));
+  } catch {
+    return false; // URL méo (sitemap của shop thật cũng hay có) → bỏ, không đoán
+  }
+}
+
+export const sitemapPageMaps = (xml: string, web: string): string[] =>
+  sitemapLocs(xml).filter((u) => /pages/i.test(u) && sameSiteUrl(u, web));
+export const sitemapAffiliateUrls = (xml: string, web: string): string[] =>
+  sitemapLocs(xml).filter((u) => SITEMAP_SLUG.test(u) && sameSiteUrl(u, web));
 
 export interface TermRule {
   key: string;

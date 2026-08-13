@@ -147,7 +147,10 @@ function AffLibCard({ r, onDetect, onEdit, onTraffic, onDel, scanning }: {
         <div className="fbbody" style={{ fontSize: 12, borderLeft: '2px solid var(--accent-2)', paddingLeft: 8, marginTop: 4 }}>
           <div style={{ opacity: 0.7, marginBottom: 2 }}>
             Nội quy chương trình ({r.terms_rules.length})
-            {r.terms_url && <a href={r.terms_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, color: '#2563eb' }}>nguồn</a>}
+            {/* Chốt lớp hai: chỉ render link khi scheme là http(s). BE đã lọc scheme + host từ 2026-08-13,
+                nhưng các dòng lưu TRƯỚC bản vá đó vẫn còn trong DB — và `href` nhận scheme lạ (javascript:)
+                là XSS. Kiểm ở đây rẻ và không phụ thuộc dữ liệu cũ có sạch hay không. */}
+            {r.terms_url && /^https?:\/\//i.test(r.terms_url) && <a href={r.terms_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: 6, color: '#2563eb' }}>nguồn</a>}
           </div>
           {r.terms_rules.map((x) => (
             <div key={x.key} style={{ marginBottom: 2 }}>
