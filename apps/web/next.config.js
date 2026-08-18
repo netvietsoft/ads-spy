@@ -19,6 +19,23 @@ const nextConfig = {
     // trực tiếp, xem deploy/nginx-mmo-coin.conf) và việc >30s thì trả 202 + jobId cho worker chạy nền.
     proxyTimeout: 180_000,
   },
+  // Header bảo mật (audit 2026-08-18): chống clickjacking + MIME sniffing. `frame-ancestors 'self'` chỉ
+  // kiểm việc trang bị NHÚNG iframe — KHÔNG hạn chế script/style nên không phá app (app vẫn nhúng được
+  // iframe embed của creative ra ngoài). HSTS: prod đã HTTPS qua Cloudflare.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     // Proxy /api/* sang backend NestJS để web gọi cùng origin (ảnh asset cũng qua đây).
     // Sau khi nginx nhận `/backend-api/*`, rewrite này chỉ còn phục vụ các lời gọi TƯƠNG ĐỐI `/api/*`

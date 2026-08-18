@@ -9,6 +9,7 @@ import { MailerService } from './mailer.service';
 import { GoogleOAuthService } from './google-oauth.service';
 import { AuthGuard } from './auth.guard';
 import { RolesGuard } from './roles.guard';
+import { RateLimitGuard } from './rate-limit.guard';
 
 @Module({
   imports: [UsersModule, SubscriptionsModule], // cung cấp UsersService + PasswordService (đã export); SubscriptionsModule export EntitlementService
@@ -20,6 +21,7 @@ import { RolesGuard } from './roles.guard';
     GoogleOAuthService,
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: RateLimitGuard }, // sau RolesGuard: user đã populated cho by:user/role
   ],
   exports: [SessionService],
 })

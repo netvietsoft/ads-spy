@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Query, Param } from '@nestjs/common';
+import { Controller, Get, Post, NotFoundException, Query, Param } from '@nestjs/common';
 import { TiktokService } from './tiktok.service';
 import { Roles } from '../auth/roles.decorator';
 import { RequiresModule } from '../subscriptions/requires.decorator';
@@ -18,7 +18,7 @@ export class TiktokController {
   }
 
   // Lấy NHIỀU (gộp ngành) — progressive: start rồi poll job.
-  @Get('topads/start')
+  @Post('topads/start') // đổi từ @Get (audit 2026-08-18): endpoint gây tác dụng phụ (khởi job) không dùng GET
   start(@Query('country') country?: string, @Query('period') period?: string, @Query('target') target?: string) {
     const p = [7, 30, 180].includes(Number(period)) ? Number(period) : 7;
     const t = Math.min(Math.max(parseInt(target || '1000', 10) || 1000, 50), 2000);

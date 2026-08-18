@@ -7,6 +7,7 @@ import { ShBlockedFilter } from './sh.blocked.filter';
 import { ShHarvestService } from './sh.harvest.service';
 import { ShJobsService, JOB_NAMES } from './sh.jobs.service';
 import { Roles } from '../auth/roles.decorator';
+import { RateLimit } from '../auth/rate-limit.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { RequiresModule } from '../subscriptions/requires.decorator';
 import { EntitlementService } from '../subscriptions/entitlement.service';
@@ -244,6 +245,7 @@ export class ShController {
   }
 
   @Roles('admin', 'manager', 'user')
+  @RateLimit({ limit: 20, windowMs: 60_000, by: 'user', role: 'user' }) // khách: chống lạm dụng gọi live ShopHunter
   @RequiresModule('shophunter')
   @Get('sh/shops')
   async shops(@CurrentUser() user: any, @Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
@@ -256,6 +258,7 @@ export class ShController {
   }
 
   @Roles('admin', 'manager', 'user')
+  @RateLimit({ limit: 20, windowMs: 60_000, by: 'user', role: 'user' }) // khách: chống lạm dụng gọi live ShopHunter
   @RequiresModule('shophunter')
   @Get('sh/products')
   async products(@CurrentUser() user: any, @Query('sort') sort: string, @Query('q') q: string, @Query('from') from: string, @Query('categories') categories: string, @Query('filters') filters: string, @Query('lists') lists: string) {
@@ -388,6 +391,7 @@ export class ShController {
 
   @Roles('admin', 'manager', 'user')
   @RequiresModule('shophunter')
+  @RateLimit({ limit: 60, windowMs: 60_000, by: 'user', role: 'user' }) // khách: chống hút cả kho bằng lặp đổi filter
   @Get('sh/local/shops')
   async localShops(@CurrentUser() user: any, @Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string, @Query('cntMin') cntMin: string, @Query('cntMax') cntMax: string, @Query('cntPeriod') cntPeriod: string, @Query('skuMin') skuMin: string, @Query('skuMax') skuMax: string) {
     const cap = await this.shCap(user);
@@ -400,6 +404,7 @@ export class ShController {
 
   @Roles('admin', 'manager', 'user')
   @RequiresModule('shophunter')
+  @RateLimit({ limit: 60, windowMs: 60_000, by: 'user', role: 'user' }) // khách: chống hút cả kho bằng lặp đổi filter
   @Get('sh/local/products')
   async localProducts(@CurrentUser() user: any, @Query('sort') sort: string, @Query('dir') dir: string, @Query('page') page: string, @Query('pageSize') pageSize: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('shop') shop: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string) {
     const cap = await this.shCap(user);

@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Roles } from '../auth/roles.decorator';
+import { RateLimit } from '../auth/rate-limit.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { StripeService } from './stripe.service';
 import { PaymentsService } from './payments.service';
@@ -12,12 +13,14 @@ import { paymentConfig } from './payment.config';
 export class CheckoutController {
   constructor(private stripe: StripeService, private payments: PaymentsService, private catalog: CatalogService) {}
 
+  @RateLimit({ limit: 20, windowMs: 60 * 60_000, by: 'user' })
   @Roles('admin', 'manager', 'user')
   @Post('stripe')
   stripeCheckout(@Body() b: any, @CurrentUser() u: any) {
     return this.stripe.createCheckoutSession(u.id, u.email, b || {});
   }
 
+  @RateLimit({ limit: 20, windowMs: 60 * 60_000, by: 'user' }) // chống tạo Payment pending vô hạn (audit 2026-08-18)
   @Roles('admin', 'manager', 'user')
   @Post('qr')
   async qrCheckout(@Body() b: any, @CurrentUser() u: any) {

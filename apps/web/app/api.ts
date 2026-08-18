@@ -199,7 +199,7 @@ export interface TtJob {
 }
 export async function ttStart(country: string, period: number, target: number): Promise<{ jobId: string }> {
   return jsonOrThrow(
-    await fetch(`${API}/api/tiktok/topads/start?country=${encodeURIComponent(country)}&period=${period}&target=${target}`),
+    await fetch(`${API}/api/tiktok/topads/start?country=${encodeURIComponent(country)}&period=${period}&target=${target}`, { method: 'POST' }),
   );
 }
 export async function ttJob(id: string): Promise<TtJob> {
@@ -361,7 +361,7 @@ export async function fbPagePostsStart(
   const qs = new URLSearchParams({ page, limit: String(limit) });
   if (from) qs.set('from', from);
   if (to) qs.set('to', to);
-  return jsonOrThrow(await fetch(`${API}/api/fb/page-posts/start?${qs.toString()}`));
+  return jsonOrThrow(await fetch(`${API}/api/fb/page-posts/start?${qs.toString()}`, { method: 'POST' }));
 }
 export async function fbPagePostsJob(jobId: string): Promise<FbPostsJob> {
   return jsonOrThrow(await fetch(`${API}/api/fb/page-posts/job/${jobId}`));

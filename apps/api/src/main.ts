@@ -27,6 +27,10 @@ async function bootstrap() {
   // Đây chỉ là MẶC ĐỊNH: handler chạy SAU middleware nên `res.setHeader` trong handler vẫn thắng.
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Cache-Control', 'no-store');
+    // Header bảo mật cho MỌI response API (audit 2026-08-18): nosniff chặn MIME sniffing (quan trọng cho
+    // proxy ảnh /sh/asset), DENY chặn nhúng iframe. API trả JSON/asset nên không cần được nhúng bao giờ.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
     next();
   });
 

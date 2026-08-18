@@ -72,7 +72,7 @@ export class FbController {
   // Quét DẦN (progressive): trả jobId, rồi client poll /page-posts/job/:id
   @Roles('admin', 'manager', 'user')
   @RequiresModule('fb-ads')
-  @Get('page-posts/start')
+  @Post('page-posts/start') // đổi từ @Get (audit 2026-08-18): tác dụng phụ không dùng GET
   startPagePosts(
     @Query('page') pg: string,
     @Query('limit') limit?: string,

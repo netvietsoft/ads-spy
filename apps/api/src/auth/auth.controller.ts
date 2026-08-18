@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { RateLimit } from './rate-limit.guard';
 import { randomBytes } from 'crypto';
 import { AuthService } from './auth.service';
 import { GoogleOAuthService } from './google-oauth.service';
@@ -19,6 +20,7 @@ export class AuthController {
   }
 
   @Public()
+  @RateLimit({ limit: 5, windowMs: 60 * 60_000, by: 'ip' })
   @Post('register')
   async register(@Body() body: any, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { user, token } = await this.auth.register(body || {}, req.headers['user-agent']);
@@ -27,6 +29,7 @@ export class AuthController {
   }
 
   @Public()
+  @RateLimit({ limit: 10, windowMs: 5 * 60_000, by: 'ip' }) // chống dò mật khẩu online
   @Post('login')
   async login(@Body() body: any, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { user, token } = await this.auth.login(body || {}, req.headers['user-agent']);
@@ -58,6 +61,7 @@ export class AuthController {
   }
 
   @Public()
+  @RateLimit({ limit: 5, windowMs: 60 * 60_000, by: 'ip' }) // chống spam email reset
   @Post('forgot-password')
   async forgot(@Body() body: any) {
     await this.auth.forgot((body && body.email) || '');
@@ -65,6 +69,7 @@ export class AuthController {
   }
 
   @Public()
+  @RateLimit({ limit: 10, windowMs: 60 * 60_000, by: 'ip' })
   @Post('reset-password')
   async reset(@Body() body: any) {
     await this.auth.reset(body || {});
