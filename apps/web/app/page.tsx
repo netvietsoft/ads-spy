@@ -485,9 +485,26 @@ export default function Home() {
                     </div>
                     <div className="body">
                       <div className="a">{c.advertiserName || c.advertiserId}</div>
+                      {/* Domain đích: ưu tiên `domain` có cấu trúc của Google; thiếu thì dùng domain ĐỌC
+                          TỪ ẢNH (OCR) — gắn 📷 để người dùng biết nguồn là ảnh, độ tin thấp hơn. Đây là
+                          giá trị "do thám": quảng cáo này thực chất kéo về trang nào. */}
+                      {(c.domain || c.ocrDomain) && (
+                        <a
+                          href={`https://${c.domain || c.ocrDomain}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="badge"
+                          title={c.domain ? 'Domain đích (Google)' : 'Domain đọc từ ảnh quảng cáo (OCR)'}
+                          style={{ color: '#2563eb' }}
+                        >
+                          🔗 {c.domain || c.ocrDomain}{!c.domain && c.ocrDomain ? ' 📷' : ''}
+                        </a>
+                      )}
                       <div className="b">
                         <span className={`badge ${c.assetType}`}>{c.assetType}</span>
                         {c.regionCount ? <span className="badge">🌍 {c.regionCount} vùng</span> : null}
+                        {c.approxDaysShown != null ? <span className="badge">⏱ {c.approxDaysShown} ngày</span> : null}
                         <span>{fmtDate(c.lastShown)}</span>
                       </div>
                     </div>

@@ -15,7 +15,9 @@ export interface CreativeBrief {
   assetUrl?: string;
   firstShown?: number;
   lastShown?: number;
+  approxDaysShown?: number; // số ngày quảng cáo đã chạy
   regionCount?: number;
+  ocrDomain?: string | null; // domain đích ĐỌC TỪ ẢNH (OCR) — dự phòng khi Google để trống `domain`
 }
 export interface SearchResponse {
   searchId: number;

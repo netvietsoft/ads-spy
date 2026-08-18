@@ -81,3 +81,18 @@ describe('response.parser', () => {
     });
   });
 });
+
+describe('response.parser — approxDaysShown (bổ sung từ tool GoogleAdsTransparency)', () => {
+  const ad = (first?: number, last?: number) => ({ '1': [{ '1': 'AR1', '2': 'CR1', '6': first ? { '1': first } : undefined, '7': last ? { '1': last } : undefined }] });
+  it('tính số ngày = (last-first)/86400, làm tròn', () => {
+    const c = parseSearchCreatives(ad(1_700_000_000, 1_700_000_000 + 45 * 86400)).creatives[0];
+    expect(c.approxDaysShown).toBe(45);
+  });
+  it('thiếu 1 trong 2 mốc → undefined (không đoán)', () => {
+    expect(parseSearchCreatives(ad(1_700_000_000, undefined)).creatives[0].approxDaysShown).toBeUndefined();
+    expect(parseSearchCreatives(ad(undefined, 1_700_000_000)).creatives[0].approxDaysShown).toBeUndefined();
+  });
+  it('last < first (dữ liệu lỗi) → undefined, không ra số âm', () => {
+    expect(parseSearchCreatives(ad(1_700_000_100, 1_700_000_000)).creatives[0].approxDaysShown).toBeUndefined();
+  });
+});

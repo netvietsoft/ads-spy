@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { GoogleClient } from '../google/google.client';
 import { PrismaService } from '../prisma.service';
 import { parseAdvertisers } from '../google/response.parser';
+import { ocrImageToDomain } from '../google/ocr';
 import {
   Advertiser,
   CreativeBrief,
@@ -21,6 +22,25 @@ const ALLOWED_ASSET_HOSTS = [
 ];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Đọc web ReadableStream (từ fetch().body) thành Buffer, CHẶN theo maxBytes để một ảnh khổng lồ (hoặc
+// endpoint trả stream vô hạn) không ngốn hết RAM. Vượt ngưỡng → huỷ đọc, trả phần đã có.
+async function streamToBuffer(stream: ReadableStream<Uint8Array> | null, maxBytes: number): Promise<Buffer> {
+  if (!stream) return Buffer.alloc(0);
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) { chunks.push(value); total += value.length; if (total > maxBytes) { try { await reader.cancel(); } catch { /* đã đóng */ } break; } }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch { /* đã nhả */ }
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c)));
+}
 
 export function normalizeDomain(input: string): string {
   let d = (input || '').trim().toLowerCase();
@@ -85,6 +105,63 @@ export class SearchService {
     return { creatives, totalMin, totalMax };
   }
 
+  // Gắn domain đích ĐỌC-TỪ-ẢNH (OCR) vào các creative THIẾU domain có cấu trúc của Google.
+  //
+  // "Inline khi tra cứu" (người dùng chọn) nhưng CÓ RÀO: (1) chỉ đụng creative ẢNH mà Google để trống
+  // `domain` — creative đã có domain thì không cần OCR; (2) CACHE theo crId, mỗi ảnh OCR đúng một lần cho
+  // toàn hệ; (3) hạn CỨNG số ảnh + tổng thời gian mỗi lượt, hết hạn thì để dành cho lần xem sau (cache dồn
+  // dần). Tesseract chưa cài trên VPS thì mọi lần OCR trả null trong ~ms → tra cứu KHÔNG bị ảnh hưởng.
+  private static readonly OCR_MAX_IMAGES = 15; // ảnh/lượt tra cứu
+  private static readonly OCR_BUDGET_MS = 10_000; // tổng thời gian OCR/lượt
+  private static readonly OCR_PER_IMAGE_MS = 6_000;
+
+  private async enrichWithOcr(creatives: CreativeBrief[]): Promise<void> {
+    const targets = creatives.filter(
+      (c) => c.assetType === 'image' && !c.domain && c.creativeId && c.assetUrl && isAllowedAssetHost(c.assetUrl),
+    );
+    if (!targets.length) return;
+
+    // 1) Cache trước — một truy vấn cho mọi crId.
+    const ids = [...new Set(targets.map((c) => c.creativeId))];
+    const cached = await this.prisma.creativeOcr
+      .findMany({ where: { crId: { in: ids } }, select: { crId: true, domain: true } })
+      .catch(() => [] as Array<{ crId: string; domain: string | null }>);
+    const byId = new Map(cached.map((r) => [r.crId, r]));
+    for (const c of targets) {
+      const hit = byId.get(c.creativeId);
+      if (hit) c.ocrDomain = hit.domain ?? null;
+    }
+
+    // 2) Các ảnh CHƯA có cache → OCR trong ngân sách. Hết giờ/hết lượt thì dừng (để lần sau).
+    const todo = targets.filter((c) => !byId.has(c.creativeId)).slice(0, SearchService.OCR_MAX_IMAGES);
+    const deadline = Date.now() + SearchService.OCR_BUDGET_MS;
+    for (const c of todo) {
+      if (Date.now() > deadline) break;
+      const r = await this.ocrOneCreative(c.creativeId, c.assetUrl!).catch(() => null);
+      if (r) c.ocrDomain = r.domain;
+    }
+  }
+
+  // OCR 1 creative rồi cache. LUÔN ghi cache (kể cả thất bại) để lần sau không thử lại ngay — trừ lỗi
+  // tải/khởi động (không kết luận được) thì để trống cho lần sau thử lại.
+  private async ocrOneCreative(crId: string, assetUrl: string): Promise<{ domain: string | null } | null> {
+    let image: Buffer;
+    try {
+      const asset = await this.google.fetchAsset(assetUrl);
+      image = await streamToBuffer(asset.body, 5_000_000); // chặn 5MB
+    } catch {
+      return null; // tải ảnh lỗi (throttle/hotlink) → CHƯA kết luận, không ghi cache
+    }
+    if (!image.length) return null;
+    const res = await ocrImageToDomain(image, SearchService.OCR_PER_IMAGE_MS);
+    const status = !res ? 'empty' : res.domain ? 'ok' : 'nodomain';
+    const domain = res?.domain ?? null;
+    await this.prisma.creativeOcr
+      .upsert({ where: { crId }, create: { crId, domain, text: res?.text ?? null, status }, update: { domain, text: res?.text ?? null, status, updatedAt: new Date() } })
+      .catch(() => { /* cache lỗi không được làm gãy tra cứu */ });
+    return { domain };
+  }
+
   // Lưu 1 lượt tra cứu vào DB, trả searchId.
   private async persist(
     label: string,
@@ -136,6 +213,7 @@ export class SearchService {
     const { creatives, totalMin, totalMax } = await this.paginate((t) =>
       this.google.searchCreativesByDomain(domain, t),
     );
+    await this.enrichWithOcr(creatives); // đọc domain đích từ ảnh cho creative Google để trống domain
     const advertisers = parseAdvertisers(creatives);
     const searchId = await this.persist(domain, creatives, advertisers, totalMin, totalMax);
     return { searchId, domain, totalMin, totalMax, advertisers, creatives };
@@ -146,6 +224,7 @@ export class SearchService {
     const { creatives, totalMin, totalMax } = await this.paginate((t) =>
       this.google.searchCreativesByAdvertiser(advertiserId, t),
     );
+    await this.enrichWithOcr(creatives);
     const advertisers = parseAdvertisers(creatives);
     const label = advertisers[0]?.name || advertiserId;
     const searchId = await this.persist(label, creatives, advertisers, totalMin, totalMax);
@@ -217,6 +296,11 @@ export class SearchService {
       include: { advertisers: true, creatives: true },
     });
     if (!search) return null;
+    // OCR domain đã cào (nếu có) — đọc từ CACHE, KHÔNG OCR lại. Để xem-lại lịch sử cũng thấy domain đích.
+    const ocrRows = await this.prisma.creativeOcr
+      .findMany({ where: { crId: { in: search.creatives.map((c) => c.crId) } }, select: { crId: true, domain: true } })
+      .catch(() => [] as Array<{ crId: string; domain: string | null }>);
+    const ocrByCr = new Map(ocrRows.map((r) => [r.crId, r.domain]));
     return {
       searchId: search.id,
       domain: search.domain,
@@ -238,6 +322,10 @@ export class SearchService {
         assetUrl: c.assetUrl ?? undefined,
         firstShown: c.firstShown ?? undefined,
         lastShown: c.lastShown ?? undefined,
+        approxDaysShown: c.firstShown && c.lastShown && c.lastShown >= c.firstShown
+          ? Math.round((c.lastShown - c.firstShown) / 86400)
+          : undefined,
+        ocrDomain: c.domain ? undefined : ocrByCr.get(c.crId) ?? undefined,
       })),
     };
   }

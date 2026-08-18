@@ -43,6 +43,17 @@ model Creative {
   searchId     Int
 }
 
+// Cache OCR domain đích của creative Google — khoá theo crId (id creative toàn cục, ổn định), nên OCR
+// một creative CHỈ MỘT LẦN dù nó xuất hiện ở nhiều lần tra cứu. Bảng RIÊNG (không nhét vào Creative vì
+// Creative gắn theo từng Search, sẽ OCR lặp mỗi search).
+model CreativeOcr {
+  crId      String   @id
+  domain    String?
+  text      String?
+  status    String   // ok | nodomain | empty | error
+  updatedAt DateTime @default(now())
+}
+
 // ---- Cấu hình FB (lưu cookie phiên để sống qua restart) ----
 model FbSetting {
   id    Int    @id @default(autoincrement())

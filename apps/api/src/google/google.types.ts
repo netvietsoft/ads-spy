@@ -16,7 +16,11 @@ export interface CreativeBrief {
   assetUrl?: string; // ảnh trực tiếp hoặc URL embed
   firstShown?: number; // unix seconds
   lastShown?: number; // unix seconds
+  approxDaysShown?: number; // số ngày chạy = round((lastShown-firstShown)/ngày). Miễn phí, không cần OCR.
   regionCount?: number; // số vùng ad chạy (field 13)
+  // Domain đích ĐỌC TỪ ẢNH creative bằng OCR — nguồn DỰ PHÒNG cho `domain` (node-14 của Google) khi Google
+  // để trống nhưng display-URL lại in trong ảnh. null/vắng = không đọc được (không bịa). Xem ocr-domain.ts.
+  ocrDomain?: string | null;
 }
 
 export interface CreativeVariant {

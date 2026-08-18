@@ -43,6 +43,8 @@ export function parseSearchCreatives(raw: any): SearchCreativesResult {
   const list: any[] = Array.isArray(raw?.['1']) ? raw['1'] : [];
   const creatives: CreativeBrief[] = list.map((ad) => {
     const asset = parseAsset(ad?.['3']);
+    const firstShown = toInt(ad?.['6']?.['1']);
+    const lastShown = toInt(ad?.['7']?.['1']);
     return {
       creativeId: ad?.['2'],
       advertiserId: ad?.['1'],
@@ -50,8 +52,13 @@ export function parseSearchCreatives(raw: any): SearchCreativesResult {
       domain: ad?.['14'],
       assetType: asset.assetType,
       assetUrl: asset.assetUrl,
-      firstShown: toInt(ad?.['6']?.['1']),
-      lastShown: toInt(ad?.['7']?.['1']),
+      firstShown,
+      lastShown,
+      // Số ngày quảng cáo đã chạy — dữ liệu MIỄN PHÍ từ 2 mốc trên (lấy ý từ approxDaysShown của tool
+      // GoogleAdsTransparency). firstShown/lastShown là unix GIÂY. Chỉ tính khi có cả hai và không âm.
+      approxDaysShown: firstShown && lastShown && lastShown >= firstShown
+        ? Math.round((lastShown - firstShown) / 86400)
+        : undefined,
       regionCount: toInt(ad?.['13']),
     };
   });
