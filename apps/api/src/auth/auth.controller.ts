@@ -29,7 +29,7 @@ export class AuthController {
   }
 
   @Public()
-  @RateLimit({ limit: 10, windowMs: 5 * 60_000, by: 'ip' }) // chống dò mật khẩu online
+  @RateLimit({ limit: 10, windowMs: 5 * 60_000, by: 'ip', bodyKey: 'email' }) // chống dò mật khẩu: cap theo CẢ IP lẫn email (email không giả mạo được)
   @Post('login')
   async login(@Body() body: any, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { user, token } = await this.auth.login(body || {}, req.headers['user-agent']);
@@ -61,7 +61,7 @@ export class AuthController {
   }
 
   @Public()
-  @RateLimit({ limit: 5, windowMs: 60 * 60_000, by: 'ip' }) // chống spam email reset
+  @RateLimit({ limit: 5, windowMs: 60 * 60_000, by: 'ip', bodyKey: 'email' }) // chống spam email reset: cap theo email đích
   @Post('forgot-password')
   async forgot(@Body() body: any) {
     await this.auth.forgot((body && body.email) || '');
