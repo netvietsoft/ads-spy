@@ -4,6 +4,17 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-18 — Search Google (tinh chỉnh): bỏ ô lọc "Text" (không tồn tại thật) + thêm cột Mã nhà quảng cáo
+
+- Người dùng báo lọc "Text" không ra gì. TEST THẬT 5 advertiser (suno×2, booking, nike, coursera):
+  `SearchCreatives` chỉ trả creative CÓ preview trực quan → toàn **image + embed(video), 0 text** (field 8
+  của Google rỗng). "text" trong xlsx là Apify tự gán sai. Nhánh `text` của parser gần như không bao giờ
+  kích hoạt → ô lọc "Text" luôn rỗng. Đã **bỏ "Text"**, giữ Tất cả / Image (ảnh) / Video (động).
+- Xuất file: thêm cột **"Mã nhà quảng cáo"** (AR…) cạnh "Nhà quảng cáo" → 10 cột. Verify end-to-end trên
+  dữ liệu thật: `geo-en.ts` phủ 248 nước, **77/77** mã vùng của 1 creative map đúng tên tiếng Anh.
+
+---
+
 ## 2026-08-18 — Search Google: nút XUẤT CSV/TXT 9 cột (khớp export Tool mmo) + cột Quốc gia tên tiếng Anh
 
 Sau khi tìm xong, trang `/googleads` có 2 nút **⬇ CSV / ⬇ TXT** xuất file 9 cột đúng cấu trúc xlsx của

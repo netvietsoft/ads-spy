@@ -5,7 +5,7 @@ import { regionNameEn } from './geo-en';
 // 8 cột lấy thẳng từ CreativeBrief; cột "Quốc gia" cần regionsById (gom bằng job mở chi tiết từng ad).
 
 const HEADERS = [
-  'Domain', 'Nhà quảng cáo', 'Quốc gia', 'Creative ID', 'Định dạng',
+  'Domain', 'Nhà quảng cáo', 'Mã nhà quảng cáo', 'Quốc gia', 'Creative ID', 'Định dạng',
   'Ngày đầu hiển thị', 'Ngày cuối hiển thị', 'Số ngày chạy', 'Link QC',
 ];
 
@@ -26,6 +26,7 @@ export function buildExportRows(creatives: CreativeBrief[], regionsById: Record<
     rows.push([
       c.domain || c.ocrDomain || '',
       c.advertiserName || '',
+      c.advertiserId || '',
       codes.map(regionNameEn).join(', '),
       c.creativeId,
       FMT_LABEL[c.assetType] || c.assetType,

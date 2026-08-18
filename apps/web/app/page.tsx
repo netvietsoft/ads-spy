@@ -410,9 +410,8 @@ export default function Home() {
           Định dạng
           <select className="fbselect" value={fmt} onChange={(e) => setFmt(e.target.value as FormatFilter)}>
             <option value="all">Tất cả</option>
-            <option value="text">Text</option>
-            <option value="image">Image</option>
-            <option value="video">Video</option>
+            <option value="image">Image (ảnh)</option>
+            <option value="video">Video (động)</option>
           </select>
         </label>
         <label>
