@@ -81,6 +81,15 @@ export class SearchController {
     return this.search.startRegionCheck(items, Number(geo), Math.min(Number(limit) || 100, 200));
   }
 
+  // Gom vùng cho XUẤT FILE: mở chi tiết từng creative lấy danh sách mã nước. Poll qua /regions/job/:id.
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
+  @Post('creatives/regions/collect')
+  startRegionCollect(@Body('items') items: { advertiserId: string; creativeId: string }[], @Body('limit') limit?: number) {
+    if (!Array.isArray(items) || !items.length) throw new BadRequestException('Thiếu danh sách creative.');
+    return this.search.startRegionCollect(items, Math.min(Number(limit) || 200, 200));
+  }
+
   @Roles('admin', 'manager', 'user')
   @RequiresModule('google-ads')
   @Get('creatives/regions/job/:id')

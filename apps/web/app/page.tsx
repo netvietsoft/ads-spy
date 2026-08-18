@@ -14,6 +14,8 @@ import {
   searchByAdvertiser,
   startRegionCheck,
   regionJob,
+  startRegionCollect,
+  regionCollectJob,
   suggest,
 } from './api';
 import { GEO_COUNTRIES } from './geo';
@@ -37,6 +39,7 @@ import { Paginator, paginate } from './components/Paginator';
 import { LazyGrid } from './components/LazyGrid';
 import { Favorite } from './api';
 import { applyClientFilters, FormatFilter } from './filters';
+import { buildExportRows, toCsv, toTxt, downloadTextFile } from './exportGoogle';
 
 function normalizeDomainClient(s: string) {
   return (s || '')
@@ -211,6 +214,11 @@ export default function Home() {
   const [regionProg, setRegionProg] = useState('');
   const [regionBusy, setRegionBusy] = useState(false);
 
+  // Xuất file (CSV/TXT) — cột Quốc gia cần gom vùng thật, cache lại để 2 nút dùng chung, khỏi gom 2 lần.
+  const [regionsById, setRegionsById] = useState<Record<string, number[]> | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportProg, setExportProg] = useState('');
+
   const baseCreatives = useMemo(() => {
     if (!data) return [];
     return activeAdv ? data.creatives.filter((c) => c.advertiserId === activeAdv) : data.creatives;
@@ -230,6 +238,8 @@ export default function Home() {
     setRegionGeo(0);
     setRegionMatched(null);
     setRegionProg('');
+    setRegionsById(null);
+    setExportProg('');
   }, [data]);
 
   async function applyRegionFilter(geo: number) {
@@ -262,6 +272,47 @@ export default function Home() {
     } finally {
       setRegionBusy(false);
     }
+  }
+
+  // Gom vùng cho cột Quốc gia (một lần, cache vào regionsById). Chạy job mở chi tiết từng creative.
+  async function ensureRegions(): Promise<Record<string, number[]>> {
+    if (regionsById) return regionsById;
+    const items = creatives.map((c) => ({ advertiserId: c.advertiserId, creativeId: c.creativeId }));
+    if (!items.length) return {};
+    setExportBusy(true);
+    setExportProg('Đang gom vùng (mở chi tiết từng quảng cáo)…');
+    try {
+      const { jobId } = await startRegionCollect(items, 200);
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 1500));
+        let j;
+        try {
+          j = await regionCollectJob(jobId);
+        } catch {
+          break;
+        }
+        setExportProg(`Đang gom vùng: ${j.checked}/${j.total}…`);
+        if (j.done) {
+          setRegionsById(j.regionsById);
+          setExportProg('');
+          return j.regionsById;
+        }
+      }
+      return {};
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  async function onExport(fmt: 'csv' | 'txt') {
+    if (!creatives.length || exportBusy) return;
+    const reg = await ensureRegions();
+    const rows = buildExportRows(creatives, reg);
+    const content = fmt === 'csv' ? toCsv(rows) : toTxt(rows);
+    const label = (data?.domain || 'google').replace(/[^a-z0-9._-]+/gi, '_');
+    const now = new Date();
+    const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    downloadTextFile(`ads_${label}_${ymd}.${fmt}`, content);
   }
 
   const pagedCreatives = paginate(creatives, gPage, gSize);
@@ -467,6 +518,21 @@ export default function Home() {
             {regionProg && <span className="m">{regionProg}</span>}
             {regionGeo !== 0 && !regionBusy && (
               <span className="m">(mở chi tiết từng ad để lấy vùng — tối đa 120 ad)</span>
+            )}
+          </div>
+
+          <div className="daterow">
+            <label>⬇ Xuất kết quả ({creatives.length} ad):</label>
+            <button className="ghost" type="button" onClick={() => onExport('csv')} disabled={exportBusy || !creatives.length}>
+              CSV
+            </button>
+            <button className="ghost" type="button" onClick={() => onExport('txt')} disabled={exportBusy || !creatives.length}>
+              TXT
+            </button>
+            {exportBusy && <span className="spinner" />}
+            {exportProg && <span className="m">{exportProg}</span>}
+            {!exportBusy && !exportProg && (
+              <span className="m">(gom Quốc gia bằng cách mở chi tiết từng ad — tối đa 200)</span>
             )}
           </div>
 

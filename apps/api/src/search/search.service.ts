@@ -290,6 +290,40 @@ export class SearchService {
     return { jobId };
   }
 
+  // Gom danh sách vùng THẬT của từng creative (mở chi tiết từng ad, field 17) — cho xuất file có cột
+  // Quốc gia. Mẫu y startRegionCheck: cắt theo limit, concurrency 5, ad lỗi để mảng rỗng (không chặn job).
+  // Dùng CHUNG this.regionJobs + getRegionJob để FE poll tiến độ.
+  startRegionCollect(items: { advertiserId: string; creativeId: string }[], limit = 200): { jobId: string } {
+    const jobId = `col-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const slice = items.slice(0, limit);
+    const job: any = { jobId, total: slice.length, checked: 0, regionsById: {} as Record<string, number[]>, done: false, error: null };
+    this.regionJobs.set(jobId, job);
+
+    void (async () => {
+      const CONC = 5;
+      for (let i = 0; i < slice.length; i += CONC) {
+        const batch = slice.slice(i, i + CONC);
+        await Promise.all(
+          batch.map(async (it) => {
+            try {
+              const d = await this.google.getCreativeById(it.advertiserId, it.creativeId);
+              job.regionsById[it.creativeId] = d.regions;
+            } catch {
+              job.regionsById[it.creativeId] = []; // ad lỗi/throttle → để trống, không chặn cả job
+            }
+            job.checked++;
+          }),
+        );
+      }
+      job.done = true;
+    })().catch((e) => {
+      job.error = e?.message || 'Lỗi gom vùng';
+      job.done = true;
+    });
+    setTimeout(() => this.regionJobs.delete(jobId), 600000);
+    return { jobId };
+  }
+
   getRegionJob(id: string) {
     return this.regionJobs.get(id) || null;
   }

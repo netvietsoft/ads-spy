@@ -79,7 +79,9 @@ lazy-load), và hàm thuần **`applyClientFilters`** (`app/filters.ts`). Bộ l
 (điều khiển số trang gọi Google, trần 200); còn **Thời gian (7/15/20/60)**, **Định dạng
 (Text/Image/Video)** và **khoảng ngày** lọc **client-side** trên `firstShown`/`lastShown`+`assetType` —
 vì API nội bộ Google KHÔNG nhận các filter này trong request (xem `docs/archive/03`). Không có ô "Nền
-tảng" vì response Google không trả platform.
+tảng" vì response Google không trả platform. **Xuất file** (2 nút CSV/TXT, hàm thuần `app/exportGoogle.ts`):
+file 9 cột khớp export Tool mmo; cột **Quốc gia** cần gom vùng thật (job BE `startRegionCollect` mở chi
+tiết từng creative), map mã→tên tiếng Anh qua `app/geo-en.ts` (mã vùng Google = 2000 + ISO 3166-1 numeric).
 
 Các component nhỏ còn lại hỗ trợ nhóm trên: `ShBarChart`/`ShChart` (biểu đồ dùng ở trang shop/product
 + `ShShopModal`), `SyncControls`, `ShLogo`, `ShFilters`/`ShListFilters`/`ShCategories`/`Collapsible`

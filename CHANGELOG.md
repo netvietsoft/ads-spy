@@ -4,6 +4,28 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-18 — Search Google: nút XUẤT CSV/TXT 9 cột (khớp export Tool mmo) + cột Quốc gia tên tiếng Anh
+
+Sau khi tìm xong, trang `/googleads` có 2 nút **⬇ CSV / ⬇ TXT** xuất file 9 cột đúng cấu trúc xlsx của
+Tool mmo: Domain · Nhà quảng cáo · Quốc gia · Creative ID · Định dạng · Ngày đầu · Ngày cuối · Số ngày
+chạy · Link QC.
+
+- 8/9 cột lấy thẳng từ kết quả đã tải (client-side). Cột **Quốc gia** thì search mặc định KHÔNG có (chỉ
+  `regionCount`) → thêm job BE `startRegionCollect` mở chi tiết TỪNG creative (field 17), nhân theo job
+  lọc vùng sẵn có (concurrency 5, cap 200, ad lỗi/throttle → để trống, không chặn job); FE gom một lần
+  rồi cache cho cả 2 nút. Có thanh tiến độ "Đang gom vùng: x/y".
+- **Tên nước tiếng Anh** khớp xlsx nhờ phát hiện: mã vùng Google = `2000 + ISO 3166-1 numeric`
+  (US=2840, Italy=2380, Australia=2036...). Sinh `apps/web/app/geo-en.ts` (bảng ISO numeric → tên Anh,
+  ~249 nước) thay cho `geo.ts` (tiếng Việt + thiếu). Verify 13/13 nước trong xlsx map đúng.
+- File: CSV bọc ngoặc chuẩn RFC-4180 (cột Quốc gia đầy phẩy không vỡ), TXT tab-separated, cả hai UTF-8
+  có BOM (Excel đọc tiếng Việt đúng). Có chặn **CSV formula-injection** (ô mở đầu `= + - @` → chèn `'`)
+  vì tên nhà quảng cáo là dữ liệu bên thứ ba.
+
+`geo-en.ts` · `exportGoogle.ts` (mới) · `page.tsx` · `api.ts` · `search.controller.ts` ·
+`search.service.ts` · `docs/frontend.md`. Build API + web xanh; `search.service.spec` 10/10.
+
+---
+
 ## 2026-08-18 — Search Google: form 2 tab + bộ lọc kiểu Tool mmo (thời gian / số kết quả / định dạng / khoảng ngày)
 
 Chủ dự án đưa tool desktop "GoogleAdsTransparency" làm spec, muốn bê bộ lọc của nó vào `apps/web`. Map lại

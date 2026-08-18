@@ -145,6 +145,32 @@ export async function regionJob(id: string): Promise<RegionJob> {
   return jsonOrThrow(await fetch(`${API}/api/creatives/regions/job/${id}`));
 }
 
+// Gom vùng cho XUẤT FILE (cột Quốc gia): mở chi tiết từng creative lấy danh sách mã nước. Poll cùng
+// endpoint /regions/job/:id nhưng job trả regionsById thay vì matchedIds.
+export interface RegionCollectJob {
+  jobId: string;
+  total: number;
+  checked: number;
+  regionsById: Record<string, number[]>;
+  done: boolean;
+  error: string | null;
+}
+export async function startRegionCollect(
+  items: { advertiserId: string; creativeId: string }[],
+  limit = 200,
+): Promise<{ jobId: string }> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/creatives/regions/collect`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ items, limit }),
+    }),
+  );
+}
+export async function regionCollectJob(id: string): Promise<RegionCollectJob> {
+  return jsonOrThrow(await fetch(`${API}/api/creatives/regions/job/${id}`));
+}
+
 export interface Suggestions {
   advertisers: Advertiser[];
   domains: string[];
