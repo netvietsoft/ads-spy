@@ -10,7 +10,7 @@ Chủ site yêu cầu "hack thử site". Chạy audit 7 chiều (auth/IDOR · SQ
 business-logic · data-exposure), MỖI phát hiện bị một agent độc lập BÁC BỎ trước khi tính: 20 thô → 9 xác nhận,
 11 bị loại (CORS-phản-chiếu do SameSite=lax cứu, "SQLi prototype-chain" thực ra chỉ 500, vài SSRF đã gated).
 
-**HIGH — SSRF proxy ảnh /sh/asset** (): fetch mặc định redirect:follow → host trong allowlist mà
+**HIGH — SSRF proxy ảnh /sh/asset** (`safe-fetch.ts`): fetch mặc định redirect:follow → host trong allowlist mà
 attacker kiểm soát (tự tạo *.cloudfront.net) trả 302→127.0.0.1 → undici đi theo vào nội bộ, đổ body về client.
 Vá: theo redirect thủ công, mỗi hop kiểm lại host allowlist + chặn IP nội bộ/metadata. Dùng chung cho sh + google.
 
