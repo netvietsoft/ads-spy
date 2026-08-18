@@ -4,6 +4,34 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-18 — Audit bảo mật đối kháng: vá 9 lỗ hổng (1 HIGH · 5 MED · 3 LOW) + OCR domain quảng cáo
+
+Chủ site yêu cầu "hack thử site". Chạy audit 7 chiều (auth/IDOR · SQLi · SSRF · XSS/CORS/redirect · secrets ·
+business-logic · data-exposure), MỖI phát hiện bị một agent độc lập BÁC BỎ trước khi tính: 20 thô → 9 xác nhận,
+11 bị loại (CORS-phản-chiếu do SameSite=lax cứu, "SQLi prototype-chain" thực ra chỉ 500, vài SSRF đã gated).
+
+**HIGH — SSRF proxy ảnh /sh/asset** (): fetch mặc định redirect:follow → host trong allowlist mà
+attacker kiểm soát (tự tạo *.cloudfront.net) trả 302→127.0.0.1 → undici đi theo vào nội bộ, đổ body về client.
+Vá: theo redirect thủ công, mỗi hop kiểm lại host allowlist + chặn IP nội bộ/metadata. Dùng chung cho sh + google.
+
+**MEDIUM (5):** OAuth bỏ email_verified → chiếm tài khoản (chỉ link/create khi verified); SQLi qua KEY body trong
+updateProxy (whitelist cột); không rate-limit auth (brute-force) + khách hút kho + gọi live vô hạn (guard
+rate-limit cửa sổ trượt, khoá IP/user/email, chỉ bóp role user cho data endpoint).
+
+**LOW (3):** open-redirect qua "/evil.com" (new URL + kiểm origin); thiếu header bảo mật (X-Frame-Options/CSP
+frame-ancestors/nosniff/HSTS) + GET tác-dụng-phụ → POST; CSV formula injection khi export (chèn ' đầu ô).
+
+**Follow-up (rà soát tự động bắt tiếp):** guard rate-limit tin header IP giả mạo → gate loopback + khoá phụ theo
+email (brute-force buộc gửi email nạn nhân, không giả đi được).
+
+**DevTools (câu người dùng hỏi):** KHÔNG moi được token ShopHunter/proxy/cookie phiên — token ghi-một-chiều, GET
+chỉ trả trạng thái/che (proxy mask ***, affnet preview 4đầu…4cuối), cookie httpOnly.
+
+CHƯA vá (cần người vận hành): CORS origin:true (audit bác bỏ nhưng mong manh — siết allowlist khi rảnh);
+rotate token tunnel + mật khẩu (phiên trước). 3 commit: fa22dfd · 99c5e45 · 1fab12f. Test 92 suite · 737.
+
+---
+
 ## 2026-08-13 (phần 3) — Vá SSRF, bỏ kiểm schema mỗi request, và đưa việc cào vào job nền
 
 ### Rà soát bảo mật báo XSS — loại lỗ hổng SAI, nhưng nguyên nhân gốc thì ĐÚNG và nặng hơn
