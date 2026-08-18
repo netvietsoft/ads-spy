@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ShAuth } from './sh.auth';
+import { fetchAssetSafe, SsrfBlockedError } from '../safe-fetch';
 
 const SEARCH_URL = 'https://app.shophunter.io/prod/v3/search';
 
@@ -175,11 +176,19 @@ export class ShClient {
     throw new ShBlockedError(shHttpMsg(res.status), res.status);
   }
 
-  async fetchAsset(url: string): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
-    const res = await fetchT(url, {
-      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/147.0.0.0 Safari/537.36' },
-    }, 30000);
-    if (!res.ok) throw new ShBlockedError(`Không tải được ảnh (HTTP ${res.status}).`);
-    return { body: res.body, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
+  // `hostOk` do caller truyền (assetHostOk ở sh.controller) — fetchAssetSafe kiểm lại Ở MỖI HOP redirect
+  // + chặn IP nội bộ, vá SSRF qua host allowlist-nhưng-attacker-kiểm-soát (vd *.cloudfront.net trả 302→localhost).
+  async fetchAsset(url: string, hostOk: (u: string) => boolean): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
+    try {
+      const r = await fetchAssetSafe(url, hostOk, {
+        ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/147.0.0.0 Safari/537.36',
+        timeoutMs: 30000,
+      });
+      if (r.status < 200 || r.status >= 300) throw new ShBlockedError(`Không tải được ảnh (HTTP ${r.status}).`);
+      return { body: r.body, contentType: r.contentType };
+    } catch (e) {
+      if (e instanceof SsrfBlockedError) throw new ShBlockedError(e.message);
+      throw e;
+    }
   }
 }

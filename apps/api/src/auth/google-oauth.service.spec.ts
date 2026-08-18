@@ -17,8 +17,8 @@ describe('GoogleOAuthService', () => {
   it('exchangeCode: đổi code → profile', async () => {
     mockFetch
       .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'AT' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ sub: 'gid', email: 'g@x.com', name: 'G', picture: 'p' }) });
-    expect(await svc.exchangeCode('code123')).toEqual({ googleId: 'gid', email: 'g@x.com', name: 'G', picture: 'p' });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sub: 'gid', email: 'g@x.com', email_verified: true, name: 'G', picture: 'p' }) });
+    expect(await svc.exchangeCode('code123')).toEqual({ googleId: 'gid', email: 'g@x.com', emailVerified: true, name: 'G', picture: 'p' });
   });
   it('exchangeCode: token lỗi → throw', async () => {
     mockFetch.mockResolvedValueOnce({ ok: false, json: async () => ({}) });

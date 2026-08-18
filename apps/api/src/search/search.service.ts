@@ -147,7 +147,7 @@ export class SearchService {
   private async ocrOneCreative(crId: string, assetUrl: string): Promise<{ domain: string | null } | null> {
     let image: Buffer;
     try {
-      const asset = await this.google.fetchAsset(assetUrl);
+      const asset = await this.google.fetchAsset(assetUrl, isAllowedAssetHost);
       image = await streamToBuffer(asset.body, 5_000_000); // chặn 5MB
     } catch {
       return null; // tải ảnh lỗi (throttle/hotlink) → CHƯA kết luận, không ghi cache

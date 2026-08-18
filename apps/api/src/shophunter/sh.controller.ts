@@ -307,7 +307,7 @@ export class ShController {
   @Get('sh/asset')
   async asset(@Query('url') url: string, @Query('download') download: string, @Res() res: Response) {
     if (!url || !assetHostOk(url)) throw new BadRequestException('URL ảnh không hợp lệ hoặc không được phép.');
-    const { body, contentType } = await this.client.fetchAsset(url);
+    const { body, contentType } = await this.client.fetchAsset(url, assetHostOk);
     res.setHeader('content-type', contentType);
     res.setHeader('cache-control', 'public, max-age=3600');
     if (download === '1') res.setHeader('content-disposition', 'attachment; filename="asset"');
@@ -418,7 +418,14 @@ export class ShController {
     const rows = isProd
       ? (await this.svc.localProducts({ ...opt, shop: shop || undefined })).items
       : (await this.svc.localShops({ ...opt, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true' })).items;
-    const esc = (v: any) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    // esc: (1) chống FORMULA INJECTION — ô bắt đầu bằng = + - @ (hoặc tab/CR) bị Excel/Sheets chạy như công
+    // thức; tên shop/URL là dữ liệu BÊN THỨ BA (chủ store tự đặt) nên phải trung hoà bằng cách chèn ' đứng đầu
+    // (audit 2026-08-18). (2) rồi mới bọc CSV cho ký tự "," xuống dòng.
+    const esc = (v: any) => {
+      let s = v == null ? '' : String(v);
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
     const fmtDate = (ms: any) => (ms ? new Date(Number(ms)).toISOString().slice(0, 10) : '');
     let cols: string[]; let line: (r: any) => any[];
     if (isProd) {

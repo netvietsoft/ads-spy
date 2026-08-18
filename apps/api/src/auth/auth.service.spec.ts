@@ -84,13 +84,32 @@ describe('AuthService', () => {
   it('loginWithGoogle: chưa có googleId nhưng trùng email → liên kết', async () => {
     const linkGoogle = jest.fn().mockResolvedValue({ id: 5, status: 'active' });
     const { svc } = build({ users: { findByGoogleId: jest.fn().mockResolvedValue(null), findByEmail: jest.fn().mockResolvedValue({ id: 5 }), linkGoogle } });
-    await svc.loginWithGoogle({ googleId: 'g', email: 'a@x.com' });
+    await svc.loginWithGoogle({ googleId: 'g', email: 'a@x.com', emailVerified: true });
     expect(linkGoogle).toHaveBeenCalledWith(5, 'g', undefined);
   });
   it('loginWithGoogle: user mới → tạo user role user', async () => {
     const create = jest.fn().mockResolvedValue({ id: 6, status: 'active' });
     const { svc } = build({ users: { findByGoogleId: jest.fn().mockResolvedValue(null), findByEmail: jest.fn().mockResolvedValue(null), create } });
-    await svc.loginWithGoogle({ googleId: 'g', email: 'new@x.com', name: 'N' });
+    await svc.loginWithGoogle({ googleId: 'g', email: 'new@x.com', emailVerified: true, name: 'N' });
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ googleId: 'g', role: 'user' }));
+  });
+
+  // BẢO MẬT (audit 2026-08-18): email CHƯA xác minh KHÔNG được liên kết vào account trùng email lẫn tạo mới
+  // → chặn chiếm tài khoản qua token Google email_verified=false.
+  it('loginWithGoogle: email CHƯA xác minh + trùng email → TỪ CHỐI, KHÔNG liên kết', async () => {
+    const linkGoogle = jest.fn();
+    const { svc } = build({ users: { findByGoogleId: jest.fn().mockResolvedValue(null), findByEmail: jest.fn().mockResolvedValue({ id: 5 }), linkGoogle } });
+    await expect(svc.loginWithGoogle({ googleId: 'attacker', email: 'victim@x.com', emailVerified: false })).rejects.toThrow();
+    expect(linkGoogle).not.toHaveBeenCalled();
+  });
+  it('loginWithGoogle: email chưa xác minh + user mới → TỪ CHỐI, KHÔNG tạo', async () => {
+    const create = jest.fn();
+    const { svc } = build({ users: { findByGoogleId: jest.fn().mockResolvedValue(null), findByEmail: jest.fn().mockResolvedValue(null), create } });
+    await expect(svc.loginWithGoogle({ googleId: 'g', email: 'x@x.com', emailVerified: false })).rejects.toThrow();
+    expect(create).not.toHaveBeenCalled();
+  });
+  it('loginWithGoogle: googleId ĐÃ có thì bỏ qua kiểm emailVerified (đã liên kết trước đó)', async () => {
+    const { svc } = build({ users: { findByGoogleId: jest.fn().mockResolvedValue({ id: 9, status: 'active' }) } });
+    expect(await svc.loginWithGoogle({ googleId: 'g', email: 'x@x.com', emailVerified: false })).toBe('TOKEN');
   });
 });

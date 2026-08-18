@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { fetchAssetSafe, SsrfBlockedError } from '../safe-fetch';
 import {
   buildHeaders,
   reqGetCreativeById,
@@ -256,12 +257,16 @@ export class GoogleClient {
   }
 
   // Stream 1 asset (ảnh) từ Google về phía backend để tránh CORS/hotlink.
-  async fetchAsset(url: string): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
-    const res = await fetch(url, { headers: { 'user-agent': buildHeaders()['user-agent'] } });
-    if (!res.ok) throw new GoogleBlockedError(`Không tải được asset (HTTP ${res.status}).`);
-    return {
-      body: res.body,
-      contentType: res.headers.get('content-type') ?? 'application/octet-stream',
-    };
+  // `hostOk` do caller truyền (isAllowedAssetHost) — fetchAssetSafe theo redirect thủ công + chặn IP nội bộ
+  // ở mỗi hop (phòng thủ SSRF cùng lớp với /sh/asset, dù host Google CDN khó bị attacker kiểm soát hơn).
+  async fetchAsset(url: string, hostOk: (u: string) => boolean): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
+    try {
+      const r = await fetchAssetSafe(url, hostOk, { ua: buildHeaders()['user-agent'] as string, timeoutMs: 20000 });
+      if (r.status < 200 || r.status >= 300) throw new GoogleBlockedError(`Không tải được asset (HTTP ${r.status}).`);
+      return { body: r.body, contentType: r.contentType };
+    } catch (e) {
+      if (e instanceof SsrfBlockedError) throw new GoogleBlockedError(e.message);
+      throw e;
+    }
   }
 }

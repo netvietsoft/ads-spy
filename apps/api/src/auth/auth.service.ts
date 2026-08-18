@@ -78,9 +78,13 @@ export class AuthService {
     return this.sessions.refresh(token);
   }
 
-  async loginWithGoogle(profile: { googleId: string; email: string; name?: string; picture?: string }, userAgent?: string): Promise<string> {
+  async loginWithGoogle(profile: { googleId: string; email: string; emailVerified?: boolean; name?: string; picture?: string }, userAgent?: string): Promise<string> {
     let user = await this.users.findByGoogleId(profile.googleId);
     if (!user) {
+      // Email CHƯA xác minh → KHÔNG được liên kết vào account trùng email lẫn tạo account mới. Thiếu chốt
+      // này thì kẻ có token email=nạn_nhân/verified=false gắn được googleId của mình vào account nạn nhân
+      // rồi đăng nhập (audit 2026-08-18). Google account thật gần như luôn verified nên không cản người dùng thật.
+      if (!profile.emailVerified) throw new ForbiddenException('Email Google chưa được xác minh — không thể đăng nhập.');
       const byEmail = await this.users.findByEmail(profile.email);
       user = byEmail
         ? await this.users.linkGoogle(byEmail.id, profile.googleId, profile.picture)

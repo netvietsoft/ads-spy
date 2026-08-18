@@ -13,8 +13,16 @@ export default function LoginPage() {
   const nextUrl = () => {
     if (typeof window === 'undefined') return '/home';
     const n = new URLSearchParams(window.location.search).get('next');
-    // Chỉ nhận đường dẫn nội bộ; chặn '//host' (protocol-relative → open redirect).
-    return n && n.startsWith('/') && !n.startsWith('//') ? n : '/home';
+    // Chỉ nhận đường dẫn NỘI BỘ. Kiểm bằng startsWith('/') && !startsWith('//') là KHÔNG đủ: "/\evil.com"
+    // qua được cả hai (ký tự thứ 2 là '\'), mà trình duyệt coi "/\" như "//" → điều hướng ra evil.com
+    // (open redirect, audit 2026-08-18). Phân giải qua new URL rồi đòi origin PHẢI trùng — cách chắc chắn.
+    if (!n) return '/home';
+    try {
+      const u = new URL(n, window.location.origin);
+      return u.origin === window.location.origin ? u.pathname + u.search + u.hash : '/home';
+    } catch {
+      return '/home';
+    }
   };
 
   const login = async (e: React.FormEvent) => {

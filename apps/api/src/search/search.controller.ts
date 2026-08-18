@@ -168,7 +168,7 @@ window["${cb}"]=function(payload){
     if (!url || !isAllowedAssetHost(url)) {
       throw new BadRequestException('URL asset không hợp lệ hoặc không được phép.');
     }
-    const { body, contentType } = await this.google.fetchAsset(url);
+    const { body, contentType } = await this.google.fetchAsset(url, isAllowedAssetHost);
     res.setHeader('content-type', contentType);
     res.setHeader('cache-control', 'public, max-age=3600');
     if (download === '1') {

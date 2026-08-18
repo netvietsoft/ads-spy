@@ -1923,10 +1923,14 @@ export class ShMysql implements OnModuleInit {
 
   async updateProxy(id: number, fields: { enabled?: boolean; raw?: string; type?: string; host?: string; port?: number; username?: string | null; password?: string | null }): Promise<void> {
     await this.ensureReady();
+    // WHITELIST tên cột. Controller nhận @Body() any rồi đưa THẲNG object vào đây, mà KEY của object được
+    // nội suy vào SQL (`${k} = ?`) — không lọc thì `{ "id=1; DROP…": ... }` (hoặc tên cột lạ) chèn được SQL.
+    // Audit 2026-08-18 (medium, chỉ staff tới được nhưng vẫn là SQLi). Chỉ 6 cột dưới được phép ghi.
+    const ALLOWED = new Set(['enabled', 'raw', 'type', 'host', 'port', 'username', 'password']);
     const set: string[] = []; const vals: any[] = [];
     for (const [k, v] of Object.entries(fields)) {
-      if (v === undefined) continue;
-      set.push(`${k} = ?`); vals.push(k === 'enabled' ? (v ? 1 : 0) : v);
+      if (v === undefined || !ALLOWED.has(k)) continue; // key ngoài whitelist → bỏ, không nội suy
+      set.push(`\`${k}\` = ?`); vals.push(k === 'enabled' ? (v ? 1 : 0) : v);
     }
     if (!set.length) return;
     vals.push(id);

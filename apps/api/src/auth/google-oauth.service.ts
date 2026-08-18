@@ -5,6 +5,7 @@ import { authConfig } from './auth.config';
 export interface GoogleProfile {
   googleId: string;
   email: string;
+  emailVerified: boolean;
   name?: string;
   picture?: string;
 }
@@ -43,6 +44,8 @@ export class GoogleOAuthService {
     });
     if (!infoRes.ok) throw new Error('Google userinfo thất bại');
     const info: any = await infoRes.json();
-    return { googleId: info.sub, email: info.email, name: info.name, picture: info.picture };
+    // GIỮ email_verified: bỏ nó là mở đường chiếm tài khoản — luồng login tin thẳng email rồi gắn googleId
+    // vào account trùng email. Google chỉ đặt true khi đã xác minh sở hữu hộp thư (audit 2026-08-18).
+    return { googleId: info.sub, email: info.email, emailVerified: info.email_verified === true, name: info.name, picture: info.picture };
   }
 }
