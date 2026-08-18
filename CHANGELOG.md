@@ -4,6 +4,30 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-18 — Search Google: form 2 tab + bộ lọc kiểu Tool mmo (thời gian / số kết quả / định dạng / khoảng ngày)
+
+Chủ dự án đưa tool desktop "GoogleAdsTransparency" làm spec, muốn bê bộ lọc của nó vào `apps/web`. Map lại
+(3 agent song song) rồi chốt: **API nội bộ Google KHÔNG lọc server-side** theo nền tảng/định dạng/ngày —
+body `SearchCreatives` chỉ có selector (domain `3.12` / advertiser `3.13`) + phân trang + khối `7` opaque.
+Tool mmo có mấy dropdown đó là nhờ Apify (mà token của nó đã chết — ảnh log báo `token is not valid`).
+
+Nên làm **trung thực theo dữ liệu thật**:
+- **`maxResults`** (mặc định 100, trần 200) — filter DUY NHẤT có thật ở server: điều khiển số trang gọi
+  Google (`planPages`: `ceil(maxResults/40)` trang, kẹp ≤ `MAX_PAGES=5`), cắt đúng số kết quả.
+  `POST /search {domain, maxResults}`, `GET /advertiser/:id?maxResults=`.
+- **Thời gian (7/15/20/60)** · **khoảng ngày từ→đến** · **Định dạng (Text/Image/Video)** — lọc
+  **client-side** trên `firstShown`/`lastShown` (ngày là OUTPUT của Google) + `assetType` suy từ preview
+  (video = embed content.js; KHÔNG có "shopping" riêng). Tách ra hàm thuần `apps/web/app/filters.ts`
+  (`applyClientFilters`, giao-khoảng) cho gọn & dễ soi.
+- **BỎ ô "Nền tảng"** (Search/YouTube/Shopping/Maps/Play): response Google không trả platform → không
+  bịa filter server không có. Chủ dự án đồng ý bỏ thay vì reverse-engineer.
+- UI: gộp còn **2 tab** (Nhà quảng cáo / Domain — tab "Từ khóa" cũ nhập vào tab Nhà QC) + hàng `.filterrow`.
+
+`apps/web/app/page.tsx` · `filters.ts` (mới) · `api.ts` · `search.controller.ts` · `search.service.ts` ·
+`globals.css` · `docs/frontend.md`. Build API + web xanh; `search.service.spec` 10/10.
+
+---
+
 ## 2026-08-18 — Audit bảo mật đối kháng: vá 9 lỗ hổng (1 HIGH · 5 MED · 3 LOW) + OCR domain quảng cáo
 
 Chủ site yêu cầu "hack thử site". Chạy audit 7 chiều (auth/IDOR · SQLi · SSRF · XSS/CORS/redirect · secrets ·

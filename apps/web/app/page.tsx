@@ -36,6 +36,7 @@ import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
 import { LazyGrid } from './components/LazyGrid';
 import { Favorite } from './api';
+import { applyClientFilters, FormatFilter } from './filters';
 
 function normalizeDomainClient(s: string) {
   return (s || '')
@@ -86,8 +87,14 @@ export default function Home() {
     if (t && (SOURCE_TO_PATH as Record<string, string>)[t]) { router.replace(SOURCE_TO_PATH[t as Source]); return; }
     setSource(pathToSource(pathname || '/'));
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [mode, setMode] = useState<'domain' | 'keyword' | 'advertiser'>('domain');
+  const [mode, setMode] = useState<'domain' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
+  // Bộ lọc kiểu Tool mmo — TẤT CẢ lọc client-side trừ maxResults (điều khiển số trang gọi Google).
+  const [preset, setPreset] = useState(0); // "còn chạy trong N ngày gần nhất"; 0 = tất cả
+  const [maxResults, setMaxResults] = useState(100);
+  const [fmt, setFmt] = useState<FormatFilter>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [data, setData] = useState<SearchResponse | null>(null);
@@ -109,7 +116,7 @@ export default function Home() {
     setSavedView(false);
   }
 
-  // Submit ô tìm kiếm: domain → tra thẳng; keyword → lấy gợi ý.
+  // Submit ô tìm kiếm: domain → tra thẳng; nhà QC → nhập ID (AR…) tra thẳng, nhập TÊN → gợi ý.
   async function onSubmit() {
     const q = query.trim();
     if (!q) return;
@@ -138,7 +145,7 @@ export default function Home() {
     beginLoad();
     setSuggestions(null);
     try {
-      const res = await search(q);
+      const res = await search(q, maxResults);
       setData(res);
       refreshHistory();
     } catch (e: any) {
@@ -153,7 +160,7 @@ export default function Home() {
     beginLoad();
     setSuggestions(null);
     try {
-      const res = await searchByAdvertiser(id);
+      const res = await searchByAdvertiser(id, maxResults);
       setData(res);
       refreshHistory();
     } catch (e: any) {
@@ -210,13 +217,14 @@ export default function Home() {
   }, [data, activeAdv]);
 
   const creatives = useMemo(() => {
-    if (regionGeo && regionMatched) return baseCreatives.filter((c) => regionMatched.has(c.creativeId));
-    return baseCreatives;
-  }, [baseCreatives, regionGeo, regionMatched]);
+    let list = baseCreatives;
+    if (regionGeo && regionMatched) list = list.filter((c) => regionMatched.has(c.creativeId));
+    return applyClientFilters(list, { preset, dateFrom, dateTo, fmt });
+  }, [baseCreatives, regionGeo, regionMatched, preset, dateFrom, dateTo, fmt]);
 
   useEffect(() => {
     setGPage(1);
-  }, [data, activeAdv, regionMatched]);
+  }, [data, activeAdv, regionMatched, preset, dateFrom, dateTo, fmt]);
 
   useEffect(() => {
     setRegionGeo(0);
@@ -282,30 +290,23 @@ export default function Home() {
       {source === 'google' && (
       <>
       <p style={{ color: 'var(--muted)', margin: '10px 0 0' }}>
-        Tìm theo <b>domain</b> hoặc <b>từ khóa</b> → xem quảng cáo Google, nhà quảng cáo và tải asset.
+        Tìm theo <b>nhà quảng cáo</b> hoặc <b>domain</b> → xem quảng cáo Google, nhà quảng cáo và tải asset.
       </p>
 
       <div className="modes">
-        <button
-          className={`ghost ${mode === 'domain' ? 'active' : ''}`}
-          onClick={() => setMode('domain')}
-          type="button"
-        >
-          🌐 Domain
-        </button>
-        <button
-          className={`ghost ${mode === 'keyword' ? 'active' : ''}`}
-          onClick={() => setMode('keyword')}
-          type="button"
-        >
-          🔤 Từ khóa
-        </button>
         <button
           className={`ghost ${mode === 'advertiser' ? 'active' : ''}`}
           onClick={() => setMode('advertiser')}
           type="button"
         >
-          🏷 Nhà QC (ID)
+          🏷 Tìm theo Nhà quảng cáo
+        </button>
+        <button
+          className={`ghost ${mode === 'domain' ? 'active' : ''}`}
+          onClick={() => setMode('domain')}
+          type="button"
+        >
+          🌐 Tìm theo Domain
         </button>
       </div>
 
@@ -322,31 +323,63 @@ export default function Home() {
           placeholder={
             mode === 'domain'
               ? 'vd: nike.com, shopify.com…'
-              : mode === 'advertiser'
-                ? 'ID (AR…), link advertiser, hoặc TÊN nhà quảng cáo (vd: Nike, Inc.)'
-                : 'vd: baby photo editor, nike, canva…'
+              : 'TÊN nhà quảng cáo (vd: Nike, Inc.) hoặc ID (AR…)/link advertiser'
           }
           autoFocus
         />
         <button className="primary" disabled={loading}>
-          {loading ? (
-            <span className="spinner" />
-          ) : mode === 'keyword' ? (
-            'Tìm gợi ý'
-          ) : (
-            'Tra cứu'
-          )}
+          {loading ? <span className="spinner" /> : 'Tìm kiếm'}
         </button>
       </form>
+
+      {/* Bộ lọc — maxResults gọi lên Google (số trang), còn lại lọc client-side trên kết quả. */}
+      <div className="filterrow">
+        <label>
+          Thời gian
+          <select className="fbselect" value={preset} onChange={(e) => setPreset(Number(e.target.value))}>
+            <option value={0}>Tất cả</option>
+            <option value={7}>7 ngày</option>
+            <option value={15}>15 ngày</option>
+            <option value={20}>20 ngày</option>
+            <option value={60}>60 ngày</option>
+          </select>
+        </label>
+        <label>
+          Số kết quả tối đa
+          <input
+            type="number"
+            min={1}
+            max={200}
+            value={maxResults}
+            onChange={(e) => setMaxResults(Math.max(1, Math.min(200, Number(e.target.value) || 1)))}
+            style={{ width: 90 }}
+          />
+        </label>
+        <label>
+          Định dạng
+          <select className="fbselect" value={fmt} onChange={(e) => setFmt(e.target.value as FormatFilter)}>
+            <option value="all">Tất cả</option>
+            <option value="text">Text</option>
+            <option value="image">Image</option>
+            <option value="video">Video</option>
+          </select>
+        </label>
+        <label>
+          Từ ngày
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        </label>
+        <label>
+          Đến ngày
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        </label>
+      </div>
 
       {err && <div className="error">{err}</div>}
       {!data && !suggestions && !err && (
         <p className="hint">
           {mode === 'domain'
-            ? 'Nhập domain → lấy trực tiếp từ Google Ads Transparency (tối đa 5 trang/lần).'
-            : mode === 'advertiser'
-              ? 'Nhập ID (AR…)/link advertiser → tra thẳng; hoặc nhập TÊN nhà quảng cáo → chọn từ danh sách gợi ý.'
-              : 'Nhập từ khóa → Google gợi ý nhà quảng cáo + domain khớp, bấm để xem quảng cáo.'}
+            ? 'Nhập domain → lấy trực tiếp từ Google Ads Transparency. "Số kết quả tối đa" (≤200) quyết định số trang gọi.'
+            : 'Nhập ID (AR…)/link advertiser → tra thẳng; hoặc nhập TÊN nhà quảng cáo → chọn từ danh sách gợi ý.'}
         </p>
       )}
 

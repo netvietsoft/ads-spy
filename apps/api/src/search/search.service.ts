@@ -11,7 +11,16 @@ import {
   SuggestResult,
 } from '../google/google.types';
 
-const MAX_PAGES = 5;
+const MAX_PAGES = 5; // trần cứng số trang/lượt (40 kết quả/trang) — chống throttle IP (503) của Google
+const PAGE_SIZE = 40; // Google trả 40 creative/trang (field "2" trong f.req)
+const RESULT_HARD_CAP = 200; // = MAX_PAGES * PAGE_SIZE; số kết quả tối đa người dùng xin được
+
+// maxResults người dùng nhập -> số trang cần gọi + số kết quả cắt cuối. Kẹp [1, 200] để một ô nhập quá
+// lớn không kéo dài chuỗi gọi mạng (mỗi trang nghỉ 300ms) và dính 503.
+function planPages(maxResults: number): { cap: number; maxPages: number } {
+  const cap = Math.max(1, Math.min(Math.floor(maxResults) || 100, RESULT_HARD_CAP));
+  return { cap, maxPages: Math.min(Math.ceil(cap / PAGE_SIZE), MAX_PAGES) };
+}
 const ALLOWED_ASSET_HOSTS = [
   'tpc.googlesyndication.com',
   'googleusercontent.com',
@@ -75,17 +84,18 @@ export class SearchService {
     private readonly prisma: PrismaService,
   ) {}
 
-  // Phân trang chung: gọi fetchPage cho tới hết token hoặc chạm MAX_PAGES.
+  // Phân trang chung: gọi fetchPage cho tới hết token hoặc chạm maxPages (mặc định MAX_PAGES = trần cứng).
   // Trang đầu lỗi -> ném; trang sau lỗi (throttle) -> dừng, trả phần đã lấy.
   private async paginate(
     fetchPage: (token?: string) => Promise<SearchCreativesResult>,
+    maxPages = MAX_PAGES,
   ): Promise<{ creatives: CreativeBrief[]; totalMin?: number; totalMax?: number }> {
     const creatives: CreativeBrief[] = [];
     let token: string | undefined = undefined;
     let totalMin: number | undefined;
     let totalMax: number | undefined;
 
-    for (let page = 0; page < MAX_PAGES; page++) {
+    for (let page = 0; page < maxPages; page++) {
       let res: SearchCreativesResult;
       try {
         res = await fetchPage(token);
@@ -208,11 +218,12 @@ export class SearchService {
     return search.id;
   }
 
-  async search(rawDomain: string): Promise<SearchResponse> {
+  async search(rawDomain: string, maxResults = 100): Promise<SearchResponse> {
     const domain = normalizeDomain(rawDomain);
-    const { creatives, totalMin, totalMax } = await this.paginate((t) =>
-      this.google.searchCreativesByDomain(domain, t),
-    );
+    const { cap, maxPages } = planPages(maxResults);
+    const paged = await this.paginate((t) => this.google.searchCreativesByDomain(domain, t), maxPages);
+    const { totalMin, totalMax } = paged;
+    const creatives = paged.creatives.slice(0, cap); // cắt đúng số kết quả người dùng xin
     await this.enrichWithOcr(creatives); // đọc domain đích từ ảnh cho creative Google để trống domain
     const advertisers = parseAdvertisers(creatives);
     const searchId = await this.persist(domain, creatives, advertisers, totalMin, totalMax);
@@ -220,10 +231,11 @@ export class SearchService {
   }
 
   // Tra cứu theo 1 nhà quảng cáo (từ gợi ý từ khóa).
-  async searchByAdvertiser(advertiserId: string): Promise<SearchResponse> {
-    const { creatives, totalMin, totalMax } = await this.paginate((t) =>
-      this.google.searchCreativesByAdvertiser(advertiserId, t),
-    );
+  async searchByAdvertiser(advertiserId: string, maxResults = 100): Promise<SearchResponse> {
+    const { cap, maxPages } = planPages(maxResults);
+    const paged = await this.paginate((t) => this.google.searchCreativesByAdvertiser(advertiserId, t), maxPages);
+    const { totalMin, totalMax } = paged;
+    const creatives = paged.creatives.slice(0, cap);
     await this.enrichWithOcr(creatives);
     const advertisers = parseAdvertisers(creatives);
     const label = advertisers[0]?.name || advertiserId;

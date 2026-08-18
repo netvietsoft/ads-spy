@@ -104,12 +104,12 @@ export async function testProxy(): Promise<ProxyTestResult> {
   return jsonOrThrow(await fetch(`${API}/api/settings/proxy/test`));
 }
 
-export async function search(domain: string): Promise<SearchResponse> {
+export async function search(domain: string, maxResults = 100): Promise<SearchResponse> {
   return jsonOrThrow(
     await fetch(`${API}/api/search`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ domain }),
+      body: JSON.stringify({ domain, maxResults }),
     }),
   );
 }
@@ -154,8 +154,8 @@ export async function suggest(q: string): Promise<Suggestions> {
   return jsonOrThrow(await fetch(`${API}/api/suggest?q=${encodeURIComponent(q)}`));
 }
 
-export async function searchByAdvertiser(advertiserId: string): Promise<SearchResponse> {
-  return jsonOrThrow(await fetch(`${API}/api/advertiser/${advertiserId}`));
+export async function searchByAdvertiser(advertiserId: string, maxResults = 100): Promise<SearchResponse> {
+  return jsonOrThrow(await fetch(`${API}/api/advertiser/${advertiserId}?maxResults=${maxResults}`));
 }
 
 export async function getHistory(): Promise<SearchHistory[]> {

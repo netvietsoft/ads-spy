@@ -72,9 +72,14 @@ Các panel chính (dùng trực tiếp trong `page.tsx` theo `source`, hoặc tr
   chung bởi `ShopHunterPanel` và `TrackPanel`.
 
 Riêng tab **Google** (`source === 'google'`, path `/` hoặc `/googleads`) **không có panel component
-riêng** — toàn bộ UI (ô tìm domain/từ khoá/nhà quảng cáo, danh sách creative, lịch sử tra cứu) viết
-thẳng trong `app/page.tsx`, chỉ tách ra các thành phần dùng chung: **`CreativeModal`** (xem chi tiết 1
-creative), **`Favorites`** (theo dõi đối thủ), **`Paginator`**, **`LazyGrid`** (lưới ảnh lazy-load).
+riêng** — toàn bộ UI (2 chế độ tìm **Nhà quảng cáo**/**Domain**, hàng bộ lọc, danh sách creative, lịch
+sử tra cứu) viết thẳng trong `app/page.tsx`, chỉ tách ra các thành phần dùng chung: **`CreativeModal`**
+(xem chi tiết 1 creative), **`Favorites`** (theo dõi đối thủ), **`Paginator`**, **`LazyGrid`** (lưới ảnh
+lazy-load), và hàm thuần **`applyClientFilters`** (`app/filters.ts`). Bộ lọc: `maxResults` gửi xuống BE
+(điều khiển số trang gọi Google, trần 200); còn **Thời gian (7/15/20/60)**, **Định dạng
+(Text/Image/Video)** và **khoảng ngày** lọc **client-side** trên `firstShown`/`lastShown`+`assetType` —
+vì API nội bộ Google KHÔNG nhận các filter này trong request (xem `docs/archive/03`). Không có ô "Nền
+tảng" vì response Google không trả platform.
 
 Các component nhỏ còn lại hỗ trợ nhóm trên: `ShBarChart`/`ShChart` (biểu đồ dùng ở trang shop/product
 + `ShShopModal`), `SyncControls`, `ShLogo`, `ShFilters`/`ShListFilters`/`ShCategories`/`Collapsible`

@@ -29,11 +29,11 @@ export class SearchController {
   @Roles('admin', 'manager', 'user')
   @RequiresModule('google-ads')
   @Post('search')
-  async doSearch(@Body('domain') domain: string) {
+  async doSearch(@Body('domain') domain: string, @Body('maxResults') maxResults?: number) {
     if (!domain || !domain.trim()) {
       throw new BadRequestException('Vui lòng nhập domain.');
     }
-    return this.search.search(domain);
+    return this.search.search(domain, Number(maxResults) || 100);
   }
 
   // Proxy cho Google — dùng CHUNG danh sách sh_proxy (/settings), quay vòng.
@@ -63,8 +63,8 @@ export class SearchController {
   @Roles('admin', 'manager', 'user')
   @RequiresModule('google-ads')
   @Get('advertiser/:id')
-  byAdvertiser(@Param('id') id: string) {
-    return this.search.searchByAdvertiser(id);
+  byAdvertiser(@Param('id') id: string, @Query('maxResults') maxResults?: string) {
+    return this.search.searchByAdvertiser(id, Number(maxResults) || 100);
   }
 
   // Lọc theo vùng (B): gửi danh sách creative đang xem + mã geo → job mở chi tiết từng ad, trả ad khớp vùng.
