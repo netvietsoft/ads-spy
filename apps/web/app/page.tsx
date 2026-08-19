@@ -269,6 +269,7 @@ export default function Home() {
   // Xuất file (CSV/TXT) — cột Quốc gia cần gom vùng thật, cache lại để 2 nút dùng chung, khỏi gom 2 lần.
   const [regionsById, setRegionsById] = useState<Record<string, number[]> | null>(null);
   const [formatById, setFormatById] = useState<Record<string, string> | null>(null);
+  const [domainById, setDomainById] = useState<Record<string, string> | null>(null); // domain gom từ content.js
   const [collectDone, setCollectDone] = useState(false); // đã gom XONG toàn bộ detail chưa (để cache)
   const [view, setView] = useState<'card' | 'table'>('card'); // thẻ hay bảng
   const [advCollapsed, setAdvCollapsed] = useState(false); // thu gọn panel Nhà quảng cáo bên trái
@@ -296,6 +297,7 @@ export default function Home() {
     setRegionProg('');
     setRegionsById(null);
     setFormatById(null);
+    setDomainById(null);
     setCollectDone(false);
     setExportProg('');
   }, [data]);
@@ -335,11 +337,11 @@ export default function Home() {
   // Gom vùng cho cột Quốc gia (một lần, cache vào regionsById). Chạy job mở chi tiết từng creative.
   // Gom MỘT lần từ detail của từng creative: vùng (cột Quốc gia) + định dạng THẬT (field 8). Cache cả 2.
   // Gom trên baseCreatives (toàn bộ đã tải) để lọc/xuất theo định dạng thật đều dùng được.
-  type Collected = { regionsById: Record<string, number[]>; formatById: Record<string, string> };
+  type Collected = { regionsById: Record<string, number[]>; formatById: Record<string, string>; domainById: Record<string, string> };
   async function ensureCollected(): Promise<Collected> {
-    if (collectDone && regionsById && formatById) return { regionsById, formatById };
+    if (collectDone && regionsById && formatById) return { regionsById, formatById, domainById: domainById || {} };
     const items = baseCreatives.map((c) => ({ advertiserId: c.advertiserId, creativeId: c.creativeId }));
-    if (!items.length) return { regionsById: {}, formatById: {} };
+    if (!items.length) return { regionsById: {}, formatById: {}, domainById: {} };
     setExportBusy(true);
     setExportProg('Đang gom dữ liệu (mở chi tiết từng quảng cáo)…');
     try {
@@ -352,17 +354,18 @@ export default function Home() {
         } catch {
           break;
         }
-        // Cập nhật TĂNG DẦN: badge/lọc đổi ngay khi mỗi ad gom xong, không đợi hết. Copy map để React nhận thay đổi.
+        // Cập nhật TĂNG DẦN: badge/lọc/domain đổi ngay khi mỗi ad gom xong. Copy map để React nhận thay đổi.
         setRegionsById({ ...j.regionsById });
         setFormatById({ ...j.formatById });
+        setDomainById({ ...j.domainById });
         setExportProg(`Đang gom: ${j.checked}/${j.total}…`);
         if (j.done) {
           setCollectDone(true);
           setExportProg('');
-          return { regionsById: j.regionsById, formatById: j.formatById };
+          return { regionsById: j.regionsById, formatById: j.formatById, domainById: j.domainById };
         }
       }
-      return { regionsById: {}, formatById: {} };
+      return { regionsById: {}, formatById: {}, domainById: {} };
     } finally {
       setExportBusy(false);
     }
@@ -376,8 +379,8 @@ export default function Home() {
 
   async function onExport(kind: 'csv' | 'txt') {
     if (!creatives.length || exportBusy) return;
-    const { regionsById: reg, formatById: fmtMap } = await ensureCollected();
-    const rows = buildExportRows(creatives, reg, fmtMap);
+    const { regionsById: reg, formatById: fmtMap, domainById: domMap } = await ensureCollected();
+    const rows = buildExportRows(creatives, reg, fmtMap, domMap);
     const content = kind === 'csv' ? toCsv(rows) : toTxt(rows);
     const label = (data?.domain || 'google').replace(/[^a-z0-9._-]+/gi, '_');
     const now = new Date();
@@ -467,7 +470,7 @@ export default function Home() {
             <option value={0}>Tất cả</option>
             <option value={7}>7 ngày</option>
             <option value={15}>15 ngày</option>
-            <option value={20}>20 ngày</option>
+            <option value={30}>30 ngày</option>
             <option value={60}>60 ngày</option>
             <option value={90}>90 ngày</option>
           </select>
@@ -477,9 +480,9 @@ export default function Home() {
           <input
             type="number"
             min={1}
-            max={200}
+            max={1000}
             value={maxResults}
-            onChange={(e) => setMaxResults(Math.max(1, Math.min(200, Number(e.target.value) || 1)))}
+            onChange={(e) => setMaxResults(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))}
             style={{ width: 90 }}
           />
         </label>
@@ -659,7 +662,7 @@ export default function Home() {
                 <Paginator total={creatives.length} page={gPage} pageSize={gSize} onPage={setGPage} onPageSize={setGSize} />
               )}
               {view === 'table' ? (
-                <CreativeTable rows={buildExportRows(pagedCreatives, regionsById || {}, formatById || {})} />
+                <CreativeTable rows={buildExportRows(pagedCreatives, regionsById || {}, formatById || {}, domainById || {})} />
               ) : (
               <LazyGrid
                 className="grid"

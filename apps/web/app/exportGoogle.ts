@@ -23,14 +23,17 @@ export function buildExportRows(
   creatives: CreativeBrief[],
   regionsById: Record<string, number[]>,
   formatById: Record<string, string>,
+  domainById: Record<string, string> = {},
 ): string[][] {
   const rows: string[][] = [HEADERS];
   for (const c of creatives) {
     const codes = regionsById[c.creativeId] || [];
     // Định dạng THẬT (field 8) từ lần gom detail; thiếu thì mới rơi về suy-đoán-preview (fallback an toàn).
     const format = formatById[c.creativeId] || FMT_LABEL[c.assetType] || c.assetType;
+    // Domain: field 14 của Google (domain search) → content.js gom được (advertiser search) → OCR.
+    const domain = c.domain || domainById[c.creativeId] || c.ocrDomain || '';
     rows.push([
-      c.domain || c.ocrDomain || '',
+      domain,
       c.advertiserName || '',
       c.advertiserId || '',
       codes.map(regionNameEn).join(', '),

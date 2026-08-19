@@ -15,32 +15,7 @@ import { GoogleClient } from '../google/google.client';
 import { SearchService, isAllowedAssetHost } from './search.service';
 import { Roles } from '../auth/roles.decorator';
 import { RequiresModule } from '../subscriptions/requires.decorator';
-
-// Quảng cáo VIDEO của Google THỰC CHẤT là YouTube (content.js render <img i.ytimg.com/vi/ID> + player
-// youtube.com/embed/ID). Trích video ID từ thân content.js để nhúng THẲNG player YouTube — chạy mọi nơi,
-// khác content.js của Google (bị chặn render NGOÀI domain google → iframe trắng trơn). Body được fetch QUA
-// proxy xoay vòng (this.google.fetchTextThroughProxy) để không hít IP trực tiếp bị /sorry.
-function pickYoutubeId(body: string): string | null {
-  const pats = [
-    /ytimg\.com\/vi\/([A-Za-z0-9_-]{11})\//,
-    /youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{11})/,
-    /"videoId"\s*:\s*"([A-Za-z0-9_-]{11})"/,
-  ];
-  for (const p of pats) {
-    const m = body.match(p);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-// Ảnh hiển thị của quảng cáo IMAGE (field8=2, render qua content.js) — best-effort trích URL ảnh trực tiếp.
-// Chỉ dùng khi KHÔNG phải video (video đã lấy thumbnail YouTube trước). Lọc host tin cậy của Google.
-function pickImageUrl(body: string): string | null {
-  const m = body.match(
-    /https?:\/\/(?:[\w-]+\.)*(?:googleusercontent\.com|googlesyndication\.com|doubleclick\.net|ggpht\.com|ytimg\.com)\/[^"'\\)\s]+?\.(?:jpg|jpeg|png|gif|webp)/i,
-  );
-  return m ? m[0] : null;
-}
+import { pickYoutubeId, pickImageUrl } from '../google/content-js';
 
 // Module google-ads là free → mở các endpoint ĐỌC cho khách (role user), không cap.
 // GIỮ staff-only: settings/proxy* (cấu hình proxy). asset/embed = proxy media/dựng ad, mở cho user (không gate module — dùng chung mọi panel).

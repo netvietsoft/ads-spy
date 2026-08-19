@@ -3,6 +3,7 @@ import { GoogleClient } from '../google/google.client';
 import { PrismaService } from '../prisma.service';
 import { parseAdvertisers } from '../google/response.parser';
 import { ocrImageToDomain } from '../google/ocr';
+import { extractAdDomain } from '../google/content-js';
 import {
   Advertiser,
   CreativeBrief,
@@ -11,12 +12,12 @@ import {
   SuggestResult,
 } from '../google/google.types';
 
-const MAX_PAGES = 5; // trần cứng số trang/lượt (40 kết quả/trang) — chống throttle IP (503) của Google
 const PAGE_SIZE = 40; // Google trả 40 creative/trang (field "2" trong f.req)
-const RESULT_HARD_CAP = 200; // = MAX_PAGES * PAGE_SIZE; số kết quả tối đa người dùng xin được
+const RESULT_HARD_CAP = 1000; // số kết quả tối đa người dùng xin được (25 trang × 40)
+const MAX_PAGES = Math.ceil(RESULT_HARD_CAP / PAGE_SIZE); // = 25 trang. Trang sau lỗi (503) thì dừng, trả phần đã lấy.
 
-// maxResults người dùng nhập -> số trang cần gọi + số kết quả cắt cuối. Kẹp [1, 200] để một ô nhập quá
-// lớn không kéo dài chuỗi gọi mạng (mỗi trang nghỉ 300ms) và dính 503.
+// maxResults người dùng nhập -> số trang cần gọi + số kết quả cắt cuối. Kẹp [1, 1000]. Xin nhiều thì chuỗi
+// gọi dài (mỗi trang nghỉ 300ms) + dễ 503 giữa chừng — lúc đó paginate dừng và trả phần đã lấy được.
 function planPages(maxResults: number): { cap: number; maxPages: number } {
   const cap = Math.max(1, Math.min(Math.floor(maxResults) || 100, RESULT_HARD_CAP));
   return { cap, maxPages: Math.min(Math.ceil(cap / PAGE_SIZE), MAX_PAGES) };
@@ -302,6 +303,7 @@ export class SearchService {
       checked: 0,
       regionsById: {} as Record<string, number[]>,
       formatById: {} as Record<string, string>, // định dạng THẬT (field 8) — cùng lần mở detail
+      domainById: {} as Record<string, string>, // domain đích trích từ content.js (cho search theo advertiser)
       done: false,
       error: null,
     };
@@ -317,6 +319,14 @@ export class SearchService {
               const d = await this.google.getCreativeById(it.advertiserId, it.creativeId);
               job.regionsById[it.creativeId] = d.regions;
               job.formatById[it.creativeId] = d.format;
+              // Domain đích: brief search-theo-advertiser thiếu domain → giải mã content.js lấy (như Tool mmo).
+              // Chỉ ad ĐỘNG (embed) mới có content.js; ad text/ảnh (simgad) lấy domain qua OCR lúc search.
+              const cjUrl = d.variants.find((v) => v.assetType === 'embed')?.assetUrl;
+              if (cjUrl) {
+                const body = await this.google.fetchTextThroughProxy(cjUrl, 8000).catch(() => '');
+                const dom = extractAdDomain(body);
+                if (dom) job.domainById[it.creativeId] = dom;
+              }
             } catch {
               job.regionsById[it.creativeId] = []; // ad lỗi/throttle → để trống, không chặn cả job
             }

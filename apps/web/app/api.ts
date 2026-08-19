@@ -158,6 +158,7 @@ export interface RegionCollectJob {
   checked: number;
   regionsById: Record<string, number[]>;
   formatById: Record<string, string>; // định dạng THẬT (text/image/video) từ field 8 của detail
+  domainById: Record<string, string>; // domain đích trích từ content.js (search theo advertiser)
   done: boolean;
   error: string | null;
 }

@@ -13,6 +13,19 @@ tăng dần. Bảng cuộn ngang cho đủ 10 cột, header dính (sticky). Tái
 
 ---
 
+## 2026-08-19 — Search: max 1000 kết quả · mốc 30 ngày · cột Domain cho search-theo-advertiser
+
+- **Trần kết quả 200 → 1000** (`MAX_PAGES` 5→25). Xin nhiều thì chuỗi gọi Google dài (300ms/trang) + dễ
+  503 giữa chừng → `paginate` dừng, trả phần đã lấy. Ô "Số kết quả tối đa" nhận tới 1000.
+- **Mốc thời gian: 20 ngày → 30 ngày.**
+- **Cột Domain cho search theo NHÀ QUẢNG CÁO**: brief advertiser KHÔNG có domain (khác domain-search) →
+  gom domain đích bằng **giải mã content.js** trong lần "gom chi tiết" (đúng cách Tool mmo, bỏ domain hạ
+  tầng Google qua SKIP list). Bảng + file xuất: Domain = field14 (domain search) → content.js (advertiser)
+  → OCR. Gộp util `apps/api/src/google/content-js.ts` (pickYoutubeId/pickImageUrl/extractAdDomain — dùng
+  chung controller + collect). Gom detail-columns vẫn cap 200 (mở detail đắt); card view hiện đủ 1000.
+
+---
+
 ## 2026-08-19 — Thumbnail lên CARD cho quảng cáo động (video/ảnh)
 
 Modal video đã chạy (trích YouTube ID từ content.js OK). Dùng CHÍNH cơ chế đó cho card: card embed trỏ
