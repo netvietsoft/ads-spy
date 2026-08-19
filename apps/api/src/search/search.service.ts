@@ -296,7 +296,15 @@ export class SearchService {
   startRegionCollect(items: { advertiserId: string; creativeId: string }[], limit = 200): { jobId: string } {
     const jobId = `col-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const slice = items.slice(0, limit);
-    const job: any = { jobId, total: slice.length, checked: 0, regionsById: {} as Record<string, number[]>, done: false, error: null };
+    const job: any = {
+      jobId,
+      total: slice.length,
+      checked: 0,
+      regionsById: {} as Record<string, number[]>,
+      formatById: {} as Record<string, string>, // định dạng THẬT (field 8) — cùng lần mở detail
+      done: false,
+      error: null,
+    };
     this.regionJobs.set(jobId, job);
 
     void (async () => {
@@ -308,6 +316,7 @@ export class SearchService {
             try {
               const d = await this.google.getCreativeById(it.advertiserId, it.creativeId);
               job.regionsById[it.creativeId] = d.regions;
+              job.formatById[it.creativeId] = d.format;
             } catch {
               job.regionsById[it.creativeId] = []; // ad lỗi/throttle → để trống, không chặn cả job
             }

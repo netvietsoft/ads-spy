@@ -1,5 +1,10 @@
 export type AssetType = 'image' | 'embed' | 'text' | 'unknown';
 
+// Định dạng THẬT của quảng cáo — đọc từ field 8 của response DETAIL (getCreativeById), KHÔNG suy từ
+// preview (preview không tương ứng: text ad render thành ảnh simgad, image ad lại dùng content.js).
+// Xác minh bằng ground-truth Apify: 1=text, 2=image, 3=video.
+export type AdFormat = 'text' | 'image' | 'video' | 'unknown';
+
 export interface Advertiser {
   id: string; // AR...
   name: string;
@@ -35,6 +40,7 @@ export interface CreativeDetail {
   lastShown?: number;
   variants: CreativeVariant[];
   regions: number[]; // mã vùng, vd 2840 = US
+  format: AdFormat; // định dạng THẬT từ field 8 (1=text/2=image/3=video)
 }
 
 export interface SearchCreativesResult {

@@ -216,6 +216,7 @@ export default function Home() {
 
   // Xuất file (CSV/TXT) — cột Quốc gia cần gom vùng thật, cache lại để 2 nút dùng chung, khỏi gom 2 lần.
   const [regionsById, setRegionsById] = useState<Record<string, number[]> | null>(null);
+  const [formatById, setFormatById] = useState<Record<string, string> | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProg, setExportProg] = useState('');
 
@@ -227,8 +228,8 @@ export default function Home() {
   const creatives = useMemo(() => {
     let list = baseCreatives;
     if (regionGeo && regionMatched) list = list.filter((c) => regionMatched.has(c.creativeId));
-    return applyClientFilters(list, { preset, dateFrom, dateTo, fmt });
-  }, [baseCreatives, regionGeo, regionMatched, preset, dateFrom, dateTo, fmt]);
+    return applyClientFilters(list, { preset, dateFrom, dateTo, fmt, formatById: formatById || undefined });
+  }, [baseCreatives, regionGeo, regionMatched, preset, dateFrom, dateTo, fmt, formatById]);
 
   useEffect(() => {
     setGPage(1);
@@ -239,6 +240,7 @@ export default function Home() {
     setRegionMatched(null);
     setRegionProg('');
     setRegionsById(null);
+    setFormatById(null);
     setExportProg('');
   }, [data]);
 
@@ -275,12 +277,15 @@ export default function Home() {
   }
 
   // Gom vùng cho cột Quốc gia (một lần, cache vào regionsById). Chạy job mở chi tiết từng creative.
-  async function ensureRegions(): Promise<Record<string, number[]>> {
-    if (regionsById) return regionsById;
-    const items = creatives.map((c) => ({ advertiserId: c.advertiserId, creativeId: c.creativeId }));
-    if (!items.length) return {};
+  // Gom MỘT lần từ detail của từng creative: vùng (cột Quốc gia) + định dạng THẬT (field 8). Cache cả 2.
+  // Gom trên baseCreatives (toàn bộ đã tải) để lọc/xuất theo định dạng thật đều dùng được.
+  type Collected = { regionsById: Record<string, number[]>; formatById: Record<string, string> };
+  async function ensureCollected(): Promise<Collected> {
+    if (regionsById && formatById) return { regionsById, formatById };
+    const items = baseCreatives.map((c) => ({ advertiserId: c.advertiserId, creativeId: c.creativeId }));
+    if (!items.length) return { regionsById: {}, formatById: {} };
     setExportBusy(true);
-    setExportProg('Đang gom vùng (mở chi tiết từng quảng cáo)…');
+    setExportProg('Đang gom dữ liệu (mở chi tiết từng quảng cáo)…');
     try {
       const { jobId } = await startRegionCollect(items, 200);
       for (;;) {
@@ -291,28 +296,35 @@ export default function Home() {
         } catch {
           break;
         }
-        setExportProg(`Đang gom vùng: ${j.checked}/${j.total}…`);
+        setExportProg(`Đang gom: ${j.checked}/${j.total}…`);
         if (j.done) {
           setRegionsById(j.regionsById);
+          setFormatById(j.formatById);
           setExportProg('');
-          return j.regionsById;
+          return { regionsById: j.regionsById, formatById: j.formatById };
         }
       }
-      return {};
+      return { regionsById: {}, formatById: {} };
     } finally {
       setExportBusy(false);
     }
   }
 
-  async function onExport(fmt: 'csv' | 'txt') {
+  // Chọn định dạng: nếu chưa gom thì gom trước để lọc THEO ĐỊNH DẠNG THẬT (không suy đoán sai).
+  async function onPickFormat(v: FormatFilter) {
+    setFmt(v);
+    if (v !== 'all' && !formatById) await ensureCollected();
+  }
+
+  async function onExport(kind: 'csv' | 'txt') {
     if (!creatives.length || exportBusy) return;
-    const reg = await ensureRegions();
-    const rows = buildExportRows(creatives, reg);
-    const content = fmt === 'csv' ? toCsv(rows) : toTxt(rows);
+    const { regionsById: reg, formatById: fmtMap } = await ensureCollected();
+    const rows = buildExportRows(creatives, reg, fmtMap);
+    const content = kind === 'csv' ? toCsv(rows) : toTxt(rows);
     const label = (data?.domain || 'google').replace(/[^a-z0-9._-]+/gi, '_');
     const now = new Date();
     const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    downloadTextFile(`ads_${label}_${ymd}.${fmt}`, content);
+    downloadTextFile(`ads_${label}_${ymd}.${kind}`, content);
   }
 
   const pagedCreatives = paginate(creatives, gPage, gSize);
@@ -408,10 +420,11 @@ export default function Home() {
         </label>
         <label>
           Định dạng
-          <select className="fbselect" value={fmt} onChange={(e) => setFmt(e.target.value as FormatFilter)}>
+          <select className="fbselect" value={fmt} onChange={(e) => onPickFormat(e.target.value as FormatFilter)} disabled={exportBusy}>
             <option value="all">Tất cả</option>
-            <option value="image">Image (ảnh)</option>
-            <option value="video">Video (động)</option>
+            <option value="text">Text</option>
+            <option value="image">Image</option>
+            <option value="video">Video</option>
           </select>
         </label>
         <label>
@@ -531,7 +544,7 @@ export default function Home() {
             {exportBusy && <span className="spinner" />}
             {exportProg && <span className="m">{exportProg}</span>}
             {!exportBusy && !exportProg && (
-              <span className="m">(gom Quốc gia bằng cách mở chi tiết từng ad — tối đa 200)</span>
+              <span className="m">(gom Quốc gia + Định dạng thật bằng cách mở chi tiết từng ad — tối đa 200)</span>
             )}
           </div>
 
@@ -600,7 +613,7 @@ export default function Home() {
                         </a>
                       )}
                       <div className="b">
-                        <span className={`badge ${c.assetType}`}>{c.assetType}</span>
+                        <span className={`badge ${c.assetType}`}>{formatById?.[c.creativeId] || c.assetType}</span>
                         {c.regionCount ? <span className="badge">🌍 {c.regionCount} vùng</span> : null}
                         {c.approxDaysShown != null ? <span className="badge">⏱ {c.approxDaysShown} ngày</span> : null}
                         <span>{fmtDate(c.lastShown)}</span>

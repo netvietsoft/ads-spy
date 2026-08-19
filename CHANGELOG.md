@@ -4,6 +4,25 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-19 — Định dạng THẬT (text/image/video) từ field 8 — sửa gốc chỗ parser đoán sai từ preview
+
+Người dùng báo "lọc Text không ra" + cần phân biệt text/ảnh/video cho báo cáo. Dùng token Apify của chủ
+site để đối chiếu (sandbox chặn gọi Apify kèm token, nhưng đọc được data actor đã cào trong `storage.json`
+làm **ground-truth**: 120 text + 100 image) + gọi thẳng API nội bộ Google → PHÁT HIỆN:
+
+- Định dạng THẬT nằm ở **field 8 của response DETAIL** (`getCreativeById`), KHÔNG có ở search list:
+  **1=text, 2=image, 3=video**. Xác minh: creative Apify-gán-"image" → field8=2; "text" → field8=1.
+- Parser cũ đoán format từ **hình dạng preview** (simgad→image, content.js→embed) — SAI: text ad được Google
+  render thành ảnh simgad (nên bị gọi "image"), còn image ad lại dùng content.js. Ghi chú CLAUDE.md "field 8
+  vô dụng" là **hiểu nhầm** — những "ảnh format 1" đó CHÍNH là text ad.
+- Test thật suno 14 ad: **7 video + 6 text + 1 image** (trước parser gọi hết thành image/embed).
+
+Sửa: `parseCreativeDetail` đọc field 8 → `CreativeDetail.format`. Job gom (đang mở detail cho cột Quốc gia)
+lấy luôn `formatById`. Cột "Định dạng" khi xuất + badge card + bộ lọc đều dùng format THẬT khi đã gom; chọn
+lọc text/image/video lần đầu sẽ **tự gom** (có tiến độ). Re-add ô "Text". Test parser 15/15 (4 test field 8).
+
+---
+
 ## 2026-08-18 — Search Google (tinh chỉnh): bỏ ô lọc "Text" (không tồn tại thật) + thêm cột Mã nhà quảng cáo
 
 - Người dùng báo lọc "Text" không ra gì. TEST THẬT 5 advertiser (suno×2, booking, nike, coursera):

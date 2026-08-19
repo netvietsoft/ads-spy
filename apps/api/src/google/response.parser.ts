@@ -1,4 +1,5 @@
 import {
+  AdFormat,
   Advertiser,
   AssetType,
   CreativeBrief,
@@ -95,6 +96,9 @@ export function parseCreativeDetail(raw: any): CreativeDetail {
   const variants: CreativeVariant[] = variantNodes.map((n) => parseAsset(n));
   const regionNodes: any[] = Array.isArray(root['17']) ? root['17'] : [];
   const regions = regionNodes.map((r) => toInt(r?.['1'])).filter((n): n is number => n !== undefined);
+  // Định dạng THẬT: field 8 (1=text/2=image/3=video). Chỉ có ở DETAIL, không có ở search list.
+  const fc = toInt(root['8']);
+  const format: AdFormat = fc === 1 ? 'text' : fc === 2 ? 'image' : fc === 3 ? 'video' : 'unknown';
   return {
     creativeId: root['2'],
     advertiserId: root['1'],
@@ -102,6 +106,7 @@ export function parseCreativeDetail(raw: any): CreativeDetail {
     lastShown: toInt(root['4']?.['1']),
     variants,
     regions,
+    format,
   };
 }
 

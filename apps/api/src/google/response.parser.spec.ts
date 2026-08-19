@@ -62,6 +62,15 @@ describe('response.parser', () => {
     });
   });
 
+  describe('parseCreativeDetail format (field 8: 1=text/2=image/3=video)', () => {
+    const mk = (f8?: number) =>
+      parseCreativeDetail({ 1: { 1: 'AR1', 2: 'CR1', 5: [], 17: [], ...(f8 != null ? { 8: f8 } : {}) } });
+    it('8=1 -> text', () => expect(mk(1).format).toBe('text'));
+    it('8=2 -> image', () => expect(mk(2).format).toBe('image'));
+    it('8=3 -> video', () => expect(mk(3).format).toBe('video'));
+    it('thiếu field 8 -> unknown', () => expect(mk().format).toBe('unknown'));
+  });
+
   describe('parseSuggest', () => {
     const s = parseSuggest(load('suggest.json'));
     it('extracts advertisers and domains', () => {

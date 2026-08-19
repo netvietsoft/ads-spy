@@ -22,6 +22,9 @@ export interface ClientFilters {
   dateFrom?: string; // yyyy-mm-dd (rỗng = bỏ qua)
   dateTo?: string; // yyyy-mm-dd
   fmt: FormatFilter;
+  // Định dạng THẬT theo creativeId (từ field 8, gom qua detail). Có → lọc chính xác text/image/video.
+  // Không có (chưa gom) → rơi về suy-đoán-preview (assetType) vốn KHÔNG phân biệt được text với image.
+  formatById?: Record<string, string>;
   now?: number; // unix GIÂY — tiêm được để test; mặc định thời điểm hiện tại
 }
 
@@ -33,8 +36,12 @@ export function applyClientFilters(list: CreativeBrief[], f: ClientFilters): Cre
   let out = list;
 
   if (f.fmt !== 'all') {
-    const want = FMT_TO_ASSET[f.fmt];
-    out = out.filter((c) => c.assetType === want);
+    if (f.formatById) {
+      out = out.filter((c) => (f.formatById![c.creativeId] || '') === f.fmt);
+    } else {
+      const want = FMT_TO_ASSET[f.fmt];
+      out = out.filter((c) => c.assetType === want);
+    }
   }
 
   const now = f.now ?? Math.floor(Date.now() / 1000);

@@ -19,17 +19,23 @@ function fmtDate(unix?: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-export function buildExportRows(creatives: CreativeBrief[], regionsById: Record<string, number[]>): string[][] {
+export function buildExportRows(
+  creatives: CreativeBrief[],
+  regionsById: Record<string, number[]>,
+  formatById: Record<string, string>,
+): string[][] {
   const rows: string[][] = [HEADERS];
   for (const c of creatives) {
     const codes = regionsById[c.creativeId] || [];
+    // Định dạng THẬT (field 8) từ lần gom detail; thiếu thì mới rơi về suy-đoán-preview (fallback an toàn).
+    const format = formatById[c.creativeId] || FMT_LABEL[c.assetType] || c.assetType;
     rows.push([
       c.domain || c.ocrDomain || '',
       c.advertiserName || '',
       c.advertiserId || '',
       codes.map(regionNameEn).join(', '),
       c.creativeId,
-      FMT_LABEL[c.assetType] || c.assetType,
+      format,
       fmtDate(c.firstShown),
       fmtDate(c.lastShown),
       c.approxDaysShown != null ? String(c.approxDaysShown) : '',

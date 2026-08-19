@@ -81,7 +81,10 @@ lazy-load), và hàm thuần **`applyClientFilters`** (`app/filters.ts`). Bộ l
 vì API nội bộ Google KHÔNG nhận các filter này trong request (xem `docs/archive/03`). Không có ô "Nền
 tảng" vì response Google không trả platform. **Xuất file** (2 nút CSV/TXT, hàm thuần `app/exportGoogle.ts`):
 file 9 cột khớp export Tool mmo; cột **Quốc gia** cần gom vùng thật (job BE `startRegionCollect` mở chi
-tiết từng creative), map mã→tên tiếng Anh qua `app/geo-en.ts` (mã vùng Google = 2000 + ISO 3166-1 numeric).
+tiết từng creative), map mã→tên tiếng Anh qua `app/geo-en.ts` (mã vùng Google = 2000 + ISO 3166-1 numeric). **Định dạng THẬT**
+(text/image/video) đọc từ **field 8 của detail** (không suy từ preview — preview không tương ứng format);
+job gom lấy luôn `formatById`, dùng cho cột Định dạng khi xuất + badge card + bộ lọc (chọn text/image/video
+lần đầu tự gom). Chi tiết: [`CHANGELOG.md`](../CHANGELOG.md) mục 2026-08-19.
 
 Các component nhỏ còn lại hỗ trợ nhóm trên: `ShBarChart`/`ShChart` (biểu đồ dùng ở trang shop/product
 + `ShShopModal`), `SyncControls`, `ShLogo`, `ShFilters`/`ShListFilters`/`ShCategories`/`Collapsible`
