@@ -258,6 +258,18 @@ button.ghost.active { border-color: var(--accent); color: var(--accent); }
 .card .thumb { aspect-ratio: 1.4; background: var(--panel-2); display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .card .thumb img { width: 100%; height: 100%; object-fit: contain; }
 .card .thumb .embed { color: var(--muted); font-size: 12px; text-align: center; padding: 12px; }
+
+/* Chuyển xem Thẻ/Bảng + bảng kết quả 10 cột (như file xuất) */
+.viewtoggle { display: inline-flex; gap: 6px; align-items: center; margin: 6px 0 10px; }
+.viewtoggle button { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+.viewtoggle button.active { background: var(--accent); color: #fff; border-color: transparent; }
+.gtable-wrap { overflow-x: auto; margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.gtable { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+.gtable th, .gtable td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.gtable th { background: var(--panel-2); color: var(--text); position: sticky; top: 0; font-weight: 600; }
+.gtable td { color: var(--text); }
+.gtable tr:hover td { background: var(--panel-2); }
+.gtable a { color: #2563eb; }
 .card .body { padding: 10px 12px; }
 .card .body .a { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .body .b { color: var(--muted); font-size: 11px; margin-top: 4px; display: flex; justify-content: space-between; }

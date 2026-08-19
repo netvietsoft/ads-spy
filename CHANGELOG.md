@@ -4,6 +4,15 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-19 — Xem kết quả Google dạng BẢNG (10 cột như file xuất)
+
+Thêm nút chuyển **▦ Thẻ / ▤ Bảng** ở vùng kết quả. Bảng dựng từ CHÍNH `buildExportRows` (10 cột: Domain ·
+Nhà QC · Mã NQC · Quốc gia · Creative ID · Định dạng · Ngày đầu · Ngày cuối · Số ngày chạy · Link QC — cột
+Link bấm "Mở ↗"). Chuyển sang Bảng **tự gom chi tiết** (Quốc gia + Định dạng thật) như xuất file, cập nhật
+tăng dần. Bảng cuộn ngang cho đủ 10 cột, header dính (sticky). Tái dùng logic export → bảng và file luôn khớp.
+
+---
+
 ## 2026-08-19 — Thumbnail lên CARD cho quảng cáo động (video/ảnh)
 
 Modal video đã chạy (trích YouTube ID từ content.js OK). Dùng CHÍNH cơ chế đó cho card: card embed trỏ

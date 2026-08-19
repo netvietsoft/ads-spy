@@ -61,6 +61,36 @@ function EmbedThumb({ url }: { url: string }) {
   );
 }
 
+// Bảng kết quả (10 cột như file xuất). rows = buildExportRows() (dòng 0 = tiêu đề). Cột cuối = Link QC.
+function CreativeTable({ rows }: { rows: string[][] }) {
+  if (rows.length <= 1) return <p className="hint">Không có creative nào.</p>;
+  const [head, ...body] = rows;
+  return (
+    <div className="gtable-wrap">
+      <table className="gtable">
+        <thead>
+          <tr>{head.map((h, i) => <th key={i}>{h}</th>)}</tr>
+        </thead>
+        <tbody>
+          {body.map((r, ri) => (
+            <tr key={ri}>
+              {r.map((cell, ci) =>
+                ci === head.length - 1 ? (
+                  <td key={ci}>
+                    <a href={cell} target="_blank" rel="noreferrer">Mở ↗</a>
+                  </td>
+                ) : (
+                  <td key={ci}>{cell}</td>
+                ),
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function normalizeDomainClient(s: string) {
   return (s || '')
     .trim()
@@ -238,6 +268,7 @@ export default function Home() {
   const [regionsById, setRegionsById] = useState<Record<string, number[]> | null>(null);
   const [formatById, setFormatById] = useState<Record<string, string> | null>(null);
   const [collectDone, setCollectDone] = useState(false); // đã gom XONG toàn bộ detail chưa (để cache)
+  const [view, setView] = useState<'card' | 'table'>('card'); // thẻ hay bảng
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProg, setExportProg] = useState('');
 
@@ -349,6 +380,12 @@ export default function Home() {
     const now = new Date();
     const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
     downloadTextFile(`ads_${label}_${ymd}.${kind}`, content);
+  }
+
+  // Chuyển thẻ↔bảng. Sang bảng thì gom chi tiết (Quốc gia + Định dạng thật) như xuất file.
+  async function onSwitchView(v: 'card' | 'table') {
+    setView(v);
+    if (v === 'table' && !collectDone && !exportBusy) await ensureCollected();
   }
 
   const pagedCreatives = paginate(creatives, gPage, gSize);
@@ -602,9 +639,17 @@ export default function Home() {
             </div>
 
             <div>
+              <div className="viewtoggle">
+                <button type="button" className={view === 'card' ? 'active' : ''} onClick={() => onSwitchView('card')}>▦ Thẻ</button>
+                <button type="button" className={view === 'table' ? 'active' : ''} onClick={() => onSwitchView('table')}>▤ Bảng</button>
+                {view === 'table' && exportProg && <span className="m">{exportProg}</span>}
+              </div>
               {creatives.length > 0 && (
                 <Paginator total={creatives.length} page={gPage} pageSize={gSize} onPage={setGPage} onPageSize={setGSize} />
               )}
+              {view === 'table' ? (
+                <CreativeTable rows={buildExportRows(pagedCreatives, regionsById || {}, formatById || {})} />
+              ) : (
               <LazyGrid
                 className="grid"
                 items={pagedCreatives}
@@ -647,7 +692,8 @@ export default function Home() {
                   </div>
                 )}
               />
-              {creatives.length === 0 && <p className="hint">Không có creative nào.</p>}
+              )}
+              {view === 'card' && creatives.length === 0 && <p className="hint">Không có creative nào.</p>}
             </div>
           </div>
         </>
