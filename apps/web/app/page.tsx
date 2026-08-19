@@ -65,22 +65,24 @@ function EmbedThumb({ url }: { url: string }) {
 function CreativeTable({ rows }: { rows: string[][] }) {
   if (rows.length <= 1) return <p className="hint">Không có creative nào.</p>;
   const [head, ...body] = rows;
+  const countryIdx = head.indexOf('Quốc gia'); // cột này danh sách dài → cho xuống dòng + giới hạn bề rộng
+  const linkIdx = head.length - 1;
   return (
     <div className="gtable-wrap">
       <table className="gtable">
         <thead>
-          <tr>{head.map((h, i) => <th key={i}>{h}</th>)}</tr>
+          <tr>{head.map((h, i) => <th key={i} className={i === countryIdx ? 'col-country' : ''}>{h}</th>)}</tr>
         </thead>
         <tbody>
           {body.map((r, ri) => (
             <tr key={ri}>
               {r.map((cell, ci) =>
-                ci === head.length - 1 ? (
+                ci === linkIdx ? (
                   <td key={ci}>
                     <a href={cell} target="_blank" rel="noreferrer">Mở ↗</a>
                   </td>
                 ) : (
-                  <td key={ci}>{cell}</td>
+                  <td key={ci} className={ci === countryIdx ? 'col-country' : ''}>{cell}</td>
                 ),
               )}
             </tr>
