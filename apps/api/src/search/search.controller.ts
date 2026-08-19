@@ -126,6 +126,36 @@ export class SearchController {
     return this.search.getCreative(advertiserId, creativeId);
   }
 
+  // DEV: soi cấu trúc detail + content.js của 1 creative để khoá cách trích media (ảnh/video).
+  // Dùng: /api/creative-debug?advertiserId=AR...&creativeId=CR...  (VPS không bị throttle như máy dev).
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
+  @Get('creative-debug')
+  async creativeDebug(
+    @Query('advertiserId') advertiserId: string,
+    @Query('creativeId') creativeId: string,
+    @Res() res: Response,
+  ) {
+    res.setHeader('content-type', 'text/plain; charset=utf-8');
+    try {
+      const d = await this.search.getCreative(advertiserId, creativeId);
+      const embedUrl = d.variants.find((v) => v.assetType === 'embed')?.assetUrl || '';
+      let cj = '';
+      if (embedUrl) cj = await this.google.fetchTextThroughProxy(embedUrl).catch(() => '(fetch content.js lỗi)');
+      res.send(
+        `format=${d.format}\n` +
+          `variants=${JSON.stringify(d.variants.map((v) => ({ type: v.assetType, url: (v.assetUrl || '').slice(0, 130) })), null, 1)}\n\n` +
+          `content.js url = ${embedUrl.slice(0, 160)}\n` +
+          `content.js len = ${cj.length}\n` +
+          `videoId trích = ${pickYoutubeId(cj)}\n` +
+          `has ytimg=${/ytimg/.test(cj)}  youtube=${/youtube/.test(cj)}  simgad=${/simgad/.test(cj)}  googleusercontent=${/googleusercontent/.test(cj)}\n\n` +
+          `=== content.js (2500 ký tự đầu) ===\n${cj.slice(0, 2500)}`,
+      );
+    } catch (e) {
+      res.send(`LỖI: ${(e as Error).message}`);
+    }
+  }
+
   @Roles('admin', 'manager', 'user')
   @RequiresModule('google-ads')
   @Get('history')
