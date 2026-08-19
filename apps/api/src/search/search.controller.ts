@@ -16,6 +16,38 @@ import { SearchService, isAllowedAssetHost } from './search.service';
 import { Roles } from '../auth/roles.decorator';
 import { RequiresModule } from '../subscriptions/requires.decorator';
 
+const EMBED_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// Quảng cáo VIDEO của Google THỰC CHẤT là YouTube (content.js render <img i.ytimg.com/vi/ID> + player
+// youtube.com/embed/ID). content.js fetch phía server chứa ID đó. Trích ID để nhúng THẲNG player YouTube —
+// chạy được mọi nơi, khác content.js của Google (bị chặn render NGOÀI domain google → iframe trắng trơn).
+async function extractYoutubeId(contentJsUrl: string): Promise<string | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const r = await fetch(contentJsUrl, {
+      headers: { 'user-agent': EMBED_UA, referer: 'https://adstransparency.google.com/' },
+      signal: ctrl.signal,
+    } as any);
+    const body = await r.text();
+    const pats = [
+      /ytimg\.com\/vi\/([A-Za-z0-9_-]{11})\//,
+      /youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{11})/,
+      /"videoId"\s*:\s*"([A-Za-z0-9_-]{11})"/,
+    ];
+    for (const p of pats) {
+      const m = body.match(p);
+      if (m) return m[1];
+    }
+    return null;
+  } catch {
+    return null; // throttle/timeout/không phải video → để caller fallback render content.js
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Module google-ads là free → mở các endpoint ĐỌC cho khách (role user), không cap.
 // GIỮ staff-only: settings/proxy* (cấu hình proxy). asset/embed = proxy media/dựng ad, mở cho user (không gate module — dùng chung mọi panel).
 
@@ -129,10 +161,28 @@ export class SearchController {
   // để web nhúng iframe → hiện video/app-install như trên Transparency Center.
   @Roles('admin', 'manager', 'user')
   @Get('embed')
-  embed(@Query('url') url: string, @Res() res: Response) {
+  async embed(@Query('url') url: string, @Res() res: Response) {
     if (!url || !isAllowedAssetHost(url)) {
       throw new BadRequestException('URL embed không hợp lệ hoặc không được phép.');
     }
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    // /api/embed CỐ Ý để web nhúng iframe → cho phép same-origin, GHI ĐÈ 'X-Frame-Options: DENY' toàn cục
+    // (main.ts). Thiếu dòng này iframe bị chặn → "dpboss.pet đã từ chối kết nối". (Regression vá bảo mật 08-18.)
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+
+    // Video ad = YouTube → nhúng player thẳng (render được mọi nơi). content.js của Google bị chặn ngoài
+    // domain nên luôn trắng. Trích được ID thì dùng YouTube; không thì fallback nạp content.js như cũ.
+    const videoId = await extractYoutubeId(url);
+    if (videoId) {
+      res.send(
+        `<!doctype html><html><head><meta charset="utf-8">` +
+          `<style>html,body{margin:0;height:100%;background:#000}iframe{border:0;width:100%;height:100%;display:block}</style></head>` +
+          `<body><iframe src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&playsinline=1" ` +
+          `allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></body></html>`,
+      );
+      return;
+    }
+
     let cb = 'fletchCallback';
     let parentId = 'fletch-render';
     try {
@@ -163,12 +213,7 @@ window["${cb}"]=function(payload){
 </script>
 <script src="${safe}"></script>
 </body></html>`;
-    res.setHeader('content-type', 'text/html; charset=utf-8');
-    // /api/embed CỐ Ý để web tự nhúng iframe (video/app-install động như Transparency Center) → phải cho
-    // phép same-origin, GHI ĐÈ 'X-Frame-Options: DENY' toàn cục ở main.ts. Thiếu dòng này thì trình duyệt
-    // chặn iframe → "dpboss.pet đã từ chối kết nối", video không hiện. (Regression từ vá bảo mật 2026-08-18.)
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.send(html);
+    res.send(html); // header content-type + X-Frame-Options đã set ở đầu method
   }
 
   @Roles('admin', 'manager', 'user')

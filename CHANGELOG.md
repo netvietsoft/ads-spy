@@ -4,6 +4,18 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-19 — Video ad hiện được: /api/embed nhúng thẳng player YouTube
+
+Sau khi fix X-Frame-Options, iframe video VẪN trắng: content.js của Google **chặn render NGOÀI domain
+google** (chạy trên adstransparency.google.com thì hiện, nhúng ở dpboss.pet thì trắng). Từ DOM thật (chủ
+site gửi): video ad = **YouTube** — `<img i.ytimg.com/vi/{ID}>` + player `youtube.com/embed/{ID}`.
+
+Sửa: `/api/embed` **fetch content.js phía server, trích video ID** (ytimg/embed/videoId), nhúng THẲNG
+player `youtube.com/embed/{ID}` — nhúng đâu cũng chạy. Không trích được (không phải video / throttle) →
+fallback nạp content.js như cũ (không hồi quy). content.js host = googleusercontent → đã trong allowlist.
+
+---
+
 ## 2026-08-19 — Fix video không hiển thị (X-Frame-Options chặn /api/embed) + thêm mốc 90 ngày
 
 - **Video/quảng cáo động không hiện**, iframe báo "dpboss.pet đã từ chối kết nối" — **REGRESSION từ vá bảo
