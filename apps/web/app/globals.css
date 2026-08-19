@@ -274,7 +274,13 @@ button.ghost.active { border-color: var(--accent); color: var(--accent); }
 .gtable th.col-country, .gtable td.col-country { white-space: normal; max-width: 360px; min-width: 220px; word-break: break-word; }
 .card .body { padding: 10px 12px; }
 .card .body .a { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card .body .b { color: var(--muted); font-size: 11px; margin-top: 4px; display: flex; justify-content: space-between; }
+/* Hàng domain: domain trái (co ngắn có ellipsis) + ngày phải cùng hàng */
+.card .body .domrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.card .body .domrow .dom { color: #2563eb; max-width: 74%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .body .domrow .cdate { color: var(--muted); font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+/* Hàng đáy: các badge (định dạng/vùng/ngày-chạy) dàn đều, mỗi cái fill 1 phần bằng nhau */
+.card .body .b { color: var(--muted); font-size: 11px; margin-top: 6px; display: flex; gap: 6px; }
+.card .body .b .badge { flex: 1; text-align: center; }
 .badge { display: inline-block; font-size: 10px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .badge.image { color: var(--accent-2); border-color: #1c5; }
 .badge.embed { color: var(--accent); border-color: #35c; }
