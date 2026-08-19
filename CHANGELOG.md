@@ -13,6 +13,18 @@ tăng dần. Bảng cuộn ngang cho đủ 10 cột, header dính (sticky). Tái
 
 ---
 
+## 2026-08-19 — Facebook Bài viết (Pha 1): sort theo số lượng + cột QC (có quảng cáo) + xuất CSV/TXT
+
+Tab Facebook → Bài viết:
+- **Sort**: bấm header ❤️Reactions / 💬Bình luận / 🔁Chia sẻ / **Σ Tổng** → đổi chiều ▲▼ (mặc định ↕),
+  client-side. Reset về trang 1 khi đổi sort.
+- **Cột "QC" (✅)** = bài đang chạy quảng cáo — dùng cờ `hasActiveAd` đã có sẵn (luồng progressive
+  cross-check Ad Library). Bỏ badge inline, tách thành cột riêng. Thêm cột **Σ Tổng**.
+- **Nút xuất CSV/TXT** (9 cột, có **Link bài**) — tái dùng `toCsv/toTxt/downloadTextFile` của exportGoogle.
+- (Còn treo: #3 cào sâu bài cũ 2025, #5 UI lịch sử/rescan — DB đã có, #6 cronjob quét các Page trong lịch sử.)
+
+---
+
 ## 2026-08-19 — Search: max 1000 kết quả · mốc 30 ngày · cột Domain cho search-theo-advertiser
 
 - **Trần kết quả 200 → 1000** (`MAX_PAGES` 5→25). Xin nhiều thì chuỗi gọi Google dài (300ms/trang) + dễ

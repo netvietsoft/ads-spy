@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FbAd,
   FbPagePostsResult,
@@ -17,6 +17,7 @@ import {
   fbReport,
   fbSearch,
 } from '../api';
+import { toCsv, toTxt, downloadTextFile } from '../exportGoogle';
 import { useIsMobile } from '../useIsMobile';
 import { FbModal } from './FbModal';
 import { Favorites } from './Favorites';
@@ -101,6 +102,35 @@ export function FacebookPanel() {
   const [adsSize, setAdsSize] = useState(100);
   const [ppPage, setPpPage] = useState(1);
   const [ppSize, setPpSize] = useState(50);
+  // Sort bảng bài viết theo số lượng (reactions/comments/shares/total), bấm header đổi chiều ▲▼.
+  const [ppSort, setPpSort] = useState<{ key: 'reactions' | 'comments' | 'shares' | 'total'; dir: 'asc' | 'desc' } | null>(null);
+  const sortedPosts = useMemo(() => {
+    const list = posts?.posts ?? [];
+    if (!ppSort) return list;
+    const k = ppSort.key;
+    return [...list].sort((a, b) => (ppSort.dir === 'asc' ? (a[k] || 0) - (b[k] || 0) : (b[k] || 0) - (a[k] || 0)));
+  }, [posts, ppSort]);
+  function toggleSort(key: 'reactions' | 'comments' | 'shares' | 'total') {
+    setPpPage(1);
+    setPpSort((s) => (s && s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' }));
+  }
+  const sortArrow = (key: string) => (ppSort?.key === key ? (ppSort.dir === 'desc' ? ' ▼' : ' ▲') : ' ↕');
+  function onExportPosts(kind: 'csv' | 'txt') {
+    if (!sortedPosts.length) return;
+    const rows: string[][] = [['#', 'Nội dung', 'Ngày đăng', 'Reactions', 'Bình luận', 'Chia sẻ', 'Tổng', 'Có QC', 'Link bài']];
+    sortedPosts.forEach((p, i) =>
+      rows.push([
+        String(i + 1), p.text || '',
+        p.time ? new Date(p.time * 1000).toLocaleDateString('vi-VN') : '',
+        String(p.reactions), String(p.comments), String(p.shares), String(p.total),
+        p.hasActiveAd ? 'x' : '', p.url || '',
+      ]),
+    );
+    const label = (postsPage || 'fb').replace(/[^a-z0-9._-]+/gi, '_').slice(0, 40);
+    const now = new Date();
+    const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    downloadTextFile(`fb-posts_${label}_${ymd}.${kind}`, kind === 'csv' ? toCsv(rows) : toTxt(rows));
+  }
   const [repPage, setRepPage] = useState(1);
   const [repSize, setRepSize] = useState(100);
 
@@ -354,23 +384,30 @@ export function FacebookPanel() {
                 </div>
               )}
               {posts.posts.length > 0 && (
-                <Paginator total={posts.posts.length} page={ppPage} pageSize={ppSize} onPage={setPpPage} onPageSize={setPpSize} />
+                <div className="daterow">
+                  <span className="m">⬇ Xuất {sortedPosts.length} bài:</span>
+                  <button className="ghost" type="button" onClick={() => onExportPosts('csv')}>CSV</button>
+                  <button className="ghost" type="button" onClick={() => onExportPosts('txt')}>TXT</button>
+                  <Paginator total={sortedPosts.length} page={ppPage} pageSize={ppSize} onPage={setPpPage} onPageSize={setPpSize} />
+                </div>
               )}
               <table className="reptable">
                 <thead>
                   <tr>
                     <th>#</th>
                     <th>Thumb</th>
+                    <th style={{ textAlign: 'center' }} title="Bài đang chạy quảng cáo">QC</th>
                     <th>Nội dung bài</th>
                     <th>Ngày đăng</th>
-                    <th style={{ textAlign: 'right' }}>❤️ Reactions</th>
-                    <th style={{ textAlign: 'right' }}>💬 Bình luận</th>
-                    <th style={{ textAlign: 'right' }}>🔁 Chia sẻ</th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleSort('reactions')}>❤️ Reactions{sortArrow('reactions')}</th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleSort('comments')}>💬 Bình luận{sortArrow('comments')}</th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleSort('shares')}>🔁 Chia sẻ{sortArrow('shares')}</th>
+                    <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleSort('total')}>Σ Tổng{sortArrow('total')}</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paginate(posts.posts, ppPage, ppSize).map((p, idx) => {
+                  {paginate(sortedPosts, ppPage, ppSize).map((p, idx) => {
                     const i = (ppPage - 1) * ppSize + idx;
                     return (
                     <tr key={p.url || p.postId || i}>
@@ -385,14 +422,15 @@ export function FacebookPanel() {
                           {p.isVideo && <span className="vbadge">🎬</span>}
                         </div>
                       </td>
-                      <td>
-                        {p.text || <span className="m">(không có text)</span>}
-                        {p.hasActiveAd && <span className="adbadge">🟢 Đang chạy ads</span>}
+                      <td style={{ textAlign: 'center' }} title={p.hasActiveAd ? 'Đang chạy quảng cáo' : ''}>
+                        {p.hasActiveAd ? '✅' : ''}
                       </td>
+                      <td>{p.text || <span className="m">(không có text)</span>}</td>
                       <td className="m">{p.time ? new Date(p.time * 1000).toLocaleDateString('vi-VN') : '—'}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.reactions.toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>{p.comments.toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>{p.shares.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.total.toLocaleString()}</td>
                       <td>
                         {p.url && (
                           <a className="dl" href={p.url} target="_blank" rel="noreferrer">
