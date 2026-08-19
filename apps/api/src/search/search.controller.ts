@@ -146,7 +146,7 @@ export class SearchController {
   // để web nhúng iframe → hiện video/app-install như trên Transparency Center.
   @Roles('admin', 'manager', 'user')
   @Get('embed')
-  async embed(@Query('url') url: string, @Res() res: Response) {
+  async embed(@Query('url') url: string, @Query('debug') debug: string, @Res() res: Response) {
     if (!url || !isAllowedAssetHost(url)) {
       throw new BadRequestException('URL embed không hợp lệ hoặc không được phép.');
     }
@@ -158,6 +158,14 @@ export class SearchController {
     // Video ad = YouTube → nhúng player thẳng (render được mọi nơi). content.js của Google bị chặn ngoài
     // domain nên luôn trắng. Trích được ID thì dùng YouTube; không thì fallback nạp content.js như cũ.
     const body = await this.google.fetchTextThroughProxy(url).catch(() => '');
+
+    // ?debug=1 — trả video ID trích được + đầu content.js dạng text, để soi vì sao không trích ra ID (dev).
+    if (debug === '1') {
+      res.setHeader('content-type', 'text/plain; charset=utf-8');
+      res.send(`videoId=${pickYoutubeId(body)} | content.js len=${body.length}\n\n${body.slice(0, 3000)}`);
+      return;
+    }
+
     const videoId = pickYoutubeId(body);
     if (videoId) {
       res.send(
