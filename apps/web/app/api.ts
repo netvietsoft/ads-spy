@@ -79,6 +79,11 @@ export function embedSrc(url: string): string {
   return `${API}/api/embed?url=${encodeURIComponent(url)}`;
 }
 
+// Thumbnail cho quảng cáo động (embed): server trích ảnh YouTube/ảnh từ content.js rồi redirect.
+export function thumbProxy(url: string): string {
+  return `${API}/api/creative-thumb?url=${encodeURIComponent(url)}`;
+}
+
 // ---- Proxy Google (danh sách, quay vòng) ----
 export interface ProxyStatus {
   count: number;

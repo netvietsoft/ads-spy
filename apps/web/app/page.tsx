@@ -8,6 +8,7 @@ import {
   SearchResponse,
   Suggestions,
   assetProxy,
+  thumbProxy,
   getHistory,
   getSearch,
   search,
@@ -40,6 +41,25 @@ import { LazyGrid } from './components/LazyGrid';
 import { Favorite } from './api';
 import { applyClientFilters, FormatFilter } from './filters';
 import { buildExportRows, toCsv, toTxt, downloadTextFile } from './exportGoogle';
+
+// Thumbnail cho quảng cáo ĐỘNG (embed): thử ảnh (YouTube/ảnh trích từ content.js); lỗi → placeholder cũ.
+function EmbedThumb({ url }: { url: string }) {
+  const [err, setErr] = useState(false);
+  if (err) return <div className="embed">▶ Quảng cáo động — bấm để xem</div>;
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <img src={thumbProxy(url)} alt="thumbnail" loading="lazy" onError={() => setErr(true)} />
+      <span
+        style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 40, color: 'rgba(255,255,255,.92)', textShadow: '0 2px 8px rgba(0,0,0,.6)', pointerEvents: 'none',
+        }}
+      >
+        ▶
+      </span>
+    </div>
+  );
+}
 
 function normalizeDomainClient(s: string) {
   return (s || '')
@@ -593,10 +613,10 @@ export default function Home() {
                     <div className="thumb">
                       {c.assetType === 'image' && c.assetUrl ? (
                         <img src={assetProxy(c.assetUrl)} alt={c.advertiserName} loading="lazy" />
+                      ) : c.assetType === 'embed' && c.assetUrl ? (
+                        <EmbedThumb url={c.assetUrl} />
                       ) : (
-                        <div className="embed">
-                          {c.assetType === 'embed' ? '▶ Quảng cáo động — bấm để xem' : c.assetType}
-                        </div>
+                        <div className="embed">{c.assetType}</div>
                       )}
                     </div>
                     <div className="body">

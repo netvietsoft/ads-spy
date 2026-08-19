@@ -4,6 +4,16 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-19 — Thumbnail lên CARD cho quảng cáo động (video/ảnh)
+
+Modal video đã chạy (trích YouTube ID từ content.js OK). Dùng CHÍNH cơ chế đó cho card: card embed trỏ
+`<img src=/api/creative-thumb?url=contentjs>` → server fetch content.js → **video** redirect sang ảnh
+YouTube (`i.ytimg.com/vi/{ID}/hqdefault.jpg`), **ảnh** redirect sang URL ảnh trích được. **Lazy** theo
+card đang hiện (LazyGrid) — không gom trước 200; cache 1h. Không trích được → hiện lại placeholder cũ.
+Card có overlay ▶ để rõ là video bấm xem được. Endpoint debug `creative-debug`/`?debug=1` giữ lại cho dev.
+
+---
+
 ## 2026-08-19 — Format collect cập nhật TĂNG DẦN (badge/lọc đổi ngay khi mỗi ad gom xong)
 
 Trước: badge/lọc định dạng chỉ đổi khi gom XONG 100/100 → giữa chừng mọi ad vẫn hiện EMBED (tưởng lọc sai).

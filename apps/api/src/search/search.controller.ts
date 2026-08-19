@@ -33,6 +33,15 @@ function pickYoutubeId(body: string): string | null {
   return null;
 }
 
+// Ảnh hiển thị của quảng cáo IMAGE (field8=2, render qua content.js) — best-effort trích URL ảnh trực tiếp.
+// Chỉ dùng khi KHÔNG phải video (video đã lấy thumbnail YouTube trước). Lọc host tin cậy của Google.
+function pickImageUrl(body: string): string | null {
+  const m = body.match(
+    /https?:\/\/(?:[\w-]+\.)*(?:googleusercontent\.com|googlesyndication\.com|doubleclick\.net|ggpht\.com|ytimg\.com)\/[^"'\\)\s]+?\.(?:jpg|jpeg|png|gif|webp)/i,
+  );
+  return m ? m[0] : null;
+}
+
 // Module google-ads là free → mở các endpoint ĐỌC cho khách (role user), không cap.
 // GIỮ staff-only: settings/proxy* (cấu hình proxy). asset/embed = proxy media/dựng ad, mở cho user (không gate module — dùng chung mọi panel).
 
@@ -238,6 +247,26 @@ window["${cb}"]=function(payload){
 <script src="${safe}"></script>
 </body></html>`;
     res.send(html); // header content-type + X-Frame-Options đã set ở đầu method
+  }
+
+  // Thumbnail cho card quảng cáo ĐỘNG (embed): fetch content.js → video thì redirect sang ảnh YouTube,
+  // ảnh thì sang URL ảnh trực tiếp. Lazy theo card đang hiện (LazyGrid) → không gom trước toàn bộ.
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('google-ads')
+  @Get('creative-thumb')
+  async creativeThumb(@Query('url') url: string, @Res() res: Response) {
+    if (!url || !isAllowedAssetHost(url)) {
+      throw new BadRequestException('URL không hợp lệ hoặc không được phép.');
+    }
+    const body = await this.google.fetchTextThroughProxy(url).catch(() => '');
+    const videoId = pickYoutubeId(body);
+    const target = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : pickImageUrl(body);
+    if (!target) {
+      res.status(404).send(''); // không trích được → card tự hiện placeholder "bấm để xem"
+      return;
+    }
+    res.setHeader('cache-control', 'public, max-age=3600'); // trình duyệt cache, khỏi fetch content.js lại
+    res.redirect(302, target);
   }
 
   @Roles('admin', 'manager', 'user')
