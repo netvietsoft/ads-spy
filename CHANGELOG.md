@@ -4,6 +4,15 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-19 — Format collect cập nhật TĂNG DẦN (badge/lọc đổi ngay khi mỗi ad gom xong)
+
+Trước: badge/lọc định dạng chỉ đổi khi gom XONG 100/100 → giữa chừng mọi ad vẫn hiện EMBED (tưởng lọc sai).
+Giờ mỗi vòng poll setState map TỪNG PHẦN → ad nào gom xong hiện format thật ngay, lọc text/image/video áp
+dần. Guard `collectDone` để cache đúng (map từng phần ≠ đã xong) + chặn gom trùng khi đổi format giữa chừng.
+Lưu ý: ad nào mở detail LỖI (proxy yếu) sẽ không có format → kẹt ở EMBED; format chuẩn phụ thuộc proxy khoẻ.
+
+---
+
 ## 2026-08-19 — Video content.js fetch qua proxy xoay vòng (không hít IP trực tiếp bị /sorry)
 
 `/api/embed` fetch content.js (để trích YouTube ID) giờ đi qua `GoogleClient.fetchTextThroughProxy` —

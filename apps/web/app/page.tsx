@@ -217,6 +217,7 @@ export default function Home() {
   // Xuất file (CSV/TXT) — cột Quốc gia cần gom vùng thật, cache lại để 2 nút dùng chung, khỏi gom 2 lần.
   const [regionsById, setRegionsById] = useState<Record<string, number[]> | null>(null);
   const [formatById, setFormatById] = useState<Record<string, string> | null>(null);
+  const [collectDone, setCollectDone] = useState(false); // đã gom XONG toàn bộ detail chưa (để cache)
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProg, setExportProg] = useState('');
 
@@ -241,6 +242,7 @@ export default function Home() {
     setRegionProg('');
     setRegionsById(null);
     setFormatById(null);
+    setCollectDone(false);
     setExportProg('');
   }, [data]);
 
@@ -281,7 +283,7 @@ export default function Home() {
   // Gom trên baseCreatives (toàn bộ đã tải) để lọc/xuất theo định dạng thật đều dùng được.
   type Collected = { regionsById: Record<string, number[]>; formatById: Record<string, string> };
   async function ensureCollected(): Promise<Collected> {
-    if (regionsById && formatById) return { regionsById, formatById };
+    if (collectDone && regionsById && formatById) return { regionsById, formatById };
     const items = baseCreatives.map((c) => ({ advertiserId: c.advertiserId, creativeId: c.creativeId }));
     if (!items.length) return { regionsById: {}, formatById: {} };
     setExportBusy(true);
@@ -296,10 +298,12 @@ export default function Home() {
         } catch {
           break;
         }
+        // Cập nhật TĂNG DẦN: badge/lọc đổi ngay khi mỗi ad gom xong, không đợi hết. Copy map để React nhận thay đổi.
+        setRegionsById({ ...j.regionsById });
+        setFormatById({ ...j.formatById });
         setExportProg(`Đang gom: ${j.checked}/${j.total}…`);
         if (j.done) {
-          setRegionsById(j.regionsById);
-          setFormatById(j.formatById);
+          setCollectDone(true);
           setExportProg('');
           return { regionsById: j.regionsById, formatById: j.formatById };
         }
@@ -310,10 +314,10 @@ export default function Home() {
     }
   }
 
-  // Chọn định dạng: nếu chưa gom thì gom trước để lọc THEO ĐỊNH DẠNG THẬT (không suy đoán sai).
+  // Chọn định dạng: nếu chưa gom XONG thì gom trước để lọc THEO ĐỊNH DẠNG THẬT (không suy đoán sai).
   async function onPickFormat(v: FormatFilter) {
     setFmt(v);
-    if (v !== 'all' && !formatById) await ensureCollected();
+    if (v !== 'all' && !collectDone && !exportBusy) await ensureCollected();
   }
 
   async function onExport(kind: 'csv' | 'txt') {
