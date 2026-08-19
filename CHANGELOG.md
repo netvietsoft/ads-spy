@@ -13,6 +13,16 @@ tăng dần. Bảng cuộn ngang cho đủ 10 cột, header dính (sticky). Tái
 
 ---
 
+## 2026-08-19 — Fix Prisma "unexpected end of hex escape" khi lưu bài viết FB (surrogate lẻ)
+
+`fbPostRow.createMany` chết với `unexpected end of hex escape` khi quét Page có emoji: `text` cắt
+`.slice(0,240)` cắt ĐÔI cặp UTF-16 của emoji → để lại **surrogate lẻ**, Prisma engine (serde) parse
+JSON query báo lỗi escape. Sửa: `cleanStr` trong `fb-posts.parser.ts` bỏ **surrogate lẻ + control char/
+null** (giữ emoji đủ cặp, \t\n\r), áp cho `text/url/image/postId` trước khi lưu. Verify: nửa emoji bị bỏ,
+emoji đủ cặp giữ nguyên. (Ad Library `fbAd` cùng lớp bug tiềm ẩn — sẽ hardening nếu gặp.)
+
+---
+
 ## 2026-08-19 — Facebook Bài viết (Pha 1): sort theo số lượng + cột QC (có quảng cáo) + xuất CSV/TXT
 
 Tab Facebook → Bài viết:

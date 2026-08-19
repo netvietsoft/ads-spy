@@ -12,6 +12,19 @@ function num(v: any): number | undefined {
   return Number.isNaN(n) ? undefined : n;
 }
 
+// Làm sạch chuỗi trước khi lưu DB: bỏ CONTROL CHAR + SURROGATE LẺ (emoji bị .slice(0,240) cắt đôi để lại
+// nửa cặp UTF-16). Surrogate lẻ khiến Prisma engine báo "unexpected end of hex escape" khi createMany.
+function cleanStr(s: string | undefined): string | undefined {
+  if (typeof s !== 'string') return s;
+  return s
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '') // control char/null (giữ \t \n \r)
+    .replace(/[\uD800-\uDFFF]/g, (ch, idx: number, str: string) => {
+      const code = ch.charCodeAt(0);
+      if (code <= 0xdbff) return str.charCodeAt(idx + 1) >= 0xdc00 && str.charCodeAt(idx + 1) <= 0xdfff ? ch : '';
+      return str.charCodeAt(idx - 1) >= 0xd800 && str.charCodeAt(idx - 1) <= 0xdbff ? ch : '';
+    });
+}
+
 function readFeedback(fb: any): { reactions: number; comments: number; shares: number } {
   const reactions = num(fb?.reaction_count?.count) ?? num(fb?.reaction_count?.total_count) ?? 0;
   const comments =
@@ -82,11 +95,11 @@ export function parsePagePosts(objs: any[], pageSlug?: string): FbPost[] {
         const prev = byKey.get(key);
         if (!prev || total > prev.total) {
           byKey.set(key, {
-            postId: typeof postId === 'string' ? postId : undefined,
-            url: curUrl,
-            text: curText?.replace(/\s+/g, ' ').trim().slice(0, 240),
+            postId: typeof postId === 'string' ? cleanStr(postId) : undefined,
+            url: cleanStr(curUrl),
+            text: cleanStr(curText?.replace(/\s+/g, ' ').trim().slice(0, 240)),
             time: curTime,
-            image: lastMedia?.image,
+            image: cleanStr(lastMedia?.image),
             isVideo: lastMedia?.isVideo ?? false,
             reactions,
             comments,
