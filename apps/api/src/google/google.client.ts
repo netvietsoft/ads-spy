@@ -124,6 +124,27 @@ export class GoogleClient {
     return this.getProxyStatus();
   }
 
+  // Fetch text (content.js của video ad) QUA proxy đang xoay vòng — để không hít IP trực tiếp bị /sorry.
+  // Mỗi lần lấy dispatcher kế tiếp (round-robin). Không proxy → fetch thẳng.
+  async fetchTextThroughProxy(url: string, timeoutMs = 8000): Promise<string> {
+    await this.ensureProxy();
+    const n = this.dispatchers.length;
+    const disp = n > 0 ? this.dispatchers[this.idx % n] : null;
+    if (n > 0) this.idx = (this.idx + 1) % n;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, {
+        headers: { 'user-agent': buildHeaders()['user-agent'], referer: 'https://adstransparency.google.com/' },
+        ...(disp ? { dispatcher: disp } : {}),
+        signal: ctrl.signal,
+      } as any);
+      return await r.text();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // Test TỪNG proxy: thử tra nike.com qua mỗi proxy, trả ok/thông báo.
   async testProxy(): Promise<{ count: number; results: { proxy: string; ok: boolean; message: string }[] }> {
     await this.ensureProxy();

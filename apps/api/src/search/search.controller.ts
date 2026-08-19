@@ -16,36 +16,21 @@ import { SearchService, isAllowedAssetHost } from './search.service';
 import { Roles } from '../auth/roles.decorator';
 import { RequiresModule } from '../subscriptions/requires.decorator';
 
-const EMBED_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
 // Quảng cáo VIDEO của Google THỰC CHẤT là YouTube (content.js render <img i.ytimg.com/vi/ID> + player
-// youtube.com/embed/ID). content.js fetch phía server chứa ID đó. Trích ID để nhúng THẲNG player YouTube —
-// chạy được mọi nơi, khác content.js của Google (bị chặn render NGOÀI domain google → iframe trắng trơn).
-async function extractYoutubeId(contentJsUrl: string): Promise<string | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
-  try {
-    const r = await fetch(contentJsUrl, {
-      headers: { 'user-agent': EMBED_UA, referer: 'https://adstransparency.google.com/' },
-      signal: ctrl.signal,
-    } as any);
-    const body = await r.text();
-    const pats = [
-      /ytimg\.com\/vi\/([A-Za-z0-9_-]{11})\//,
-      /youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{11})/,
-      /"videoId"\s*:\s*"([A-Za-z0-9_-]{11})"/,
-    ];
-    for (const p of pats) {
-      const m = body.match(p);
-      if (m) return m[1];
-    }
-    return null;
-  } catch {
-    return null; // throttle/timeout/không phải video → để caller fallback render content.js
-  } finally {
-    clearTimeout(timer);
+// youtube.com/embed/ID). Trích video ID từ thân content.js để nhúng THẲNG player YouTube — chạy mọi nơi,
+// khác content.js của Google (bị chặn render NGOÀI domain google → iframe trắng trơn). Body được fetch QUA
+// proxy xoay vòng (this.google.fetchTextThroughProxy) để không hít IP trực tiếp bị /sorry.
+function pickYoutubeId(body: string): string | null {
+  const pats = [
+    /ytimg\.com\/vi\/([A-Za-z0-9_-]{11})\//,
+    /youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{11})/,
+    /"videoId"\s*:\s*"([A-Za-z0-9_-]{11})"/,
+  ];
+  for (const p of pats) {
+    const m = body.match(p);
+    if (m) return m[1];
   }
+  return null;
 }
 
 // Module google-ads là free → mở các endpoint ĐỌC cho khách (role user), không cap.
@@ -172,7 +157,8 @@ export class SearchController {
 
     // Video ad = YouTube → nhúng player thẳng (render được mọi nơi). content.js của Google bị chặn ngoài
     // domain nên luôn trắng. Trích được ID thì dùng YouTube; không thì fallback nạp content.js như cũ.
-    const videoId = await extractYoutubeId(url);
+    const body = await this.google.fetchTextThroughProxy(url).catch(() => '');
+    const videoId = pickYoutubeId(body);
     if (videoId) {
       res.send(
         `<!doctype html><html><head><meta charset="utf-8">` +

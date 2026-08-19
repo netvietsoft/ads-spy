@@ -4,6 +4,17 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-19 — Video content.js fetch qua proxy xoay vòng (không hít IP trực tiếp bị /sorry)
+
+`/api/embed` fetch content.js (để trích YouTube ID) giờ đi qua `GoogleClient.fetchTextThroughProxy` —
+dùng CHUNG danh sách proxy xoay vòng như search RPC, thay vì fetch thẳng bằng IP VPS (dễ bị Google /sorry).
+
+Nhắc: search RPC chỉ **xoay vòng khi có ≥2 proxy enabled** (`retryable = dispatchers.length > 1`). Lỗi
+"Google chặn IP/proxy này (/sorry). Thêm proxy để quay vòng." = client đang nạp **≤1 proxy enabled**.
+Proxy nạp từ `sh_proxy WHERE enabled=1` (Settings → Proxy, ô "Bật"); cache 2 phút.
+
+---
+
 ## 2026-08-19 — Video ad hiện được: /api/embed nhúng thẳng player YouTube
 
 Sau khi fix X-Frame-Options, iframe video VẪN trắng: content.js của Google **chặn render NGOÀI domain
