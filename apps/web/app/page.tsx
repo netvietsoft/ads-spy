@@ -271,6 +271,7 @@ export default function Home() {
   const [formatById, setFormatById] = useState<Record<string, string> | null>(null);
   const [collectDone, setCollectDone] = useState(false); // đã gom XONG toàn bộ detail chưa (để cache)
   const [view, setView] = useState<'card' | 'table'>('card'); // thẻ hay bảng
+  const [advCollapsed, setAdvCollapsed] = useState(false); // thu gọn panel Nhà quảng cáo bên trái
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProg, setExportProg] = useState('');
 
@@ -612,9 +613,13 @@ export default function Home() {
             )}
           </div>
 
-          <div className="layout">
+          <div className={`layout${advCollapsed ? ' filters-collapsed' : ''}`}>
+            {!advCollapsed && (
             <div className="panel">
-              <h3>Nhà quảng cáo</h3>
+              <h3 className="advhead">
+                Nhà quảng cáo
+                <button type="button" className="collapse-btn" title="Thu gọn" onClick={() => setAdvCollapsed(true)}>‹</button>
+              </h3>
               <button
                 className={`adv ${activeAdv === null ? 'active' : ''}`}
                 onClick={() => setActiveAdv(null)}
@@ -639,9 +644,13 @@ export default function Home() {
                 </button>
               ))}
             </div>
+            )}
 
             <div>
               <div className="viewtoggle">
+                {advCollapsed && (
+                  <button type="button" title="Mở panel Nhà quảng cáo" onClick={() => setAdvCollapsed(false)}>›  Nhà QC</button>
+                )}
                 <button type="button" className={view === 'card' ? 'active' : ''} onClick={() => onSwitchView('card')}>▦ Thẻ</button>
                 <button type="button" className={view === 'table' ? 'active' : ''} onClick={() => onSwitchView('table')}>▤ Bảng</button>
                 {view === 'table' && exportProg && <span className="m">{exportProg}</span>}
