@@ -4,6 +4,17 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-19 — Fix video không hiển thị (X-Frame-Options chặn /api/embed) + thêm mốc 90 ngày
+
+- **Video/quảng cáo động không hiện**, iframe báo "dpboss.pet đã từ chối kết nối" — **REGRESSION từ vá bảo
+  mật 2026-08-18**: `main.ts` đặt `X-Frame-Options: DENY` cho MỌI response API, chặn luôn `/api/embed` —
+  thứ CỐ Ý để web tự nhúng iframe render content.js (video/app-install) như Transparency Center. Sửa: embed
+  handler **ghi đè `X-Frame-Options: SAMEORIGIN`** (chỉ origin của mình nhúng được). Các endpoint API khác
+  vẫn giữ DENY. Bài học: header bảo mật toàn cục dễ chặn nhầm endpoint cố ý nhúng — phải chừa ngoại lệ.
+- Ô **Thời gian**: thêm mốc **90 ngày**.
+
+---
+
 ## 2026-08-19 — Định dạng THẬT (text/image/video) từ field 8 — sửa gốc chỗ parser đoán sai từ preview
 
 Người dùng báo "lọc Text không ra" + cần phân biệt text/ảnh/video cho báo cáo. Dùng token Apify của chủ

@@ -164,6 +164,10 @@ window["${cb}"]=function(payload){
 <script src="${safe}"></script>
 </body></html>`;
     res.setHeader('content-type', 'text/html; charset=utf-8');
+    // /api/embed CỐ Ý để web tự nhúng iframe (video/app-install động như Transparency Center) → phải cho
+    // phép same-origin, GHI ĐÈ 'X-Frame-Options: DENY' toàn cục ở main.ts. Thiếu dòng này thì trình duyệt
+    // chặn iframe → "dpboss.pet đã từ chối kết nối", video không hiện. (Regression từ vá bảo mật 2026-08-18.)
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.send(html);
   }
 
