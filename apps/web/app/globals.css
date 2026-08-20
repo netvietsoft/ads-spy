@@ -182,9 +182,12 @@ body {
 .pthumb .noimg { color: var(--muted); }
 .pthumb .vbadge { position: absolute; top: 2px; left: 2px; font-size: 12px; }
 .pp-sortsel { display: none; } /* ô sort chỉ dùng trên mobile (desktop sort bằng header bảng) */
+.pp-qc-txt { display: none; } /* desktop chỉ hiện ✅; mobile hiện chữ "Quảng cáo" xanh */
 /* Mobile: mỗi dòng bảng bài viết (.reptable) thành 1 CARD — ẩn thead, mỗi td là nhãn+giá trị. */
 @media (max-width: 760px) {
   .pp-sortsel { display: inline-block; }
+  .pp-qc-emoji { display: none; }
+  .pp-qc-txt { display: inline; color: #2563eb; font-weight: 600; }
   .reptable { display: block; font-size: 15px; }
   .reptable thead { display: none; }
   .reptable tbody { display: block; }

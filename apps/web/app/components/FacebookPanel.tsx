@@ -460,7 +460,12 @@ export function FacebookPanel() {
                         </div>
                       </td>
                       <td style={{ textAlign: 'center' }} data-label="QC" title={p.hasActiveAd ? 'Đang chạy quảng cáo' : ''}>
-                        {p.hasActiveAd ? '✅' : ''}
+                        {p.hasActiveAd && (
+                          <span className="pp-qc">
+                            <span className="pp-qc-emoji">✅</span>
+                            <span className="pp-qc-txt">Quảng cáo</span>
+                          </span>
+                        )}
                       </td>
                       <td className="pp-text" data-label="Nội dung">{p.text || <span className="m">(không có text)</span>}</td>
                       <td className="m" data-label="Ngày đăng">{p.time ? new Date(p.time * 1000).toLocaleDateString('vi-VN') : '—'}</td>
