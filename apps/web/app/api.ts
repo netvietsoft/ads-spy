@@ -389,7 +389,7 @@ export async function fbPagePostsStart(
   page: string,
   from?: string,
   to?: string,
-  limit = 60,
+  limit = 500, // "cả page" — trước 60 là bức tường thật sự khiến chỉ lấy được 60 bài
 ): Promise<{ jobId: string }> {
   const qs = new URLSearchParams({ page, limit: String(limit) });
   if (from) qs.set('from', from);

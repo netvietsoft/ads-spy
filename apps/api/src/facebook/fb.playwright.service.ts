@@ -337,32 +337,45 @@ export class FbPlaywrightService implements OnModuleDestroy {
       }
       await sleep(3000);
       const filtering = !!(fromTs || toTs);
-      // Cào SÂU để với tới bài cũ nhất. Chỉ dừng khi: (a) đủ số (không lọc); (b) bài cũ nhất đã qua mốc
-      // from (đã bao trọn khoảng ngày); (c) NHIỀU nhịp LIÊN TIẾP không ra bài mới (feed thật sự hết —
-      // KHÁC bug cũ dừng ngay sau 1 nhịp trống, mà feed comet fetch chậm nên 1 nhịp trống ≠ hết); (d)
-      // chạm trần cuộn hoặc trần thời gian (chống treo).
-      const maxScroll = filtering ? 150 : 40; // trước: 40/18 — quá nông, không tới bài cũ
-      const STALE_LIMIT = 4; // cần 4 nhịp liên tiếp không ra bài mới mới coi là hết feed
+      // Cào SÂU tới bài cũ nhất — kỹ thuật mượn từ tool tải-ảnh-cả-page (Autofacebook downloadPagePhotos):
+      //  · mỗi nhịp NHẢY tới đáy (scrollTo scrollHeight) RỒI wheel delta LỚN (25000, trước là 6000) để
+      //    kích comet lazy-load batch kế;
+      //  · DỪNG chỉ khi VỪA không ra bài mới VỪA chiều cao trang KHÔNG tăng (grew) qua nhiều nhịp liên
+      //    tiếp — mạnh hơn hẳn "chỉ đếm post đứng yên" (feed comet nạp trễ → 1 nhịp trống ≠ hết feed);
+      //  · giữ early-break khi bài cũ nhất đã qua fromTs (đã bao trọn khoảng ngày) + trần thời gian chống treo.
+      const maxScroll = filtering ? 400 : 300; // backstop — thực tế deadline 6' mới là giới hạn thật
+      const STALE_LIMIT = 6; // cần 6 nhịp liên tiếp không-ra-bài-VÀ-không-cao-thêm mới coi là hết feed
       const deadline = Date.now() + 6 * 60_000; // trần 6 phút/lượt
       let prev = 0;
       let stale = 0;
+      let lastHeight = 0;
       for (let i = 0; i < maxScroll; i++) {
         const cur = collect();
         if (onProgress) onProgress(this.applyFilterSort(cur, fromTs, toTs, limit));
-        if (!filtering && cur.length >= limit) break;
+        if (!filtering && cur.length >= limit) break; // đủ số yêu cầu (limit = "cả page")
         if (filtering && fromTs && cur.length) {
           const oldest = Math.min(...cur.filter((p) => p.time).map((p) => p.time!));
           if (isFinite(oldest) && oldest < fromTs) break; // đã bao trọn khoảng ngày
         }
         if (Date.now() > deadline) break;
-        await page.mouse.wheel(0, 6000);
-        // Chờ feed nạp thêm (graphql) — thích ứng: fetch nhanh đi nhanh, chậm chờ tới 5s (thay sleep cứng 1800).
+        // Nhảy tới đáy để buộc comet nạp batch kế, rồi cuộn thêm 1 nấc lớn (giống tool tham chiếu).
+        const height = await page
+          .evaluate(() => {
+            const el = document.scrollingElement || document.documentElement;
+            window.scrollTo(0, el.scrollHeight);
+            return el.scrollHeight;
+          })
+          .catch(() => 0);
+        await page.mouse.wheel(0, 25000).catch(() => undefined);
+        // Chờ feed nạp thêm (graphql) — thích ứng: fetch nhanh đi nhanh, chậm chờ tới 5s.
         await page.waitForResponse((r) => r.url().includes('/api/graphql'), { timeout: 5000 }).catch(() => undefined);
-        await sleep(700); // để handler push chunk xong rồi mới đếm
+        await sleep(800); // để handler push chunk xong rồi mới đếm
         const n = collect().length;
-        if (n === prev) {
+        const grew = height > lastHeight;
+        lastHeight = height;
+        if (n === prev && !grew) {
           stale++;
-          if (stale >= STALE_LIMIT) break; // nhiều nhịp liên tiếp trống → feed hết thật
+          if (stale >= STALE_LIMIT) break; // vừa hết bài mới vừa không cao thêm → feed hết thật
           await sleep(1200); // cho feed thêm thời gian trước nhịp kế
         } else {
           stale = 0;

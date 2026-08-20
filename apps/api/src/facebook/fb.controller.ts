@@ -60,7 +60,7 @@ export class FbController {
     @Query('to') to?: string,
   ) {
     if (!pg || !pg.trim()) throw new BadRequestException('Vui lòng nhập link/tên Page.');
-    const n = Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 80);
+    const n = Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 1000);
     const toUnix = (d: string | undefined, endOfDay: boolean): number | undefined => {
       if (!d) return undefined;
       const ms = Date.parse(`${d}T${endOfDay ? '23:59:59' : '00:00:00'}Z`);
@@ -80,7 +80,7 @@ export class FbController {
     @Query('to') to?: string,
   ) {
     if (!pg || !pg.trim()) throw new BadRequestException('Vui lòng nhập link/tên Page.');
-    const n = Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 80);
+    const n = Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 1000);
     const toUnix = (d: string | undefined, endOfDay: boolean): number | undefined => {
       if (!d) return undefined;
       const ms = Date.parse(`${d}T${endOfDay ? '23:59:59' : '00:00:00'}Z`);
