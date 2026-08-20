@@ -104,12 +104,17 @@ export function FacebookPanel() {
   const [ppSize, setPpSize] = useState(50);
   // Sort bảng bài viết theo số lượng (reactions/comments/shares/total), bấm header đổi chiều ▲▼.
   const [ppSort, setPpSort] = useState<{ key: 'reactions' | 'comments' | 'shares' | 'total' | 'time'; dir: 'asc' | 'desc' } | null>(null);
+  // Lọc bảng: chỉ bài CÓ thumb (ảnh) / chỉ bài đang chạy QC. Lọc TRƯỚC khi sort + phân trang.
+  const [ppOnlyThumb, setPpOnlyThumb] = useState(false);
+  const [ppOnlyQC, setPpOnlyQC] = useState(false);
   const sortedPosts = useMemo(() => {
-    const list = posts?.posts ?? [];
+    let list = posts?.posts ?? [];
+    if (ppOnlyThumb) list = list.filter((p) => !!p.image);
+    if (ppOnlyQC) list = list.filter((p) => p.hasActiveAd);
     if (!ppSort) return list;
     const k = ppSort.key;
     return [...list].sort((a, b) => (ppSort.dir === 'asc' ? (a[k] || 0) - (b[k] || 0) : (b[k] || 0) - (a[k] || 0)));
-  }, [posts, ppSort]);
+  }, [posts, ppSort, ppOnlyThumb, ppOnlyQC]);
   function toggleSort(key: 'reactions' | 'comments' | 'shares' | 'total' | 'time') {
     setPpPage(1);
     setPpSort((s) => (s && s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' }));
@@ -388,6 +393,12 @@ export function FacebookPanel() {
                   <span className="m">⬇ Xuất {sortedPosts.length} bài:</span>
                   <button className="ghost" type="button" onClick={() => onExportPosts('csv')}>CSV</button>
                   <button className="ghost" type="button" onClick={() => onExportPosts('txt')}>TXT</button>
+                  <label className="m" style={{ display: 'inline-flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={ppOnlyThumb} onChange={(e) => { setPpPage(1); setPpOnlyThumb(e.target.checked); }} /> Có thumb
+                  </label>
+                  <label className="m" style={{ display: 'inline-flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={ppOnlyQC} onChange={(e) => { setPpPage(1); setPpOnlyQC(e.target.checked); }} /> QC
+                  </label>
                   <Paginator total={sortedPosts.length} page={ppPage} pageSize={ppSize} onPage={setPpPage} onPageSize={setPpSize} />
                 </div>
               )}
