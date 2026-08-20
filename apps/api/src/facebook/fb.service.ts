@@ -149,22 +149,24 @@ export class FbService {
           data: { page: res.page, fromDate: fromDate || null, toDate: toDate || null, count: res.posts.length },
         });
         if (res.posts.length) {
-          await this.prisma.fbPostRow.createMany({
-            data: res.posts.map((p) => ({
-              postId: p.postId ?? null,
-              url: p.url ?? null,
-              text: p.text ?? null,
-              time: p.time ?? null,
-              image: p.image ?? null,
-              isVideo: p.isVideo ?? false,
-              hasActiveAd: p.hasActiveAd ?? false,
-              reactions: p.reactions,
-              comments: p.comments,
-              shares: p.shares,
-              total: p.total,
-              scanId: rec.id,
-            })),
-          });
+          const rows = res.posts.map((p) => ({
+            postId: p.postId ?? null,
+            url: p.url ?? null,
+            text: p.text ?? null,
+            time: p.time ?? null,
+            image: p.image ?? null,
+            isVideo: p.isVideo ?? false,
+            hasActiveAd: p.hasActiveAd ?? false,
+            reactions: p.reactions,
+            comments: p.comments,
+            shares: p.shares,
+            total: p.total,
+            scanId: rec.id,
+          }));
+          // Chia lô 500: SQLite trần ~32k biến/câu; 4000 bài × 12 cột = 48k → 1 createMany sẽ vỡ.
+          for (let i = 0; i < rows.length; i += 500) {
+            await this.prisma.fbPostRow.createMany({ data: rows.slice(i, i + 500) });
+          }
         }
         job.scanId = rec.id;
         job.phase = 'done';

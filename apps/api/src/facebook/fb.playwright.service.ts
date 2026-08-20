@@ -321,23 +321,33 @@ export class FbPlaywrightService implements OnModuleDestroy {
       : `https://www.facebook.com/${t.value}`;
 
     const page = await context.newPage();
-    const chunks: string[] = [];
+    const slug = t.value; // handle/id của page để dựng link bài viết
+    // Parse TĂNG DẦN: mỗi graphql tới → parse NGAY 1 lần → gom vào Map (dedup theo key, giữ total cao
+    // hơn) → VỨT text thô. Trước đây giữ mọi response trong chunks[] rồi re-parse TOÀN BỘ mỗi nhịp cuộn
+    // → O(n²) + ~100MB chuỗi thô cho page dày (4000 bài) → job dài ì/OOM. Cách này O(n), RAM có trần.
+    const byKey = new Map<string, FbPost>();
+    const mergePost = (p: FbPost) => {
+      const key = p.url || p.postId || `${(p.text || '').slice(0, 40)}#${p.reactions}`;
+      const prev = byKey.get(key);
+      if (!prev || p.total > prev.total) byKey.set(key, p);
+    };
     page.on('response', async (res) => {
       if (!res.url().includes('/api/graphql')) return;
+      let text: string;
       try {
-        const t2 = await res.text();
-        if (t2.includes('reaction_count')) chunks.push(t2);
+        text = await res.text();
       } catch {
-        /* ignore */
+        return;
+      }
+      if (!text.includes('reaction_count')) return; // không phải response feed → bỏ, không giữ text
+      try {
+        for (const p of parsePagePosts(parseLoose(text), slug)) mergePost(p);
+      } catch {
+        /* response không parse được → bỏ */
       }
     });
 
-    const slug = t.value; // handle/id của page để dựng link bài viết
-    const collect = (): FbPost[] => {
-      const all: any[] = [];
-      for (const c of chunks) for (const o of parseLoose(c)) all.push(o);
-      return parsePagePosts(all, slug);
-    };
+    const collect = (): FbPost[] => [...byKey.values()];
 
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
