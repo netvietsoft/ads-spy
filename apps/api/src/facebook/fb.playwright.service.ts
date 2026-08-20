@@ -102,13 +102,23 @@ const COOKIE_KEY = 'fb_cookie';
 export class FbPlaywrightService implements OnModuleDestroy {
   private context: BrowserContext | null = null;
   private warmed = false;
+  private static stealthRegistered = false; // chỉ đăng ký plugin stealth 1 lần cho singleton chromium
 
   constructor(private readonly prisma: PrismaService) {}
 
   // Context BỀN (persistent) → giữ cookie datr/phiên → ổn định, ít bị chặn.
   private async getContext(): Promise<BrowserContext> {
     if (this.context) return this.context;
-    const { chromium } = await import('playwright');
+    // playwright-extra + puppeteer-extra-plugin-stealth (GIỐNG tool Autofacebook): ẩn navigator.webdriver
+    // và ~15 dấu hiệu headless khác → FB coi như trình duyệt thật, phục vụ feed SÂU hơn, ít throttle khi
+    // cuộn nhiều. Áp được cho persistent context: playwright-extra proxy launchPersistentContext rồi wrap
+    // context.newPage để addInitScript của stealth có hiệu lực trên mọi trang.
+    const { chromium } = await import('playwright-extra');
+    if (!FbPlaywrightService.stealthRegistered) {
+      const stealth = (await import('puppeteer-extra-plugin-stealth')).default;
+      chromium.use(stealth());
+      FbPlaywrightService.stealthRegistered = true;
+    }
     this.context = await chromium.launchPersistentContext(PROFILE_DIR, {
       headless: true,
       userAgent: UA,
