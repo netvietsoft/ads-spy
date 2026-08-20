@@ -337,22 +337,36 @@ export class FbPlaywrightService implements OnModuleDestroy {
       }
       await sleep(3000);
       const filtering = !!(fromTs || toTs);
-      const maxScroll = filtering ? 40 : 18; // lọc theo ngày → cuộn sâu hơn để với tới mốc
+      // Cào SÂU để với tới bài cũ nhất. Chỉ dừng khi: (a) đủ số (không lọc); (b) bài cũ nhất đã qua mốc
+      // from (đã bao trọn khoảng ngày); (c) NHIỀU nhịp LIÊN TIẾP không ra bài mới (feed thật sự hết —
+      // KHÁC bug cũ dừng ngay sau 1 nhịp trống, mà feed comet fetch chậm nên 1 nhịp trống ≠ hết); (d)
+      // chạm trần cuộn hoặc trần thời gian (chống treo).
+      const maxScroll = filtering ? 150 : 40; // trước: 40/18 — quá nông, không tới bài cũ
+      const STALE_LIMIT = 4; // cần 4 nhịp liên tiếp không ra bài mới mới coi là hết feed
+      const deadline = Date.now() + 6 * 60_000; // trần 6 phút/lượt
       let prev = 0;
+      let stale = 0;
       for (let i = 0; i < maxScroll; i++) {
         const cur = collect();
         if (onProgress) onProgress(this.applyFilterSort(cur, fromTs, toTs, limit));
-        // đủ số (không lọc) → dừng
         if (!filtering && cur.length >= limit) break;
-        // đang lọc: nếu bài cũ nhất đã đăng TRƯỚC mốc from → đã bao trọn khoảng, dừng
         if (filtering && fromTs && cur.length) {
           const oldest = Math.min(...cur.filter((p) => p.time).map((p) => p.time!));
-          if (isFinite(oldest) && oldest < fromTs) break;
+          if (isFinite(oldest) && oldest < fromTs) break; // đã bao trọn khoảng ngày
         }
+        if (Date.now() > deadline) break;
         await page.mouse.wheel(0, 6000);
-        await sleep(1800);
+        // Chờ feed nạp thêm (graphql) — thích ứng: fetch nhanh đi nhanh, chậm chờ tới 5s (thay sleep cứng 1800).
+        await page.waitForResponse((r) => r.url().includes('/api/graphql'), { timeout: 5000 }).catch(() => undefined);
+        await sleep(700); // để handler push chunk xong rồi mới đếm
         const n = collect().length;
-        if (n === prev && i > 2) break;
+        if (n === prev) {
+          stale++;
+          if (stale >= STALE_LIMIT) break; // nhiều nhịp liên tiếp trống → feed hết thật
+          await sleep(1200); // cho feed thêm thời gian trước nhịp kế
+        } else {
+          stale = 0;
+        }
         prev = n;
       }
     } finally {
