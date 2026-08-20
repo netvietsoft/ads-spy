@@ -181,6 +181,22 @@ body {
 .pthumb img { width: 100%; height: 100%; object-fit: cover; }
 .pthumb .noimg { color: var(--muted); }
 .pthumb .vbadge { position: absolute; top: 2px; left: 2px; font-size: 12px; }
+/* Mobile: mỗi dòng bảng bài viết (.reptable) thành 1 CARD — ẩn thead, mỗi td là nhãn+giá trị. */
+@media (max-width: 760px) {
+  .reptable { display: block; font-size: 15px; }
+  .reptable thead { display: none; }
+  .reptable tbody { display: block; }
+  .reptable tr { display: block; border: 1px solid var(--border); border-radius: 12px; margin: 0 0 12px; padding: 8px 14px; background: var(--panel); }
+  .reptable td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0; border: 0; text-align: right; }
+  .reptable td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; text-align: left; flex: 0 0 auto; }
+  .reptable td.pp-thumb, .reptable td.pp-text, .reptable td.pp-link { display: block; text-align: left; }
+  .reptable td.pp-thumb::before, .reptable td.pp-text::before, .reptable td.pp-link::before { content: none; }
+  .reptable td.pp-thumb { padding-top: 2px; }
+  .reptable td.pp-thumb .pthumb { width: 100%; height: auto; aspect-ratio: 1.4; }
+  .reptable td.pp-text { font-size: 14px; line-height: 1.5; }
+  .reptable td.pp-idx { display: none; } /* bỏ số thứ tự trên card mobile */
+  .reptable td.pp-link { text-align: center; padding-top: 4px; }
+}
 .adbadge { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--accent-2); border: 1px solid color-mix(in srgb, var(--accent-2) 45%, var(--panel)); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
 
 .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 12px 0; font-size: 13px; }

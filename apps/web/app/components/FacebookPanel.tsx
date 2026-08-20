@@ -424,8 +424,8 @@ export function FacebookPanel() {
                     const i = (ppPage - 1) * ppSize + idx;
                     return (
                     <tr key={p.url || p.postId || i}>
-                      <td className="m">{i + 1}</td>
-                      <td>
+                      <td className="m pp-idx" data-label="#">{i + 1}</td>
+                      <td className="pp-thumb">
                         <div className="pthumb">
                           {p.image ? (
                             <img src={assetProxy(p.image)} alt="" loading="lazy" />
@@ -435,16 +435,16 @@ export function FacebookPanel() {
                           {p.isVideo && <span className="vbadge">🎬</span>}
                         </div>
                       </td>
-                      <td style={{ textAlign: 'center' }} title={p.hasActiveAd ? 'Đang chạy quảng cáo' : ''}>
+                      <td style={{ textAlign: 'center' }} data-label="QC" title={p.hasActiveAd ? 'Đang chạy quảng cáo' : ''}>
                         {p.hasActiveAd ? '✅' : ''}
                       </td>
-                      <td>{p.text || <span className="m">(không có text)</span>}</td>
-                      <td className="m">{p.time ? new Date(p.time * 1000).toLocaleDateString('vi-VN') : '—'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.reactions.toLocaleString()}</td>
-                      <td style={{ textAlign: 'right' }}>{p.comments.toLocaleString()}</td>
-                      <td style={{ textAlign: 'right' }}>{p.shares.toLocaleString()}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.total.toLocaleString()}</td>
-                      <td>
+                      <td className="pp-text" data-label="Nội dung">{p.text || <span className="m">(không có text)</span>}</td>
+                      <td className="m" data-label="Ngày đăng">{p.time ? new Date(p.time * 1000).toLocaleDateString('vi-VN') : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }} data-label="❤️ Reactions">{p.reactions.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right' }} data-label="💬 Bình luận">{p.comments.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right' }} data-label="🔁 Chia sẻ">{p.shares.toLocaleString()}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }} data-label="Σ Tổng">{p.total.toLocaleString()}</td>
+                      <td className="pp-link">
                         {p.url && (
                           <a className="dl" href={p.url} target="_blank" rel="noreferrer">
                             mở ↗
