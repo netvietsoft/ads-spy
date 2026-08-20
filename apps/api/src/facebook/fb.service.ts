@@ -116,9 +116,11 @@ export class FbService {
         for (const p of top) {
           try {
             const e = await this.scraper.fetchPostEngagement(p.url!);
+            // CHỈ ghi đè khi số mở-bài LỚN hơn — feed giờ đã cho comment/share đúng (parser canonical),
+            // đừng để fetchPostEngagement trả 0 (permalink data ở HTML, không graphql) XOÁ số feed đúng.
             if (e.reactions > p.reactions) p.reactions = e.reactions;
-            p.comments = e.comments;
-            p.shares = e.shares;
+            if (e.comments > p.comments) p.comments = e.comments;
+            if (e.shares > p.shares) p.shares = e.shares;
             p.total = p.reactions + p.comments + p.shares;
           } catch {
             /* bỏ bài lỗi */

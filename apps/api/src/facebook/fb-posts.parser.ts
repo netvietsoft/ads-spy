@@ -25,15 +25,46 @@ function cleanStr(s: string | undefined): string | undefined {
     });
 }
 
+// Tìm {count|total_count} của 1 key trong subtree, có thể BỎ nhánh (skipKey) — dùng để lấy reaction/share
+// của BÀI mà không lọt vào reaction/share của COMMENT (nằm trong comment_rendering_instance).
+function deepCount(node: any, key: string, skipKey?: string, depth = 0): number | undefined {
+  if (!node || typeof node !== 'object' || depth > 22) return undefined;
+  if (!Array.isArray(node)) {
+    const v = node[key];
+    if (v && typeof v === 'object' && (typeof v.count === 'number' || typeof v.total_count === 'number')) {
+      return typeof v.count === 'number' ? v.count : v.total_count;
+    }
+    for (const k of Object.keys(node)) {
+      if (skipKey && k === skipKey) continue;
+      const r = deepCount(node[k], key, skipKey, depth + 1);
+      if (r != null) return r;
+    }
+  } else {
+    for (const c of node) {
+      const r = deepCount(c, key, skipKey, depth + 1);
+      if (r != null) return r;
+    }
+  }
+  return undefined;
+}
+
+// Đọc reaction/comment/share từ object FEEDBACK CANONICAL của BÀI (mốc comet_ufi_summary_and_actions_renderer).
+// Reaction/share lấy TRONG summary-renderer + BỎ nhánh comment_rendering_instance → KHÔNG đếm reaction/share
+// của comment (của user). Comment lấy từ comment_rendering_instance.comments.total_count (tổng bình luận bài).
 function readFeedback(fb: any): { reactions: number; comments: number; shares: number } {
-  const reactions = num(fb?.reaction_count?.count) ?? num(fb?.reaction_count?.total_count) ?? 0;
+  const ufi = fb?.comet_ufi_summary_and_actions_renderer ?? fb;
+  const reactions =
+    deepCount(ufi, 'reaction_count', 'comment_rendering_instance') ?? num(fb?.reaction_count?.count) ?? 0;
   const comments =
     num(fb?.comment_rendering_instance?.comments?.total_count) ??
-    num(fb?.comments_count_summary_renderer?.feedback?.comment_count?.total_count) ??
-    num(fb?.total_comment_count) ??
-    num(fb?.comment_count?.total_count) ??
+    num(fb?.aggregated_comment_count) ??
+    deepCount(ufi, 'comment_count', 'comment_rendering_instance') ??
     0;
-  const shares = num(fb?.share_count?.count) ?? num(fb?.reshare_count?.count) ?? num(fb?.share_count_reduced) ?? 0;
+  const shares =
+    deepCount(ufi, 'share_count', 'comment_rendering_instance') ??
+    deepCount(ufi, 'reshare_count', 'comment_rendering_instance') ??
+    num(fb?.share_count?.count) ??
+    0;
   return { reactions, comments, shares };
 }
 
@@ -79,9 +110,17 @@ export function parsePagePosts(objs: any[], pageSlug?: string): FbPost[] {
       if (typeof tt === 'number' && tt > 1_000_000_000 && tt < 20_000_000_000) curTime = tt;
     }
 
-    // node feedback
-    if (node.reaction_count && typeof node.reaction_count === 'object') {
+    // node feedback — CHỈ chốt ở object FEEDBACK CANONICAL của bài (có comet_ufi_summary_and_actions_renderer,
+    // hoặc kiểu cũ reaction_count + share_count). KHÔNG chốt ở leaf reaction-icon-renderer (thiếu comment/share
+    // → reaction bài đúng bài sai + comment/share = 0). Đây là fix gốc cho cả 3 lỗi đó.
+    const isPostFeedback =
+      (node.comet_ufi_summary_and_actions_renderer && typeof node.comet_ufi_summary_and_actions_renderer === 'object') ||
+      (node.reaction_count && typeof node.reaction_count === 'object' && node.share_count);
+    if (isPostFeedback) {
       const { reactions, comments, shares } = readFeedback(node);
+      // URL permalink nằm ngay trên object feedback → đáng tin hơn curUrl kế thừa từ tổ tiên.
+      const fbUrl = typeof node.url === 'string' && POST_URL_RE.test(node.url) ? node.url : undefined;
+      if (fbUrl) curUrl = fbUrl;
       const idFromUrl = curUrl ? (/(pfbid[\w]+|\/posts\/\d+|story_fbid=\d+|\/permalink\/\d+)/.exec(curUrl) || [])[0] : undefined;
       const storyId = node.subscription_target_id || node.associated_story_id || lastStoryId || undefined;
       const postId = storyId || idFromUrl;
