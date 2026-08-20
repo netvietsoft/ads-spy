@@ -401,6 +401,30 @@ export function FacebookPanel() {
                     <option value="all">QC: tất cả</option>
                     <option value="qc">Chỉ có QC</option>
                   </select>
+                  {/* Sort dạng select — chỉ hiện trên mobile (desktop dùng header bảng, ẩn ở card mobile) */}
+                  <select
+                    className="ghost pp-sortsel"
+                    value={ppSort ? `${ppSort.key}-${ppSort.dir}` : ''}
+                    onChange={(e) => {
+                      setPpPage(1);
+                      const v = e.target.value;
+                      if (!v) { setPpSort(null); return; }
+                      const [key, dir] = v.split('-');
+                      setPpSort({ key: key as 'reactions' | 'comments' | 'shares' | 'total' | 'time', dir: dir as 'asc' | 'desc' });
+                    }}
+                  >
+                    <option value="">↕ Sắp xếp…</option>
+                    <option value="time-desc">Ngày: mới nhất</option>
+                    <option value="time-asc">Ngày: cũ nhất</option>
+                    <option value="reactions-desc">Reactions: cao→thấp</option>
+                    <option value="reactions-asc">Reactions: thấp→cao</option>
+                    <option value="comments-desc">Bình luận: nhiều→ít</option>
+                    <option value="comments-asc">Bình luận: ít→nhiều</option>
+                    <option value="shares-desc">Chia sẻ: nhiều→ít</option>
+                    <option value="shares-asc">Chia sẻ: ít→nhiều</option>
+                    <option value="total-desc">Tổng: cao→thấp</option>
+                    <option value="total-asc">Tổng: thấp→cao</option>
+                  </select>
                   <Paginator total={sortedPosts.length} page={ppPage} pageSize={ppSize} onPage={setPpPage} onPageSize={setPpSize} />
                 </div>
               )}
