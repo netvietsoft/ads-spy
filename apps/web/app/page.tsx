@@ -259,6 +259,8 @@ export default function Home() {
 
   const [gPage, setGPage] = useState(1);
   const [gSize, setGSize] = useState(100);
+  // Sort kết quả/đã-lưu theo thời gian (lastShown) / định dạng (format) / vùng (số vùng).
+  const [gSort, setGSort] = useState<{ key: 'time' | 'format' | 'region'; dir: 'asc' | 'desc' } | null>(null);
 
   // Lọc theo vùng (B)
   const [regionGeo, setRegionGeo] = useState(0);
@@ -286,6 +288,23 @@ export default function Home() {
     if (regionGeo && regionMatched) list = list.filter((c) => regionMatched.has(c.creativeId));
     return applyClientFilters(list, { preset, dateFrom, dateTo, fmt, formatById: formatById || undefined });
   }, [baseCreatives, regionGeo, regionMatched, preset, dateFrom, dateTo, fmt, formatById]);
+
+  const sortedCreatives = useMemo(() => {
+    if (!gSort) return creatives;
+    const { key, dir } = gSort;
+    const arr = [...creatives];
+    if (key === 'format') {
+      const f = (c: (typeof creatives)[number]) => formatById?.[c.creativeId] || c.assetType || '';
+      arr.sort((a, b) => (dir === 'asc' ? f(a).localeCompare(f(b)) : f(b).localeCompare(f(a))));
+    } else {
+      const v = (c: (typeof creatives)[number]) =>
+        key === 'time'
+          ? c.lastShown ?? c.firstShown ?? 0
+          : regionsById?.[c.creativeId]?.length ?? c.regionCount ?? 0;
+      arr.sort((a, b) => (dir === 'asc' ? v(a) - v(b) : v(b) - v(a)));
+    }
+    return arr;
+  }, [creatives, gSort, regionsById, formatById]);
 
   useEffect(() => {
     setGPage(1);
@@ -394,7 +413,7 @@ export default function Home() {
     if (v === 'table' && !collectDone && !exportBusy) await ensureCollected();
   }
 
-  const pagedCreatives = paginate(creatives, gPage, gSize);
+  const pagedCreatives = paginate(sortedCreatives, gPage, gSize);
 
   // Bảng nhiều cột cần ~1440px → bỏ chặn 1180px của .container (xem .container-wide trong globals.css):
   // Aff Library (16 cột) và trang 1 net của Affiliate Nets (/affnet/{net}, 15 cột). Riêng /affnet (danh
@@ -656,6 +675,24 @@ export default function Home() {
                 )}
                 <button type="button" className={view === 'card' ? 'active' : ''} onClick={() => onSwitchView('card')}>▦ Thẻ</button>
                 <button type="button" className={view === 'table' ? 'active' : ''} onClick={() => onSwitchView('table')}>▤ Bảng</button>
+                <select
+                  className="ghost"
+                  value={gSort ? `${gSort.key}-${gSort.dir}` : ''}
+                  onChange={(e) => {
+                    setGPage(1);
+                    const v = e.target.value;
+                    if (!v) { setGSort(null); return; }
+                    const [key, dir] = v.split('-');
+                    setGSort({ key: key as 'time' | 'format' | 'region', dir: dir as 'asc' | 'desc' });
+                  }}
+                >
+                  <option value="">↕ Sắp xếp…</option>
+                  <option value="time-desc">Thời gian: mới nhất</option>
+                  <option value="time-asc">Thời gian: cũ nhất</option>
+                  <option value="format-asc">Định dạng (nhóm)</option>
+                  <option value="region-desc">Vùng: nhiều nhất</option>
+                  <option value="region-asc">Vùng: ít nhất</option>
+                </select>
                 {view === 'table' && exportProg && <span className="m">{exportProg}</span>}
               </div>
               {creatives.length > 0 && (
