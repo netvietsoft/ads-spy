@@ -103,14 +103,14 @@ export function FacebookPanel() {
   const [ppPage, setPpPage] = useState(1);
   const [ppSize, setPpSize] = useState(50);
   // Sort bảng bài viết theo số lượng (reactions/comments/shares/total), bấm header đổi chiều ▲▼.
-  const [ppSort, setPpSort] = useState<{ key: 'reactions' | 'comments' | 'shares' | 'total'; dir: 'asc' | 'desc' } | null>(null);
+  const [ppSort, setPpSort] = useState<{ key: 'reactions' | 'comments' | 'shares' | 'total' | 'time'; dir: 'asc' | 'desc' } | null>(null);
   const sortedPosts = useMemo(() => {
     const list = posts?.posts ?? [];
     if (!ppSort) return list;
     const k = ppSort.key;
     return [...list].sort((a, b) => (ppSort.dir === 'asc' ? (a[k] || 0) - (b[k] || 0) : (b[k] || 0) - (a[k] || 0)));
   }, [posts, ppSort]);
-  function toggleSort(key: 'reactions' | 'comments' | 'shares' | 'total') {
+  function toggleSort(key: 'reactions' | 'comments' | 'shares' | 'total' | 'time') {
     setPpPage(1);
     setPpSort((s) => (s && s.key === key ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' } : { key, dir: 'desc' }));
   }
@@ -398,7 +398,7 @@ export function FacebookPanel() {
                     <th>Thumb</th>
                     <th style={{ textAlign: 'center' }} title="Bài đang chạy quảng cáo">QC</th>
                     <th>Nội dung bài</th>
-                    <th>Ngày đăng</th>
+                    <th style={{ cursor: 'pointer' }} onClick={() => toggleSort('time')}>Ngày đăng{sortArrow('time')}</th>
                     <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleSort('reactions')}>❤️ Reactions{sortArrow('reactions')}</th>
                     <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleSort('comments')}>💬 Bình luận{sortArrow('comments')}</th>
                     <th style={{ textAlign: 'right', cursor: 'pointer' }} onClick={() => toggleSort('shares')}>🔁 Chia sẻ{sortArrow('shares')}</th>
