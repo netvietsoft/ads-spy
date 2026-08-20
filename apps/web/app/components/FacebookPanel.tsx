@@ -393,12 +393,14 @@ export function FacebookPanel() {
                   <span className="m">⬇ Xuất {sortedPosts.length} bài:</span>
                   <button className="ghost" type="button" onClick={() => onExportPosts('csv')}>CSV</button>
                   <button className="ghost" type="button" onClick={() => onExportPosts('txt')}>TXT</button>
-                  <label className="m" style={{ display: 'inline-flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={ppOnlyThumb} onChange={(e) => { setPpPage(1); setPpOnlyThumb(e.target.checked); }} /> Có thumb
-                  </label>
-                  <label className="m" style={{ display: 'inline-flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={ppOnlyQC} onChange={(e) => { setPpPage(1); setPpOnlyQC(e.target.checked); }} /> QC
-                  </label>
+                  <select className="ghost" value={ppOnlyThumb ? 'thumb' : 'all'} onChange={(e) => { setPpPage(1); setPpOnlyThumb(e.target.value === 'thumb'); }}>
+                    <option value="all">Thumb: tất cả</option>
+                    <option value="thumb">Chỉ có thumb</option>
+                  </select>
+                  <select className="ghost" value={ppOnlyQC ? 'qc' : 'all'} onChange={(e) => { setPpPage(1); setPpOnlyQC(e.target.value === 'qc'); }}>
+                    <option value="all">QC: tất cả</option>
+                    <option value="qc">Chỉ có QC</option>
+                  </select>
                   <Paginator total={sortedPosts.length} page={ppPage} pageSize={ppSize} onPage={setPpPage} onPageSize={setPpSize} />
                 </div>
               )}
