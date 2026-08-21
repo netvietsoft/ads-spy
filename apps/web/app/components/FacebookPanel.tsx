@@ -97,6 +97,8 @@ export function FacebookPanel() {
   const [scanHistory, setScanHistory] = useState<FbScanHistory[]>([]);
   const [postsSaved, setPostsSaved] = useState(false);
   const [scanPhase, setScanPhase] = useState<string>('');
+  const [elapsed, setElapsed] = useState(0); // đồng hồ (giây) cho lượt quét đang chạy
+  const [fullRunning, setFullRunning] = useState(false); // đang chạy chế độ "Lấy hết"
   // phân trang: ads 100/trang, bài viết 50/trang, report 100/trang
   const [adsPage, setAdsPage] = useState(1);
   const [adsSize, setAdsSize] = useState(100);
@@ -162,15 +164,19 @@ export function FacebookPanel() {
   }
 
   // Quét DẦN: start job rồi poll, hiện kết quả tăng dần.
-  async function runPosts() {
+  async function runPosts(full = false) {
     if (!postsPage.trim()) return;
     setLoading(true);
     setErr(null);
     setPostsSaved(false);
     setPosts(null);
     setScanPhase('scanning');
+    setFullRunning(full);
+    setElapsed(0);
+    const t0 = Date.now();
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
     try {
-      const { jobId } = await fbPagePostsStart(postsPage.trim(), fromDate || undefined, toDate || undefined);
+      const { jobId } = await fbPagePostsStart(postsPage.trim(), fromDate || undefined, toDate || undefined, undefined, full);
       // poll
       for (;;) {
         await new Promise((r) => setTimeout(r, 1500));
@@ -191,8 +197,10 @@ export function FacebookPanel() {
     } catch (e: any) {
       setErr(e.message || 'Lỗi quét bài viết');
     } finally {
+      clearInterval(timer);
       setLoading(false);
       setScanPhase('');
+      setFullRunning(false);
     }
   }
 
@@ -342,6 +350,15 @@ export function FacebookPanel() {
             <button className="primary" disabled={loading}>
               {loading ? <span className="spinner" /> : 'Quét bài viết'}
             </button>
+            <button
+              className="ghost"
+              type="button"
+              disabled={loading}
+              onClick={() => runPosts(true)}
+              title="Cào tới bài cũ nhất (hoặc tới mốc Từ ngày) — chạy nền, có thể vài phút"
+            >
+              ⏬ Lấy hết
+            </button>
           </form>
           <div className="daterow">
             <label>Từ ngày</label>
@@ -374,6 +391,8 @@ export function FacebookPanel() {
                 : scanPhase === 'enriching'
                   ? `Đang lấy comment/share thật cho top bài… (đã có ${posts?.count ?? 0} bài)`
                   : `Đang cuộn & quét… (đã thấy ${posts?.count ?? 0} bài, hiện dần)`}
+              {' · ⏱ '}{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+              {fullRunning && ' · chế độ Lấy hết (tới bài cũ nhất, có thể nhiều phút — cứ để chạy nền)'}
             </p>
           )}
           {posts && (

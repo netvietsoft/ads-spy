@@ -310,6 +310,7 @@ export class FbPlaywrightService implements OnModuleDestroy {
     fromTs?: number,
     toTs?: number,
     onProgress?: (posts: FbPost[]) => void,
+    full = false,
   ): Promise<FbPagePostsResult> {
     const context = await this.getContext();
     const loggedIn = (await context.cookies()).some((c) => c.name === 'c_user');
@@ -363,16 +364,24 @@ export class FbPlaywrightService implements OnModuleDestroy {
       //  · DỪNG chỉ khi VỪA không ra bài mới VỪA chiều cao trang KHÔNG tăng (grew) qua nhiều nhịp liên
       //    tiếp — mạnh hơn hẳn "chỉ đếm post đứng yên" (feed comet nạp trễ → 1 nhịp trống ≠ hết feed);
       //  · giữ early-break khi bài cũ nhất đã qua fromTs (đã bao trọn khoảng ngày) + trần thời gian chống treo.
-      const maxScroll = filtering ? 400 : 300; // backstop — thực tế deadline 6' mới là giới hạn thật
+      // full ("Lấy hết"): cào tới khi feed HẾT thật / qua mốc fromDate / chạm trần 45'. Thường (không full):
+      // trần 6' + dừng khi đủ limit. maxScroll chỉ là backstop, deadline mới là giới hạn thật.
+      const maxScroll = full ? 3000 : filtering ? 400 : 300;
       const STALE_LIMIT = 6; // cần 6 nhịp liên tiếp không-ra-bài-VÀ-không-cao-thêm mới coi là hết feed
-      const deadline = Date.now() + 6 * 60_000; // trần 6 phút/lượt
+      const deadline = Date.now() + (full ? 45 : 6) * 60_000;
       let prev = 0;
       let stale = 0;
       let lastHeight = 0;
+      let lastPushed = -1;
       for (let i = 0; i < maxScroll; i++) {
         const cur = collect();
-        if (onProgress) onProgress(this.applyFilterSort(cur, fromTs, toTs, limit));
-        if (!filtering && cur.length >= limit) break; // đủ số yêu cầu (limit = "cả page")
+        // Throttle stream: full chỉ đẩy tiến độ mỗi +50 bài (tránh payload nghìn-bài mỗi nhịp poll). Kết quả
+        // CUỐI luôn đầy đủ (return applyFilterSort(collect()) ở dưới) — throttle chỉ ảnh hưởng hiển thị dần.
+        if (onProgress && cur.length - lastPushed >= (full ? 50 : 1)) {
+          onProgress(this.applyFilterSort(cur, fromTs, toTs, limit));
+          lastPushed = cur.length;
+        }
+        if (!full && !filtering && cur.length >= limit) break; // full: KHÔNG dừng theo số — lấy tới hết feed
         if (filtering && fromTs && cur.length) {
           const oldest = Math.min(...cur.filter((p) => p.time).map((p) => p.time!));
           if (isFinite(oldest) && oldest < fromTs) break; // đã bao trọn khoảng ngày

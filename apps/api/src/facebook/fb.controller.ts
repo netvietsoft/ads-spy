@@ -78,15 +78,18 @@ export class FbController {
     @Query('limit') limit?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('full') full?: string,
   ) {
     if (!pg || !pg.trim()) throw new BadRequestException('Vui lòng nhập link/tên Page.');
-    const n = Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 1000);
+    const isFull = full === '1' || full === 'true';
+    // full = "Lấy hết": không cắt số (limit rất lớn) → dừng khi feed hết/qua mốc/trần 45'.
+    const n = isFull ? 100000 : Math.min(Math.max(parseInt(limit || '40', 10) || 40, 5), 1000);
     const toUnix = (d: string | undefined, endOfDay: boolean): number | undefined => {
       if (!d) return undefined;
       const ms = Date.parse(`${d}T${endOfDay ? '23:59:59' : '00:00:00'}Z`);
       return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
     };
-    return this.fb.startPagePosts(pg.trim(), n, toUnix(from, false), toUnix(to, true), from, to);
+    return this.fb.startPagePosts(pg.trim(), n, toUnix(from, false), toUnix(to, true), from, to, isFull);
   }
 
   @Roles('admin', 'manager', 'user')

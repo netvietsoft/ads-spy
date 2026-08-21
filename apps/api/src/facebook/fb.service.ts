@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { FbPlaywrightService } from './fb.playwright.service';
 import { FbAd, FbPagePostsResult, FbPost, FbSearchResult } from './fb.types';
@@ -88,6 +88,7 @@ export class FbService {
 
   // ---- Quét dần (progressive) + lấy comment/share thật cho top bài ----
   private jobs = new Map<string, any>();
+  private fullBusy = false; // chỉ cho 1 lượt "Lấy hết" (full) chạy 1 lúc — giữ browser lâu, tránh FB soi
 
   startPagePosts(
     page: string,
@@ -96,7 +97,12 @@ export class FbService {
     toTs?: number,
     fromDate?: string,
     toDate?: string,
+    full = false,
   ): { jobId: string } {
+    if (full && this.fullBusy) {
+      throw new ConflictException('Đang có 1 lượt "Lấy hết" chạy — đợi xong rồi thử lại.');
+    }
+    if (full) this.fullBusy = true;
     const jobId = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const job: any = { jobId, page, phase: 'scanning', done: false, error: null, posts: [], count: 0, scanId: null };
     this.jobs.set(jobId, job);
@@ -106,7 +112,7 @@ export class FbService {
         const res = await this.scraper.pagePosts(page, limit, fromTs, toTs, (partial) => {
           job.posts = partial;
           job.count = partial.length;
-        });
+        }, full);
         job.posts = res.posts;
         job.count = res.posts.length;
 
@@ -178,6 +184,7 @@ export class FbService {
         job.phase = 'error';
         job.done = true;
       }
+      if (full) this.fullBusy = false; // nhả khoá "Lấy hết" cho lượt sau
       // dọn job cũ sau 10 phút
       setTimeout(() => this.jobs.delete(jobId), 600000);
     })();

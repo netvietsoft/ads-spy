@@ -390,10 +390,12 @@ export async function fbPagePostsStart(
   from?: string,
   to?: string,
   limit = 500, // "cả page" — trước 60 là bức tường thật sự khiến chỉ lấy được 60 bài
+  full = false, // "Lấy hết": job nền dài, cào tới bài cũ nhất / tới mốc ngày (trần 45'), không cắt số
 ): Promise<{ jobId: string }> {
   const qs = new URLSearchParams({ page, limit: String(limit) });
   if (from) qs.set('from', from);
   if (to) qs.set('to', to);
+  if (full) qs.set('full', '1');
   return jsonOrThrow(await fetch(`${API}/api/fb/page-posts/start?${qs.toString()}`, { method: 'POST' }));
 }
 export async function fbPagePostsJob(jobId: string): Promise<FbPostsJob> {
