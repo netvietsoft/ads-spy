@@ -178,22 +178,29 @@ export class GoogleClient {
   }
 
   // Gọi 1 lần, không retry, qua dispatcher chỉ định.
-  private async rpcOnce(service: string, method: string, freq: string, dispatcher: any): Promise<any> {
+  private async rpcOnce(service: string, method: string, freq: string, dispatcher: any, timeoutMs = 12000): Promise<any> {
     const url = `${BASE}/${service}/${method}?authuser=0`;
     const body = new URLSearchParams();
     body.set('f.req', freq);
 
+    // TIMEOUT bắt buộc: trước đây thiếu → proxy chết/treo làm fetch treo (undici mặc định rất lâu),
+    // job gom 200 detail dính vài proxy treo là "rất lâu". Abort để đổi proxy khác nhanh.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     let text: string;
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: buildHeaders(),
         body: body.toString(),
+        signal: ctrl.signal,
         ...(dispatcher ? { dispatcher } : {}),
       } as any);
       text = await res.text();
     } catch (e) {
       throw new GoogleBlockedError(`Không gọi được Google API: ${(e as Error).message}`);
+    } finally {
+      clearTimeout(timer);
     }
 
     // Google chặn IP → 302 /sorry. Retry vô ích với CÙNG ip, nhưng nếu có nhiều proxy thì đổi proxy → cho retry.
@@ -220,15 +227,18 @@ export class GoogleClient {
   }
 
   // Gọi có retry: QUAY VÒNG proxy khi bị chặn/lỗi.
-  private async rpc(service: string, method: string, freq: string): Promise<any> {
+  private async rpc(service: string, method: string, freq: string, opts?: { maxAttempts?: number; timeoutMs?: number }): Promise<any> {
     await this.ensureProxy();
     const n = this.dispatchers.length;
-    const maxAttempts = n > 0 ? Math.min(n, 16) : RETRY_DELAYS_MS.length + 1; // xoay tới 16 proxy/lần (trước 6 — quá ít khi có 32 proxy mà nhiều cái bị Google throttle)
+    // Search: mặc định 16 (bền, người dùng chờ). Bulk gom detail: truyền maxAttempts nhỏ (fail-fast) vì
+    // detail lỗi chỉ để trống 1 ad, KHÔNG nên retry 16 lần × 200 ad = rất lâu.
+    const cap = opts?.maxAttempts ?? 16;
+    const maxAttempts = n > 0 ? Math.min(n, cap) : RETRY_DELAYS_MS.length + 1;
     let lastErr: any;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const disp = n > 0 ? this.dispatchers[this.idx % n] : null;
       try {
-        const r = await this.rpcOnce(service, method, freq, disp);
+        const r = await this.rpcOnce(service, method, freq, disp, opts?.timeoutMs);
         if (n > 0) this.idx = (this.idx + 1) % n; // round-robin cho lần sau
         return r;
       } catch (e) {
@@ -263,11 +273,16 @@ export class GoogleClient {
     return parseSearchCreatives(json);
   }
 
-  async getCreativeById(advertiserId: string, creativeId: string): Promise<CreativeDetail> {
+  async getCreativeById(
+    advertiserId: string,
+    creativeId: string,
+    opts?: { maxAttempts?: number; timeoutMs?: number },
+  ): Promise<CreativeDetail> {
     const json = await this.rpc(
       'LookupService',
       'GetCreativeById',
       reqGetCreativeById(advertiserId, creativeId),
+      opts,
     );
     return parseCreativeDetail(json);
   }

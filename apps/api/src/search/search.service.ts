@@ -271,13 +271,13 @@ export class SearchService {
     this.regionJobs.set(jobId, job);
 
     void (async () => {
-      const CONC = 5;
+      const CONC = 8; // song song nhiều hơn (trước 5) → job bulk detail nhanh hơn
       for (let i = 0; i < slice.length; i += CONC) {
         const batch = slice.slice(i, i + CONC);
         await Promise.all(
           batch.map(async (it) => {
             try {
-              const d = await this.google.getCreativeById(it.advertiserId, it.creativeId);
+              const d = await this.google.getCreativeById(it.advertiserId, it.creativeId, { maxAttempts: 3, timeoutMs: 8000 });
               if (d.regions.includes(geo)) job.matchedIds.push(it.creativeId);
             } catch {
               /* bỏ ad lỗi */
@@ -315,13 +315,14 @@ export class SearchService {
     this.regionJobs.set(jobId, job);
 
     void (async () => {
-      const CONC = 5;
+      const CONC = 8; // song song nhiều hơn (trước 5) → job bulk detail nhanh hơn
       for (let i = 0; i < slice.length; i += CONC) {
         const batch = slice.slice(i, i + CONC);
         await Promise.all(
           batch.map(async (it) => {
             try {
-              const d = await this.google.getCreativeById(it.advertiserId, it.creativeId);
+              // Fail-fast: detail lỗi chỉ để trống 1 ad → chỉ thử 3 proxy, timeout 8s (không retry 16×200).
+              const d = await this.google.getCreativeById(it.advertiserId, it.creativeId, { maxAttempts: 3, timeoutMs: 8000 });
               job.regionsById[it.creativeId] = d.regions;
               job.formatById[it.creativeId] = d.format;
               // Domain từ DETAIL (quét sâu raw) — nguồn cho TEXT ad (không content.js). Embed sẽ override
@@ -331,7 +332,7 @@ export class SearchService {
               // Chỉ ad ĐỘNG (embed) mới có content.js; ad text/ảnh (simgad) lấy domain qua OCR lúc search.
               const cjUrl = d.variants.find((v) => v.assetType === 'embed')?.assetUrl;
               if (cjUrl) {
-                const body = await this.google.fetchTextThroughProxy(cjUrl, 8000).catch(() => '');
+                const body = await this.google.fetchTextThroughProxy(cjUrl, 5000).catch(() => '');
                 const dom = extractAdDomain(body);
                 if (dom) job.domainById[it.creativeId] = dom;
                 // Thumbnail: trích TỪ CÙNG body này (0 fetch thêm) → card dùng thumbById, khỏi gọi
