@@ -259,8 +259,8 @@ export default function Home() {
 
   const [gPage, setGPage] = useState(1);
   const [gSize, setGSize] = useState(100);
-  // Sort kết quả/đã-lưu theo thời gian (lastShown) / định dạng (format) / vùng (số vùng).
-  const [gSort, setGSort] = useState<{ key: 'time' | 'format' | 'region'; dir: 'asc' | 'desc' } | null>(null);
+  // Sort kết quả/đã-lưu theo thời gian (lastShown) / vùng (số vùng). Định dạng là bộ LỌC riêng, không sort.
+  const [gSort, setGSort] = useState<{ key: 'time' | 'region'; dir: 'asc' | 'desc' } | null>(null);
 
   // Lọc theo vùng (B)
   const [regionGeo, setRegionGeo] = useState(0);
@@ -293,18 +293,13 @@ export default function Home() {
     if (!gSort) return creatives;
     const { key, dir } = gSort;
     const arr = [...creatives];
-    if (key === 'format') {
-      const f = (c: (typeof creatives)[number]) => formatById?.[c.creativeId] || c.assetType || '';
-      arr.sort((a, b) => (dir === 'asc' ? f(a).localeCompare(f(b)) : f(b).localeCompare(f(a))));
-    } else {
-      const v = (c: (typeof creatives)[number]) =>
-        key === 'time'
-          ? c.lastShown ?? c.firstShown ?? 0
-          : regionsById?.[c.creativeId]?.length ?? c.regionCount ?? 0;
-      arr.sort((a, b) => (dir === 'asc' ? v(a) - v(b) : v(b) - v(a)));
-    }
+    const v = (c: (typeof creatives)[number]) =>
+      key === 'time'
+        ? c.lastShown ?? c.firstShown ?? 0
+        : regionsById?.[c.creativeId]?.length ?? c.regionCount ?? 0;
+    arr.sort((a, b) => (dir === 'asc' ? v(a) - v(b) : v(b) - v(a)));
     return arr;
-  }, [creatives, gSort, regionsById, formatById]);
+  }, [creatives, gSort, regionsById]);
 
   useEffect(() => {
     setGPage(1);
@@ -510,7 +505,7 @@ export default function Home() {
           <select className="fbselect" value={fmt} onChange={(e) => onPickFormat(e.target.value as FormatFilter)} disabled={exportBusy}>
             <option value="all">Tất cả</option>
             <option value="text">Text</option>
-            <option value="image">Image</option>
+            <option value="image">Ảnh</option>
             <option value="video">Video</option>
           </select>
         </label>
@@ -683,13 +678,12 @@ export default function Home() {
                     const v = e.target.value;
                     if (!v) { setGSort(null); return; }
                     const [key, dir] = v.split('-');
-                    setGSort({ key: key as 'time' | 'format' | 'region', dir: dir as 'asc' | 'desc' });
+                    setGSort({ key: key as 'time' | 'region', dir: dir as 'asc' | 'desc' });
                   }}
                 >
                   <option value="">↕ Sắp xếp…</option>
                   <option value="time-desc">Thời gian: mới nhất</option>
                   <option value="time-asc">Thời gian: cũ nhất</option>
-                  <option value="format-asc">Định dạng (nhóm)</option>
                   <option value="region-desc">Vùng: nhiều nhất</option>
                   <option value="region-asc">Vùng: ít nhất</option>
                 </select>
