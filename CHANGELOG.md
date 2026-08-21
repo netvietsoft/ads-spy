@@ -4,6 +4,31 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-21 — FB: quét SÂU + đếm engagement đúng + "Lấy hết" chạy nền · Google sort
+
+Chi tiết: [`docs/handoff-2026-08-21-fb-quet-sau-engagement-lay-het.md`](docs/handoff-2026-08-21-fb-quet-sau-engagement-lay-het.md).
+
+- **Bỏ cap 60 bài** — FE `limit 60→500`, controller `80→1000`. Vòng cuộn `pagePosts` mượn kỹ thuật tool
+  tải-ảnh-cả-page: `scrollTo(scrollHeight)` + `wheel(25000)`, dừng khi VỪA không ra bài VỪA chiều cao không
+  tăng qua 6 nhịp (thay bug cũ dừng sau 1 nhịp trống).
+- **Stealth** — thêm `playwright-extra` + `puppeteer-extra-plugin-stealth` (giữ persistent context) →
+  `navigator.webdriver=false`, FB phục vụ feed sâu hơn. E2E `2Fleursvn`: 150 bài mượt.
+- **Đếm reaction/comment/share ĐÚNG** — parser chốt post ở object FEEDBACK CANONICAL
+  (`comet_ufi_summary_and_actions_renderer`) thay vì leaf reaction-icon (thiếu comment/share → cũ ra
+  comment/share=0 + reaction bài đúng bài sai). Reaction/share deep-find trong summary-renderer + BỎ nhánh
+  comment_rendering_instance (không đếm "của user"); comment từ `comments.total_count`. Enrichment chỉ ghi
+  đè khi lớn hơn. E2E HAGOO: top 6501 react · 550 cmt · 225 share.
+- **Part A (nền job dài)** — parse tăng dần (bỏ chunks[] O(n²)) + chia lô insert 500 (SQLite trần biến).
+- **Part B — nút "⏬ Lấy hết" chạy nền** — `full=1`: trần 45', không cắt số, dừng khi feed hết / qua
+  fromDate. Chống chồng (fullBusy). Tự lưu DB → đóng tab vẫn chạy tới hết. (Chưa verify chạy thật — IP local
+  bị FB throttle; verify trên dpboss.pet.)
+- **UI mobile FB** — mỗi dòng thành card (`≤760px`); ô select Sắp xếp; lọc Thumb/QC dạng select; QC hiện
+  "Quảng cáo" xanh trên card.
+- **Google `/googleads`** — sort kết quả/đã-lưu theo Thời gian / Vùng; Định dạng tách riêng thành ô LỌC
+  (Text/Ảnh/Video), không nhét vào sort.
+
+---
+
 ## 2026-08-19 — Xem kết quả Google dạng BẢNG (10 cột như file xuất)
 
 Thêm nút chuyển **▦ Thẻ / ▤ Bảng** ở vùng kết quả. Bảng dựng từ CHÍNH `buildExportRows` (10 cột: Domain ·
