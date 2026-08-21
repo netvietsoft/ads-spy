@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Advertiser,
@@ -43,12 +43,14 @@ import { applyClientFilters, FormatFilter } from './filters';
 import { buildExportRows, toCsv, toTxt, downloadTextFile } from './exportGoogle';
 
 // Thumbnail cho quảng cáo ĐỘNG (embed): thử ảnh (YouTube/ảnh trích từ content.js); lỗi → placeholder cũ.
-function EmbedThumb({ url }: { url: string }) {
+function EmbedThumb({ url, thumb }: { url: string; thumb?: string }) {
   const [err, setErr] = useState(false);
   if (err) return <div className="embed">▶ Quảng cáo động — bấm để xem</div>;
+  // Có thumb GOM SẴN (từ job collect) → proxy ảnh nhẹ same-origin (assetProxy), khỏi decode content.js
+  // per-card. Chưa gom → fallback /creative-thumb (fetch content.js live — kém tin ở quy mô nhiều card).
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <img src={thumbProxy(url)} alt="thumbnail" loading="lazy" onError={() => setErr(true)} />
+      <img src={thumb ? assetProxy(thumb) : thumbProxy(url)} alt="thumbnail" loading="lazy" onError={() => setErr(true)} />
       <span
         style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -272,6 +274,8 @@ export default function Home() {
   const [regionsById, setRegionsById] = useState<Record<string, number[]> | null>(null);
   const [formatById, setFormatById] = useState<Record<string, string> | null>(null);
   const [domainById, setDomainById] = useState<Record<string, string> | null>(null); // domain gom từ content.js
+  const [thumbById, setThumbById] = useState<Record<string, string> | null>(null); // thumbnail ad động gom sẵn
+  const collectedFor = useRef<unknown>(null); // đánh dấu result-set đã auto-gom (tránh gom lại)
   const [collectDone, setCollectDone] = useState(false); // đã gom XONG toàn bộ detail chưa (để cache)
   const [view, setView] = useState<'card' | 'table'>('card'); // thẻ hay bảng
   const [advCollapsed, setAdvCollapsed] = useState(false); // thu gọn panel Nhà quảng cáo bên trái
@@ -312,8 +316,20 @@ export default function Home() {
     setRegionsById(null);
     setFormatById(null);
     setDomainById(null);
+    setThumbById(null);
     setCollectDone(false);
     setExportProg('');
+  }, [data]);
+
+  // Tự GOM chi tiết (vùng + định dạng + domain + THUMBNAIL) 1 lần cho mỗi kết quả → card hiện thumbnail
+  // ĐÁNG TIN (job kiểm soát CONC=5, gom 1 lần) thay vì mỗi card tự fetch /creative-thumb (nhiều card =
+  // nhiều fetch content.js đồng thời → proxy quá tải → 404). Ref-guard theo `data` để không gom lại.
+  useEffect(() => {
+    if (data && collectedFor.current !== data && baseCreatives.length && !exportBusy) {
+      collectedFor.current = data;
+      void ensureCollected();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   async function applyRegionFilter(geo: number) {
@@ -351,11 +367,11 @@ export default function Home() {
   // Gom vùng cho cột Quốc gia (một lần, cache vào regionsById). Chạy job mở chi tiết từng creative.
   // Gom MỘT lần từ detail của từng creative: vùng (cột Quốc gia) + định dạng THẬT (field 8). Cache cả 2.
   // Gom trên baseCreatives (toàn bộ đã tải) để lọc/xuất theo định dạng thật đều dùng được.
-  type Collected = { regionsById: Record<string, number[]>; formatById: Record<string, string>; domainById: Record<string, string> };
+  type Collected = { regionsById: Record<string, number[]>; formatById: Record<string, string>; domainById: Record<string, string>; thumbById: Record<string, string> };
   async function ensureCollected(): Promise<Collected> {
-    if (collectDone && regionsById && formatById) return { regionsById, formatById, domainById: domainById || {} };
+    if (collectDone && regionsById && formatById) return { regionsById, formatById, domainById: domainById || {}, thumbById: thumbById || {} };
     const items = baseCreatives.map((c) => ({ advertiserId: c.advertiserId, creativeId: c.creativeId }));
-    if (!items.length) return { regionsById: {}, formatById: {}, domainById: {} };
+    if (!items.length) return { regionsById: {}, formatById: {}, domainById: {}, thumbById: {} };
     setExportBusy(true);
     setExportProg('Đang gom dữ liệu (mở chi tiết từng quảng cáo)…');
     try {
@@ -372,14 +388,15 @@ export default function Home() {
         setRegionsById({ ...j.regionsById });
         setFormatById({ ...j.formatById });
         setDomainById({ ...j.domainById });
+        setThumbById({ ...j.thumbById });
         setExportProg(`Đang gom: ${j.checked}/${j.total}…`);
         if (j.done) {
           setCollectDone(true);
           setExportProg('');
-          return { regionsById: j.regionsById, formatById: j.formatById, domainById: j.domainById };
+          return { regionsById: j.regionsById, formatById: j.formatById, domainById: j.domainById, thumbById: j.thumbById };
         }
       }
-      return { regionsById: {}, formatById: {}, domainById: {} };
+      return { regionsById: {}, formatById: {}, domainById: {}, thumbById: {} };
     } finally {
       setExportBusy(false);
     }
@@ -704,7 +721,7 @@ export default function Home() {
                       {c.assetType === 'image' && c.assetUrl ? (
                         <img src={assetProxy(c.assetUrl)} alt={c.advertiserName} loading="lazy" />
                       ) : c.assetType === 'embed' && c.assetUrl ? (
-                        <EmbedThumb url={c.assetUrl} />
+                        <EmbedThumb url={c.assetUrl} thumb={thumbById?.[c.creativeId]} />
                       ) : (
                         <div className="embed">{c.assetType}</div>
                       )}

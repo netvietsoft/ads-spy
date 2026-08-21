@@ -3,7 +3,7 @@ import { GoogleClient } from '../google/google.client';
 import { PrismaService } from '../prisma.service';
 import { parseAdvertisers } from '../google/response.parser';
 import { ocrImageToDomain } from '../google/ocr';
-import { extractAdDomain } from '../google/content-js';
+import { extractAdDomain, pickImageUrl, pickYoutubeId } from '../google/content-js';
 import {
   Advertiser,
   CreativeBrief,
@@ -24,7 +24,11 @@ function planPages(maxResults: number): { cap: number; maxPages: number } {
 }
 const ALLOWED_ASSET_HOSTS = [
   'tpc.googlesyndication.com',
+  'googlesyndication.com',
   'googleusercontent.com',
+  'ytimg.com', // thumbnail video YouTube (i.ytimg.com/vi/ID) — thumb ad động gom sẵn
+  'ggpht.com', // ảnh Google (pickImageUrl)
+  'doubleclick.net', // ảnh quảng cáo Google (pickImageUrl)
   'fbcdn.net', // ảnh/video quảng cáo Facebook
   'tiktokcdn.com', // ảnh/video TikTok
   'tiktokcdn-us.com',
@@ -304,6 +308,7 @@ export class SearchService {
       regionsById: {} as Record<string, number[]>,
       formatById: {} as Record<string, string>, // định dạng THẬT (field 8) — cùng lần mở detail
       domainById: {} as Record<string, string>, // domain đích trích từ content.js (cho search theo advertiser)
+      thumbById: {} as Record<string, string>, // thumbnail ad ĐỘNG (YouTube/ảnh) — gom 1 lần, card khỏi fetch per-card
       done: false,
       error: null,
     };
@@ -326,6 +331,11 @@ export class SearchService {
                 const body = await this.google.fetchTextThroughProxy(cjUrl, 8000).catch(() => '');
                 const dom = extractAdDomain(body);
                 if (dom) job.domainById[it.creativeId] = dom;
+                // Thumbnail: trích TỪ CÙNG body này (0 fetch thêm) → card dùng thumbById, khỏi gọi
+                // /creative-thumb per-card (100 card = 100 fetch content.js đồng thời → proxy quá tải → 404).
+                const vid = pickYoutubeId(body);
+                const thumb = vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : pickImageUrl(body);
+                if (thumb) job.thumbById[it.creativeId] = thumb;
               }
             } catch {
               job.regionsById[it.creativeId] = []; // ad lỗi/throttle → để trống, không chặn cả job

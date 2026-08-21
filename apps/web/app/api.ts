@@ -159,6 +159,7 @@ export interface RegionCollectJob {
   regionsById: Record<string, number[]>;
   formatById: Record<string, string>; // định dạng THẬT (text/image/video) từ field 8 của detail
   domainById: Record<string, string>; // domain đích trích từ content.js (search theo advertiser)
+  thumbById: Record<string, string>; // thumbnail ad động (gom 1 lần) — card khỏi fetch /creative-thumb per-card
   done: boolean;
   error: string | null;
 }
