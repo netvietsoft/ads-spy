@@ -223,7 +223,7 @@ export class GoogleClient {
   private async rpc(service: string, method: string, freq: string): Promise<any> {
     await this.ensureProxy();
     const n = this.dispatchers.length;
-    const maxAttempts = n > 0 ? Math.min(n, 6) : RETRY_DELAYS_MS.length + 1;
+    const maxAttempts = n > 0 ? Math.min(n, 16) : RETRY_DELAYS_MS.length + 1; // xoay tới 16 proxy/lần (trước 6 — quá ít khi có 32 proxy mà nhiều cái bị Google throttle)
     let lastErr: any;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const disp = n > 0 ? this.dispatchers[this.idx % n] : null;

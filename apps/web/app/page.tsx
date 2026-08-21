@@ -540,7 +540,7 @@ export default function Home() {
       {!data && !suggestions && !err && (
         <p className="hint">
           {mode === 'domain'
-            ? 'Nhập domain → lấy trực tiếp từ Google Ads Transparency. "Số kết quả tối đa" (≤200) quyết định số trang gọi.'
+            ? 'Nhập domain → lấy trực tiếp từ Google Ads Transparency. "Số kết quả tối đa" (≤1000) quyết định số trang gọi.'
             : 'Nhập ID (AR…)/link advertiser → tra thẳng; hoặc nhập TÊN nhà quảng cáo → chọn từ danh sách gợi ý.'}
         </p>
       )}

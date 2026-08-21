@@ -324,6 +324,9 @@ export class SearchService {
               const d = await this.google.getCreativeById(it.advertiserId, it.creativeId);
               job.regionsById[it.creativeId] = d.regions;
               job.formatById[it.creativeId] = d.format;
+              // Domain từ DETAIL (quét sâu raw) — nguồn cho TEXT ad (không content.js). Embed sẽ override
+              // bằng domain content.js chuẩn hơn ở dưới.
+              if (d.domain) job.domainById[it.creativeId] = d.domain;
               // Domain đích: brief search-theo-advertiser thiếu domain → giải mã content.js lấy (như Tool mmo).
               // Chỉ ad ĐỘNG (embed) mới có content.js; ad text/ảnh (simgad) lấy domain qua OCR lúc search.
               const cjUrl = d.variants.find((v) => v.assetType === 'embed')?.assetUrl;

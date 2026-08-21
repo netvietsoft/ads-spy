@@ -41,6 +41,7 @@ export interface CreativeDetail {
   variants: CreativeVariant[];
   regions: number[]; // mã vùng, vd 2840 = US
   format: AdFormat; // định dạng THẬT từ field 8 (1=text/2=image/3=video)
+  domain?: string; // domain đích trích SÂU từ detail (cho text ad — search-theo-advertiser thiếu node-14)
 }
 
 export interface SearchCreativesResult {
