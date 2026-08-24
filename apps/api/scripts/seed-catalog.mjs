@@ -7,7 +7,9 @@ const upsertModule = (m) => prisma.module.upsert({ where: { key: m.key }, update
 const upsertPlan = (p) => prisma.plan.upsert({ where: { moduleKey_tier: { moduleKey: p.moduleKey, tier: p.tier } }, update: p, create: p });
 
 try {
-  await upsertModule({ key: 'shophunter', name: 'ShopHunter (Shopify)', category: 'ecom', isFree: false, freeFeatures: JSON.stringify({ lookup: true, reports: true }), freeRecordCap: 5, sortOrder: 1 });
+  // shophunter MỞ FREE hoàn toàn cho user (như google/fb/tiktok) — 2026-08-24. Bỏ freemium cap 5 + gói trả phí.
+  // (Plan basic/pro/premium bên dưới vẫn seed nhưng vô hiệu về mặt chặn: isFree=true → resolve trả 'free' full.)
+  await upsertModule({ key: 'shophunter', name: 'ShopHunter (Shopify)', category: 'ecom', isFree: true, freeFeatures: null, freeRecordCap: null, sortOrder: 1 });
   await upsertModule({ key: 'google-ads', name: 'Google Ads Spy', category: 'ads', isFree: true, sortOrder: 2 });
   await upsertModule({ key: 'fb-ads', name: 'Facebook Ads Spy', category: 'ads', isFree: true, sortOrder: 3 });
   await upsertModule({ key: 'tiktok-ads', name: 'TikTok Ads Spy', category: 'ads', isFree: true, sortOrder: 4 });
