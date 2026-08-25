@@ -99,6 +99,10 @@ export function FacebookPanel() {
   const [scanPhase, setScanPhase] = useState<string>('');
   const [elapsed, setElapsed] = useState(0); // đồng hồ (giây) cho lượt quét đang chạy
   const [fullRunning, setFullRunning] = useState(false); // đang chạy chế độ "Lấy hết"
+  const [role, setRole] = useState(''); // ẩn nút xuất với user thường
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((d) => setRole(d?.user?.role || '')).catch(() => {});
+  }, []);
   // phân trang: ads 100/trang, bài viết 50/trang, report 100/trang
   const [adsPage, setAdsPage] = useState(1);
   const [adsSize, setAdsSize] = useState(100);
@@ -409,9 +413,13 @@ export function FacebookPanel() {
               )}
               {posts.posts.length > 0 && (
                 <div className="daterow">
-                  <span className="m">⬇ Xuất {sortedPosts.length} bài:</span>
-                  <button className="ghost" type="button" onClick={() => onExportPosts('csv')}>CSV</button>
-                  <button className="ghost" type="button" onClick={() => onExportPosts('txt')}>TXT</button>
+                  {role !== 'user' && (
+                    <>
+                      <span className="m">⬇ Xuất {sortedPosts.length} bài:</span>
+                      <button className="ghost" type="button" onClick={() => onExportPosts('csv')}>CSV</button>
+                      <button className="ghost" type="button" onClick={() => onExportPosts('txt')}>TXT</button>
+                    </>
+                  )}
                   <select className="ghost" value={ppOnlyThumb ? 'thumb' : 'all'} onChange={(e) => { setPpPage(1); setPpOnlyThumb(e.target.value === 'thumb'); }}>
                     <option value="all">Thumb: tất cả</option>
                     <option value="thumb">Chỉ có thumb</option>

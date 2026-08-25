@@ -138,12 +138,20 @@ export default function Home() {
   const pathname = usePathname();
   const router = useRouter();
   const [source, setSource] = useState<Source>('google');
+  const [role, setRole] = useState(''); // role để gate route staff-only (Local DB) cho user
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((d) => setRole(d?.user?.role || '')).catch(() => {});
+  }, []);
   // URL path → mở đúng tab. Link cũ ?tab=X → redirect sang path mới (tương thích bookmark cũ).
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab');
     if (t && (SOURCE_TO_PATH as Record<string, string>)[t]) { router.replace(SOURCE_TO_PATH[t as Source]); return; }
     setSource(pathToSource(pathname || '/'));
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Local DB CHỈ staff — user (dù gõ thẳng URL /localdb) bị đá về home.
+  useEffect(() => {
+    if (role === 'user' && source === 'localdb') router.replace('/');
+  }, [role, source, router]);
   const [mode, setMode] = useState<'domain' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   // Bộ lọc kiểu Tool mmo — TẤT CẢ lọc client-side trừ maxResults (điều khiển số trang gọi Google).
@@ -436,7 +444,7 @@ export default function Home() {
       {source === 'facebook' && <FacebookPanel />}
       {source === 'tiktok' && <TiktokPanel />}
       {source === 'shophunter' && <ShopHunterPanel />}
-      {source === 'localdb' && <LocalDbPanel subTab={pathname === '/localdb/products' ? 'products' : 'shops'} />}
+      {source === 'localdb' && role !== 'user' && <LocalDbPanel subTab={pathname === '/localdb/products' ? 'products' : 'shops'} />}
       {source === 'track' && <TrackPanel />}
       {source === 'import' && <ImportPanel />}
       {source === 'report' && <ReportPanel />}
@@ -633,13 +641,17 @@ export default function Home() {
           </div>
 
           <div className="daterow">
-            <label>⬇ Xuất kết quả ({creatives.length} ad):</label>
-            <button className="ghost" type="button" onClick={() => onExport('csv')} disabled={exportBusy || !creatives.length}>
-              CSV
-            </button>
-            <button className="ghost" type="button" onClick={() => onExport('txt')} disabled={exportBusy || !creatives.length}>
-              TXT
-            </button>
+            {role !== 'user' && (
+              <>
+                <label>⬇ Xuất kết quả ({creatives.length} ad):</label>
+                <button className="ghost" type="button" onClick={() => onExport('csv')} disabled={exportBusy || !creatives.length}>
+                  CSV
+                </button>
+                <button className="ghost" type="button" onClick={() => onExport('txt')} disabled={exportBusy || !creatives.length}>
+                  TXT
+                </button>
+              </>
+            )}
             {exportBusy && <span className="spinner" />}
             {exportProg && <span className="m">{exportProg}</span>}
             {!exportBusy && !exportProg && (

@@ -16,7 +16,7 @@ const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/p
 // Tab công cụ MỞ cho khách (role user). Ads (free) + Shopify/Local DB/Báo cáo (shophunter, gated).
 const CUSTOMER_NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
-  ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'], ['/reportlocaldb', 'Báo cáo'],
+  ['/shophuntershopify', 'Shopify'], ['/trackshopify', 'Track'], ['/reportlocaldb', 'Báo cáo'],
 ];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
