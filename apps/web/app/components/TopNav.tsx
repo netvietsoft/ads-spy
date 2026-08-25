@@ -16,7 +16,7 @@ const PUBLIC_ROUTES = ['/landing', '/login', '/register', '/reset-password', '/p
 // Tab công cụ MỞ cho khách (role user). Ads (free) + Shopify/Local DB/Báo cáo (shophunter, gated).
 const CUSTOMER_NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
-  ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/reportlocaldb', 'Báo cáo'],
+  ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'], ['/reportlocaldb', 'Báo cáo'],
 ];
 
 // Href của tab đang active theo pathname (mirror pathToSource; /product & /shop coi như Shopify).
@@ -107,7 +107,7 @@ export function TopNav() {
     return (
       <header className="topbar">
         <div className="topbar-inner">
-          <a href={email ? '/shophuntershopify' : '/login'} className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
+          <a href="/" className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
           <div className="topbar-actions">
             {/* TODO(saas): tạm ẩn link Bảng giá — /pricing khóa, phát triển sau */}
             <button type="button" className="cx-ghost" onClick={toggleLang} title="Ngôn ngữ / Language">{lang === 'vi' ? 'EN' : 'VI'}</button>
@@ -139,7 +139,7 @@ export function TopNav() {
   return (
     <header className="topbar">
       <div className="topbar-inner">
-        <h1 className="brand-h">Ads <span className="dot">Spy</span></h1>
+        <a href="/" className="brand-h" style={{ textDecoration: 'none' }}>Ads <span className="dot">Spy</span></a>
         <div className="topbar-actions">
           <button className="ghost navtoggle" type="button" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen} aria-label="Menu">
             <span className="navtoggle-ic">{menuOpen ? '✕' : '☰'}</span>

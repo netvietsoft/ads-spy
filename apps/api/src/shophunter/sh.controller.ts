@@ -145,12 +145,16 @@ export class ShController {
     return { shops: SH_SORTS_SHOPS, products: SH_SORTS_PRODUCTS };
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/check')
   checkDomain(@Query('domain') domain: string) {
     if (!domain || !domain.trim()) throw new BadRequestException('Thiếu domain.');
     return this.svc.checkDomain(domain);
   }
 
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
   @Get('sh/track/history')
   trackHistory() {
     return this.svc.trackHistory();
