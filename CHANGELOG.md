@@ -4,6 +4,25 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-25 — Phân quyền user + cấu hình prod + fix search (thumbnail/domain/proxy/perf)
+
+Chi tiết: [`docs/handoff-2026-08-25-phan-quyen-user-prod-config.md`](docs/handoff-2026-08-25-phan-quyen-user-prod-config.md).
+
+- **Thumbnail card Google** — gom SẴN trong job collect (từ cùng body content.js) thay vì fetch
+  `/creative-thumb` per-card (100 card = 100 fetch → proxy quá tải → 404). Whitelist asset thêm ytimg/ggpht/…
+- **Domain text-ad** — `parseCreativeDetail` quét sâu raw detail lấy domain non-Google (search-theo-advertiser
+  thiếu node-14). Hint domain search "≤200"→"≤1000".
+- **Proxy/perf gom+xuất** — `rpcOnce` TRƯỚC thiếu timeout → proxy treo làm job gom "rất lâu". Thêm timeout
+  12s; tách retry: search=16/lần, bulk gom detail=fail-fast 3 + timeout 8s; CONC 5→8.
+- **Shopify (shophunter) FREE cho user** — `Module.isFree=true` (bỏ freemium cap 5).
+- **Mở tab Track cho user** + brand "Ads Spy" → home `/`.
+- **Siết user**: chặn trang Local DB (gỡ nav + guard route; KHÔNG chặn endpoint vì Báo cáo dùng chung) +
+  ẩn nút Xuất CSV/TXT ở Google Ads + Facebook khi role=user.
+- **Prod config** (thủ công, xem handoff): seed catalog Module; đặt `SH_MYSQL_URL` (MySQL ShopHunter);
+  bẫy `pm2 restart --update-env` làm rớt env auth → dùng `pm2 reload ecosystem` + persist env `~/.bashrc`.
+
+---
+
 ## 2026-08-21 — FB: quét SÂU + đếm engagement đúng + "Lấy hết" chạy nền · Google sort
 
 Chi tiết: [`docs/handoff-2026-08-21-fb-quet-sau-engagement-lay-het.md`](docs/handoff-2026-08-21-fb-quet-sau-engagement-lay-het.md).
