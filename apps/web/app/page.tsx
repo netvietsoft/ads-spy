@@ -26,6 +26,7 @@ import { TiktokPanel } from './components/TiktokPanel';
 import { ShopHunterPanel } from './components/ShopHunterPanel';
 import { LocalDbPanel } from './components/LocalDbPanel';
 import { TrackPanel } from './components/TrackPanel';
+import { CheckDomainPanel } from './components/CheckDomainPanel';
 import { ImportPanel } from './components/ImportPanel';
 import { ReportPanel } from './components/ReportPanel';
 import { AffnetPanel } from './components/AffnetPanel';
@@ -109,11 +110,11 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
-type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'import' | 'report' | 'affnet' | 'afflib' | 'traffic' | 'settings' | 'dashboard' | 'users' | 'plans';
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'checkdomain' | 'import' | 'report' | 'affnet' | 'afflib' | 'traffic' | 'settings' | 'dashboard' | 'users' | 'plans';
 // Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
 const SOURCE_TO_PATH: Record<Source, string> = {
   google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
-  localdb: '/localdb/shops', track: '/trackshopify', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', traffic: '/traffic', settings: '/settings',
+  localdb: '/localdb/shops', track: '/trackshopify', checkdomain: '/checkdomain', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', traffic: '/traffic', settings: '/settings',
   dashboard: '/admin/dashboard', users: '/admin/users', plans: '/admin/plans',
 };
 function pathToSource(p: string): Source {
@@ -122,6 +123,7 @@ function pathToSource(p: string): Source {
   if (p.startsWith('/shophuntershopify')) return 'shophunter';
   if (p.startsWith('/localdb')) return 'localdb';
   if (p.startsWith('/trackshopify')) return 'track';
+  if (p.startsWith('/checkdomain')) return 'checkdomain';
   if (p.startsWith('/reportlocaldb')) return 'report';
   if (p.startsWith('/afflibrary')) return 'afflib';
   if (p.startsWith('/affnet')) return 'affnet';
@@ -150,7 +152,7 @@ export default function Home() {
   }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
   // Local DB CHỈ staff — user (dù gõ thẳng URL /localdb) bị đá về home.
   useEffect(() => {
-    if (role === 'user' && source === 'localdb') router.replace('/');
+    if (role === 'user' && (source === 'localdb' || source === 'checkdomain')) router.replace('/');
   }, [role, source, router]);
   const [mode, setMode] = useState<'domain' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
@@ -446,6 +448,7 @@ export default function Home() {
       {source === 'shophunter' && <ShopHunterPanel />}
       {source === 'localdb' && role !== 'user' && <LocalDbPanel subTab={pathname === '/localdb/products' ? 'products' : 'shops'} />}
       {source === 'track' && <TrackPanel />}
+      {source === 'checkdomain' && role !== 'user' && <CheckDomainPanel />}
       {source === 'import' && <ImportPanel />}
       {source === 'report' && <ReportPanel />}
       {source === 'affnet' && <AffnetPanel />}

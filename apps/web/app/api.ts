@@ -650,6 +650,22 @@ export interface ShTrackHistItem { domain: string; shopId: string; shopTitle: st
 export async function shTrackHistory(): Promise<ShTrackHistItem[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/track/history`));
 }
+
+// ---- Check Domain (staff): gom Shopify + Affiliate + Traffic cho danh sách domain ----
+export interface CheckDomainRow {
+  domain: string; shopify: boolean | null; affiliate: boolean | null; joinUrl: string | null; net: string | null;
+  trafficMonth: number | null; bouncePct: number | null; timeOnSite: number | null; category: string | null;
+  commissionPct: number | null; error?: string;
+}
+export interface CheckDomainJobResult { total: number; checked: number; rows: CheckDomainRow[]; done: boolean; error: string | null }
+export async function checkDomainStart(domains: string[]): Promise<{ jobId: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/check-domain/start`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }),
+  }));
+}
+export async function checkDomainJob(id: string): Promise<CheckDomainJobResult> {
+  return jsonOrThrow(await fetch(`${API}/api/check-domain/job/${id}`));
+}
 export async function shImport(rows: any[], type: 'shop' | 'product' = 'shop', category: string | null = null, categoryPath: string | null = null): Promise<{ imported: number }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/import`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows, type, category, categoryPath }) }));
 }

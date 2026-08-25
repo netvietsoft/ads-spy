@@ -246,6 +246,27 @@ export class AffLibMysql {
     );
   }
 
+  // Gom sẵn dữ liệu 1 domain cho menu Check Domain (aff_library + LEFT JOIN traffic). Trả null nếu chưa có
+  // dòng. Bọc try/catch: bảng/cột thiếu (DB mới) → trả null để caller đi nhánh live, không làm gãy job.
+  async getDomainCheck(web: string): Promise<{
+    shopify: number | null; aff_status: string | null; aff_platform: string | null; join_url: string | null;
+    commission_pct: number | null; aff_checked_at: number | null;
+    traffic_visits: number | null; traffic_bounce: number | null; traffic_duration_sec: number | null;
+  } | null> {
+    try {
+      const pool = await this.sh.getPool();
+      const [rows] = await pool.query(
+        `SELECT al.shopify, al.aff_status, al.aff_platform, al.join_url, al.commission_pct, al.aff_checked_at,
+                t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce, t.visit_duration_sec AS traffic_duration_sec
+         FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web WHERE al.web = ? LIMIT 1`,
+        [web],
+      );
+      return (rows as any[])[0] || null;
+    } catch {
+      return null;
+    }
+  }
+
   // Domain của 1 net, đã ép COLLATE và bỏ trùng — VẬT CHẤT HOÁ thành bảng dẫn xuất.
   //
   // VÌ SAO PHẢI VIẾT KIỂU NÀY (đo thật trên net goaffpro.com, 22.481 dòng aff_program):
