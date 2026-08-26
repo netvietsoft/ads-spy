@@ -44,6 +44,12 @@ function isSkipHost(host: string): boolean {
 // Domain ĐÍCH (trang landing) của quảng cáo, trích từ content.js — cho search theo NHÀ QUẢNG CÁO (brief
 // không có field 14). Lấy domain non-Google ĐẦU TIÊN, trả dạng registrable ~2 nhãn (đủ để hiển thị).
 export function extractAdDomain(body: string): string | null {
+  // App-install ad: landing là Google Play / App Store (nằm trong aclk, thường URL-encoded %2F %3D). Các host
+  // này bị SKIP vì thuộc google.com → phải bắt RIÊNG trước, trả APP ID (vd onetap.game.tictactoe) làm "đích".
+  const play = body.match(/play\.google\.com(?:%2f|\/)store(?:%2f|\/)apps(?:%2f|\/)details(?:%3f|\?)id(?:%3d|=)([a-z0-9._]+)/i);
+  if (play) return play[1].toLowerCase();
+  const apple = body.match(/apps\.apple\.com(?:%2f|\/)[^"'\s\\]*?id(\d{6,})/i);
+  if (apple) return `apps.apple.com/id${apple[1]}`;
   for (const m of body.matchAll(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})(?=[/:?#"'\\]|$)/gi)) {
     const host = m[1].toLowerCase().replace(/^www\./, '');
     if (isSkipHost(host)) continue;
