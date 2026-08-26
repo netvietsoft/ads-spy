@@ -8,7 +8,6 @@ import {
   SearchCreativesResult,
   SuggestResult,
 } from './google.types';
-import { extractAdDomain } from './content-js';
 
 export function extractImageUrl(html: string): string | undefined {
   const m = /src="([^"]+)"/.exec(html);
@@ -100,10 +99,6 @@ export function parseCreativeDetail(raw: any): CreativeDetail {
   // Định dạng THẬT: field 8 (1=text/2=image/3=video). Chỉ có ở DETAIL, không có ở search list.
   const fc = toInt(root['8']);
   const format: AdFormat = fc === 1 ? 'text' : fc === 2 ? 'image' : fc === 3 ? 'video' : 'unknown';
-  // Domain đích: search-theo-advertiser thiếu node-14 (domain) → quét SÂU raw detail lấy domain non-Google
-  // đầu tiên (tái dùng extractAdDomain vốn bỏ host hạ tầng Google). Text ad không có content.js/OCR nên đây
-  // là nguồn domain duy nhất. Không tìm được → undefined (không bịa).
-  const domain = extractAdDomain(JSON.stringify(raw ?? '')) ?? undefined;
   return {
     creativeId: root['2'],
     advertiserId: root['1'],
@@ -112,7 +107,6 @@ export function parseCreativeDetail(raw: any): CreativeDetail {
     variants,
     regions,
     format,
-    domain,
   };
 }
 
