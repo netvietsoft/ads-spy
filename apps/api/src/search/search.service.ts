@@ -3,7 +3,7 @@ import { GoogleClient } from '../google/google.client';
 import { PrismaService } from '../prisma.service';
 import { parseAdvertisers } from '../google/response.parser';
 import { ocrImageToDomain } from '../google/ocr';
-import { extractAdDomain, pickImageUrl, pickYoutubeId } from '../google/content-js';
+import { extractAdDomain, pickImageUrl, pickSimgadUrl, pickYoutubeId } from '../google/content-js';
 import {
   Advertiser,
   CreativeBrief,
@@ -328,8 +328,9 @@ export class SearchService {
               // Domain đích: brief search-theo-advertiser thiếu domain → giải mã content.js lấy (như Tool mmo).
               // Chỉ ad ĐỘNG (embed) mới có content.js; ad text/ảnh (simgad) lấy domain qua OCR lúc search.
               const cjUrl = d.variants.find((v) => v.assetType === 'embed')?.assetUrl;
+              let body = '';
               if (cjUrl) {
-                const body = await this.google.fetchTextThroughProxy(cjUrl, 5000).catch(() => '');
+                body = await this.google.fetchTextThroughProxy(cjUrl, 5000).catch(() => '');
                 const dom = extractAdDomain(body);
                 if (dom) job.domainById[it.creativeId] = dom;
                 // Thumbnail: trích TỪ CÙNG body này (0 fetch thêm) → card dùng thumbById, khỏi gọi
@@ -337,6 +338,23 @@ export class SearchService {
                 const vid = pickYoutubeId(body);
                 const thumb = vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : pickImageUrl(body);
                 if (thumb) job.thumbById[it.creativeId] = thumb;
+              }
+              // TEXT/search ad render bằng ảnh simgad: domain đích (display URL, vd stationerypal.com) CHỈ IN
+              // trong ẢNH → OCR ảnh simgad mới đọc được (extractAdDomain quét source content.js không thấy).
+              // Nguồn simgad: content.js body HOẶC variant ẢNH của detail. Ngân sách/lượt (≤20, hạn 45s) +
+              // cache creativeOcr; Tesseract chưa cài → trả null nhanh (không ảnh hưởng).
+              if (!job.domainById[it.creativeId]) {
+                const imgVar = d.variants.find((v) => v.assetType === 'image' && v.assetUrl && /simgad\/\d+/.test(v.assetUrl))?.assetUrl;
+                const simgad = pickSimgadUrl(body) || imgVar || null;
+                if (simgad && isAllowedAssetHost(simgad)) {
+                  if (job._ocrDeadline == null) job._ocrDeadline = Date.now() + 45_000;
+                  job._ocrN = job._ocrN || 0;
+                  if (job._ocrN < 20 && Date.now() < job._ocrDeadline) {
+                    job._ocrN++;
+                    const r = await this.ocrOneCreative(it.creativeId, simgad).catch(() => null);
+                    if (r?.domain) job.domainById[it.creativeId] = r.domain;
+                  }
+                }
               }
             } catch {
               job.regionsById[it.creativeId] = []; // ad lỗi/throttle → để trống, không chặn cả job

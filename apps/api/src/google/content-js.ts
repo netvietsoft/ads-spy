@@ -23,6 +23,14 @@ export function pickImageUrl(body: string): string | null {
   return m ? m[0] : null;
 }
 
+// Ảnh simgad (creative render của search/TEXT ad) — vd tpc.googlesyndication.com/archive/simgad/781014...
+// KHÔNG có đuôi .jpg nên pickImageUrl bỏ qua. Với text-ad, domain đích (display URL, vd stationerypal.com)
+// CHỈ in trong ảnh này → phải OCR ảnh này mới đọc được domain (source content.js không chứa domain dạng URL).
+export function pickSimgadUrl(body: string): string | null {
+  const m = body.match(/https?:\/\/[\w.-]*(?:googlesyndication|doubleclick)\.(?:com|net)\/[\w/-]*simgad\/\d+/i);
+  return m ? m[0] : null;
+}
+
 // Domain HẠ TẦNG Google/quảng cáo — bỏ khi tìm domain đích (giống SKIP_DOMAIN_PARTS của Tool mmo).
 const SKIP_DOMAINS = [
   'google', 'gstatic', 'googleapis', 'googlesyndication', 'googleusercontent', 'doubleclick',
