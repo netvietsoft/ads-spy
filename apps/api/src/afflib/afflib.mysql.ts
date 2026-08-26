@@ -267,9 +267,12 @@ export class AffLibMysql {
     try {
       const pool = await this.sh.getPool();
       const [rows] = await pool.query(
+        // COLLATE BẮT BUỘC: aff_library.web và aff_domain_traffic.web khác collation → JOIN không ép sẽ ném
+        // "Illegal mix of collations", hàm này catch → trả null IM LẶNG → Check Domain mất affiliate/join_url
+        // dù DB đã có (aff_status='yes'). listRows cũng phải ép y hệt. Bug thật, phát hiện 2026-08-26.
         `SELECT al.shopify, al.aff_status, al.aff_platform, al.join_url, al.commission_pct, al.aff_checked_at,
                 t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce, t.visit_duration_sec AS traffic_duration_sec
-         FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web WHERE al.web = ? LIMIT 1`,
+         FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci WHERE al.web = ? LIMIT 1`,
         [web],
       );
       return (rows as any[])[0] || null;
