@@ -439,10 +439,14 @@ export default function Home() {
         setFormatById({ ...j.formatById });
         setDomainById({ ...j.domainById });
         setThumbById({ ...j.thumbById });
-        setExportProg(`Đang gom: ${j.checked}/${j.total}…`);
+        setExportProg(j.phase ? j.phase : `Đang gom: ${j.checked}/${j.total}…`);
         if (j.done) {
           setCollectDone(true);
-          setExportProg('');
+          // Còn creative lỗi (Google giới hạn tải) → báo minh bạch để không tưởng nhầm file đã đủ. Tra lại
+          // (hoặc xuất lại sau vài phút) sẽ gom nốt phần còn thiếu.
+          setExportProg(j.failed && j.failed > 0
+            ? `Xong: gom được ${j.total - j.failed}/${j.total}. Còn ${j.failed} quảng cáo Google chặn tải (thử lại sau vài phút để lấy nốt).`
+            : '');
           return { regionsById: j.regionsById, formatById: j.formatById, domainById: j.domainById, thumbById: j.thumbById };
         }
       }

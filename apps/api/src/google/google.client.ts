@@ -233,7 +233,9 @@ export class GoogleClient {
     // Search: mặc định 16 (bền, người dùng chờ). Bulk gom detail: truyền maxAttempts nhỏ (fail-fast) vì
     // detail lỗi chỉ để trống 1 ad, KHÔNG nên retry 16 lần × 200 ad = rất lâu.
     const cap = opts?.maxAttempts ?? 16;
-    const maxAttempts = n > 0 ? Math.min(n, cap) : RETRY_DELAYS_MS.length + 1;
+    // Số lần thử = cap khi CÓ proxy (throttle là tạm thời → thử lại + xoay proxy gỡ được; TRƯỚC đây kẹp
+    // min(n,cap) làm pool ít proxy chỉ thử 1-2 lần rồi bỏ → mất vùng+domain hàng loạt). Không proxy: giữ 3.
+    const maxAttempts = n > 0 ? cap : Math.min(cap, RETRY_DELAYS_MS.length + 1);
     let lastErr: any;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const disp = n > 0 ? this.dispatchers[this.idx % n] : null;

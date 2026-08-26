@@ -160,6 +160,9 @@ export interface RegionCollectJob {
   formatById: Record<string, string>; // định dạng THẬT (text/image/video) từ field 8 của detail
   domainById: Record<string, string>; // domain đích trích từ content.js (search theo advertiser)
   thumbById: Record<string, string>; // thumbnail ad động (gom 1 lần) — card khỏi fetch /creative-thumb per-card
+  ok?: number; // số creative gom được detail (thử lại nhiều lượt)
+  failed?: number; // còn lỗi sau tất cả các lượt
+  phase?: string; // trạng thái lượt thử lại (rỗng khi đang pass đầu / đã xong)
   done: boolean;
   error: string | null;
 }

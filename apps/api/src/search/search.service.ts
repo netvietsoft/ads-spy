@@ -130,6 +130,15 @@ export class SearchService {
   private static readonly OCR_BUDGET_MS = 10_000; // tổng thời gian OCR/lượt
   private static readonly OCR_PER_IMAGE_MS = 6_000;
 
+  // Gom detail (Quốc gia + domain): chống throttle → thử lại NHIỀU LƯỢT các creative lỗi. Pass 0 gom nhanh;
+  // các pass sau nghỉ cho throttle hạ rồi gom lại phần còn lỗi ở concurrency thấp hơn (đỡ bị chặn tiếp).
+  private static readonly COLLECT_CONC = 8; // song song pass đầu
+  private static readonly COLLECT_RETRY_CONC = 4; // song song khi thử lại (nhẹ tay hơn để throttle hạ)
+  private static readonly COLLECT_MAX_PASSES = 4; // pass 0 + tối đa 3 lượt thử lại
+  private static readonly COLLECT_COOLDOWN_MS = 6_000; // nghỉ giữa các lượt (TĂNG DẦN theo pass) cho throttle hạ
+  private static readonly COLLECT_BATCH_PAUSE_MS = 150; // giãn nhịp pass đầu để đỡ kích throttle
+  private static readonly COLLECT_DEADLINE_MS = 8 * 60_000; // trần thời gian cả job — proxy chết thì dừng thử lại
+
   private async enrichWithOcr(creatives: CreativeBrief[]): Promise<void> {
     const targets = creatives.filter(
       (c) => c.assetType === 'image' && !c.domain && c.creativeId && c.assetUrl && isAllowedAssetHost(c.assetUrl),
@@ -295,9 +304,10 @@ export class SearchService {
     return { jobId };
   }
 
-  // Gom danh sách vùng THẬT của từng creative (mở chi tiết từng ad, field 17) — cho xuất file có cột
-  // Quốc gia. Mẫu y startRegionCheck: cắt theo limit, concurrency 5, ad lỗi để mảng rỗng (không chặn job).
-  // Dùng CHUNG this.regionJobs + getRegionJob để FE poll tiến độ.
+  // Gom danh sách vùng THẬT + domain của từng creative (mở chi tiết từng ad, field 17/content.js) — cho
+  // xuất file có cột Quốc gia + Domain. NHIỀU LƯỢT: pass 0 gom tất cả rồi các pass sau THỬ LẠI phần lỗi
+  // (throttle) với cooldown tăng dần + xoay proxy → gom triệt để, không mất creative như trước. Dùng CHUNG
+  // this.regionJobs + getRegionJob để FE poll tiến độ (checked=ok, failed, phase).
   startRegionCollect(items: { advertiserId: string; creativeId: string }[], limit = 200): { jobId: string } {
     const jobId = `col-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const slice = items.slice(0, limit);
@@ -312,62 +322,87 @@ export class SearchService {
       done: false,
       error: null,
     };
+    job.ok = 0; // số creative gom được detail (regions/domain) — job.checked = ok để FE thấy tỉ lệ thật
+    job.failed = 0; // còn lỗi sau tất cả các lượt
+    job.phase = ''; // trạng thái lượt thử lại (FE hiển thị)
     this.regionJobs.set(jobId, job);
 
-    void (async () => {
-      const CONC = 8; // song song nhiều hơn (trước 5) → job bulk detail nhanh hơn
-      for (let i = 0; i < slice.length; i += CONC) {
-        const batch = slice.slice(i, i + CONC);
-        await Promise.all(
-          batch.map(async (it) => {
-            try {
-              // Fail-fast: detail lỗi chỉ để trống 1 ad → chỉ thử 3 proxy, timeout 8s (không retry 16×200).
-              const d = await this.google.getCreativeById(it.advertiserId, it.creativeId, { maxAttempts: 3, timeoutMs: 8000 });
-              job.regionsById[it.creativeId] = d.regions;
-              job.formatById[it.creativeId] = d.format;
-              // Domain đích: brief search-theo-advertiser thiếu domain → giải mã content.js lấy (như Tool mmo).
-              // Chỉ ad ĐỘNG (embed) mới có content.js; ad text/ảnh (simgad) lấy domain qua OCR lúc search.
-              const cjUrl = d.variants.find((v) => v.assetType === 'embed')?.assetUrl;
-              let body = '';
-              if (cjUrl) {
-                body = await this.google.fetchTextThroughProxy(cjUrl, 5000).catch(() => '');
-                // content.js cho domain landing THẬT với ad ĐỘNG (video/embed). Ad format=TEXT (search) render
-                // bằng ảnh simgad: content.js hay chứa URL rác (github…) → BỎ, để OCR ảnh đọc domain đúng
-                // (trước đây vớ github rồi set domain → OCR bị skip → sai).
-                if (d.format !== 'text') {
-                  const dom = extractAdDomain(body);
-                  if (dom) job.domainById[it.creativeId] = dom;
-                }
-                // Thumbnail: trích TỪ CÙNG body này (0 fetch thêm) → card dùng thumbById, khỏi gọi
-                // /creative-thumb per-card (100 card = 100 fetch content.js đồng thời → proxy quá tải → 404).
-                const vid = pickYoutubeId(body);
-                const thumb = vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : pickImageUrl(body);
-                if (thumb) job.thumbById[it.creativeId] = thumb;
-              }
-              // TEXT/search ad render bằng ảnh simgad: domain đích (display URL, vd stationerypal.com) CHỈ IN
-              // trong ẢNH → OCR ảnh simgad mới đọc được (extractAdDomain quét source content.js không thấy).
-              // Nguồn simgad: content.js body HOẶC variant ẢNH của detail. Ngân sách/lượt (≤20, hạn 45s) +
-              // cache creativeOcr; Tesseract chưa cài → trả null nhanh (không ảnh hưởng).
-              if (!job.domainById[it.creativeId]) {
-                const imgVar = d.variants.find((v) => v.assetType === 'image' && v.assetUrl && /simgad\/\d+/.test(v.assetUrl))?.assetUrl;
-                const simgad = pickSimgadUrl(body) || imgVar || null;
-                if (simgad && isAllowedAssetHost(simgad)) {
-                  if (job._ocrDeadline == null) job._ocrDeadline = Date.now() + 180_000;
-                  job._ocrN = job._ocrN || 0;
-                  if (job._ocrN < 100 && Date.now() < job._ocrDeadline) {
-                    job._ocrN++;
-                    const r = await this.ocrOneCreative(it.creativeId, simgad).catch(() => null);
-                    if (r?.domain) job.domainById[it.creativeId] = r.domain;
-                  }
-                }
-              }
-            } catch {
-              job.regionsById[it.creativeId] = []; // ad lỗi/throttle → để trống, không chặn cả job
+    // Gom detail 1 creative. attempts = số lần thử trong 1 lần gọi (xoay proxy). Trả true nếu lấy được detail.
+    const processOne = async (it: { advertiserId: string; creativeId: string }, attempts: number): Promise<boolean> => {
+      try {
+        const d = await this.google.getCreativeById(it.advertiserId, it.creativeId, { maxAttempts: attempts, timeoutMs: 8000 });
+        job.regionsById[it.creativeId] = d.regions;
+        job.formatById[it.creativeId] = d.format;
+        // Domain đích: brief search-theo-advertiser thiếu domain → giải mã content.js lấy (như Tool mmo).
+        // Chỉ ad ĐỘNG (embed) mới có content.js; ad text/ảnh (simgad) lấy domain qua OCR lúc search.
+        const cjUrl = d.variants.find((v) => v.assetType === 'embed')?.assetUrl;
+        let body = '';
+        if (cjUrl) {
+          body = await this.google.fetchTextThroughProxy(cjUrl, 5000).catch(() => '');
+          // content.js cho domain landing THẬT với ad ĐỘNG (video/embed). Ad format=TEXT (search) render
+          // bằng ảnh simgad: content.js hay chứa URL rác (github…) → BỎ, để OCR ảnh đọc domain đúng
+          // (trước đây vớ github rồi set domain → OCR bị skip → sai).
+          if (d.format !== 'text') {
+            const dom = extractAdDomain(body);
+            if (dom) job.domainById[it.creativeId] = dom;
+          }
+          // Thumbnail: trích TỪ CÙNG body này (0 fetch thêm) → card dùng thumbById, khỏi gọi
+          // /creative-thumb per-card (100 card = 100 fetch content.js đồng thời → proxy quá tải → 404).
+          const vid = pickYoutubeId(body);
+          const thumb = vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : pickImageUrl(body);
+          if (thumb) job.thumbById[it.creativeId] = thumb;
+        }
+        // TEXT/search ad render bằng ảnh simgad: domain đích (display URL, vd stationerypal.com) CHỈ IN
+        // trong ẢNH → OCR ảnh simgad mới đọc được (extractAdDomain quét source content.js không thấy).
+        // Nguồn simgad: content.js body HOẶC variant ẢNH của detail. Ngân sách/lượt (≤100, hạn 180s) +
+        // cache creativeOcr; Tesseract chưa cài → trả null nhanh (không ảnh hưởng).
+        if (!job.domainById[it.creativeId]) {
+          const imgVar = d.variants.find((v) => v.assetType === 'image' && v.assetUrl && /simgad\/\d+/.test(v.assetUrl))?.assetUrl;
+          const simgad = pickSimgadUrl(body) || imgVar || null;
+          if (simgad && isAllowedAssetHost(simgad)) {
+            if (job._ocrDeadline == null) job._ocrDeadline = Date.now() + 180_000;
+            job._ocrN = job._ocrN || 0;
+            if (job._ocrN < 100 && Date.now() < job._ocrDeadline) {
+              job._ocrN++;
+              const r = await this.ocrOneCreative(it.creativeId, simgad).catch(() => null);
+              if (r?.domain) job.domainById[it.creativeId] = r.domain;
             }
-            job.checked++;
-          }),
-        );
+          }
+        }
+        return true;
+      } catch {
+        if (job.regionsById[it.creativeId] === undefined) job.regionsById[it.creativeId] = []; // để trống, không chặn job
+        return false;
       }
+    };
+
+    void (async () => {
+      // NHIỀU LƯỢT: pass 0 gom tất cả (nhanh, giãn nhịp); các pass sau nghỉ cho throttle hạ rồi gom lại
+      // phần CÒN LỖI ở concurrency thấp hơn. Đây là chỗ "gom triệt để" — throttle chỉ tạm thời.
+      const deadline = Date.now() + SearchService.COLLECT_DEADLINE_MS;
+      let pending = slice.slice();
+      for (let pass = 0; pass < SearchService.COLLECT_MAX_PASSES && pending.length; pass++) {
+        if (pass > 0) {
+          if (Date.now() > deadline) break; // hết giờ (proxy chết) → dừng, trả phần đã gom được
+          job.phase = `Thử lại ${pending.length} quảng cáo lỗi (lượt ${pass}/${SearchService.COLLECT_MAX_PASSES - 1})…`;
+          await sleep(SearchService.COLLECT_COOLDOWN_MS * pass); // 6s, 12s, 18s — lượt sau chờ throttle hạ lâu hơn
+        }
+        const conc = pass === 0 ? SearchService.COLLECT_CONC : SearchService.COLLECT_RETRY_CONC;
+        const attempts = pass === 0 ? 3 : 4; // thử lại xoay proxy + backoff (không quá nhiều → tránh treo lâu ở proxy chết)
+        const next: typeof pending = [];
+        for (let i = 0; i < pending.length; i += conc) {
+          const batch = pending.slice(i, i + conc);
+          const results = await Promise.all(batch.map((it) => processOne(it, attempts)));
+          results.forEach((okOne, k) => {
+            if (okOne) { job.ok++; job.checked = job.ok; }
+            else next.push(batch[k]);
+          });
+          if (pass === 0 && i + conc < pending.length) await sleep(SearchService.COLLECT_BATCH_PAUSE_MS);
+        }
+        pending = next;
+      }
+      job.failed = pending.length;
+      job.phase = '';
       job.done = true;
     })().catch((e) => {
       job.error = e?.message || 'Lỗi gom vùng';
