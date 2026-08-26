@@ -20,6 +20,10 @@ function fmtTime(sec: number | null): string {
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
 }
+// Bounce từ AITDK trả full precision (49.13380649118191) → làm tròn 1 số thập phân cho dễ đọc.
+function fmtBounce(n?: number | null): string {
+  return n == null ? '—' : `${Math.round(n * 10) / 10}%`;
+}
 const yn = (v: boolean | null) => (v == null ? '—' : v ? 'có' : 'không');
 
 export function CheckDomainPanel() {
@@ -76,7 +80,7 @@ export function CheckDomainPanel() {
     const header = ['Domain', 'Shopify', 'Affiliate', 'Link đăng ký', 'Tên Net', 'Traffic/Month', 'Bounce %', 'Time on site', 'Category', 'Commission %'];
     const data = rows.map((r) => [
       r.domain, yn(r.shopify), yn(r.affiliate), r.joinUrl || '', r.net || '',
-      r.trafficMonth != null ? String(r.trafficMonth) : '', r.bouncePct != null ? r.bouncePct + '%' : '',
+      r.trafficMonth != null ? String(r.trafficMonth) : '', r.bouncePct != null ? Math.round(r.bouncePct * 10) / 10 + '%' : '',
       fmtTime(r.timeOnSite), r.category || '', r.commissionPct != null ? r.commissionPct + '%' : '',
     ]);
     downloadTextFile('check-domain.csv', toCsv([header, ...data]));
@@ -133,7 +137,7 @@ export function CheckDomainPanel() {
                 <td>{r.joinUrl ? <a className="dl" href={r.joinUrl} target="_blank" rel="noreferrer">link ↗</a> : '—'}</td>
                 <td>{r.net || '—'}</td>
                 <td style={{ textAlign: 'right' }}>{r.trafficMonth != null ? r.trafficMonth.toLocaleString() : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{r.bouncePct != null ? r.bouncePct + '%' : '—'}</td>
+                <td style={{ textAlign: 'right' }}>{fmtBounce(r.bouncePct)}</td>
                 <td>{fmtTime(r.timeOnSite)}</td>
                 <td>{r.category || '—'}</td>
                 <td style={{ textAlign: 'right' }}>{r.commissionPct != null ? r.commissionPct + '%' : '—'}</td>
