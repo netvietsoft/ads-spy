@@ -331,8 +331,13 @@ export class SearchService {
               let body = '';
               if (cjUrl) {
                 body = await this.google.fetchTextThroughProxy(cjUrl, 5000).catch(() => '');
-                const dom = extractAdDomain(body);
-                if (dom) job.domainById[it.creativeId] = dom;
+                // content.js cho domain landing THẬT với ad ĐỘNG (video/embed). Ad format=TEXT (search) render
+                // bằng ảnh simgad: content.js hay chứa URL rác (github…) → BỎ, để OCR ảnh đọc domain đúng
+                // (trước đây vớ github rồi set domain → OCR bị skip → sai).
+                if (d.format !== 'text') {
+                  const dom = extractAdDomain(body);
+                  if (dom) job.domainById[it.creativeId] = dom;
+                }
                 // Thumbnail: trích TỪ CÙNG body này (0 fetch thêm) → card dùng thumbById, khỏi gọi
                 // /creative-thumb per-card (100 card = 100 fetch content.js đồng thời → proxy quá tải → 404).
                 const vid = pickYoutubeId(body);
@@ -347,9 +352,9 @@ export class SearchService {
                 const imgVar = d.variants.find((v) => v.assetType === 'image' && v.assetUrl && /simgad\/\d+/.test(v.assetUrl))?.assetUrl;
                 const simgad = pickSimgadUrl(body) || imgVar || null;
                 if (simgad && isAllowedAssetHost(simgad)) {
-                  if (job._ocrDeadline == null) job._ocrDeadline = Date.now() + 45_000;
+                  if (job._ocrDeadline == null) job._ocrDeadline = Date.now() + 180_000;
                   job._ocrN = job._ocrN || 0;
-                  if (job._ocrN < 20 && Date.now() < job._ocrDeadline) {
+                  if (job._ocrN < 100 && Date.now() < job._ocrDeadline) {
                     job._ocrN++;
                     const r = await this.ocrOneCreative(it.creativeId, simgad).catch(() => null);
                     if (r?.domain) job.domainById[it.creativeId] = r.domain;
