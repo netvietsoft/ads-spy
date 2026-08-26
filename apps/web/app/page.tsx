@@ -69,7 +69,22 @@ function CreativeTable({ rows }: { rows: string[][] }) {
   if (rows.length <= 1) return <p className="hint">Không có creative nào.</p>;
   const [head, ...body] = rows;
   const countryIdx = head.indexOf('Quốc gia'); // cột này danh sách dài → cho xuống dòng + giới hạn bề rộng
+  const domainIdx = head.indexOf('Domain'); // hover → icon 🔍 mở tab mới search theo domain
+  const advIdx = head.indexOf('Mã nhà quảng cáo'); // hover → icon 🔍 mở tab mới search theo mã NQC
   const linkIdx = head.length - 1;
+  // Icon 🔍 mở /googleads?mode=&q= ở tab mới → trang tự chạy search luôn (useEffect đọc URL).
+  const searchLink = (mode: 'domain' | 'advertiser', q: string) => (
+    <a
+      className="cell-search"
+      href={`/googleads?mode=${mode}&q=${encodeURIComponent(q)}`}
+      target="_blank"
+      rel="noreferrer"
+      title={`Tìm ${mode === 'domain' ? 'domain' : 'mã NQC'} này ở tab mới`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      🔍
+    </a>
+  );
   return (
     <div className="gtable-wrap">
       <table className="gtable">
@@ -83,6 +98,14 @@ function CreativeTable({ rows }: { rows: string[][] }) {
                 ci === linkIdx ? (
                   <td key={ci}>
                     <a href={cell} target="_blank" rel="noreferrer">Mở ↗</a>
+                  </td>
+                ) : ci === domainIdx && cell ? (
+                  <td key={ci} className="cell-searchable">
+                    <span>{cell}</span>{searchLink('domain', cell)}
+                  </td>
+                ) : ci === advIdx && cell ? (
+                  <td key={ci} className="cell-searchable">
+                    <span>{cell}</span>{searchLink('advertiser', cell)}
                   </td>
                 ) : (
                   <td key={ci} className={ci === countryIdx ? 'col-country' : ''}>{cell}</td>
@@ -154,6 +177,22 @@ export default function Home() {
   useEffect(() => {
     if (role === 'user' && (source === 'localdb' || source === 'checkdomain')) router.replace('/');
   }, [role, source, router]);
+
+  // Auto-search khi mở tab mới từ icon 🔍 trong bảng: /googleads?mode=domain|advertiser&q=... → chạy luôn.
+  useEffect(() => {
+    if (didUrlSearch.current) return;
+    const sp = new URLSearchParams(window.location.search);
+    const q = (sp.get('q') || '').trim();
+    if (!q) return;
+    didUrlSearch.current = true;
+    const mo: 'domain' | 'advertiser' = sp.get('mode') === 'advertiser' ? 'advertiser' : 'domain';
+    setMode(mo);
+    setQuery(q);
+    const ar = /AR\d+/i.exec(q);
+    if (mo === 'advertiser' && ar) openAdvertiser(ar[0]);
+    else runDomain(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [mode, setMode] = useState<'domain' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   // Bộ lọc kiểu Tool mmo — TẤT CẢ lọc client-side trừ maxResults (điều khiển số trang gọi Google).
@@ -286,6 +325,7 @@ export default function Home() {
   const [domainById, setDomainById] = useState<Record<string, string> | null>(null); // domain gom từ content.js
   const [thumbById, setThumbById] = useState<Record<string, string> | null>(null); // thumbnail ad động gom sẵn
   const collectedFor = useRef<unknown>(null); // đánh dấu result-set đã auto-gom (tránh gom lại)
+  const didUrlSearch = useRef(false); // auto-search khi mở tab mới từ icon 🔍 (?q=&mode=) — chỉ 1 lần
   const [collectDone, setCollectDone] = useState(false); // đã gom XONG toàn bộ detail chưa (để cache)
   const [view, setView] = useState<'card' | 'table'>('card'); // thẻ hay bảng
   const [advCollapsed, setAdvCollapsed] = useState(false); // thu gọn panel Nhà quảng cáo bên trái

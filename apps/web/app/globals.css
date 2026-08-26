@@ -296,6 +296,11 @@ button.ghost.active { border-color: var(--accent); color: var(--accent); }
 .gtable a { color: #2563eb; }
 /* Cột Quốc gia: danh sách dài → xuống dòng, bề rộng ~gấp đôi cột Mã NQC (khỏi phình ngang phá bảng) */
 .gtable th.col-country, .gtable td.col-country { white-space: normal; max-width: 360px; min-width: 220px; word-break: break-word; }
+/* Ô Domain / Mã NQC: icon 🔍 ẩn, chỉ hiện khi trỏ vào ô → click mở tab search mới */
+.gtable td.cell-searchable { position: relative; }
+.gtable td.cell-searchable .cell-search { opacity: 0; margin-left: 6px; text-decoration: none; font-size: 12px; transition: opacity .12s; }
+.gtable td.cell-searchable:hover .cell-search { opacity: .85; }
+.gtable td.cell-searchable .cell-search:hover { opacity: 1; }
 .card .body { padding: 10px 12px; }
 .card .body .a { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Hàng domain: domain trái (co ngắn có ellipsis) + ngày phải cùng hàng */
