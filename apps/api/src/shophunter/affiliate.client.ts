@@ -58,6 +58,12 @@ const LINK_KEYWORDS = /affiliate|ambassador|referral|refer-a-friend|refer_a_frie
 // Path chuẩn Shopify probe khi trang chủ không có tín hiệu.
 const PROBE_PATHS = ['/pages/affiliate', '/pages/affiliate-program', '/pages/ambassador']; // 3 path phổ biến nhất (giảm tải/tránh throttle)
 
+// Trang BOT-CHALLENGE (Cloudflare/WAF): status có thể 200/403/503 NHƯNG body KHÔNG phải HTML thật của shop.
+// Nếu coi nó như trang chủ bình thường → không thấy link affiliate → kết luận 'no' OAN (false-negative).
+// Đây là bệnh hay gặp khi fetch qua proxy datacenter (vd harvestright.com CÓ /pages/affiliate-program mà
+// vẫn báo không có). Gặp challenge → trả 'ratelimited' để đổi proxy khác / re-check sau, KHÔNG lưu 'no'.
+const CHALLENGE = /just a moment\.\.\.|checking your browser before|cf-browser-verification|challenge-platform|__cf_chl|cf_chl_opt|attention required! \| cloudflare|enable javascript and cookies to continue|ddos protection by cloudflare/i;
+
 const HEADERS = {
   'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
 };
@@ -114,6 +120,8 @@ export async function checkShopAffiliate(
     return { status: 'ratelimited', link: null, via: null, error: code };
   }
   if (home.status === 429) return { status: 'ratelimited', link: null, via: null, error: 'HTTP 429' }; // Shopify bóp IP → thử lại sau, đừng kết luận
+  // Trang challenge Cloudflare/WAF (mọi status) → CHƯA kết luận được → thử proxy khác, đừng đánh 'no'/'blocked' oan.
+  if (CHALLENGE.test(home.body)) return { status: 'ratelimited', link: null, via: null, error: 'bot-challenge' };
   if ([401, 403, 404].includes(home.status)) return { status: 'blocked', link: null, via: null };
 
   const hits = findAffiliateHits(home.body, domain);
@@ -135,7 +143,7 @@ export async function checkShopAffiliate(
     if (delay) await sleep(delay);
     try {
       const r = await get(`https://${domain}${p}`, HEADERS);
-      if (r.status === 200 && r.body.length > 500) {
+      if (r.status === 200 && r.body.length > 500 && !CHALLENGE.test(r.body)) {
         return { status: 'yes', link: `https://${domain}${p}`, via: 'probe' };
       }
     } catch { /* thử path kế */ }
