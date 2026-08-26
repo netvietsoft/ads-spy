@@ -131,8 +131,15 @@ export function CheckDomainPanel() {
           <tbody>
             {rows.map((r, i) => (
               <tr key={r.domain + i}>
-                <td>{r.domain}{r.error && <span className="m" title={r.error}> ⚠</span>}</td>
-                <td>{yn(r.shopify)}</td>
+                <td>
+                  <a href={`https://${r.domain}/`} target="_blank" rel="noreferrer">{r.domain}</a>
+                  {r.error && <span className="m" title={r.error}> ⚠</span>}
+                </td>
+                <td>
+                  {r.shopify == null ? '—' : (
+                    <span style={{ color: r.shopify ? '#16a34a' : '#dc2626', fontWeight: 600 }}>{r.shopify ? 'có' : 'không'}</span>
+                  )}
+                </td>
                 <td>{yn(r.affiliate)}</td>
                 <td>{r.joinUrl ? <a className="dl" href={r.joinUrl} target="_blank" rel="noreferrer">link ↗</a> : '—'}</td>
                 <td>{r.net || '—'}</td>

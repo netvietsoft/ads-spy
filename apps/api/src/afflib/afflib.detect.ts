@@ -67,6 +67,22 @@ export class AffLibDetect {
         break;
       }
     }
+    // FALLBACK TRỰC TIẾP (IP VPS): mọi proxy đều bị bóp/không kết luận được. Nhiều site KHÔNG phải Shopify
+    // (vd visaflightitinerary.com — affiliate tự host, trang SPA nặng) chặn proxy datacenter nhưng cho IP
+    // thường qua → cứu được aff_status + join_url. Chỉ chạy khi CÓ proxy mà đều thất bại (limited) và không
+    // phải chế độ test (getOverride). Không proxy thì vòng trên đã fetch trực tiếp rồi, khỏi lặp.
+    if (limited && !getOverride && shuffled.length) {
+      try {
+        const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get: shopifyHttp.get });
+        if (r.status !== 'ratelimited') {
+          await this.db.setDetect(web, r.status, r.via, r.link);
+          return { web, aff_status: r.status, aff_platform: r.via ?? null, join_url: r.link ?? null };
+        }
+        last = r.error || last;
+      } catch (e: any) {
+        last = String(e?.code || e?.message || last);
+      }
+    }
     await this.db.markTryFailed(web, last);
     // PHẢI là HttpException: `throw new Error(...)` bị Nest trả 500 kèm body "Internal server error",
     // FE mất hẳn thông báo và người dùng chỉ thấy "Lỗi 500" — không biết là bị bóp hay domain chết.
