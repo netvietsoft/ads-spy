@@ -246,6 +246,17 @@ export class AffLibMysql {
     );
   }
 
+  // Ghi CHỈ trạng thái Shopify (từ menu Check Domain) — KHÔNG chạm rev_scan_at như setRevScanned (tránh
+  // đánh dấu domain "đã scan doanh thu" oan, làm rớt khỏi hàng đợi rev). Dòng phải có sẵn (gọi ensureWeb trước).
+  async setShopify(web: string, shopify: 0 | 1 | null): Promise<void> {
+    const pool = await this.sh.getPool();
+    const now = Date.now();
+    await pool.query(
+      'UPDATE aff_library SET shopify = ?, shopify_checked_at = ?, updated_at = ? WHERE web = ?',
+      [shopify, now, now, web],
+    );
+  }
+
   // Gom sẵn dữ liệu 1 domain cho menu Check Domain (aff_library + LEFT JOIN traffic). Trả null nếu chưa có
   // dòng. Bọc try/catch: bảng/cột thiếu (DB mới) → trả null để caller đi nhánh live, không làm gãy job.
   async getDomainCheck(web: string): Promise<{

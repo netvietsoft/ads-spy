@@ -40,17 +40,24 @@ export class CheckDomainService {
     const domain = normalizeDomain(raw);
     if (!domain) return { ...empty, error: 'domain rỗng' };
     try {
+      // LƯU HẾT vào kho: mọi domain được check phải có DÒNG trong aff_library → kết quả (affiliate/shopify)
+      // được persist và hiện ở /afflibrary (detectOne/setShopify là UPDATE, không có dòng thì ghi trượt).
+      await this.afflibDb.ensureTables().catch(() => undefined);
+      await this.afflibDb.ensureWeb(domain).catch(() => undefined);
       let row = await this.afflibDb.getDomainCheck(domain);
       // Affiliate: ưu tiên DB (aff_checked_at có) → thiếu thì dò LIVE (detectOne cũng điền traffic vào DB).
       if (!row || row.aff_checked_at == null) {
         await this.afflib.detectOne(domain).catch(() => undefined);
         row = await this.afflibDb.getDomainCheck(domain);
       }
-      // Shopify: DB nếu biết, thiếu → live checkDomain.
+      // Shopify: DB nếu biết, thiếu → live checkDomain, rồi LƯU lại vào kho (để /afflibrary + lần sau có sẵn).
       let shopify: number | null = row?.shopify ?? null;
       if (shopify == null) {
         const c = await this.sh.checkDomain(domain).catch(() => null);
-        if (c) shopify = c.isShopify ? 1 : 0;
+        if (c) {
+          shopify = c.isShopify ? 1 : 0;
+          await this.afflibDb.setShopify(domain, shopify as 0 | 1).catch(() => undefined);
+        }
       }
       // Traffic: DB nếu có (detectOne thường đã điền), thiếu → live search (LUÔN kèm).
       let visits = row?.traffic_visits ?? null;
