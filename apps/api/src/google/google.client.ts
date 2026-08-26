@@ -287,6 +287,11 @@ export class GoogleClient {
     return parseCreativeDetail(json);
   }
 
+  // DEBUG: raw JSON detail (chưa parse) — cho creative-debug soi field URL/domain đích của text-ad.
+  async getCreativeByIdRaw(advertiserId: string, creativeId: string): Promise<any> {
+    return this.rpc('LookupService', 'GetCreativeById', reqGetCreativeById(advertiserId, creativeId), { maxAttempts: 3, timeoutMs: 8000 });
+  }
+
   async suggest(keyword: string): Promise<SuggestResult> {
     const json = await this.rpc('SearchService', 'SearchSuggestions', reqSuggest(keyword));
     return parseSuggest(json);

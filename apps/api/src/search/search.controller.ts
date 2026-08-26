@@ -126,6 +126,10 @@ export class SearchController {
       const embedUrl = d.variants.find((v) => v.assetType === 'embed')?.assetUrl || '';
       let cj = '';
       if (embedUrl) cj = await this.google.fetchTextThroughProxy(embedUrl).catch(() => '(fetch content.js lỗi)');
+      // DEBUG domain text-ad: dump RAW detail để soi field URL đích (Google có trả cho text-ad không?).
+      const raw = await this.google.getCreativeByIdRaw(advertiserId, creativeId).catch(() => null);
+      const rawStr = raw == null ? '(không lấy được raw)' : JSON.stringify(raw);
+      const urlsInRaw = [...rawStr.matchAll(/https?:\/\/[^"'\\ )]+/g)].map((m) => m[0]).slice(0, 30);
       res.send(
         `format=${d.format}\n` +
           `variants=${JSON.stringify(d.variants.map((v) => ({ type: v.assetType, url: (v.assetUrl || '').slice(0, 130) })), null, 1)}\n\n` +
@@ -133,7 +137,9 @@ export class SearchController {
           `content.js len = ${cj.length}\n` +
           `videoId trích = ${pickYoutubeId(cj)}\n` +
           `has ytimg=${/ytimg/.test(cj)}  youtube=${/youtube/.test(cj)}  simgad=${/simgad/.test(cj)}  googleusercontent=${/googleusercontent/.test(cj)}\n\n` +
-          `=== content.js (2500 ký tự đầu) ===\n${cj.slice(0, 2500)}`,
+          `=== URL trong RAW detail (${urlsInRaw.length}) ===\n${urlsInRaw.join('\n')}\n\n` +
+          `=== RAW detail (4000 ký tự đầu) ===\n${rawStr.slice(0, 4000)}\n\n` +
+          `=== content.js (1500 ký tự đầu) ===\n${cj.slice(0, 1500)}`,
       );
     } catch (e) {
       res.send(`LỖI: ${(e as Error).message}`);
