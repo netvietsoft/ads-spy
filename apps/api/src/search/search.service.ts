@@ -138,6 +138,7 @@ export class SearchService {
   private static readonly COLLECT_COOLDOWN_MS = 6_000; // nghỉ giữa các lượt (TĂNG DẦN theo pass) cho throttle hạ
   private static readonly COLLECT_BATCH_PAUSE_MS = 150; // giãn nhịp pass đầu để đỡ kích throttle
   private static readonly COLLECT_DEADLINE_MS = 8 * 60_000; // trần thời gian cả job — proxy chết thì dừng thử lại
+  private static readonly DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60_000; // 14 ngày — cache detail còn hạn thì dùng thẳng, khỏi gọi Google
 
   private async enrichWithOcr(creatives: CreativeBrief[]): Promise<void> {
     const targets = creatives.filter(
@@ -369,6 +370,27 @@ export class SearchService {
             }
           }
         }
+        // Ghi CACHE detail (regions/format/domain/thumb) → tra lại/lần sau khỏi gọi Google. Lỗi cache
+        // không được làm gãy job.
+        await this.prisma.creativeDetailCache
+          .upsert({
+            where: { crId: it.creativeId },
+            create: {
+              crId: it.creativeId,
+              regions: (job.regionsById[it.creativeId] || []).join(','),
+              format: job.formatById[it.creativeId] || 'unknown',
+              domain: job.domainById[it.creativeId] ?? null,
+              thumb: job.thumbById[it.creativeId] ?? null,
+            },
+            update: {
+              regions: (job.regionsById[it.creativeId] || []).join(','),
+              format: job.formatById[it.creativeId] || 'unknown',
+              domain: job.domainById[it.creativeId] ?? null,
+              thumb: job.thumbById[it.creativeId] ?? null,
+              updatedAt: new Date(),
+            },
+          })
+          .catch(() => { /* cache lỗi không chặn job */ });
         return true;
       } catch {
         if (job.regionsById[it.creativeId] === undefined) job.regionsById[it.creativeId] = []; // để trống, không chặn job
@@ -380,7 +402,27 @@ export class SearchService {
       // NHIỀU LƯỢT: pass 0 gom tất cả (nhanh, giãn nhịp); các pass sau nghỉ cho throttle hạ rồi gom lại
       // phần CÒN LỖI ở concurrency thấp hơn. Đây là chỗ "gom triệt để" — throttle chỉ tạm thời.
       const deadline = Date.now() + SearchService.COLLECT_DEADLINE_MS;
+      // 0) CACHE trước: creative đã mở chi tiết thành công (còn hạn TTL) điền thẳng, KHỎI gọi Google →
+      // tra lại đủ + tức thì, và chỉ fetch phần CÒN THIẾU (dồn dần tới 100%, đỡ throttle).
       let pending = slice.slice();
+      try {
+        const ids = slice.map((it) => it.creativeId);
+        const freshAfter = new Date(Date.now() - SearchService.DETAIL_CACHE_TTL_MS);
+        const rows = await this.prisma.creativeDetailCache.findMany({
+          where: { crId: { in: ids }, updatedAt: { gte: freshAfter } },
+        });
+        const byId = new Map(rows.map((r) => [r.crId, r]));
+        pending = slice.filter((it) => {
+          const c = byId.get(it.creativeId);
+          if (!c) return true; // chưa cache/hết hạn → cần fetch
+          job.regionsById[it.creativeId] = c.regions ? c.regions.split(',').map(Number).filter((n) => !Number.isNaN(n)) : [];
+          job.formatById[it.creativeId] = c.format;
+          if (c.domain) job.domainById[it.creativeId] = c.domain;
+          if (c.thumb) job.thumbById[it.creativeId] = c.thumb;
+          job.ok++; job.checked = job.ok;
+          return false; // đã có cache → bỏ khỏi hàng fetch
+        });
+      } catch { /* cache lỗi → fetch bình thường như chưa có cache */ }
       for (let pass = 0; pass < SearchService.COLLECT_MAX_PASSES && pending.length; pass++) {
         if (pass > 0) {
           if (Date.now() > deadline) break; // hết giờ (proxy chết) → dừng, trả phần đã gom được

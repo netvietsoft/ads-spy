@@ -54,6 +54,20 @@ model CreativeOcr {
   updatedAt DateTime @default(now())
 }
 
+// Cache DETAIL gom được của creative (regions/format/domain/thumb) — khoá theo crId (ổn định toàn cục).
+// Có row = đã mở chi tiết THÀNH CÔNG creative này. Nhờ vậy: (1) tra lại cùng advertiser điền tức thì +
+// đủ, KHÔNG gọi lại Google (đỡ throttle); (2) một lần tra thiếu (Google chặn) → lần sau chỉ fetch phần
+// CÒN THIẾU → dồn dần tới 100%. regions = danh sách mã nước nối bằng dấu phẩy ("" = fetch OK nhưng
+// Google không trả vùng). Làm mới theo TTL (xem SearchService.DETAIL_CACHE_TTL_MS).
+model CreativeDetailCache {
+  crId      String   @id
+  regions   String   @default("") // "2840,2841" — rỗng = không có vùng
+  format    String   @default("unknown") // text | image | video | unknown
+  domain    String? // domain đích cuối cùng (content.js hoặc OCR); null = không đọc được
+  thumb     String? // URL thumbnail ad động
+  updatedAt DateTime @default(now())
+}
+
 // ---- Cấu hình FB (lưu cookie phiên để sống qua restart) ----
 model FbSetting {
   id    Int    @id @default(autoincrement())
