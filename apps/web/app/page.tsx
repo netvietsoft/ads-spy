@@ -72,11 +72,11 @@ function CreativeTable({ rows }: { rows: string[][] }) {
   const domainIdx = head.indexOf('Domain'); // hover → icon 🔍 mở tab mới search theo domain
   const advIdx = head.indexOf('Mã nhà quảng cáo'); // hover → icon 🔍 mở tab mới search theo mã NQC
   const linkIdx = head.length - 1;
-  // Icon 🔍 mở /googleads?mode=&q= ở tab mới → trang tự chạy search luôn (useEffect đọc URL).
+  // Icon 🔍 mở /googleads/domain/<q> hoặc /googleads/advertiser/<q> ở tab mới → trang tự chạy search luôn.
   const searchLink = (mode: 'domain' | 'advertiser', q: string) => (
     <a
       className="cell-search"
-      href={`/googleads?mode=${mode}&q=${encodeURIComponent(q)}`}
+      href={`/googleads/${mode}/${encodeURIComponent(q)}`}
       target="_blank"
       rel="noreferrer"
       title={`Tìm ${mode === 'domain' ? 'domain' : 'mã NQC'} này ở tab mới`}
@@ -159,6 +159,13 @@ function pathToSource(p: string): Source {
   return 'google'; // '/', '/googleads', và fallback
 }
 
+// /googleads/advertiser/AR... · /googleads/domain/google.com → {mode, q}. Không có q = chỉ chọn mode.
+function parseGoogleUrl(p: string): { mode: 'domain' | 'advertiser'; q: string } {
+  const m = /^\/googleads\/(advertiser|domain)(?:\/(.+))?$/.exec(p || '');
+  if (m) return { mode: m[1] as 'domain' | 'advertiser', q: m[2] ? decodeURIComponent(m[2]) : '' };
+  return { mode: 'domain', q: '' };
+}
+
 export default function Home() {
   const pathname = usePathname();
   const router = useRouter();
@@ -178,21 +185,21 @@ export default function Home() {
     if (role === 'user' && (source === 'localdb' || source === 'checkdomain')) router.replace('/');
   }, [role, source, router]);
 
-  // Auto-search khi mở tab mới từ icon 🔍 trong bảng: /googleads?mode=domain|advertiser&q=... → chạy luôn.
+  // URL path → mode + auto-search: /googleads/domain/<domain> hoặc /googleads/advertiser/<AR..> chạy luôn.
+  // Mở link trực tiếp, icon 🔍, back/forward đều đúng. Guard theo path (didUrlSearch) để không search lặp
+  // (search thủ công cũng đẩy path này rồi set guard trước — xem runDomain/openAdvertiser).
   useEffect(() => {
-    if (didUrlSearch.current) return;
-    const sp = new URLSearchParams(window.location.search);
-    const q = (sp.get('q') || '').trim();
-    if (!q) return;
-    didUrlSearch.current = true;
-    const mo: 'domain' | 'advertiser' = sp.get('mode') === 'advertiser' ? 'advertiser' : 'domain';
+    if (source !== 'google') return;
+    const { mode: mo, q } = parseGoogleUrl(pathname || '');
     setMode(mo);
+    if (!q || didUrlSearch.current === pathname) return;
+    didUrlSearch.current = pathname;
     setQuery(q);
     const ar = /AR\d+/i.exec(q);
-    if (mo === 'advertiser' && ar) openAdvertiser(ar[0]);
-    else runDomain(q);
+    if (mo === 'advertiser' && ar) openAdvertiser(ar[0], true);
+    else runDomain(q, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pathname, source]);
   const [mode, setMode] = useState<'domain' | 'advertiser'>('domain');
   const [query, setQuery] = useState('');
   // Bộ lọc kiểu Tool mmo — TẤT CẢ lọc client-side trừ maxResults (điều khiển số trang gọi Google).
@@ -245,9 +252,12 @@ export default function Home() {
     }
   }
 
-  async function runDomain(d: string) {
+  async function runDomain(d: string, fromUrl = false) {
     const q = d.trim();
     if (!q) return;
+    const path = `/googleads/domain/${encodeURIComponent(q)}`;
+    didUrlSearch.current = path; // chặn effect search lại path này
+    if (!fromUrl && pathname !== path) router.push(path); // URL chia sẻ/bookmark được
     beginLoad();
     setSuggestions(null);
     try {
@@ -262,7 +272,10 @@ export default function Home() {
     }
   }
 
-  async function openAdvertiser(id: string) {
+  async function openAdvertiser(id: string, fromUrl = false) {
+    const path = `/googleads/advertiser/${encodeURIComponent(id)}`;
+    didUrlSearch.current = path;
+    if (!fromUrl && pathname !== path) router.push(path);
     beginLoad();
     setSuggestions(null);
     try {
@@ -325,7 +338,7 @@ export default function Home() {
   const [domainById, setDomainById] = useState<Record<string, string> | null>(null); // domain gom từ content.js
   const [thumbById, setThumbById] = useState<Record<string, string> | null>(null); // thumbnail ad động gom sẵn
   const collectedFor = useRef<unknown>(null); // đánh dấu result-set đã auto-gom (tránh gom lại)
-  const didUrlSearch = useRef(false); // auto-search khi mở tab mới từ icon 🔍 (?q=&mode=) — chỉ 1 lần
+  const didUrlSearch = useRef(''); // path đã auto-search (guard: mỗi path chỉ chạy 1 lần, kể cả search thủ công đẩy path)
   const [collectDone, setCollectDone] = useState(false); // đã gom XONG toàn bộ detail chưa (để cache)
   const [view, setView] = useState<'card' | 'table'>('card'); // thẻ hay bảng
   const [advCollapsed, setAdvCollapsed] = useState(false); // thu gọn panel Nhà quảng cáo bên trái
@@ -512,14 +525,14 @@ export default function Home() {
       <div className="modes">
         <button
           className={`ghost ${mode === 'advertiser' ? 'active' : ''}`}
-          onClick={() => setMode('advertiser')}
+          onClick={() => { setMode('advertiser'); if (pathname !== '/googleads/advertiser') router.push('/googleads/advertiser'); }}
           type="button"
         >
           🏷 Tìm theo Nhà quảng cáo
         </button>
         <button
           className={`ghost ${mode === 'domain' ? 'active' : ''}`}
-          onClick={() => setMode('domain')}
+          onClick={() => { setMode('domain'); if (pathname !== '/googleads/domain') router.push('/googleads/domain'); }}
           type="button"
         >
           🌐 Tìm theo Domain
