@@ -4,6 +4,26 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-08-27 — Check Domain (affiliate/màu/link) + Google Ads gom triệt để + bẫy deploy env
+
+Chi tiết: [`docs/handoff-2026-08-27-checkdomain-googleads-gom-deploy-env.md`](docs/handoff-2026-08-27-checkdomain-googleads-gom-deploy-env.md).
+
+- **Google Ads gom Quốc gia/Domain triệt để** — cả 2 cột từ CÙNG 1 fetch `getCreativeById`; throttle làm fail
+  hàng loạt, code cũ không thử lại. Nay `startRegionCollect` chạy **nhiều lượt** (cooldown tăng dần 6/12/18s,
+  xoay proxy, deadline 8′) + fix `rpc` bỏ đói retry (`min(n,cap)`→`cap`). Thêm **`CreativeDetailCache`**
+  (SQLite, TTL 14 ngày) → tra lại đủ tức thì, dồn dần 100%. Icon 🔍 hover ô Domain/Mã NQC mở tab search mới.
+- **Check Domain**: Shopify "có" xanh / "không" đỏ; domain click mở tab mới; `detectOne` **fallback fetch
+  trực tiếp IP VPS** khi proxy bị bóp (site tự-host non-Shopify); `checkOne` `ensureWeb` → lưu MỌI domain check
+  vào `aff_library` (hiện ở /afflibrary).
+- **⭐ Bug thật**: `getDomainCheck` JOIN thiếu `COLLATE` → "Illegal mix of collations" → try/catch trả null im
+  lặng → Check Domain mất affiliate/join_url dù DB đã có `aff_status='yes'`. Fix thêm `COLLATE utf8mb4_unicode_ci`.
+- **Bẫy deploy env** (cấu hình, không phải code): ecosystem đặt env = `process.env.X || default` → shell thiếu
+  env nào là rớt về default/rỗng. Phiên này dính (1) `COOKIE_DOMAIN` sai → mất phiên login dpboss (data KHÔNG
+  mất — `dev.db` gitignore); (2) rớt `AITDK_SECRET_KEY` prod → traffic trống. `NEXT_PUBLIC_API_ORIGIN` là
+  BUILD-TIME (/backend-api) — luôn ghim inline. Env prod đầy đủ = 6 biến.
+
+---
+
 ## 2026-08-25 — Phân quyền user + cấu hình prod + fix search (thumbnail/domain/proxy/perf)
 
 Chi tiết: [`docs/handoff-2026-08-25-phan-quyen-user-prod-config.md`](docs/handoff-2026-08-25-phan-quyen-user-prod-config.md).
