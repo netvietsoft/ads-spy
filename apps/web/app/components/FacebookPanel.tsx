@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   FbAd,
   FbPagePostsResult,
@@ -75,9 +76,24 @@ function FbCard({ ad, onOpen }: { ad: FbAd; onOpen: () => void }) {
   );
 }
 
+// URL chuẩn cho từng sub-tab (mỗi mục 1 URL riêng để share/bookmark/back-forward đúng).
+type FbTab = 'search' | 'report' | 'posts';
+const FB_TAB_PATH: Record<FbTab, string> = { search: '/facebookads/search', report: '/facebookads/rank', posts: '/facebookads/post' };
+function fbPathToTab(p: string): FbTab {
+  if (p.startsWith('/facebookads/rank')) return 'report';
+  if (p.startsWith('/facebookads/post')) return 'posts';
+  return 'search'; // '/facebookads', '/facebookads/search', fallback
+}
+
 export function FacebookPanel() {
   const isMobile = useIsMobile(); // ≤760px → lịch sử tìm hiện dạng thẻ
-  const [tab, setTab] = useState<'search' | 'report' | 'posts'>('search');
+  const pathname = usePathname();
+  const router = useRouter();
+  const [tab, setTab] = useState<FbTab>(() => fbPathToTab(pathname || ''));
+  // Đồng bộ tab theo URL (mở link trực tiếp, nav từ TopNav, nút back/forward).
+  useEffect(() => { setTab(fbPathToTab(pathname || '')); }, [pathname]);
+  // Đổi tab + đẩy URL chuẩn (giữ FacebookPanel mounted vì source vẫn = 'facebook').
+  const goTab = (t: FbTab) => { setTab(t); if (pathname !== FB_TAB_PATH[t]) router.push(FB_TAB_PATH[t]); };
   const [q, setQ] = useState('');
   const [country, setCountry] = useState('ALL'); // mặc định: tất cả quốc gia
   const [status, setStatus] = useState('all');
@@ -225,7 +241,7 @@ export function FacebookPanel() {
 
   // Bấm 1 dòng report → xem quảng cáo của Page đó (theo page_id).
   async function openPageAds(pageId: string) {
-    setTab('search');
+    goTab('search');
     setQ(pageId);
     setLoading(true);
     setErr(null);
@@ -281,7 +297,7 @@ export function FacebookPanel() {
 
   // Đối thủ FB: xem lại từ DB (khớp query trong lịch sử) hoặc tra mới.
   async function replayFav(f: Favorite) {
-    setTab('search');
+    goTab('search');
     const hit = history.find((h) => h.query === f.query);
     if (hit) return openSaved(hit.id, hit.query);
     setQ(f.query);
@@ -300,7 +316,7 @@ export function FacebookPanel() {
   }
 
   async function freshFav(f: Favorite) {
-    setTab('search');
+    goTab('search');
     setQ(f.query);
     setLoading(true);
     setErr(null);
@@ -319,20 +335,20 @@ export function FacebookPanel() {
   return (
     <>
       <div className="modes" style={{ marginTop: 14 }}>
-        <button className={`ghost ${tab === 'search' ? 'active' : ''}`} type="button" onClick={() => setTab('search')}>
+        <button className={`ghost ${tab === 'search' ? 'active' : ''}`} type="button" onClick={() => goTab('search')}>
           🔎 Tìm quảng cáo
         </button>
         <button
           className={`ghost ${tab === 'report' ? 'active' : ''}`}
           type="button"
           onClick={() => {
-            setTab('report');
+            goTab('report');
             if (!report) runReport();
           }}
         >
           📊 Xếp hạng chi tiêu
         </button>
-        <button className={`ghost ${tab === 'posts' ? 'active' : ''}`} type="button" onClick={() => setTab('posts')}>
+        <button className={`ghost ${tab === 'posts' ? 'active' : ''}`} type="button" onClick={() => goTab('posts')}>
           📈 Bài viết Page
         </button>
       </div>
@@ -488,10 +504,7 @@ export function FacebookPanel() {
                       </td>
                       <td style={{ textAlign: 'center' }} data-label="QC" title={p.hasActiveAd ? 'Đang chạy quảng cáo' : ''}>
                         {p.hasActiveAd && (
-                          <span className="pp-qc">
-                            <span className="pp-qc-emoji">✅</span>
-                            <span className="pp-qc-txt">Quảng cáo</span>
-                          </span>
+                          <span className="pp-qc-emoji" style={{ color: '#16a34a', fontWeight: 700, fontSize: 16 }} title="Đang chạy quảng cáo">✓</span>
                         )}
                       </td>
                       <td className="pp-text" data-label="Nội dung">{p.text || <span className="m">(không có text)</span>}</td>
