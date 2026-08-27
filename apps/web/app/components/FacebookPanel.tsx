@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   FbAd,
@@ -83,6 +83,11 @@ function fbPathToTab(p: string): FbTab {
   if (p.startsWith('/facebookads/rank')) return 'report';
   if (p.startsWith('/facebookads/post')) return 'posts';
   return 'search'; // '/facebookads', '/facebookads/search', fallback
+}
+// Rút gọn URL/tên page về HANDLE (bỏ https/www/facebook.com/, path/query) — GIỮ hoa-thường cho URL đẹp.
+// So khớp giữa slug trên URL và page đã lưu thì .toLowerCase() 2 vế.
+function fbPageHandle(s: string): string {
+  return (s || '').trim().replace(/^https?:\/\//i, '').replace(/^(?:www|m|web)\./i, '').replace(/^facebook\.com\//i, '').replace(/[/?].*$/, '');
 }
 
 export function FacebookPanel() {
@@ -168,7 +173,31 @@ export function FacebookPanel() {
   const refreshScans = () => fbPagePostsHistory().then(setScanHistory).catch(() => {});
   useEffect(() => { refreshScans(); }, []);
 
-  async function openScan(id: number, page: string) {
+  // /facebookads/post/<page> → mở thẳng lượt quét MỚI NHẤT của page đó (history đã sắp mới→cũ).
+  const loadedSlugRef = useRef('');
+  const postSlug = useMemo(() => {
+    const m = /^\/facebookads\/post\/(.+)$/.exec(pathname || '');
+    return m ? decodeURIComponent(m[1]) : '';
+  }, [pathname]);
+  useEffect(() => {
+    if (!postSlug) { loadedSlugRef.current = ''; return; } // về /facebookads/post → cho phép load lại lần sau
+    if (!scanHistory.length) return;
+    const key = fbPageHandle(postSlug).toLowerCase();
+    if (loadedSlugRef.current === key) return;
+    loadedSlugRef.current = key;
+    const hit = scanHistory.find((h) => fbPageHandle(h.page).toLowerCase() === key);
+    if (hit) void openScan(hit.id, hit.page, true);
+    else { setPostsPage(postSlug); setErr(`Chưa có lượt quét nào cho page "${postSlug}" — bấm "Quét bài viết" để quét.`); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postSlug, scanHistory]);
+
+  async function openScan(id: number, page: string, fromUrl = false) {
+    const handle = fbPageHandle(page);
+    loadedSlugRef.current = handle.toLowerCase(); // chặn effect load lại
+    if (!fromUrl && handle) {
+      const url = `/facebookads/post/${encodeURIComponent(handle)}`;
+      if (pathname !== url) router.push(url); // bấm history → URL chia sẻ được
+    }
     setPostsPage(page);
     setLoading(true);
     setErr(null);
