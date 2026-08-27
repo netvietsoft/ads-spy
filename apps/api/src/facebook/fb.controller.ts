@@ -117,6 +117,16 @@ export class FbController {
     return saved;
   }
 
+  // DEBUG đếm like/comment/share: mở 1 permalink → trả field count thô + số parser tính. CHỈ staff.
+  // Dùng: /api/fb/post-debug?url=https://www.facebook.com/<page>/posts/<id>
+  @Roles('admin', 'manager')
+  @RequiresModule('fb-ads')
+  @Get('post-debug')
+  postDebug(@Query('url') url: string) {
+    if (!url || !url.trim()) throw new BadRequestException('Thiếu url post.');
+    return this.fb.fetchPostDebug(url.trim());
+  }
+
   // GET /api/fb/search?q=nike&country=VN  (scrape + lưu DB)
   @Roles('admin', 'manager', 'user')
   @RequiresModule('fb-ads')

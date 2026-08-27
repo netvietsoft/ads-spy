@@ -46,6 +46,11 @@ export class FbService {
     return this.prisma.fbSearch.findMany({ orderBy: { createdAt: 'desc' }, take: 20 });
   }
 
+  // DEBUG đếm: mở 1 permalink post, trả field count thô để chỉnh parser (không dùng trong luồng thường).
+  fetchPostDebug(url: string) {
+    return this.scraper.fetchPostDebug(url);
+  }
+
   // Quét bài viết Page rồi LƯU DB (để xem lại khỏi quét lại).
   async pagePosts(
     page: string,

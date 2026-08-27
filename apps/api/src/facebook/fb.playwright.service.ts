@@ -468,6 +468,56 @@ export class FbPlaywrightService implements OnModuleDestroy {
     };
   }
 
+  // DEBUG: mở 1 permalink post, trả (a) số parser tính được, (b) MỌI field liên quan count (reaction/
+  // comment/share) kèm ĐƯỜNG DẪN trong response thô — để đối chiếu với số FB hiển thị và khoá field đúng.
+  // Không dùng trong luồng thường; chỉ để chỉnh parser đếm.
+  async fetchPostDebug(url: string): Promise<{ parsed: any; candidates: Record<string, any>[] }> {
+    const context = await this.getContext();
+    const page = await context.newPage();
+    const chunks: string[] = [];
+    page.on('response', async (res) => {
+      if (!res.url().includes('/api/graphql')) return;
+      try { const t = await res.text(); if (t.includes('reaction_count')) chunks.push(t); } catch { /* ignore */ }
+    });
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await sleep(3500);
+    } catch { /* ignore */ } finally {
+      await page.close().catch(() => undefined);
+    }
+    const all: any[] = [];
+    for (const c of chunks) for (const o of parseLoose(c)) all.push(o);
+    const parsed = parsePagePosts(all).sort((a, b) => b.total - a.total)[0] ?? null;
+
+    // Gom mọi field count-ish (path → value) trong các NODE FEEDBACK của bài (comet_ufi_summary_and_actions_renderer
+    // hoặc reaction_count+share_count). Cắt để tránh payload khổng lồ.
+    const extractCounts = (node: any, path = '', out: Record<string, any> = {}, depth = 0): Record<string, any> => {
+      if (!node || typeof node !== 'object' || depth > 16) return out;
+      if (Array.isArray(node)) { node.slice(0, 4).forEach((c, i) => extractCounts(c, `${path}[${i}]`, out, depth + 1)); return out; }
+      for (const k of Object.keys(node)) {
+        const v = node[k]; const p = path ? `${path}.${k}` : k;
+        if (/count|reaction|comment|share|reshare/i.test(k)) {
+          if (typeof v === 'number' || typeof v === 'string') out[p] = v;
+          else if (v && typeof v === 'object' && (typeof v.count === 'number' || typeof v.total_count === 'number')) out[p] = v.count ?? v.total_count;
+        }
+        if (v && typeof v === 'object') extractCounts(v, p, out, depth + 1);
+      }
+      return out;
+    };
+    const candidates: Record<string, any>[] = [];
+    const walkFb = (node: any, depth = 0) => {
+      if (!node || typeof node !== 'object' || depth > 24 || candidates.length >= 4) return;
+      if (!Array.isArray(node)) {
+        const isFb = (node.comet_ufi_summary_and_actions_renderer && typeof node.comet_ufi_summary_and_actions_renderer === 'object')
+          || (node.reaction_count && typeof node.reaction_count === 'object' && node.share_count);
+        if (isFb) { candidates.push(extractCounts(node)); return; }
+        for (const k of Object.keys(node)) walkFb(node[k], depth + 1);
+      } else for (const c of node) walkFb(c, depth + 1);
+    };
+    for (const o of all) walkFb(o);
+    return { parsed, candidates };
+  }
+
   // Bảng xếp hạng chi tiêu theo Page (Ad Library Report).
   async report(country = 'VN', range = '30', limit = 50): Promise<FbReportResult> {
     const context = await this.getContext();
