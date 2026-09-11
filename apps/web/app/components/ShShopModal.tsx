@@ -79,8 +79,10 @@ export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string;
                     border: '1px solid var(--border)',
                     borderRadius: 8,
                     padding: '6px 12px',
-                    gap: 14,
+                    gap: 12,
                     fontSize: 12,
+                    maxWidth: '100%',
+                    flexWrap: 'wrap',
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column' }}>

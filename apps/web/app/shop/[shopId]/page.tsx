@@ -139,10 +139,12 @@ export default function ShopDetailPage() {
                   background: 'var(--panel-2)',
                   border: '1px solid var(--border)',
                   borderRadius: 8,
-                  padding: '7px 14px',
-                  gap: 16,
+                  padding: '6px 12px',
+                  gap: 12,
                   fontSize: 13,
                   boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                  maxWidth: '100%',
+                  flexWrap: 'wrap',
                 }}
               >
                 {/* %commit */}
