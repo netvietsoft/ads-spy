@@ -122,7 +122,7 @@ export class ShService {
         this.client.shopDetail(shopId), this.client.shopChartRevenue(shopId),
         this.client.shopChartAds(shopId), this.client.shopsSimilar(shopId),
       ]);
-      const detail = detailR.status === 'fulfilled' ? (detailR.value?.item?.item ?? null) : null;
+      const detail = detailR.status === 'fulfilled' ? (detailR.value?.item?.item ?? detailR.value?.item ?? null) : null;
       if (!detail) throw (detailR.status === 'rejected' ? detailR.reason : new Error('detail rỗng'));
       const revV: any = revR.status === 'fulfilled' ? revR.value : null;
       const adsV: any = adsR.status === 'fulfilled' ? adsR.value : null;
@@ -283,13 +283,25 @@ export class ShService {
       const bundle = await this.shopDetail(shopId).catch(() => null);
       item = bundle?.detail || null;
       if (item) {
-        // ShopHunter detail đôi khi THIẾU url (vd Pawarts) → điền domain đã track: Local DB tìm được theo domain + link shop đúng.
-        if (!item.url) item.url = domain;
+        // ShopHunter detail đôi khi THIẾU url (vd Pawarts) hoặc trả url là myshopify.com →
+        // luôn lưu domain đã track vào url/domain để Local DB (sh_shop.shop_url) tìm thấy ngay theo domain đã quét.
+        if (!item.myshopify_url && item.url && item.url !== domain) item.myshopify_url = item.url;
+        item.url = domain;
+        item.domain = domain;
+        if (bundle && bundle.detail) {
+          if (!bundle.detail.myshopify_url && bundle.detail.url && bundle.detail.url !== domain) {
+            bundle.detail.myshopify_url = bundle.detail.url;
+          }
+          bundle.detail.url = domain;
+          bundle.detail.domain = domain;
+        }
         // Chuẩn hoá shop track NHƯ shop cào bình thường: lưu chuỗi doanh thu/đơn theo ngày vào DB (vẽ biểu đồ +
         // revenue-daily) và tính số tổng kỳ từ chart nếu ShopHunter detail thiếu (để list/sort/lọc + index doanh thu).
         const chart = Array.isArray(bundle?.revenueChart) ? bundle!.revenueChart : [];
         if (chart.length) {
-          await this.mysql.appendRevenueDaily(shopId, chart).catch(() => {});
+          await this.mysql.appendRevenueDaily(shopId, chart).catch((err) => {
+            console.warn('[checkDomain] appendRevenueDaily error:', err?.message || err);
+          });
           await this.mysql.setRevenueSynced(shopId).catch(() => {});
           if (item.month_current_period_revenue == null) {
             const s = summarizeShopChart(chart);
@@ -297,20 +309,35 @@ export class ShService {
             item.day_current_period_sale_count = s.dCnt; item.week_current_period_sale_count = s.wCnt; item.month_current_period_sale_count = s.mCnt;
           }
         }
+        if (bundle?.detail && bundle.detail.month_current_period_revenue == null) {
+          bundle.detail.day_current_period_revenue = item.day_current_period_revenue;
+          bundle.detail.week_current_period_revenue = item.week_current_period_revenue;
+          bundle.detail.month_current_period_revenue = item.month_current_period_revenue;
+          bundle.detail.day_current_period_sale_count = item.day_current_period_sale_count;
+          bundle.detail.week_current_period_sale_count = item.week_current_period_sale_count;
+          bundle.detail.month_current_period_sale_count = item.month_current_period_sale_count;
+        }
         if (identifyType === 'storefront') identifyType = 'search'; // ShopHunter thực sự có dữ liệu
-        try { await this.mysql.upsertShop(shopId, item, bundle!, parseShopColumns(item, bundle!)); } catch { /* bỏ qua */ }
+        try {
+          await this.mysql.upsertShop(shopId, item, bundle!, parseShopColumns(item, bundle!));
+        } catch (err) {
+          console.error(`[checkDomain] upsertShop failed for shopId=${shopId} (${domain}):`, err);
+        }
       }
     }
     if (!item) {
       // Xác nhận Shopify nhưng ShopHunter CHƯA có dữ liệu → dựng detail TỐI THIỂU từ meta.json (FE vẫn hiện thẻ ✓).
       const title = sfMeta?.name || domain;
-      item = { shop_id: shopId || domain, url: domain, shop_title: title, currency: sfMeta?.currency ?? null, country: sfMeta?.country ?? null };
-      if (shopId) { // chỉ ghi sh_shop khi có shop_id số thật (từ meta.json/ShopHunter)
-        const raw = { shop_id: shopId, url: domain, shop_title: title, currency: item.currency, country: item.country };
-        try { await this.mysql.bulkUpsertListingShops([{ shopId, raw: JSON.stringify(raw), cols: parseShopColumns(raw), upCategory: null, upCategoryPath: null }], { onlyMissing: true }); } catch { /* bỏ qua */ }
+      const targetShopId = shopId || domain.slice(0, 32);
+      item = { shop_id: targetShopId, url: domain, shop_title: title, currency: sfMeta?.currency ?? null, country: sfMeta?.country ?? null };
+      const raw = { shop_id: targetShopId, url: domain, shop_title: title, currency: item.currency, country: item.country };
+      try {
+        await this.mysql.bulkUpsertListingShops([{ shopId: targetShopId, raw: JSON.stringify(raw), cols: parseShopColumns(raw), upCategory: null, upCategoryPath: null }], { onlyMissing: true });
+      } catch (err) {
+        console.error(`[checkDomain] bulkUpsertListingShops failed for ${targetShopId}:`, err);
       }
     }
-    if (shopId) await this.mysql.addTrackHistory(domain, shopId, item.shop_title || domain, identifyType || '');
+    await this.mysql.addTrackHistory(domain, shopId || '', item?.shop_title || domain, identifyType || '');
     return { domain, isShopify: true, shopId: shopId || undefined, identifyType, detail: item };
   }
 

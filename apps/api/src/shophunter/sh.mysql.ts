@@ -734,7 +734,11 @@ export class ShMysql implements OnModuleInit {
       ],
     );
     // Piggyback: dồn 90 điểm doanh thu ngày vào kho tích luỹ (miễn phí, không thêm call API).
-    if (detail) await this.appendRevenueDaily(id, (detail as any).revenueChart);
+    if (detail && (detail as any).revenueChart) {
+      await this.appendRevenueDaily(id, (detail as any).revenueChart).catch((e) => {
+        console.warn('[upsertShop] appendRevenueDaily error:', (e as Error).message);
+      });
+    }
   }
 
   // Dồn chuỗi doanh thu ngày vào kho append-only. UPSERT theo (shop_id, d): ngày cũ giữ nguyên, ngày mới thêm,
@@ -1805,15 +1809,37 @@ export class ShMysql implements OnModuleInit {
     await this.ensureReady();
     const [rows] = await this.pool!.query(
       `SELECT h.domain, h.shop_id, h.shop_title, h.identify_type, h.checked_at,
-              s.raw, s.detail_raw
+              s.raw, s.detail_raw,
+              s.revenue_month, s.revenue_week, s.revenue_day,
+              s.active_ad_count, s.sku_count, s.shop_country, s.shop_currency,
+              s.shop_name, s.logo_url
        FROM sh_track_history h
-       LEFT JOIN sh_shop s ON s.shop_id = h.shop_id
+       LEFT JOIN sh_shop s ON (
+         (h.shop_id IS NOT NULL AND h.shop_id != '' AND s.shop_id = h.shop_id)
+         OR s.shop_url = h.domain
+       )
        ORDER BY h.checked_at DESC LIMIT ?`,
       [limit],
     );
     const parse = (str: any) => { try { return str ? JSON.parse(str) : null; } catch { return null; } };
     return (rows as any[]).map((r) => {
-      const detail = parse(r.detail_raw) || parse(r.raw) || null;
+      const rawParsed = parse(r.raw) || {};
+      const detailRawParsed = parse(r.detail_raw) || {};
+      const inner = (detailRawParsed && detailRawParsed.detail) ? detailRawParsed.detail : (detailRawParsed || {});
+      const detail = {
+        ...rawParsed,
+        ...inner,
+        day_current_period_revenue: inner.day_current_period_revenue ?? rawParsed.day_current_period_revenue ?? (r.revenue_day != null ? Number(r.revenue_day) : null),
+        week_current_period_revenue: inner.week_current_period_revenue ?? rawParsed.week_current_period_revenue ?? (r.revenue_week != null ? Number(r.revenue_week) : null),
+        month_current_period_revenue: inner.month_current_period_revenue ?? rawParsed.month_current_period_revenue ?? (r.revenue_month != null ? Number(r.revenue_month) : null),
+        active_ad_count: inner.active_ad_count ?? rawParsed.active_ad_count ?? (r.active_ad_count != null ? Number(r.active_ad_count) : null),
+        sku_count: inner.sku_count ?? rawParsed.sku_count ?? (r.sku_count != null ? Number(r.sku_count) : null),
+        country: inner.country ?? rawParsed.country ?? r.shop_country ?? null,
+        currency: inner.currency ?? rawParsed.currency ?? r.shop_currency ?? null,
+        shop_title: inner.shop_title ?? rawParsed.shop_title ?? r.shop_name ?? r.shop_title,
+        shop_favicon_internal: inner.shop_favicon_internal ?? rawParsed.shop_favicon_internal,
+        shop_favicon_external: inner.shop_favicon_external ?? rawParsed.shop_favicon_external ?? r.logo_url,
+      };
       return {
         domain: r.domain,
         shopId: r.shop_id || detail?.shop_id || '',

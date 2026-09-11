@@ -129,7 +129,7 @@ export function TrackPanel() {
       'Thời gian',
     ];
     const data = filteredHist.map((h, i) => {
-      const det = h.detail;
+      const det = h.detail?.detail || h.detail;
       return [
         String(i + 1),
         h.domain,
@@ -142,7 +142,7 @@ export function TrackPanel() {
         det?.sku_count != null ? String(det.sku_count) : '',
         det?.country || '',
         det?.currency || '',
-        h.shopId || '',
+        h.shopId || det?.shop_id || '',
         fmt(h.checkedAt),
       ];
     });
@@ -317,7 +317,7 @@ export function TrackPanel() {
       'Link cửa hàng',
     ];
     const data = bulkItems.map((it, idx) => {
-      const s = it.result?.detail;
+      const s = it.result?.detail?.detail || it.result?.detail;
       const isShop = it.result ? (it.result.isShopify ? 'Shopify' : 'Không') : it.status === 'error' ? 'Lỗi' : 'Chưa quét';
       return [
         String(idx + 1),
@@ -347,7 +347,7 @@ export function TrackPanel() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const s = res?.detail;
+  const s = res?.detail?.detail || res?.detail;
   const site = shShopSite(s);
 
   return (
@@ -594,7 +594,7 @@ export function TrackPanel() {
                   </thead>
                   <tbody>
                     {filteredItems.map((it, idx) => {
-                      const det = it.result?.detail;
+                      const det = it.result?.detail?.detail || it.result?.detail;
                       const isShop = it.result?.isShopify;
                       return (
                         <tr key={it.id}>
@@ -719,11 +719,11 @@ export function TrackPanel() {
                               >
                                 📊 Traffic
                               </button>
-                              {it.result?.shopId ? (
+                              {it.result?.shopId || det?.shop_id ? (
                                 <button
                                   type="button"
                                   className="srcbtn"
-                                  onClick={() => setOpenShop(it.result!.shopId!)}
+                                  onClick={() => setOpenShop((it.result?.shopId || det?.shop_id)!)}
                                   style={{ padding: '3px 8px', fontSize: 12 }}
                                 >
                                   Xem chi tiết ▸
@@ -891,7 +891,7 @@ export function TrackPanel() {
               </thead>
               <tbody>
                 {filteredHist.map((h, idx) => {
-                  const det = h.detail;
+                  const det = h.detail?.detail || h.detail;
                   return (
                     <tr key={`${h.domain}-${idx}`} title={h.checkedAt ? `Kiểm tra lúc: ${fmt(h.checkedAt)}` : undefined}>
                       <td style={{ textAlign: 'center', opacity: 0.6, fontSize: 12 }}>{idx + 1}</td>
@@ -995,11 +995,11 @@ export function TrackPanel() {
                           >
                             📊 Traffic
                           </button>
-                          {h.shopId ? (
+                          {h.shopId || det?.shop_id ? (
                             <button
                               type="button"
                               className="srcbtn"
-                              onClick={() => setOpenShop(h.shopId)}
+                              onClick={() => setOpenShop(h.shopId || det?.shop_id)}
                               style={{ padding: '3px 8px', fontSize: 12 }}
                             >
                               Xem chi tiết ▸
