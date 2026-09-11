@@ -61,7 +61,23 @@ async function jsonOrThrow(res: Response) {
 
 // Gọi thẳng API (bỏ proxy Next để tránh timeout với FB scraping ~30-60s).
 // Đặt NEXT_PUBLIC_API_ORIGIN khi deploy; mặc định API dev ở :3100.
-const API = process.env.NEXT_PUBLIC_API_ORIGIN || 'http://localhost:3100';
+let API = process.env.NEXT_PUBLIC_API_ORIGIN || 'http://localhost:3100';
+
+// Tự động thích ứng origin theo trình duyệt:
+// Tránh lỗi CORS và 401 khi build chung 1 bundle (hoặc có NEXT_PUBLIC_API_ORIGIN của mmo-coin.com)
+// nhưng deploy và chạy trên domain thứ 2 như dpboss.pet.
+if (typeof window !== 'undefined') {
+  try {
+    const configured = process.env.NEXT_PUBLIC_API_ORIGIN;
+    if (configured && configured.startsWith('http')) {
+      const confUrl = new URL(configured);
+      if (confUrl.host !== window.location.host && confUrl.host.includes('.')) {
+        const pathPrefix = confUrl.pathname.replace(/\/$/, '');
+        API = `${window.location.origin}${pathPrefix}`;
+      }
+    }
+  } catch {}
+}
 
 // Auth guard toàn cục cần cookie phiên `gas_session`. api.ts gọi API KHÁC ORIGIN (giữ gọi thẳng, không
 // qua proxy Next — xem lý do timeout FB ở trên), nên fetch mặc định `same-origin` sẽ KHÔNG kèm cookie → 401.

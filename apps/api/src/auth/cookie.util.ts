@@ -26,10 +26,9 @@ export function cookieOptions(maxAgeMs: number, req?: Request) {
     if (host) {
       if (host === 'localhost' || host === '127.0.0.1') {
         domain = undefined; // Host-only cho local dev
-      } else if (domain) {
-        const rootDomain = domain.replace(/^\./, '').toLowerCase();
-        // Nếu host hiện tại không thuộc domain cấu hình (ví dụ: host dpboss.pet mà domain đang là .mmo-coin.com):
-        if (!host.endsWith(rootDomain)) {
+      } else {
+        const rootDomain = domain ? domain.replace(/^\./, '').toLowerCase() : '';
+        if (!rootDomain || !host.endsWith(rootDomain)) {
           const parts = host.split('.');
           if (parts.length >= 2) {
             domain = '.' + parts.slice(-2).join('.');
@@ -41,9 +40,14 @@ export function cookieOptions(maxAgeMs: number, req?: Request) {
     }
   }
 
+  const isHttps =
+    (req?.headers['x-forwarded-proto'] as string)?.toLowerCase().includes('https') ||
+    Boolean(req?.secure) ||
+    authConfig.secureCookie;
+
   return {
     httpOnly: true,
-    secure: authConfig.secureCookie,
+    secure: isHttps,
     sameSite: 'lax' as const,
     path: '/',
     maxAge: maxAgeMs,
