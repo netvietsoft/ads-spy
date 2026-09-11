@@ -1,21 +1,42 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { ShDetail, shShopDetail, shShopRevenueDaily, shProductDetail, shAssetProxy, shShopSite, shFavShops, shSetFavShop, shSyncShopRevenue, shEnrichShopProducts } from '../../api';
+import {
+  ShDetail,
+  shShopDetail,
+  shShopRevenueDaily,
+  shProductDetail,
+  shAssetProxy,
+  shShopSite,
+  shFavShops,
+  shSetFavShop,
+  shSyncShopRevenue,
+  shEnrichShopProducts,
+  shShopTraffic,
+  ShShopTrafficData,
+} from '../../api';
 import { toUsd } from '../../currency';
 import { ShChart } from '../../components/ShChart';
 import { ShBarChart } from '../../components/ShBarChart';
 import { SyncControls } from '../../components/SyncControls';
 import { ShLogo } from '../../components/ShLogo';
+import { TrafficHistoryModal } from '../../components/TrafficHistoryModal';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const GREEN = { color: '#159b62', fontWeight: 700 } as const; // tiền: xanh đậm
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 const cls = (n: any) => ((n ?? 0) >= 0 ? 'g-up' : 'g-down');
+const fmtDuration = (sec?: number | null) => {
+  if (sec == null) return '—';
+  const m = Math.floor(sec / 60);
+  const remSec = Math.round(sec % 60);
+  return `${m}:${String(remSec).padStart(2, '0')}`;
+};
 
 // Day/Week/Month + Δ% tính TỪ chuỗi doanh thu ngày (USD) trong DB. daily sắp xếp tăng dần theo ngày.
 function periodStats(daily: { revenue: number | null }[]) {
   const rev = daily.map((x) => Number(x.revenue) || 0);
+
   const n = rev.length;
   const sum = (from: number, to: number) => rev.slice(Math.max(0, from), Math.max(0, to)).reduce((a, b) => a + b, 0);
   const delta = (curV: number, prev: number) => (prev > 0 ? ((curV - prev) / prev) * 100 : null);
@@ -56,17 +77,35 @@ export default function ShopDetailPage() {
   const [daily, setDaily] = useState<{ date_str: string; revenue: number | null; sale_count: number | null }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [fav, setFav] = useState(false);
+  const [traffic, setTraffic] = useState<ShShopTrafficData | null>(null);
+  const [histWeb, setHistWeb] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = (typeof localStorage !== 'undefined' && (localStorage.getItem('theme') as 'dark' | 'light')) || 'light';
     document.documentElement.dataset.theme = saved;
   }, []);
-  useEffect(() => { if (shopId) shShopDetail(shopId).then(setD).catch((e) => setErr((e as Error).message)); }, [shopId]);
+  useEffect(() => {
+    if (shopId) {
+      shShopDetail(shopId)
+        .then((detail) => {
+          setD(detail);
+          if (detail.traffic) setTraffic(detail.traffic);
+        })
+        .catch((e) => setErr((e as Error).message));
+    }
+  }, [shopId]);
   useEffect(() => { if (shopId) shShopRevenueDaily(shopId).then(setDaily).catch(() => setDaily([])); }, [shopId]);
   useEffect(() => { if (shopId) shFavShops().then((r) => setFav(r.ids.includes(shopId))).catch(() => {}); }, [shopId]);
   const toggleFav = () => { const next = !fav; setFav(next); shSetFavShop(shopId, next).catch(() => setFav(!next)); };
 
   const s = d?.detail;
+  const domain = s?.url ? String(s.url).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] : '';
+  const reloadTraffic = () => {
+    if (shopId && domain) {
+      shShopTraffic(shopId, domain).then(setTraffic).catch(() => {});
+    }
+  };
+
   // Ưu tiên tiền tệ THẬT từ storefront (ShopHunter hay gắn sai `currency`). Doanh thu shop (local) → quy đổi USD khi hiển thị.
   const scur = (d as any)?.storefrontCurrency || s?.currency;
   const series = daily.length ? daily : (d?.revenueChart || []);
@@ -91,7 +130,89 @@ export default function ShopDetailPage() {
             </button>
           </div>
           {s.url ? <a className="dl" href={`https://${String(s.url).replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer">{s.url} ↗</a> : null}
+          {domain && (
+            <div style={{ margin: '8px 0 10px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  background: 'var(--panel-2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: '7px 14px',
+                  gap: 16,
+                  fontSize: 13,
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              >
+                {/* %commit */}
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 60 }}>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>%commit</span>
+                  <span style={{ fontSize: 14, fontWeight: 500, marginTop: 1 }}>
+                    {traffic?.commission_pct != null ? `${traffic.commission_pct}%` : '—'}
+                  </span>
+                </div>
+
+                <div style={{ width: 1, height: 26, background: 'var(--border)' }} />
+
+                {/* Traffic/th + Icon 📊 */}
+                <div
+                  style={{ display: 'flex', flexDirection: 'column', minWidth: 80, cursor: 'pointer' }}
+                  onClick={() => setHistWeb(domain)}
+                  title="Bấm để xem biểu đồ lịch sử traffic 12 tháng"
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Traffic/th</span>
+                    <span style={{ fontSize: 12 }}>📊</span>
+                  </div>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#16a34a', marginTop: 1 }}>
+                    {traffic?.traffic_visits != null ? Number(traffic.traffic_visits).toLocaleString('en-US') : '—'}
+                  </span>
+                </div>
+
+                <div style={{ width: 1, height: 26, background: 'var(--border)' }} />
+
+                {/* Bounce */}
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 60 }}>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Bounce</span>
+                  <span style={{ fontSize: 14, fontWeight: 500, marginTop: 1 }}>
+                    {traffic?.traffic_bounce != null ? `${Math.round(traffic.traffic_bounce * 10) / 10}%` : '—'}
+                  </span>
+                </div>
+
+                <div style={{ width: 1, height: 26, background: 'var(--border)' }} />
+
+                {/* Time */}
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 50 }}>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Time</span>
+                  <span style={{ fontSize: 14, fontWeight: 500, marginTop: 1 }}>
+                    {fmtDuration(traffic?.traffic_duration_sec)}
+                  </span>
+                </div>
+
+                {/* Button Lịch sử 1 năm */}
+                <button
+                  type="button"
+                  className="srcbtn"
+                  onClick={() => setHistWeb(domain)}
+                  title="Xem lịch sử traffic 12 tháng (AITDK) + lưu DB"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    marginLeft: 6,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    cursor: 'pointer',
+                  }}
+                >
+                  📊 Lịch sử 1 năm ↗
+                </button>
+              </div>
+            </div>
+          )}
           {d!.upCategoryPath && <div style={{ margin: '6px 0', fontSize: 13 }}>🏷️ Danh mục: <b>{d!.upCategoryPath.replace(/ > /g, ' → ')}</b></div>}
+
 
           <div style={{ display: 'flex', gap: 16, margin: '12px 0 4px', flexWrap: 'wrap' }}>
             <span>Day <b>{money(st ? st.day : toUsd(s.day_current_period_revenue, scur))}</b></span>
@@ -161,6 +282,15 @@ export default function ShopDetailPage() {
           )}
         </>
       )}
+      {histWeb && (
+        <TrafficHistoryModal
+          domain={histWeb}
+          save
+          onClose={() => setHistWeb(null)}
+          onSaved={() => reloadTraffic()}
+        />
+      )}
     </div>
   );
 }
+

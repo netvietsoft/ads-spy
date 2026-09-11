@@ -511,13 +511,37 @@ export async function shExplore(
   if (params.lists && Object.keys(params.lists).length) qs.set('lists', JSON.stringify(params.lists));
   return jsonOrThrow(await fetch(`${API}/api/sh/${type}?${qs.toString()}`));
 }
-export interface ShDetail { detail: any; revenueChart: { date_str: string; revenue: number | null; sale_count: number | null }[]; adsChart?: any; similar?: any[]; upCategory?: string | null; upCategoryPath?: string | null; productCount?: number; cached: boolean }
+export interface ShShopTrafficData {
+  domain?: string;
+  traffic_visits: number | null;
+  traffic_bounce: number | null;
+  traffic_duration_sec: number | null;
+  traffic_rank: number | null;
+  commission_pct: number | null;
+}
+export interface ShDetail {
+  detail: any;
+  revenueChart: { date_str: string; revenue: number | null; sale_count: number | null }[];
+  adsChart?: any;
+  similar?: any[];
+  upCategory?: string | null;
+  upCategoryPath?: string | null;
+  productCount?: number;
+  cached: boolean;
+  storefrontCurrency?: string | null;
+  traffic?: ShShopTrafficData | null;
+}
 export async function shShopDetail(id: string): Promise<ShDetail> {
   return jsonOrThrow(await fetch(`${API}/api/sh/shop/${encodeURIComponent(id)}`));
+}
+export async function shShopTraffic(shopId: string, domain?: string): Promise<ShShopTrafficData> {
+  const qs = domain ? `?domain=${encodeURIComponent(domain)}` : '';
+  return jsonOrThrow(await fetch(`${API}/api/sh/shop/${encodeURIComponent(shopId)}/traffic${qs}`));
 }
 export async function shProductDetail(shopId: string, productId: string): Promise<ShDetail> {
   return jsonOrThrow(await fetch(`${API}/api/sh/product/${encodeURIComponent(shopId)}/${encodeURIComponent(productId)}`));
 }
+
 
 // Shop yêu thích (tim đỏ theo dõi riêng).
 export async function shFavShops(): Promise<{ ids: string[] }> {

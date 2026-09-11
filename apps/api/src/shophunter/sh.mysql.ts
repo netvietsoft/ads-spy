@@ -2302,4 +2302,56 @@ export class ShMysql implements OnModuleInit {
       revenue: { productsWithSeries, shopsWithSeries, lastSnapshotDate },
     };
   }
+
+  // Lấy tóm tắt traffic + commission cho 1 domain từ aff_domain_traffic & aff_library / aff_program.
+  async getDomainTrafficSummary(web: string): Promise<{
+    domain: string;
+    traffic_visits: number | null;
+    traffic_bounce: number | null;
+    traffic_duration_sec: number | null;
+    traffic_rank: number | null;
+    commission_pct: number | null;
+  }> {
+    await this.ensureReady();
+    const pool = this.pool!;
+    let t: any = null;
+    let al: any = null;
+    let p: any = null;
+
+    try {
+      const [tRows]: any = await pool.query(
+        `SELECT visits AS traffic_visits, bounce_rate AS traffic_bounce, visit_duration_sec AS traffic_duration_sec, global_rank AS traffic_rank FROM aff_domain_traffic WHERE web = ? LIMIT 1`,
+        [web],
+      );
+      t = tRows[0] || null;
+    } catch { /* bảng chưa tạo */ }
+
+    try {
+      const [alRows]: any = await pool.query(
+        `SELECT commission_pct FROM aff_library WHERE web = ? LIMIT 1`,
+        [web],
+      );
+      al = alRows[0] || null;
+    } catch { /* bảng chưa tạo */ }
+
+    if (al?.commission_pct == null) {
+      try {
+        const [pRows]: any = await pool.query(
+          `SELECT commission_pct FROM aff_program WHERE web = ? AND commission_pct IS NOT NULL LIMIT 1`,
+          [web],
+        );
+        p = pRows[0] || null;
+      } catch { /* bảng chưa tạo */ }
+    }
+
+    return {
+      domain: web,
+      traffic_visits: t?.traffic_visits != null ? Number(t.traffic_visits) : null,
+      traffic_bounce: t?.traffic_bounce != null ? Number(t.traffic_bounce) : null,
+      traffic_duration_sec: t?.traffic_duration_sec != null ? Number(t.traffic_duration_sec) : null,
+      traffic_rank: t?.traffic_rank != null ? Number(t.traffic_rank) : null,
+      commission_pct: al?.commission_pct != null ? Number(al.commission_pct) : (p?.commission_pct != null ? Number(p.commission_pct) : null),
+    };
+  }
 }
+

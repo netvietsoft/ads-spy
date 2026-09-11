@@ -1,27 +1,52 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ShDetail, shShopDetail, shAssetProxy, shShopRevenueDaily, shSyncShopRevenue } from '../api';
+import { ShDetail, shShopDetail, shAssetProxy, shShopRevenueDaily, shSyncShopRevenue, shShopTraffic, ShShopTrafficData } from '../api';
 import { toUsd } from '../currency';
 import { ShChart } from './ShChart';
 import { ShLogo } from './ShLogo';
+import { TrafficHistoryModal } from './TrafficHistoryModal';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
 const GREEN = { color: '#159b62', fontWeight: 700, fontSize: 13 } as const; // tiền: xanh đậm, cỡ 13
+const fmtDuration = (sec?: number | null) => {
+  if (sec == null) return '—';
+  const m = Math.floor(sec / 60);
+  const remSec = Math.round(sec % 60);
+  return `${m}:${String(remSec).padStart(2, '0')}`;
+};
 
 export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string; categoryPath?: string | null; onClose: () => void }) {
   const [d, setD] = useState<ShDetail | null>(null);
   const [daily, setDaily] = useState<{ date_str: string; revenue: number | null; sale_count: number | null }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState('');
-  useEffect(() => { shShopDetail(shopId).then(setD).catch((e) => setErr((e as Error).message)); }, [shopId]);
+  const [traffic, setTraffic] = useState<ShShopTrafficData | null>(null);
+  const [histWeb, setHistWeb] = useState<string | null>(null);
+
+  useEffect(() => {
+    shShopDetail(shopId)
+      .then((detail) => {
+        setD(detail);
+        if (detail.traffic) setTraffic(detail.traffic);
+      })
+      .catch((e) => setErr((e as Error).message));
+  }, [shopId]);
   useEffect(() => { shShopRevenueDaily(shopId).then(setDaily).catch(() => setDaily([])); }, [shopId]);
+
   const sync = async () => {
     setSyncMsg('Đang đồng bộ…');
     try { const r = await shSyncShopRevenue(shopId); setDaily(await shShopRevenueDaily(shopId).catch(() => daily)); setSyncMsg(r.result === 'skip' ? 'Nguồn chưa có dữ liệu.' : 'Xong ✓'); }
     catch (e) { setSyncMsg('Lỗi: ' + (e as Error).message); }
   };
   const s = d?.detail;
+  const domain = s?.url ? String(s.url).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] : '';
+  const reloadTraffic = () => {
+    if (shopId && domain) {
+      shShopTraffic(shopId, domain).then(setTraffic).catch(() => {});
+    }
+  };
+
   const scur = (d as any)?.storefrontCurrency || s?.currency; // tiền tệ THẬT (storefront) → quy đổi USD
   // Chuỗi tích luỹ (>90 ngày dần) nếu có, không thì dùng chart 90 ngày từ detail. Doanh thu shop (local) → USD.
   const series = daily.length ? daily : (d?.revenueChart || []);
@@ -44,7 +69,68 @@ export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string;
               <a className="dl" href={`https://${s.url}`} target="_blank" rel="noreferrer">{s.url} ↗</a>
               <a className="srcbtn" href={`/shop/${shopId}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, textDecoration: 'none', padding: '5px 12px' }}>📊 Tổng quan shop ↗</a>
             </div>
+            {domain && (
+              <div style={{ margin: '8px 0 6px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    background: 'var(--panel-2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    padding: '6px 12px',
+                    gap: 14,
+                    fontSize: 12,
+                  }}
+                >
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>%commit</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, marginTop: 1 }}>
+                      {traffic?.commission_pct != null ? `${traffic.commission_pct}%` : '—'}
+                    </span>
+                  </div>
+                  <div style={{ width: 1, height: 22, background: 'var(--border)' }} />
+                  <div
+                    style={{ display: 'flex', flexDirection: 'column', cursor: 'pointer' }}
+                    onClick={() => setHistWeb(domain)}
+                    title="Bấm để xem biểu đồ lịch sử traffic 12 tháng"
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Traffic/th</span>
+                      <span style={{ fontSize: 11 }}>📊</span>
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', marginTop: 1 }}>
+                      {traffic?.traffic_visits != null ? Number(traffic.traffic_visits).toLocaleString('en-US') : '—'}
+                    </span>
+                  </div>
+                  <div style={{ width: 1, height: 22, background: 'var(--border)' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Bounce</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, marginTop: 1 }}>
+                      {traffic?.traffic_bounce != null ? `${Math.round(traffic.traffic_bounce * 10) / 10}%` : '—'}
+                    </span>
+                  </div>
+                  <div style={{ width: 1, height: 22, background: 'var(--border)' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, textTransform: 'uppercase' }}>Time</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, marginTop: 1 }}>
+                      {fmtDuration(traffic?.traffic_duration_sec)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="srcbtn"
+                    onClick={() => setHistWeb(domain)}
+                    title="Xem lịch sử traffic 12 tháng (AITDK) + lưu DB"
+                    style={{ padding: '3px 8px', fontSize: 11, marginLeft: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                  >
+                    📊 Lịch sử 1 năm ↗
+                  </button>
+                </div>
+              </div>
+            )}
             {categoryPath && <div style={{ margin: '6px 0', fontSize: 13 }}>🏷️ Danh mục: <b>{categoryPath}</b></div>}
+
             <div style={{ display: 'flex', gap: 16, margin: '12px 0', flexWrap: 'wrap' }}>
               <span>Day <b style={GREEN}>{money(toUsd(s.day_current_period_revenue, scur))}</b></span>
               <span>Week <b style={GREEN}>{money(toUsd(s.week_current_period_revenue, scur))}</b></span>
@@ -118,6 +204,15 @@ export function ShShopModal({ shopId, categoryPath, onClose }: { shopId: string;
           </>
         )}
       </div>
+      {histWeb && (
+        <TrafficHistoryModal
+          domain={histWeb}
+          save
+          onClose={() => setHistWeb(null)}
+          onSaved={() => reloadTraffic()}
+        />
+      )}
     </div>
   );
 }
+

@@ -282,8 +282,24 @@ export class ShController {
     const d = await this.svc.shopDetail(id);
     // Tiền tệ THẬT (storefront) để FE quy đổi USD đúng — ShopHunter hay gắn sai `currency`.
     const storefrontCurrency = await this.svc.getStorefrontCurrency(id).catch(() => null);
-    return { ...d, storefrontCurrency };
+    const domain = d?.detail?.url ? String(d.detail.url).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] : '';
+    const traffic = domain ? await this.svc.getShopTraffic(domain).catch(() => null) : null;
+    return { ...d, storefrontCurrency, traffic };
   }
+
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
+  @Get('sh/shop/:id/traffic')
+  async shopTraffic(@Param('id') id: string, @Query('domain') domainParam?: string) {
+    let domain = domainParam ? String(domainParam).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] : '';
+    if (!domain && id) {
+      const d = await this.svc.shopDetail(id).catch(() => null);
+      if (d?.detail?.url) domain = String(d.detail.url).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    }
+    if (!domain) return { domain: '', traffic_visits: null, traffic_bounce: null, traffic_duration_sec: null, traffic_rank: null, commission_pct: null };
+    return this.svc.getShopTraffic(domain);
+  }
+
 
   @Roles('admin', 'manager', 'user')
   @RequiresModule('shophunter')

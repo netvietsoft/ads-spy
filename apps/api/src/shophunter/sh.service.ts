@@ -843,4 +843,11 @@ export class ShService {
     const max = Number(process.env.SH_HARVEST_DELAY_MAX_MS) || Number(process.env.SH_HARVEST_DELAY_MS) || 3000;
     return randInt(Math.min(min, max), Math.max(min, max));
   }
+
+  async getShopTraffic(domainRaw: string) {
+    const domain = String(domainRaw || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    if (!domain) return null;
+    return this.mysql.getDomainTrafficSummary(domain);
+  }
 }
+
