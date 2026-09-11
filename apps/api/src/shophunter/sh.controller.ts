@@ -419,14 +419,11 @@ export class ShController {
   }
 
   // Xuất CSV (Excel mở được — có BOM UTF-8) TOÀN BỘ data đã lọc theo tiêu chí hiện tại (không phân trang). Cap 50k dòng.
+  // Đã tối ưu: stream HTTP response (TTFB < 1s chống Cloudflare 524 timeout), chỉ đọc cột phẳng (không mở raw LONGTEXT),
+  // không đếm count thừa, không gọi attachAffProgram (né IN 98k params).
   @Get('sh/local/export')
   async exportLocal(@Res() res: Response, @Query('type') type: string, @Query('sort') sort: string, @Query('dir') dir: string, @Query('country') country: string, @Query('category') category: string, @Query('q') q: string, @Query('aff') aff: string, @Query('fav') fav: string, @Query('shop') shop: string, @Query('revMin') revMin: string, @Query('revMax') revMax: string) {
     const isProd = type === 'products';
-    // KHÔNG dùng localParams (nó kẹp pageSize về {50..200}) → export TOÀN BỘ đã lọc, cap 50k dòng.
-    const opt = { sort: sort || 'revenue_month', dir: (dir === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc', offset: 0, limit: 50000, country: country || undefined, category: category || undefined, q: q || undefined, revMin: parseRev(revMin), revMax: parseRev(revMax) };
-    const rows = isProd
-      ? (await this.svc.localProducts({ ...opt, shop: shop || undefined })).items
-      : (await this.svc.localShops({ ...opt, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true' })).items;
     // esc: (1) chống FORMULA INJECTION — ô bắt đầu bằng = + - @ (hoặc tab/CR) bị Excel/Sheets chạy như công
     // thức; tên shop/URL là dữ liệu BÊN THỨ BA (chủ store tự đặt) nên phải trung hoà bằng cách chèn ' đứng đầu
     // (audit 2026-08-18). (2) rồi mới bọc CSV cho ký tự "," xuống dòng.
@@ -444,10 +441,31 @@ export class ShController {
       cols = ['Shop', 'URL', 'Danh mục', 'DT Ngày', 'DT Tuần', 'DT Tháng', 'TT Tháng %', 'FB', 'Ads', 'SKU', 'Nước', 'Affiliate', 'Link affiliate', 'Shop ID', 'Update'];
       line = (r) => [r.shop_title, r.url, r._up_category_path, r.day_current_period_revenue, r.week_current_period_revenue, r.month_current_period_revenue, r.month_revenue_percent_change, r.fb_followers, r.active_ad_count, r.sku_count, r.country, r._affiliate, r._affiliate_link, r.shop_id, fmtDate(r._fetched_at)];
     }
-    const csv = [cols.join(','), ...rows.map((r: any) => line(r).map(esc).join(','))].join('\r\n');
+
+    // Gửi header và BOM UTF-8 ngay để client + Cloudflare nhận TTFB tức thì (<1s), tránh bị timeout 524
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="localdb-${isProd ? 'products' : 'shops'}.csv"`);
-    res.send('﻿' + csv); // BOM để Excel nhận UTF-8 (tiếng Việt không lỗi font)
+    res.write('\uFEFF'); // BOM để Excel nhận UTF-8 (tiếng Việt không lỗi font)
+    res.write(cols.join(',') + '\r\n');
+
+    try {
+      const opt = { sort: sort || 'revenue_month', dir: (dir === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc', offset: 0, limit: 50000, country: country || undefined, category: category || undefined, q: q || undefined, revMin: parseRev(revMin), revMax: parseRev(revMax) };
+      const rows = isProd
+        ? await this.svc.exportLocalProducts({ ...opt, shop: shop || undefined })
+        : await this.svc.exportLocalShops({ ...opt, aff: aff === '1' || aff === 'true', fav: fav === '1' || fav === 'true' });
+
+      for (const r of rows) {
+        res.write(line(r).map(esc).join(',') + '\r\n');
+      }
+      res.end();
+    } catch (err) {
+      console.error('[ShController] exportLocal error:', err);
+      if (!res.headersSent) {
+        res.status(500).send('Export failed');
+      } else {
+        res.end();
+      }
+    }
   }
 
   @Get('sh/local/suggest')

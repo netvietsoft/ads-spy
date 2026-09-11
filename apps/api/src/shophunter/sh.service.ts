@@ -668,7 +668,9 @@ export class ShService {
   }
 
   localShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; cntMin?: number; cntMax?: number; cntPeriod?: 'day' | 'week' | 'month'; skuMin?: number; skuMax?: number }) { return this.mysql.queryLocalShops(o); }
+  exportLocalShops(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; aff?: boolean; fav?: boolean; revMin?: number; revMax?: number; skuMin?: number; skuMax?: number }) { return this.mysql.exportLocalShops(o); }
   localProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number }) { return this.mysql.queryLocalProducts(o); }
+  exportLocalProducts(o: { sort: string; dir: string; offset: number; limit: number; country?: string; category?: string; q?: string; shop?: string; revMin?: number; revMax?: number }) { return this.mysql.exportLocalProducts(o); }
   localSuggest(type: 'shops' | 'products', q: string) { return this.mysql.localSuggest(type, q); }
   localFilters(type: 'shops' | 'products') { return this.mysql.getLocalFilters(type); }
   favShops() { return this.mysql.listFavShops(); }

@@ -1168,6 +1168,73 @@ export class ShMysql implements OnModuleInit {
     return { items, total };
   }
 
+  // Xuất CSV shop — tối ưu triệt để: CHỈ đọc các cột phẳng STORED của sh_shop (không kéo raw LONGTEXT 1-2GB),
+  // KHÔNG gọi attachAffProgram (né câu IN 98.000 domain gây crash/timeout), KHÔNG count thừa.
+  async exportLocalShops(o: {
+    sort: string;
+    dir: string;
+    offset: number;
+    limit: number;
+    country?: string;
+    category?: string;
+    q?: string;
+    aff?: boolean;
+    fav?: boolean;
+    revMin?: number;
+    revMax?: number;
+    skuMin?: number;
+    skuMax?: number;
+  }): Promise<any[]> {
+    await this.ensureReady();
+    const orderBy = buildOrderBy(o.sort, o.dir, SHOP_LOCAL_SORTS, 'revenue_month');
+    const where: string[] = [];
+    const params: any[] = [];
+    if (o.country) { where.push('shop_country = ?'); params.push(o.country); }
+    if (o.category) { where.push("(up_category = ? OR up_category LIKE CONCAT(?, '-%'))"); params.push(o.category, o.category); }
+    if (o.q) {
+      const q = String(o.q).trim();
+      if (/^\d{5,}$/.test(q)) {
+        where.push('(shop_id = ? OR shop_name LIKE ? OR shop_url LIKE ?)');
+        params.push(q, '%' + q + '%', '%' + q + '%');
+      } else {
+        where.push('(shop_name LIKE ? OR shop_url LIKE ?)');
+        params.push('%' + q + '%', '%' + q + '%');
+      }
+    }
+    if (o.aff) { where.push("affiliate_status IN ('yes','app')"); }
+    if (o.fav) { where.push('shop_id IN (SELECT shop_id FROM sh_fav_shop)'); }
+    if (o.revMin != null) { where.push('revenue_usd_month >= ?'); params.push(o.revMin); }
+    if (o.revMax != null) { where.push('revenue_usd_month < ?'); params.push(o.revMax); }
+    if (o.skuMin != null) { where.push('sku_count >= ?'); params.push(o.skuMin); }
+    if (o.skuMax != null) { where.push('sku_count <= ?'); params.push(o.skuMax); }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+    const [rows] = await this.pool!.query(
+      `SELECT
+        COALESCE(shop_name, '') AS shop_title,
+        COALESCE(shop_url, '') AS url,
+        COALESCE(up_category_path, '') AS _up_category_path,
+        revenue_day AS day_current_period_revenue,
+        revenue_week AS week_current_period_revenue,
+        revenue_month AS month_current_period_revenue,
+        growth_month AS month_revenue_percent_change,
+        fb_followers,
+        active_ad_count,
+        sku_count,
+        COALESCE(shop_country, '') AS country,
+        COALESCE(affiliate_status, '') AS _affiliate,
+        COALESCE(affiliate_link, '') AS _affiliate_link,
+        shop_id,
+        fetched_at AS _fetched_at
+       FROM sh_shop
+       ${whereSql}
+       ${orderBy}
+       LIMIT ? OFFSET ?`,
+      [...params, o.limit, o.offset],
+    );
+    return rows as any[];
+  }
+
   // Gắn thông tin CHƯƠNG TRÌNH AFFILIATE (hoa hồng, cookie, link đăng ký, nền tảng) vào các shop của TRANG.
   //
   // Truy vấn PHỤ, không JOIN vào câu chính: sh_shop nặng 2,4 GB trên prod, JOIN trước LIMIT là buộc MySQL
@@ -1367,6 +1434,67 @@ export class ShMysql implements OnModuleInit {
       for (const it of items) it._normalized = nset.has(String(it.product_id));
     }
     return { items, total };
+  }
+
+  // Xuất CSV sản phẩm — tối ưu triệt để: chỉ lấy cột phẳng từ sh_product_list, JOIN nhẹ PK sh_shop
+  // để lấy shop_title/shop_url mà không mở raw LONGTEXT 3M của sh_product, không count, không IN 50k pids.
+  async exportLocalProducts(o: {
+    sort: string;
+    dir: string;
+    offset: number;
+    limit: number;
+    country?: string;
+    category?: string;
+    q?: string;
+    shop?: string;
+    revMin?: number;
+    revMax?: number;
+  }): Promise<any[]> {
+    await this.ensureReady();
+    const dir = String(o.dir).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const sortExpr = Object.prototype.hasOwnProperty.call(PRODUCT_LOCAL_SORTS, o.sort) ? PRODUCT_LOCAL_SORTS[o.sort] : PRODUCT_LOCAL_SORTS.revenue_month;
+    const orderBy = `ORDER BY ${sortExpr} ${dir}, product_id ${dir}`;
+    const where: string[] = [];
+    const params: any[] = [];
+    if (o.shop) { where.push('shop_id = ?'); params.push(o.shop); }
+    if (o.country) { where.push('shop_country = ?'); params.push(o.country); }
+    if (o.category) { where.push('category_last = ?'); params.push(o.category); }
+    if (o.revMin != null) { where.push('revenue_month >= ?'); params.push(o.revMin); }
+    if (o.revMax != null) { where.push('revenue_month < ?'); params.push(o.revMax); }
+    if (o.q) {
+      const tokens = o.q.trim().split(/\s+/).map((t) => t.replace(/[+\-<>()~*"@]/g, '')).filter((t) => t.length >= 3);
+      if (tokens.length) { where.push('MATCH(name) AGAINST (? IN BOOLEAN MODE)'); params.push(tokens.map((t) => `+${t}*`).join(' ')); }
+      else { where.push('name LIKE ?'); params.push('%' + o.q + '%'); }
+    }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+    const [rows] = await this.pool!.query(
+      `SELECT
+        lean.name AS product_title,
+        COALESCE(s.shop_name, '') AS shop_title,
+        COALESCE(s.shop_url, '') AS shop_url,
+        lean.price,
+        lean.revenue_day AS day_current_period_revenue,
+        lean.revenue_week AS week_current_period_revenue,
+        lean.revenue_month AS month_current_period_revenue,
+        COALESCE(lean.shop_country, '') AS shop_country,
+        COALESCE(lean.category_last, '') AS category,
+        lean.product_id,
+        lean.shop_id,
+        lean.updated_at AS _fetched_at
+       FROM (
+         SELECT product_id, shop_id, name, price, revenue_day, revenue_week, revenue_month,
+                shop_country, category_last, updated_at
+         FROM sh_product_list
+         ${whereSql}
+         ${orderBy}
+         LIMIT ? OFFSET ?
+       ) lean
+       LEFT JOIN sh_shop s ON s.shop_id = lean.shop_id
+       ${orderBy}`,
+      [...params, o.limit, o.offset],
+    );
+    return rows as any[];
   }
 
   // Job revsync-sp: sản phẩm cần đồng bộ doanh thu ngày — ưu tiên DOANH THU THÁNG cao→thấp (top trước),
