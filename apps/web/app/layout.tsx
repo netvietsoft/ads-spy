@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   description: 'Nhập domain, xem mọi quảng cáo Google Ads Transparency, nhà quảng cáo và asset.',
 };
 
+export const dynamic = 'force-dynamic';
+
 // Responsive mobile: đảm bảo viewport = device-width để media query menu mobile kích hoạt.
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
 
