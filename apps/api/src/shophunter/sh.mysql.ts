@@ -1803,8 +1803,26 @@ export class ShMysql implements OnModuleInit {
 
   async getTrackHistory(limit = 50): Promise<any[]> {
     await this.ensureReady();
-    const [rows] = await this.pool!.query('SELECT domain, shop_id, shop_title, identify_type, checked_at FROM sh_track_history ORDER BY checked_at DESC LIMIT ?', [limit]);
-    return (rows as any[]).map((r) => ({ domain: r.domain, shopId: r.shop_id, shopTitle: r.shop_title, identifyType: r.identify_type, checkedAt: r.checked_at == null ? null : Number(r.checked_at) }));
+    const [rows] = await this.pool!.query(
+      `SELECT h.domain, h.shop_id, h.shop_title, h.identify_type, h.checked_at,
+              s.raw, s.detail_raw
+       FROM sh_track_history h
+       LEFT JOIN sh_shop s ON s.shop_id = h.shop_id
+       ORDER BY h.checked_at DESC LIMIT ?`,
+      [limit],
+    );
+    const parse = (str: any) => { try { return str ? JSON.parse(str) : null; } catch { return null; } };
+    return (rows as any[]).map((r) => {
+      const detail = parse(r.detail_raw) || parse(r.raw) || null;
+      return {
+        domain: r.domain,
+        shopId: r.shop_id || detail?.shop_id || '',
+        shopTitle: r.shop_title || detail?.shop_title || r.domain,
+        identifyType: r.identify_type || '',
+        checkedAt: r.checked_at == null ? null : Number(r.checked_at),
+        detail,
+      };
+    });
   }
 
   async upsertImported(rows: any[], type = 'shop', category: string | null = null, categoryPath: string | null = null): Promise<number> {

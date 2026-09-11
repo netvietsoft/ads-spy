@@ -689,7 +689,14 @@ export interface ShCheckResult { domain: string; isShopify: boolean; reason?: st
 export async function shCheckDomain(domain: string): Promise<ShCheckResult> {
   return jsonOrThrow(await fetch(`${API}/api/sh/check?domain=${encodeURIComponent(domain)}`));
 }
-export interface ShTrackHistItem { domain: string; shopId: string; shopTitle: string; identifyType: string; checkedAt: number | null }
+export interface ShTrackHistItem {
+  domain: string;
+  shopId: string;
+  shopTitle: string;
+  identifyType: string;
+  checkedAt: number | null;
+  detail?: any;
+}
 export async function shTrackHistory(): Promise<ShTrackHistItem[]> {
   return jsonOrThrow(await fetch(`${API}/api/sh/track/history`));
 }

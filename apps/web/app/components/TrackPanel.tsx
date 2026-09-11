@@ -96,9 +96,58 @@ export function TrackPanel() {
   const [openShop, setOpenShop] = useState<string | null>(null);
   const [histWeb, setHistWeb] = useState<string | null>(null);
   const [hist, setHist] = useState<ShTrackHistItem[]>([]);
+  const [histSearch, setHistSearch] = useState('');
 
   const loadHist = () => shTrackHistory().then(setHist).catch(() => {});
   useEffect(() => { loadHist(); }, []);
+
+  const filteredHist = useMemo(() => {
+    const q = histSearch.trim().toLowerCase();
+    if (!q) return hist;
+    return hist.filter(
+      (h) =>
+        h.domain.toLowerCase().includes(q) ||
+        (h.shopTitle && h.shopTitle.toLowerCase().includes(q)),
+    );
+  }, [hist, histSearch]);
+
+  const handleExportHistCsv = () => {
+    if (!filteredHist.length) return;
+    const header = [
+      '#',
+      'Domain',
+      'Trạng thái',
+      'Tên shop',
+      'DT Ngày (USD)',
+      'DT Tuần (USD)',
+      'DT Tháng (USD)',
+      'Ads',
+      'SKU',
+      'Quốc gia',
+      'Tiền tệ',
+      'Shop ID',
+      'Thời gian',
+    ];
+    const data = filteredHist.map((h, i) => {
+      const det = h.detail;
+      return [
+        String(i + 1),
+        h.domain,
+        'Shopify',
+        det?.shop_title || h.shopTitle || '',
+        det?.day_current_period_revenue != null ? String(det.day_current_period_revenue) : '',
+        det?.week_current_period_revenue != null ? String(det.week_current_period_revenue) : '',
+        det?.month_current_period_revenue != null ? String(det.month_current_period_revenue) : '',
+        det?.active_ad_count != null ? String(det.active_ad_count) : '',
+        det?.sku_count != null ? String(det.sku_count) : '',
+        det?.country || '',
+        det?.currency || '',
+        h.shopId || '',
+        fmt(h.checkedAt),
+      ];
+    });
+    downloadTextFile(`lich-su-shopify-${Date.now()}.csv`, toCsv([header, ...data]));
+  };
 
   // --- Single Check Action ---
   const checkSingle = () => {
@@ -793,54 +842,186 @@ export function TrackPanel() {
       {/* Shared History List */}
       {hist.length > 0 && (
         <div style={{ marginTop: 28, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-          <h4 style={{ margin: '0 0 8px', fontSize: 15 }}>Lịch sử Shopify đã tìm ({hist.length})</h4>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-            {hist.map((h) => (
-              <li
-                key={h.domain}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+            <h4 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
+              Lịch sử Shopify đã tìm ({filteredHist.length}{histSearch ? ` / ${hist.length}` : ''})
+            </h4>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                value={histSearch}
+                onChange={(e) => setHistSearch(e.target.value)}
+                placeholder="Tìm trong lịch sử…"
                 style={{
-                  padding: '8px 0',
-                  borderBottom: '1px solid var(--border)',
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
+                  padding: '5px 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--panel-2)',
+                  color: 'var(--text)',
+                  fontSize: 13,
+                  minWidth: 180,
                 }}
+              />
+              <button
+                type="button"
+                className="srcbtn"
+                onClick={handleExportHistCsv}
+                style={{ fontSize: 13, padding: '5px 12px' }}
+                title="Tải toàn bộ lịch sử ra file CSV"
               >
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 150 }}>
-                  <a
-                    className="dl"
-                    style={{ cursor: 'pointer', fontWeight: 600 }}
-                    onClick={() => setOpenShop(h.shopId)}
-                  >
-                    {h.shopTitle || h.domain}
-                  </a>
-                  <button
-                    type="button"
-                    className="srcbtn"
-                    onClick={() => setHistWeb(h.domain)}
-                    title="Xem biểu đồ lịch sử traffic 1 năm"
-                    style={{ padding: '1px 5px', fontSize: 12, cursor: 'pointer', lineHeight: '16px', borderRadius: 4 }}
-                  >
-                    📊
-                  </button>
-                </div>
-                <span style={{ opacity: 0.6, fontSize: 12 }}>{h.domain}</span>
-                {h.identifyType === 'scrape' && <span className="badge-local">quét mới</span>}
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="srcbtn"
-                    onClick={() => setHistWeb(h.domain)}
-                    style={{ padding: '3px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                  >
-                    📊 Traffic
-                  </button>
-                  <span style={{ opacity: 0.5, fontSize: 12 }}>{fmt(h.checkedAt)}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
+                ⬇ Xuất CSV
+              </button>
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginTop: 10, maxWidth: '100%' }}>
+            <table className="reptable" style={{ minWidth: 700, width: '100%' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 40, textAlign: 'center' }}>#</th>
+                  <th>Domain</th>
+                  <th style={{ width: 140 }}>Trạng thái</th>
+                  <th>Tên cửa hàng</th>
+                  <th style={{ textAlign: 'right' }}>DT Ngày</th>
+                  <th style={{ textAlign: 'right' }}>DT Tuần</th>
+                  <th style={{ textAlign: 'right' }}>DT Tháng</th>
+                  <th style={{ textAlign: 'center' }}>Ads / SKU</th>
+                  <th>Quốc gia</th>
+                  <th style={{ textAlign: 'center', minWidth: 140 }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHist.map((h, idx) => {
+                  const det = h.detail;
+                  return (
+                    <tr key={`${h.domain}-${idx}`} title={h.checkedAt ? `Kiểm tra lúc: ${fmt(h.checkedAt)}` : undefined}>
+                      <td style={{ textAlign: 'center', opacity: 0.6, fontSize: 12 }}>{idx + 1}</td>
+                      <td>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                          <a
+                            href={`https://${h.domain}/`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="dl"
+                            style={{ fontWeight: 600 }}
+                          >
+                            {h.domain} ↗
+                          </a>
+                          <button
+                            type="button"
+                            className="srcbtn"
+                            onClick={() => setHistWeb(h.domain)}
+                            title="Xem biểu đồ lịch sử traffic 1 năm"
+                            style={{
+                              padding: '1px 5px',
+                              fontSize: 12,
+                              cursor: 'pointer',
+                              lineHeight: '16px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            📊
+                          </button>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          <span style={{ color: '#16a34a', fontWeight: 600, fontSize: 13 }}>✓ Shopify</span>
+                          {h.identifyType === 'scrape' && (
+                            <span style={{ fontSize: 11, marginLeft: 4, opacity: 0.7 }}>(mới)</span>
+                          )}
+                          {h.identifyType === 'storefront' && (
+                            <span style={{ fontSize: 11, marginLeft: 4, opacity: 0.7 }}>(chưa có DT)</span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        {det?.shop_title || h.shopTitle ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <ShLogo
+                              internal={det?.shop_favicon_internal}
+                              external={det?.shop_favicon_external}
+                              title={det?.shop_title || h.shopTitle}
+                              size={20}
+                            />
+                            <span style={{ fontWeight: 500, fontSize: 13 }}>{det?.shop_title || h.shopTitle}</span>
+                          </div>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {det?.day_current_period_revenue != null ? (
+                          <b>{money(det.day_current_period_revenue)}</b>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {det?.week_current_period_revenue != null ? (
+                          <b>{money(det.week_current_period_revenue)}</b>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                        {det?.month_current_period_revenue != null ? (
+                          <b style={{ color: 'var(--accent)' }}>{money(det.month_current_period_revenue)}</b>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center', fontSize: 12 }}>
+                        {det ? (
+                          <span>{det.active_ad_count ?? 0} ads · {det.sku_count ?? 0} sku</span>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {det?.country || det?.currency ? (
+                          <span>{det.country || ''} {det.currency ? `(${det.currency})` : ''}</span>
+                        ) : (
+                          <span style={{ opacity: 0.4 }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="srcbtn"
+                            onClick={() => setHistWeb(h.domain)}
+                            title="Xem biểu đồ lịch sử traffic 1 năm"
+                            style={{ padding: '3px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          >
+                            📊 Traffic
+                          </button>
+                          {h.shopId ? (
+                            <button
+                              type="button"
+                              className="srcbtn"
+                              onClick={() => setOpenShop(h.shopId)}
+                              style={{ padding: '3px 8px', fontSize: 12 }}
+                            >
+                              Xem chi tiết ▸
+                            </button>
+                          ) : (
+                            <span style={{ opacity: 0.3 }}>—</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredHist.length === 0 && (
+                  <tr>
+                    <td colSpan={10} style={{ textAlign: 'center', padding: '24px 0', color: 'var(--muted)' }}>
+                      {histSearch ? 'Không tìm thấy domain khớp bộ lọc tìm kiếm.' : 'Chưa có dữ liệu.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
