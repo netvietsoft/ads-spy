@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { shCheckDomain, ShCheckResult, shShopSite, shTrackHistory, ShTrackHistItem } from '../api';
 import { ShShopModal } from './ShShopModal';
 import { ShLogo } from './ShLogo';
+import { TrafficHistoryModal } from './TrafficHistoryModal';
 import { toCsv, downloadTextFile } from '../exportGoogle';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
@@ -93,6 +94,7 @@ export function TrackPanel() {
 
   // --- Shared State ---
   const [openShop, setOpenShop] = useState<string | null>(null);
+  const [histWeb, setHistWeb] = useState<string | null>(null);
   const [hist, setHist] = useState<ShTrackHistItem[]>([]);
 
   const loadHist = () => shTrackHistory().then(setHist).catch(() => {});
@@ -525,8 +527,8 @@ export function TrackPanel() {
               </div>
 
               {/* Live Results Table */}
-              <div style={{ overflowX: 'auto', marginTop: 10 }}>
-                <table className="reptable">
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginTop: 10, maxWidth: '100%' }}>
+                <table className="reptable" style={{ minWidth: 700, width: '100%' }}>
                   <thead>
                     <tr>
                       <th style={{ width: 40, textAlign: 'center' }}>#</th>
@@ -538,7 +540,7 @@ export function TrackPanel() {
                       <th style={{ textAlign: 'right' }}>DT Tháng</th>
                       <th style={{ textAlign: 'center' }}>Ads / SKU</th>
                       <th>Quốc gia</th>
-                      <th style={{ textAlign: 'center' }}>Thao tác</th>
+                      <th style={{ textAlign: 'center', minWidth: 140 }}>Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -549,15 +551,32 @@ export function TrackPanel() {
                         <tr key={it.id}>
                           <td style={{ textAlign: 'center', opacity: 0.6, fontSize: 12 }}>{idx + 1}</td>
                           <td>
-                            <a
-                              href={`https://${it.domain}/`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="dl"
-                              style={{ fontWeight: 600 }}
-                            >
-                              {it.domain} ↗
-                            </a>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                              <a
+                                href={`https://${it.domain}/`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="dl"
+                                style={{ fontWeight: 600 }}
+                              >
+                                {it.domain} ↗
+                              </a>
+                              <button
+                                type="button"
+                                className="srcbtn"
+                                onClick={() => setHistWeb(it.domain)}
+                                title="Xem biểu đồ lịch sử traffic 1 năm"
+                                style={{
+                                  padding: '1px 5px',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  lineHeight: '16px',
+                                  borderRadius: 4,
+                                }}
+                              >
+                                📊
+                              </button>
+                            </div>
                           </td>
                           <td>
                             {it.status === 'running' && (
@@ -641,20 +660,31 @@ export function TrackPanel() {
                             )}
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            {it.result?.shopId ? (
+                            <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
                               <button
                                 type="button"
                                 className="srcbtn"
-                                onClick={() => setOpenShop(it.result!.shopId!)}
-                                style={{ padding: '3px 8px', fontSize: 12 }}
+                                onClick={() => setHistWeb(it.domain)}
+                                title="Xem biểu đồ lịch sử traffic 1 năm"
+                                style={{ padding: '3px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
                               >
-                                Xem chi tiết ▸
+                                📊 Traffic
                               </button>
-                            ) : isShop ? (
-                              <span style={{ opacity: 0.5, fontSize: 11 }}>Đang đồng bộ</span>
-                            ) : (
-                              <span style={{ opacity: 0.3 }}>—</span>
-                            )}
+                              {it.result?.shopId ? (
+                                <button
+                                  type="button"
+                                  className="srcbtn"
+                                  onClick={() => setOpenShop(it.result!.shopId!)}
+                                  style={{ padding: '3px 8px', fontSize: 12 }}
+                                >
+                                  Xem chi tiết ▸
+                                </button>
+                              ) : isShop ? (
+                                <span style={{ opacity: 0.5, fontSize: 11 }}>Đang đồng bộ</span>
+                              ) : (
+                                <span style={{ opacity: 0.3 }}>—</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -738,7 +768,15 @@ export function TrackPanel() {
                 <span>SKU <b>{s.sku_count ?? 0}</b></span>
                 <span>{s.country} · {s.currency}</span>
               </div>
-              <div className="fbfoot">
+              <div className="fbfoot" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="srcbtn"
+                  onClick={() => setHistWeb(res.domain)}
+                  style={{ padding: '4px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  📊 Lịch sử traffic 1 năm ↗
+                </button>
                 {res.identifyType === 'storefront' ? (
                   <span className="hint" style={{ margin: 0 }}>Doanh thu của shop sẽ sớm được cập nhật.</span>
                 ) : res.shopId ? (
@@ -769,16 +807,37 @@ export function TrackPanel() {
                   flexWrap: 'wrap',
                 }}
               >
-                <a
-                  className="dl"
-                  style={{ cursor: 'pointer', fontWeight: 600 }}
-                  onClick={() => setOpenShop(h.shopId)}
-                >
-                  {h.shopTitle || h.domain}
-                </a>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 150 }}>
+                  <a
+                    className="dl"
+                    style={{ cursor: 'pointer', fontWeight: 600 }}
+                    onClick={() => setOpenShop(h.shopId)}
+                  >
+                    {h.shopTitle || h.domain}
+                  </a>
+                  <button
+                    type="button"
+                    className="srcbtn"
+                    onClick={() => setHistWeb(h.domain)}
+                    title="Xem biểu đồ lịch sử traffic 1 năm"
+                    style={{ padding: '1px 5px', fontSize: 12, cursor: 'pointer', lineHeight: '16px', borderRadius: 4 }}
+                  >
+                    📊
+                  </button>
+                </div>
                 <span style={{ opacity: 0.6, fontSize: 12 }}>{h.domain}</span>
                 {h.identifyType === 'scrape' && <span className="badge-local">quét mới</span>}
-                <span style={{ marginLeft: 'auto', opacity: 0.5, fontSize: 12 }}>{fmt(h.checkedAt)}</span>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="srcbtn"
+                    onClick={() => setHistWeb(h.domain)}
+                    style={{ padding: '3px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                  >
+                    📊 Traffic
+                  </button>
+                  <span style={{ opacity: 0.5, fontSize: 12 }}>{fmt(h.checkedAt)}</span>
+                </div>
               </li>
             ))}
           </ul>
@@ -787,6 +846,15 @@ export function TrackPanel() {
 
       {/* Modal View Details */}
       {openShop && <ShShopModal shopId={openShop} onClose={() => setOpenShop(null)} />}
+
+      {/* Modal Lịch sử Traffic 1 năm */}
+      {histWeb && (
+        <TrafficHistoryModal
+          domain={histWeb}
+          save
+          onClose={() => setHistWeb(null)}
+        />
+      )}
     </div>
   );
 }
