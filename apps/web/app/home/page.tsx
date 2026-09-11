@@ -1,4 +1,6 @@
 // Trang landing /home — 7 công cụ (không Import/Cài đặt). Menu trên cùng do layout TopNav lo (ẩn theo quyền).
+export const dynamic = 'force-dynamic';
+
 const TOOLS: [string, string, string][] = [
   ['/googleads', 'Google Ads', 'Quảng cáo Google Ads Transparency'],
   ['/facebookads', 'Facebook Ads', 'Ads Library Facebook'],

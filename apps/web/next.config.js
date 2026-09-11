@@ -34,6 +34,14 @@ const nextConfig = {
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
         ],
       },
+      // Ngăn Cloudflare & browser lưu cache HTML trang (chỉ cache static assets ở /_next/static)
+      // để tránh triệt để lỗi mất style (FOUC) khi deploy bản build mới có hash CSS khác
+      {
+        source: '/((?!_next/static|_next/image|favicon.ico).*)',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, max-age=0, must-revalidate' },
+        ],
+      },
     ];
   },
   async rewrites() {
