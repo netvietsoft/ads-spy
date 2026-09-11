@@ -1,4 +1,5 @@
 import { authConfig } from './auth.config';
+import type { Request } from 'express';
 
 export function parseCookies(header: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
@@ -13,9 +14,39 @@ export function parseCookies(header: string | undefined): Record<string, string>
   return out;
 }
 
-export function cookieOptions(maxAgeMs: number) {
+export function cookieOptions(maxAgeMs: number, req?: Request) {
+  let domain = authConfig.cookieDomain;
+
+  // Tự động thích ứng theo host thực tế của request:
+  // Ngăn chặn hoàn toàn lỗi vòng lặp đăng nhập khi domain host thực tế (vd: dpboss.pet)
+  // khác với COOKIE_DOMAIN mặc định trong env (.mmo-coin.com).
+  if (req) {
+    const rawHost = ((req.headers['x-forwarded-host'] as string) || req.headers.host || '').split(',')[0].trim();
+    const host = rawHost.split(':')[0].toLowerCase();
+    if (host) {
+      if (host === 'localhost' || host === '127.0.0.1') {
+        domain = undefined; // Host-only cho local dev
+      } else if (domain) {
+        const rootDomain = domain.replace(/^\./, '').toLowerCase();
+        // Nếu host hiện tại không thuộc domain cấu hình (ví dụ: host dpboss.pet mà domain đang là .mmo-coin.com):
+        if (!host.endsWith(rootDomain)) {
+          const parts = host.split('.');
+          if (parts.length >= 2) {
+            domain = '.' + parts.slice(-2).join('.');
+          } else {
+            domain = undefined;
+          }
+        }
+      }
+    }
+  }
+
   return {
-    httpOnly: true, secure: authConfig.secureCookie, sameSite: 'lax' as const, path: '/', maxAge: maxAgeMs,
-    ...(authConfig.cookieDomain ? { domain: authConfig.cookieDomain } : {}), // chỉ set Domain khi có COOKIE_DOMAIN (prod)
+    httpOnly: true,
+    secure: authConfig.secureCookie,
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: maxAgeMs,
+    ...(domain ? { domain } : {}),
   };
 }

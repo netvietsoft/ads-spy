@@ -15,8 +15,8 @@ import { extractToken } from './auth.guard';
 export class AuthController {
   constructor(private auth: AuthService, private googleAuth: GoogleOAuthService, private ent: EntitlementService) {}
 
-  private setSession(res: Response, token: string) {
-    res.cookie(authConfig.cookieName, token, cookieOptions(authConfig.sessionTtlDays * 86_400_000));
+  private setSession(res: Response, token: string, req?: Request) {
+    res.cookie(authConfig.cookieName, token, cookieOptions(authConfig.sessionTtlDays * 86_400_000, req));
   }
 
   @Public()
@@ -24,7 +24,7 @@ export class AuthController {
   @Post('register')
   async register(@Body() body: any, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { user, token } = await this.auth.register(body || {}, req.headers['user-agent']);
-    this.setSession(res, token);
+    this.setSession(res, token, req);
     return { user, token };
   }
 
@@ -33,7 +33,7 @@ export class AuthController {
   @Post('login')
   async login(@Body() body: any, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const { user, token } = await this.auth.login(body || {}, req.headers['user-agent']);
-    this.setSession(res, token);
+    this.setSession(res, token, req);
     return { user, token };
   }
 
@@ -47,7 +47,8 @@ export class AuthController {
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.logout((req as any).sessionToken || extractToken(req) || '');
-    res.clearCookie(authConfig.cookieName, { path: '/' });
+    const opts = cookieOptions(0, req);
+    res.clearCookie(authConfig.cookieName, { path: '/', ...(opts.domain ? { domain: opts.domain } : {}) });
     return { ok: true };
   }
 
@@ -56,7 +57,7 @@ export class AuthController {
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = (req as any).sessionToken || extractToken(req) || '';
     await this.auth.refresh(token);
-    this.setSession(res, token);
+    this.setSession(res, token, req);
     return { ok: true };
   }
 
@@ -93,7 +94,7 @@ export class AuthController {
     try {
       const profile = await this.googleAuth.exchangeCode(code);
       const token = await this.auth.loginWithGoogle(profile, req.headers['user-agent']);
-      this.setSession(res, token);
+      this.setSession(res, token, req);
       res.clearCookie('g_state', { path: '/' });
       res.redirect(`${authConfig.appBaseUrl}${next.startsWith('/') ? next : '/home'}`);
     } catch {
