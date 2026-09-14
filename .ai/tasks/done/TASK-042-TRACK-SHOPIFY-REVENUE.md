@@ -1,0 +1,25 @@
+# TASK-042: Track Shopify — Lưu domain vào Local DB sh_shop và Hiển thị doanh thu Lịch sử quét
+
+- **Task ID**: TASK-042
+- **Title**: Track Shopify — Lưu domain vào Local DB sh_shop và Hiển thị doanh thu Lịch sử quét
+- **Owner**: Agent 2 (BACKEND) & Agent 3 (FRONTEND)
+- **Status**: DONE
+- **Branch**: main
+- **Commits**: `2d2d099`, `4d6356c`, `067b59a`
+- **Files Allowed / Modified**:
+  - `apps/api/src/shophunter/sh.service.ts`
+  - `apps/api/src/shophunter/sh.mysql.ts`
+  - `apps/web/app/components/TrackPanel.tsx`
+  - `apps/web/app/layout.tsx`
+  - `apps/web/app/[...slug]/page.tsx`
+- **Acceptance Criteria**:
+  - [x] Quét 1 domain ra doanh thu thì domain đó được lưu bền vững vào bảng `sh_shop` (Local DB `https://dpboss.pet/localdb/shops`).
+  - [x] Khi tìm kiếm domain vừa quét trên `https://dpboss.pet/localdb/shops` thì hiển thị shop ra ngay lập tức.
+  - [x] Phần "Lịch sử Shopify đã tìm" (Scan history) hiển thị đầy đủ số liệu DT Ngày, DT Tuần, DT Tháng, Ads/SKU, Quốc gia, Tiền tệ (không bị gạch ngang `—`).
+  - [x] Xuất file CSV từ lịch sử có đầy đủ số liệu các cột doanh thu.
+  - [x] Bấm "Xem chi tiết ▸" mở đúng modal chi tiết shop.
+  - [x] Build API và build Web thành công không có lỗi typecheck hoặc runtime.
+- **Verification**:
+  - Build API PASS (`npm run build:api`)
+  - Build Web PASS (`npm run build:web`)
+  - TypeCheck API & Web PASS (`tsc --noEmit`)

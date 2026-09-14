@@ -1,0 +1,15 @@
+{
+  "updated_at": "2026-09-14T12:18:00+07:00",
+  "project": "Google Ads Spy & SaaS Intelligence Platform",
+  "active_task": null,
+  "recent_tasks": [
+    {
+      "id": "TASK-042",
+      "title": "Track Shopify — Lưu domain vào Local DB sh_shop và Hiển thị doanh thu Lịch sử quét",
+      "status": "done",
+      "commits": ["2d2d099", "4d6356c", "067b59a"],
+      "completed_at": "2026-09-11T17:54:00+07:00"
+    }
+  ],
+  "locks": {}
+}

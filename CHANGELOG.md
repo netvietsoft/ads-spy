@@ -4,6 +4,33 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-09-11 — Track Shopify: Lưu domain vào Local DB `sh_shop` + Bóc tách hiển thị doanh thu Lịch sử quét 10 cột
+
+Chi tiết: [`docs/handoff-2026-09-11-track-revenue-history-localdb.md`](docs/handoff-2026-09-11-track-revenue-history-localdb.md). Commits: `2d2d099`, `4d6356c`, `067b59a` trên `main`.
+
+- **Lưu domain đã quét vào Local DB (`sh_shop`)**: Trước đây khi quét một domain (ví dụ `harbourlifestyle.co.uk`),
+  nếu ShopHunter trả về `item.url = "xxx.myshopify.com"`, nhánh `if (!item.url) item.url = domain;` không kích hoạt.
+  Hậu quả là `sh_shop.shop_url` lưu `xxx.myshopify.com` thay vì domain quét thật → tìm kiếm trên
+  `https://dpboss.pet/localdb/shops` theo domain vừa quét trả về 0 kết quả. Sửa: luôn gán `item.url = domain; item.domain = domain;`
+  (và lưu domain myshopify cũ vào `item.myshopify_url`), đồng bộ vào cả `bundle.detail`. Bọc log bắt lỗi rõ ràng
+  cho `upsertShop` và `appendRevenueDaily`.
+- **Lịch sử quét Shopify hiện ĐẦY ĐỦ doanh thu (hết gạch ngang `—`)**: Dữ liệu `detail_raw` trong `sh_shop` lưu
+  dạng bundle lồng nhau `{ detail: { ... }, revenueChart: [...] }`. Hàm `getTrackHistory()` cũ parse thô
+  `parse(r.detail_raw)` khiến FE đọc `det.day_current_period_revenue` hay `det.month_current_period_revenue` bị `undefined`.
+  Sửa: viết lại câu query với `LEFT JOIN sh_shop s ON ((h.shop_id IS NOT NULL AND h.shop_id != '' AND s.shop_id = h.shop_id) OR s.shop_url = h.domain)`
+  và select trực tiếp các cột số liệu phẳng (`s.revenue_month`, `s.revenue_week`, `s.revenue_day`, `s.active_ad_count`,
+  `s.sku_count`, `s.shop_country`, `s.shop_currency`, `s.shop_name`, `s.logo_url`); đồng thời unpack lớp lồng `detailRawParsed.detail`.
+  Toàn bộ domain đã quét trước đây trong DB tự động sáng lại đầy đủ doanh thu.
+- **Bảng Lịch sử TrackPanel 10 cột hoàn chỉnh**: Khớp layout mẫu với 10 cột (`#`, `Domain`, `Trạng thái`,
+  `Tên cửa hàng`, `DT Ngày`, `DT Tuần`, `DT Tháng`, `Ads / SKU`, `Quốc gia`, `Thao tác`), có ô lọc tìm kiếm tức thì,
+  xuất CSV đầy đủ dữ liệu, modal Traffic 1 năm và modal Chi tiết Shop qua fallback `h.shopId || det?.shop_id`.
+  Truy cập an toàn chuẩn hoá: `det = h.detail?.detail || h.detail`.
+- **Next.js Route Caching (`4d6356c`)**: Khắc phục lỗi Next.js serve HTML stale cache trỏ tới các chunk JS cũ.
+  Bật `export const dynamic = 'force-dynamic'` toàn bộ app Next.js, biến 100% routes thành `ƒ (Dynamic)` server-rendered
+  on demand, triệt tiêu `x-nextjs-cache: HIT` và cache chunk lỗi thời.
+
+---
+
 ## 2026-08-27 — Check Domain (affiliate/màu/link) + Google Ads gom triệt để + bẫy deploy env
 
 Chi tiết: [`docs/handoff-2026-08-27-checkdomain-googleads-gom-deploy-env.md`](docs/handoff-2026-08-27-checkdomain-googleads-gom-deploy-env.md).
