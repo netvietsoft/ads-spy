@@ -332,15 +332,21 @@ export function ProductSyncPanel() {
   // Target Store Actions
   const handleAddTarget = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTargetDomain.trim()) return;
+    const cleanDomain = newTargetDomain.trim();
+    if (!cleanDomain) return;
+
+    if (cleanDomain.includes('@')) {
+      showMsg('❌ Tên miền không hợp lệ: Bạn đang nhập địa chỉ Email. Vui lòng nhập tên miền Shopify (vd: your-shop.myshopify.com).', 'error');
+      return;
+    }
 
     try {
       const res = await fetch('/api/product-sync/targets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newTargetName.trim() || newTargetDomain.trim(),
-          domain: newTargetDomain.trim(),
+          name: newTargetName.trim() || cleanDomain,
+          domain: cleanDomain,
           accessToken: newTargetToken.trim() || null,
         }),
       });

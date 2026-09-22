@@ -54,13 +54,36 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
     };
 
     if (selectedTargetId === 'custom') {
-      if (!customDomain.trim() || !customToken.trim()) {
+      const cleanCustomDomain = customDomain.trim();
+      if (!cleanCustomDomain || !customToken.trim()) {
         alert('Vui lòng nhập đầy đủ Shopify Domain và Admin Access Token của Shop Đích!');
         return;
       }
-      options.shopDomain = customDomain.trim();
+      if (cleanCustomDomain.includes('@')) {
+        alert(
+          '❌ TÊN MIỀN SHOP KHÔNG HỢP LỆ!\n\n' +
+            'Bạn đang nhập địa chỉ Email: "' + cleanCustomDomain + '"\n\n' +
+            '👉 Tên miền Shopify KHÔNG PHẢI là email cá nhân. Nó phải có dạng:\n' +
+            '   ten-shop.myshopify.com (hoặc ten-shop)\n\n' +
+            'Cách lấy đúng tên miền shop:\n' +
+            '1. Đăng nhập trang quản trị Shopify (Shopify Admin).\n' +
+            '2. Vào Cài đặt (Settings) > Tên miền (Domains).\n' +
+            '3. Copy tên miền chính đuôi .myshopify.com rồi dán lại vào đây.'
+        );
+        return;
+      }
+      options.shopDomain = cleanCustomDomain;
       options.accessToken = customToken.trim();
     } else {
+      const selected = targets.find((t) => String(t.id) === String(selectedTargetId));
+      if (selected && selected.domain.includes('@')) {
+        alert(
+          '❌ TÊN MIỀN SHOP ĐÃ LƯU KHÔNG HỢP LỆ!\n\n' +
+            'Shop đích "' + selected.name + '" đang lưu địa chỉ Email: "' + selected.domain + '"\n\n' +
+            '👉 Vui lòng chuyển sang Tab "🏪 Shop Đích (Target Stores)" để sửa lại tên miền thành dạng ten-shop.myshopify.com (không dùng email).'
+        );
+        return;
+      }
       options.targetStoreId = selectedTargetId;
     }
 

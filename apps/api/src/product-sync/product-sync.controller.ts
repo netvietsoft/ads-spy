@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { PrismaService } from '../prisma.service';
 import { ProductScraperService } from './product-scraper.service';
@@ -117,6 +117,12 @@ export class ProductSyncController {
       apiVersion?: string;
     },
   ) {
+    const rawDomain = (body.domain || '').trim();
+    if (rawDomain.includes('@')) {
+      throw new BadRequestException(
+        `Tên miền Shop không hợp lệ: "${rawDomain}" là địa chỉ Email. Tên miền Shopify phải có dạng: your-shop.myshopify.com (xem trong Shopify Admin > Settings > Domains).`,
+      );
+    }
     const domain = this.publisher.cleanStoreDomain(body.domain);
     const target = await this.prisma.syncTargetStore.create({
       data: {
@@ -142,6 +148,11 @@ export class ProductSyncController {
       status?: string;
     },
   ) {
+    if (body.domain && body.domain.includes('@')) {
+      throw new BadRequestException(
+        `Tên miền Shop không hợp lệ: "${body.domain}" là địa chỉ Email. Tên miền Shopify phải có dạng: your-shop.myshopify.com.`,
+      );
+    }
     const data: any = {};
     if (body.name) data.name = body.name;
     if (body.domain) data.domain = this.publisher.cleanStoreDomain(body.domain);

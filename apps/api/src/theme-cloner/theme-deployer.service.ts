@@ -84,7 +84,22 @@ export class ThemeDeployerService {
     }
 
     // Clean domain
-    targetDomain = targetDomain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    targetDomain = targetDomain.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase();
+    if (targetDomain.includes('@')) {
+      const emailEntered = targetDomain;
+      addLog('Auth', 'failed', `Lỗi tên miền shop: "${emailEntered}" là địa chỉ Email, không phải tên miền Shopify.`);
+      return {
+        success: false,
+        targetDomain,
+        logs,
+        createdPages,
+        createdPolicies,
+        createdCollections,
+        deployedAssets,
+        error: `Tên miền Shop không hợp lệ: "${emailEntered}". Bạn đang nhập địa chỉ email thay vì tên miền Shopify (ví dụ: your-store.myshopify.com). Vui lòng vào trang quản trị Shopify (Shopify Admin > Settings > Domains) để xem đúng tên miền .myshopify.com của cửa hàng.`,
+      };
+    }
+
     if (!targetDomain.includes('.myshopify.com')) {
       targetDomain = `${targetDomain}.myshopify.com`;
     }

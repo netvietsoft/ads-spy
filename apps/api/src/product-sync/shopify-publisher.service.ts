@@ -41,11 +41,15 @@ export class ShopifyPublisherService {
   ) {}
 
   cleanStoreDomain(domain: string): string {
-    return domain
+    let d = domain
       .trim()
       .replace(/^https?:\/\//i, '')
       .replace(/\/.*$/, '')
       .toLowerCase();
+    if (!d.includes('.myshopify.com') && !d.includes('.') && !d.includes('@')) {
+      d = `${d}.myshopify.com`;
+    }
+    return d;
   }
 
   /**
@@ -57,6 +61,12 @@ export class ShopifyPublisherService {
     if (!target.accessToken) return { ok: false, message: 'Chưa cấu hình Access Token (shpat_...)' };
 
     const domain = this.cleanStoreDomain(target.domain);
+    if (domain.includes('@')) {
+      return {
+        ok: false,
+        message: `Tên miền Shop không hợp lệ: "${domain}" là địa chỉ Email. Vui lòng nhập tên miền Shopify dạng: your-shop.myshopify.com.`,
+      };
+    }
     const apiVersion = target.apiVersion || '2024-01';
 
     try {
