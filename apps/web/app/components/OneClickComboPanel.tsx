@@ -24,8 +24,8 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
   const [customToken, setCustomToken] = useState('');
 
   // OAuth Dev Dashboard Helper
-  const [useOAuth, setUseOAuth] = useState(false);
-  const [clientId, setClientId] = useState('');
+  const [useOAuth, setUseOAuth] = useState(true);
+  const [clientId, setClientId] = useState('2384dca9a665265f228887383a456c77');
   const [clientSecret, setClientSecret] = useState('');
   const [isExchanging, setIsExchanging] = useState(false);
   const [exchangeMsg, setExchangeMsg] = useState<string | null>(null);
