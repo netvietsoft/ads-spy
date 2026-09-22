@@ -10,10 +10,20 @@
 #   KHÔNG đưa seed vào script: upsert sẽ RESET mật khẩu admin về giá trị env MỖI lần deploy.
 set -e
 
-# Origin mà BROWSER gọi tới. Hiện là chính domain web (same-origin) rồi Next rewrite /api/* vào cổng
-# nội bộ — xem ghi chú dài trong apps/web/.env.production. Biến process env THẮNG file .env* nên 2 dòng
-# này phải khớp với file đó, nếu không build sẽ lấy giá trị ở đây.
-export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://mmo-coin.com}"
+# Tự động nhận diện domain (dpboss.pet hoặc mmo-coin.com):
+if [ -z "$DOMAIN" ]; then
+  if grep -qs "dpboss.pet" /etc/nginx/sites-enabled/* 2>/dev/null || [ -f "deploy.sh.bak-20260807" ]; then
+    DOMAIN="dpboss.pet"
+  else
+    DOMAIN="mmo-coin.com"
+  fi
+fi
+
+echo "==> Deploying cho domain: $DOMAIN"
+export DOMAIN
+export APP_BASE_URL="${APP_BASE_URL:-https://${DOMAIN}}"
+export COOKIE_DOMAIN="${COOKIE_DOMAIN:-.${DOMAIN}}"
+export NEXT_PUBLIC_API_ORIGIN="${NEXT_PUBLIC_API_ORIGIN:-https://${DOMAIN}/backend-api}"
 export API_ORIGIN="${API_ORIGIN:-http://127.0.0.1:8075}"
 
 echo "==> [1/6] Kéo code mới (ép về origin/main, bỏ thay đổi local như package-lock)"
@@ -58,7 +68,7 @@ git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json 2>/dev/null || tru
 echo "==> [6/6] Khởi động/Reload PM2"
 # `reload ecosystem.config.js` chỉ tác động 2 app định nghĩa trong file đó, KHÔNG đụng các app khác
 # trên VPS (khác hẳn `pm2 restart all` — cái đó bị cấm tuyệt đối, xem docs/deployment.md mục 4).
-pm2 reload ecosystem.config.js || pm2 start ecosystem.config.js
+pm2 reload ecosystem.config.js --update-env || pm2 start ecosystem.config.js
 
 # `pm2 save` GHI ĐÈ ~/.pm2/dump.pm2 bằng danh sách HIỆN TẠI. 2026-08-05 daemon PM2 bị dựng lại và chỉ
 # còn 2 app (trước đó ~47), rồi `pm2 save` chạy 2 lần → cả dump.pm2 lẫn dump.pm2.bak chỉ còn 2 app,
@@ -73,4 +83,4 @@ else
   pm2 save
 fi
 
-echo "✅ Xong. Web :3062 (mmo-coin.com) · API :8075 (api.mmo-coin.com) — kiểm tra: pm2 status && pm2 logs"
+echo "✅ Xong. Web :3062 ($DOMAIN) · API :8075 (api.$DOMAIN) — kiểm tra: pm2 status && pm2 logs"
