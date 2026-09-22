@@ -368,8 +368,16 @@ export class ThemeDeployerService {
                 addLog('Products', 'in_progress', `Đã đẩy ${totalProductsSynced}/${products.length} sản phẩm: "${transformed.title}"`);
               }
             } else {
-              const errData = await productRes.json();
-              this.logger.warn(`Failed to push product ${rawP.title}: ${JSON.stringify(errData)}`);
+              const errData: any = await productRes.json().catch(() => ({}));
+              const errStr = typeof errData?.errors === 'string' ? errData.errors : JSON.stringify(errData);
+              this.logger.warn(`Failed to push product ${rawP.title}: ${errStr}`);
+              if (i === 0) {
+                addLog('Products', 'failed', `Lỗi đẩy sản phẩm mẫu: ${errStr}`);
+              }
+              if (errStr.includes('merchant approval') || errStr.includes('scope')) {
+                addLog('Products', 'failed', `Dừng đồng bộ: App chưa được cấp quyền write_products trên Shopify. Chi tiết: ${errStr}`);
+                break;
+              }
             }
           } catch (e) {
             this.logger.warn(`Push product error: ${e.message}`);
