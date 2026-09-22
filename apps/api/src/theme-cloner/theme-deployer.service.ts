@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { ProductScraperService } from '../product-sync/product-scraper.service';
+import { ProductTransformService } from '../product-sync/product-transform.service';
+import { ShopifyPublisherService } from '../product-sync/shopify-publisher.service';
 import {
   StorefrontBlueprint,
   ThemeDeployOptions,
@@ -11,7 +14,12 @@ import {
 export class ThemeDeployerService {
   private readonly logger = new Logger(ThemeDeployerService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly productScraper: ProductScraperService,
+    private readonly productTransform: ProductTransformService,
+    private readonly shopifyPublisher: ShopifyPublisherService,
+  ) {}
 
   async deploy(
     blueprint: StorefrontBlueprint,
@@ -283,16 +291,98 @@ export class ThemeDeployerService {
       }
     }
 
-    addLog('Summary', 'success', `Triển khai hoàn tất! Đã tạo ${createdPages.length} trang, ${createdPolicies.length} chính sách, ${createdCollections.length} danh mục.`);
+    // 6. Deploy Products (Combo 1-Click)
+    let totalProductsSynced = 0;
+    if (options.deployProducts) {
+      addLog('Products', 'in_progress', `Chuẩn bị danh mục sản phẩm từ ${blueprint.sourceDomain}...`);
+      try {
+        // Look up existing products in DB
+        let products = await this.prisma.syncProduct.findMany({
+          where: {
+            sourceStore: {
+              domain: { contains: blueprint.sourceDomain },
+            },
+          },
+          take: options.productLimit && options.productLimit > 0 ? options.productLimit : 100,
+        });
+
+        // If not in DB yet, scrape live
+        if (products.length === 0) {
+          addLog('Products', 'in_progress', `Chưa có sẵn trong kho, đang quét cào trực tiếp từ ${blueprint.sourceDomain}...`);
+          let sourceStore = await this.prisma.syncSourceStore.findFirst({
+            where: { domain: { contains: blueprint.sourceDomain } },
+          });
+          if (!sourceStore) {
+            sourceStore = await this.prisma.syncSourceStore.create({
+              data: {
+                name: blueprint.title || blueprint.sourceDomain,
+                domain: blueprint.sourceDomain,
+              },
+            });
+          }
+          await this.productScraper.scrapeSourceStore(sourceStore.id, { maxPages: 2 });
+          products = await this.prisma.syncProduct.findMany({
+            where: { sourceStoreId: sourceStore.id },
+            take: options.productLimit && options.productLimit > 0 ? options.productLimit : 100,
+          });
+        }
+
+        addLog('Products', 'in_progress', `Tìm thấy ${products.length} sản phẩm. Bắt đầu đẩy sang Shop Đích...`);
+
+        const transformConfig = {
+          priceMultiplier: options.priceMultiplier !== undefined ? options.priceMultiplier : 1.25,
+          priceAddition: options.priceAddition !== undefined ? options.priceAddition : 0,
+          priceRounding: (options.priceRounding || '99') as any,
+          overrideVendor: options.overrideVendor || undefined,
+        };
+
+        for (let i = 0; i < products.length; i++) {
+          const rawP = products[i];
+          const transformed = this.productTransform.transformProduct(rawP, transformConfig);
+
+          try {
+            const productRes = await fetch(`${apiBase}/products.json`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ product: transformed }),
+            });
+
+            if (productRes.ok) {
+              totalProductsSynced++;
+              if (i % 5 === 0 || i === products.length - 1) {
+                addLog('Products', 'in_progress', `Đã đẩy ${totalProductsSynced}/${products.length} sản phẩm: "${transformed.title}"`);
+              }
+            } else {
+              const errData = await productRes.json();
+              this.logger.warn(`Failed to push product ${rawP.title}: ${JSON.stringify(errData)}`);
+            }
+          } catch (e) {
+            this.logger.warn(`Push product error: ${e.message}`);
+          }
+          await this.delay(500); // 2 req/s safe rate limit
+        }
+
+        addLog('Products', 'success', `Đồng bộ thành công ${totalProductsSynced}/${products.length} sản phẩm sang Shop Đích!`);
+      } catch (err) {
+        addLog('Products', 'failed', `Lỗi đồng bộ sản phẩm: ${err.message}`);
+      }
+    }
+
+    const shopName = targetDomain.replace('.myshopify.com', '');
+    const shopifyAdminUrl = `https://admin.shopify.com/store/${shopName}/products`;
+
+    addLog('Summary', 'success', `🎉 BẤM PHÁT ĂN TẤT THÀNH CÔNG! Đã tạo Theme Assets, ${createdPages.length} trang, ${createdPolicies.length} chính sách, ${createdCollections.length} danh mục, ${totalProductsSynced} sản phẩm.`);
 
     return {
       success: true,
       targetDomain,
+      shopifyAdminUrl,
       logs,
       createdPages,
       createdPolicies,
       createdCollections,
       deployedAssets,
+      totalProductsSynced,
     };
   }
 

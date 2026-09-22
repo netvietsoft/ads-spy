@@ -1,12 +1,17 @@
 # BẢNG TIẾN ĐỘ NHIỆM VỤ (TODOS.md)
 
-> **Cập nhật lần cuối**: 2026-09-14 12:18:00 (GMT+7)  
+> **Cập nhật lần cuối**: 2026-09-22 14:38:00 (GMT+7)  
 > **Dự án**: Google Ads Spy & SaaS Intelligence Platform  
 > **Nguồn trạng thái**: `.ai/tasks/` & `.ai/state.json`
 
 ---
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
+
+- [x] **TASK-045**: Combo 1-Click Store Cloner — Nhân bản trọn gói A-Z (Theme, Assets, Pages, Policies, Collections, Sản phẩm & Giá)
+  - **Mô tả**: Tích hợp tính năng "Combo 1-Click: Bấm Phát Ăn Tất" trên giao diện `/clonesync` và pipeline backend tự động hoá A-Z: cào đối thủ, thiết lập giao diện Theme Dawn 15.2, Banner HD, Logo trong suốt, 9 trang Pages & Policies, Menu điều hướng, Collections và đẩy toàn bộ sản phẩm (kèm options, variants, images HD, công thức giá x1.25, làm tròn .99, đổi vendor) qua Shopify Admin REST API. Kết thúc có link mở trực tiếp Shopify Admin quản lý sản phẩm.
+  - **Branch**: `agent/backend/TASK-045`
+  - **Tài liệu**: [`docs/handoff-2026-09-22-combo-one-click-cloner.md`](docs/handoff-2026-09-22-combo-one-click-cloner.md)
 
 - [x] **TASK-044**: Shopify Theme & Storefront Cloner — Đóng gói Theme Zip & Tự động Deploy qua API
   - **Mô tả**: Xây dựng module cào trọn gói giao diện Shopify (Dawn 15.2.0): Banner, Logo, Font, Màu sắc, Sections Homepage, 9 trang Pages & Policies, Menu điều hướng. Hỗ trợ 2 phương pháp: Xuất file Theme Zip hoàn chỉnh cài đặt thủ công và Tự động deploy trực tiếp sang Shop Đích qua Shopify Admin API.
@@ -27,7 +32,6 @@
 
 ## 🟡 ĐANG THỰC HIỆN (RUNNING)
 *(Hiện không có task nào đang chạy)*
-
 
 ---
 

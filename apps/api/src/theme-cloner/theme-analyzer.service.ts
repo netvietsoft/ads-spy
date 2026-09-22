@@ -143,13 +143,19 @@ export class ThemeAnalyzerService {
   }
 
   private extractLogo(html: string, domain: string): string | undefined {
-    // 1. Look for header logo wrapper or logo class
-    const wrapperMatch = html.match(/class=["'][^"']*header__heading-logo(?:-wrapper)?[^"']*["'][\s\S]*?<img[^>]*src=["']([^"']+)["']/i);
+    // 1. Class directly on img tag
+    const imgClassMatch = html.match(/<img[^>]*class=["'][^"']*header__heading-logo[^"']*["'][^>]*src=["']([^"']+)["']/i);
+    if (imgClassMatch) {
+      return this.formatUrl(imgClassMatch[1], domain);
+    }
+
+    // 2. Class on wrapper surrounding img
+    const wrapperMatch = html.match(/class=["'][^"']*header__heading-logo-wrapper[^"']*["'][\s\S]*?<img[^>]*src=["']([^"']+)["']/i);
     if (wrapperMatch) {
       return this.formatUrl(wrapperMatch[1], domain);
     }
 
-    // 2. Look for any image matching logo or lo_go in src or srcset
+    // 3. Any image containing logo or lo_go in src or srcset
     const logoRegex = /(?:src|srcset)=["']([^"']*(?:logo|lo_go)[^"']*\.(?:png|jpg|webp|svg)[^"']*)["']/i;
     const looseLogo = html.match(logoRegex);
     if (looseLogo) {

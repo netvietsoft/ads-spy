@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { ThemeClonerPanel } from './ThemeClonerPanel';
+import { OneClickComboPanel } from './OneClickComboPanel';
 
 export interface SourceStore {
   id: number;
@@ -96,7 +97,7 @@ export interface SyncLogItem {
 }
 
 export function ProductSyncPanel() {
-  const [subTab, setSubTab] = useState<'catalog' | 'sources' | 'targets' | 'rules' | 'theme'>('catalog');
+  const [subTab, setSubTab] = useState<'combo' | 'catalog' | 'sources' | 'targets' | 'rules' | 'theme'>('combo');
 
   // Sources
   const [sources, setSources] = useState<SourceStore[]>([]);
@@ -605,6 +606,25 @@ export function ProductSyncPanel() {
       {/* Sub Tabs */}
       <div style={{ display: 'flex', gap: 8, borderBottom: '2px solid var(--border, #e5e7eb)', marginBottom: 20 }}>
         <button
+          onClick={() => setSubTab('combo')}
+          style={{
+            padding: '10px 20px',
+            fontWeight: 800,
+            fontSize: 14,
+            cursor: 'pointer',
+            border: 'none',
+            background: subTab === 'combo' ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.1) 100%)' : 'none',
+            borderRadius: '6px 6px 0 0',
+            borderBottom: subTab === 'combo' ? '3px solid #f59e0b' : '3px solid transparent',
+            color: subTab === 'combo' ? '#f59e0b' : 'var(--muted)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          ⚡ Combo 1-Click (Ăn Tất Cả)
+        </button>
+        <button
           onClick={() => setSubTab('catalog')}
           style={{
             padding: '10px 18px',
@@ -695,6 +715,13 @@ export function ProductSyncPanel() {
           🎨 Theme & Giao diện (Cloner)
         </button>
       </div>
+
+      {/* ==================================================================== */}
+      {/* TAB 0: COMBO 1-CLICK CLONER (ĂN TẤT CẢ) */}
+      {/* ==================================================================== */}
+      {subTab === 'combo' && (
+        <OneClickComboPanel targets={targets} />
+      )}
 
       {/* ==================================================================== */}
       {/* TAB 1: KHO SẢN PHẨM (CATALOG) */}

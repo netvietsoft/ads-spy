@@ -61,7 +61,7 @@ export interface StorefrontBlueprint {
 }
 
 export interface ThemeDeployOptions {
-  targetStoreId?: string;
+  targetStoreId?: string | number;
   shopDomain?: string;
   accessToken?: string;
   deployPages?: boolean;
@@ -70,6 +70,13 @@ export interface ThemeDeployOptions {
   deployMenus?: boolean;
   deployThemeAssets?: boolean;
   themeId?: number | string;
+  // Combo 1-Click Product sync options
+  deployProducts?: boolean;
+  priceMultiplier?: number;
+  priceAddition?: number;
+  priceRounding?: string;
+  overrideVendor?: string;
+  productLimit?: number;
 }
 
 export interface DeployStepLog {
@@ -83,10 +90,12 @@ export interface DeployStepLog {
 export interface DeployResult {
   success: boolean;
   targetDomain: string;
+  shopifyAdminUrl?: string;
   logs: DeployStepLog[];
   createdPages: string[];
   createdPolicies: string[];
   createdCollections: string[];
   deployedAssets: string[];
+  totalProductsSynced?: number;
   error?: string;
 }

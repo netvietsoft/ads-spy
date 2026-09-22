@@ -140,4 +140,37 @@ export class ThemeClonerController {
       );
     }
   }
+
+  @Public()
+  @Post('combo-clone')
+  async comboClone(
+    @Body()
+    body: {
+      sourceDomain: string;
+      options: ThemeDeployOptions;
+    },
+  ) {
+    if (!body.sourceDomain) {
+      throw new HttpException('Source domain is required', HttpStatus.BAD_REQUEST);
+    }
+    try {
+      const blueprint = await this.analyzerService.analyze(body.sourceDomain);
+      const deployOpts: ThemeDeployOptions = {
+        deployPages: true,
+        deployPolicies: true,
+        deployCollections: true,
+        deployMenus: true,
+        deployThemeAssets: true,
+        deployProducts: true,
+        ...body.options,
+      };
+      const result = await this.deployerService.deploy(blueprint, deployOpts);
+      return { success: result.success, result, blueprint };
+    } catch (err) {
+      throw new HttpException(
+        `Combo clone failed: ${err.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }
