@@ -38,9 +38,10 @@ import { TrafficService } from './traffic/traffic.service';
 import { CheckDomainController } from './check-domain/check-domain.controller';
 import { CheckDomainService } from './check-domain/check-domain.service';
 import { ProductSyncModule } from './product-sync/product-sync.module';
+import { ThemeClonerModule } from './theme-cloner/theme-cloner.module';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule, AdminModule, ProductSyncModule],
+  imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule, AdminModule, ProductSyncModule, ThemeClonerModule],
   controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController, AffLibController, TrafficController, CheckDomainController],
   providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetGoaffpro, AffnetAffiliatly, AffnetUppromote, AffnetService, AffLibMysql, AffLibDetect, AffLibService, TrafficService, CheckDomainService],
 })

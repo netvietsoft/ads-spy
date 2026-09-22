@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { ThemeClonerPanel } from './ThemeClonerPanel';
 
 export interface SourceStore {
   id: number;
@@ -95,7 +96,7 @@ export interface SyncLogItem {
 }
 
 export function ProductSyncPanel() {
-  const [subTab, setSubTab] = useState<'catalog' | 'sources' | 'targets' | 'rules'>('catalog');
+  const [subTab, setSubTab] = useState<'catalog' | 'sources' | 'targets' | 'rules' | 'theme'>('catalog');
 
   // Sources
   const [sources, setSources] = useState<SourceStore[]>([]);
@@ -674,6 +675,24 @@ export function ProductSyncPanel() {
           }}
         >
           ⚡ Quy tắc & Nhật ký Cron ({rules.length})
+        </button>
+        <button
+          onClick={() => setSubTab('theme')}
+          style={{
+            padding: '10px 18px',
+            fontWeight: 600,
+            fontSize: 14,
+            cursor: 'pointer',
+            border: 'none',
+            background: 'none',
+            borderBottom: subTab === 'theme' ? '3px solid #0284c7' : '3px solid transparent',
+            color: subTab === 'theme' ? '#0284c7' : 'var(--muted)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          🎨 Theme & Giao diện (Cloner)
         </button>
       </div>
 
@@ -1436,6 +1455,13 @@ export function ProductSyncPanel() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* SUBTAB 5: THEME & STOREFRONT CLONER */}
+      {/* ==================================================================== */}
+      {subTab === 'theme' && (
+        <ThemeClonerPanel targets={targets} />
       )}
 
       {/* ==================================================================== */}

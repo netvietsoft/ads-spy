@@ -1,8 +1,15 @@
 {
-  "updated_at": "2026-09-22T11:55:00+07:00",
+  "updated_at": "2026-09-22T14:22:00+07:00",
   "project": "Google Ads Spy & SaaS Intelligence Platform",
   "active_task": null,
   "recent_tasks": [
+    {
+      "id": "TASK-044",
+      "title": "Shopify Theme & Storefront Cloner — Đóng gói Theme Zip & Tự động Deploy qua API",
+      "status": "done",
+      "branch": "agent/backend/TASK-044",
+      "completed_at": "2026-09-22T14:22:00+07:00"
+    },
     {
       "id": "TASK-043",
       "title": "Shopify Product Sync Hub — Cào đa nguồn, đồng bộ linh hoạt 1-N / N-1 và xuất CSV chuẩn",

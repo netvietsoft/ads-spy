@@ -1,0 +1,42 @@
+# TASK-044: Shopify Theme & Storefront Cloner — Đóng gói Theme Zip & Tự động Deploy qua API
+
+- **Task ID**: TASK-044
+- **Title**: Shopify Theme & Storefront Cloner — Đóng gói Theme Zip & Tự động Deploy qua API
+- **Owner**: Agent 2 (BACKEND) & Agent 3 (FRONTEND)
+- **Status**: DONE
+- **Branch**: agent/backend/TASK-044
+- **Files Allowed / Modified**:
+  - `apps/api/src/theme-cloner/*`
+  - `apps/api/src/app.module.ts`
+  - `apps/web/app/components/ProductSyncPanel.tsx`
+  - `apps/web/app/components/ThemeClonerPanel.tsx`
+  - `docs/handoff-2026-09-22-shopify-theme-cloner.md`
+- **Acceptance Criteria**:
+  - [x] **Storefront Analyzer**: Cào bóc tách đầy đủ từ bất kỳ store Shopify đối thủ nào:
+    - Theme Engine & Version (Dawn 15.2.0, Refresh, Sense, v.v.).
+    - Bảng màu (`--color-*`), Font chữ (Heading & Body).
+    - Hero Banners, Slider Images, Logo trong suốt, Favicon (lưu HD về local).
+    - Cấu trúc Sections Homepage (`announcement-bar`, `header`, `image_banner`, `collection_list`, `featured_collection`, `footer`).
+    - Các trang Pages (`About Us`, `Contact`, `FAQs`, `Track Order`, `DCMA`) và Policies (`Refund`, `Privacy`, `Shipping`, `Terms`).
+    - Cấu trúc Menu Navigation (Header & Footer).
+  - [x] **Phương pháp 1 (Theme Package Generator - Offline Zip)**:
+    - Tự động sinh bộ theme chuẩn Shopify OS 2.0 (dựa trên Dawn 15.2.0) tích hợp sẵn hình ảnh, `templates/index.json`, `config/settings_data.json`.
+    - Đóng gói file `.zip` hoàn chỉnh có thể upload trực tiếp trên Shopify Admin (`Online Store > Themes > Add theme > Upload zip`).
+    - Cung cấp file đính kèm các trang Pages & Policies dạng HTML/JSON.
+  - [x] **Phương pháp 2 (Live API Auto-Deploy)**:
+    - Tích hợp Shopify Admin API đẩy trực tiếp:
+      - Tạo các trang Pages & Policies (`POST /admin/api/2024-01/pages.json`).
+      - Tạo Menu điều hướng Header/Footer (`menuCreate` GraphQL / REST).
+      - Tạo Danh mục Collections (`POST /admin/api/2024-01/custom_collections.json`) kèm ảnh CDN.
+      - Đẩy assets (Banner, Logo) và cập nhật layout sections của Theme qua `PUT /admin/api/2024-01/themes/{id}/assets.json`.
+  - [x] **Giao diện Web trực quan (UI)**:
+    - Tích hợp tab "Theme & Storefront Cloner" tại `/clonesync`.
+    - Khung nhập domain đối thủ, nút "Quét giao diện", hiển thị bảng xem trước (preview) màu sắc, font, banner, logo, danh sách pages, menus.
+    - Cụm nút Phương pháp 1: "Tải trọn bộ Theme Zip", "Tải nội dung Pages/Policies".
+    - Cụm điều khiển Phương pháp 2: Chọn Shop Đích, Checkbox chọn các hạng mục cần deploy, Nút "Bắt đầu triển khai tự động" và hiển thị log real-time.
+  - [x] **Quality Gate**:
+    - Unit tests cho scraper & packager đạt 100% (10/10 tests PASS).
+    - `npm run build:api` và `npm run build:web` PASS 100% không lỗi.
+- **Verification**:
+  - Live test bóc tách chính xác `overtimegearz.shop` (Dawn 15.2.0, Logo trong suốt `lo_go-Photoroom.png`, Hero Banner `baner.jpg`, 5 Pages, 4 Policies, 30 Collections).
+  - Live test tải thành công file theme zip 90KB chứa 20 files theme chuẩn Shopify.
