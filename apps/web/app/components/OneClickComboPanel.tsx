@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TargetStore } from './ProductSyncPanel';
 
 interface DeployStepLog {
@@ -29,21 +29,40 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
   const [clientSecret, setClientSecret] = useState('');
   const [isExchanging, setIsExchanging] = useState(false);
   const [exchangeMsg, setExchangeMsg] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const savedDomain = localStorage.getItem('combo_shop_domain');
+      if (savedDomain) setCustomDomain(savedDomain);
+      const savedClientId = localStorage.getItem('combo_client_id');
+      if (savedClientId) setClientId(savedClientId);
+      const savedClientSecret = localStorage.getItem('combo_client_secret');
+      if (savedClientSecret) setClientSecret(savedClientSecret);
+      const savedUseOAuth = localStorage.getItem('combo_use_oauth');
+      if (savedUseOAuth !== null) setUseOAuth(savedUseOAuth === 'true');
+    } catch (e) {}
+  }, []);
 
-  const handleExchangeToken = async () => {
+  const handleExchangeToken = async (silent = false): Promise<string | null> => {
     const domain = customDomain.trim() || '20xzcv-hy.myshopify.com';
     if (!domain) {
-      alert('Vui lòng nhập tên miền shop trước (vd: 20xzcv-hy.myshopify.com)!');
-      return;
+      if (!silent) alert('Vui lòng nhập tên miền shop trước (vd: 20xzcv-hy.myshopify.com)!');
+      return null;
     }
     if (!clientId.trim() || !clientSecret.trim()) {
-      alert('Vui lòng nhập đầy đủ Client ID và Client Secret từ Dev Dashboard!');
-      return;
+      if (!silent) alert('Vui lòng nhập đầy đủ Client ID và Client Secret từ Dev Dashboard > App settings!');
+      return null;
     }
 
     setIsExchanging(true);
     setExchangeMsg(null);
     try {
+      try {
+        localStorage.setItem('combo_shop_domain', domain);
+        localStorage.setItem('combo_client_id', clientId.trim());
+        localStorage.setItem('combo_client_secret', clientSecret.trim());
+        localStorage.setItem('combo_use_oauth', 'true');
+      } catch (e) {}
+
       const res = await fetch('/api/product-sync/exchange-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -57,11 +76,18 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
       if (res.ok && data.ok && data.accessToken) {
         setCustomToken(data.accessToken);
         setExchangeMsg(`✅ Lấy token thành công! Quyền: ${data.scope || 'Toàn quyền'}`);
+        return data.accessToken;
       } else {
-        setExchangeMsg(`❌ ${data.message || 'Không thể lấy token'}`);
+        const msg = `❌ ${data.message || 'Không thể lấy token'}`;
+        setExchangeMsg(msg);
+        if (!silent) alert(msg);
+        return null;
       }
     } catch (err: any) {
-      setExchangeMsg(`❌ Lỗi kết nối: ${err.message}`);
+      const msg = `❌ Lỗi kết nối: ${err.message}`;
+      setExchangeMsg(msg);
+      if (!silent) alert(msg);
+      return null;
     } finally {
       setIsExchanging(false);
     }
@@ -99,10 +125,6 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
 
     if (selectedTargetId === 'custom') {
       const cleanCustomDomain = customDomain.trim();
-      if (!cleanCustomDomain || !customToken.trim()) {
-        alert('Vui lòng nhập đầy đủ Shopify Domain và Admin Access Token của Shop Đích!');
-        return;
-      }
       if (cleanCustomDomain.includes('@')) {
         alert(
           '❌ TÊN MIỀN SHOP KHÔNG HỢP LỆ!\n\n' +
@@ -116,8 +138,25 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
         );
         return;
       }
+
+      let activeToken = customToken.trim();
+      if (useOAuth) {
+        // Tự động lấy token mới nhất bằng Client ID & Secret để đảm bảo không bị 401 do token cũ hết hạn
+        const freshToken = await handleExchangeToken(true);
+        if (!freshToken) {
+          alert('❌ Không thể tự động lấy Token từ Shopify bằng Client ID & Secret.\n\nVui lòng kiểm tra lại Client ID và Client Secret từ Dev Dashboard > App settings!');
+          return;
+        }
+        activeToken = freshToken;
+      }
+
+      if (!cleanCustomDomain || !activeToken) {
+        alert('Vui lòng nhập đầy đủ Shopify Domain và Admin Access Token của Shop Đích!');
+        return;
+      }
+
       options.shopDomain = cleanCustomDomain;
-      options.accessToken = customToken.trim();
+      options.accessToken = activeToken;
     } else {
       const selected = targets.find((t) => String(t.id) === String(selectedTargetId));
       if (selected && selected.domain.includes('@')) {
@@ -331,7 +370,10 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                   <button
                     type="button"
-                    onClick={() => setUseOAuth(false)}
+                    onClick={() => {
+                      setUseOAuth(false);
+                      try { localStorage.setItem('combo_use_oauth', 'false'); } catch (e) {}
+                    }}
                     style={{
                       flex: 1,
                       padding: '0.35rem',
@@ -348,7 +390,10 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setUseOAuth(true)}
+                    onClick={() => {
+                      setUseOAuth(true);
+                      try { localStorage.setItem('combo_use_oauth', 'true'); } catch (e) {}
+                    }}
                     style={{
                       flex: 1,
                       padding: '0.35rem',
@@ -382,19 +427,25 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
                       type="text"
                       placeholder="Client ID (vd: 08c9208f9ba841...)"
                       value={clientId}
-                      onChange={e => setClientId(e.target.value)}
+                      onChange={e => {
+                        setClientId(e.target.value);
+                        try { localStorage.setItem('combo_client_id', e.target.value); } catch (err) {}
+                      }}
                       style={{ padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid #334155', color: '#FFF', fontSize: '0.8rem' }}
                     />
                     <input
                       type="password"
                       placeholder="Client Secret (Copy từ App Settings)"
                       value={clientSecret}
-                      onChange={e => setClientSecret(e.target.value)}
+                      onChange={e => {
+                        setClientSecret(e.target.value);
+                        try { localStorage.setItem('combo_client_secret', e.target.value); } catch (err) {}
+                      }}
                       style={{ padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid #334155', color: '#FFF', fontSize: '0.8rem' }}
                     />
                     <button
                       type="button"
-                      onClick={handleExchangeToken}
+                      onClick={() => handleExchangeToken(false)}
                       disabled={isExchanging}
                       style={{
                         padding: '0.5rem',
