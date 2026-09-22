@@ -178,6 +178,13 @@ export class ProductSyncController {
     return this.publisher.testConnection(id);
   }
 
+  @Post('exchange-token')
+  async exchangeToken(
+    @Body() body: { shopDomain: string; clientId: string; clientSecret: string },
+  ) {
+    return this.publisher.exchangeClientCredentials(body.shopDomain, body.clientId, body.clientSecret);
+  }
+
   // ==========================================================================
   // SYNC RULES (QUY TẮC ĐỊNH TUYẾN & BIẾN ĐỔI)
   // ==========================================================================

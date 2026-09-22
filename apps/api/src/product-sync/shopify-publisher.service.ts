@@ -53,6 +53,50 @@ export class ShopifyPublisherService {
   }
 
   /**
+   * Đổi Client ID + Client Secret lấy Access Token qua OAuth Client Credentials Grant
+   */
+  async exchangeClientCredentials(
+    shopDomain: string,
+    clientId: string,
+    clientSecret: string,
+  ): Promise<{ ok: boolean; accessToken?: string; scope?: string; message?: string }> {
+    const domain = this.cleanStoreDomain(shopDomain);
+    try {
+      const url = `https://${domain}/admin/oauth/access_token`;
+      const body = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId.trim(),
+        client_secret: clientSecret.trim(),
+      }).toString();
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body,
+      });
+
+      const data: any = await res.json();
+      if (!res.ok || !data.access_token) {
+        return {
+          ok: false,
+          message: data.error_description || data.error || `Lỗi xác thực Shopify HTTP ${res.status}`,
+        };
+      }
+
+      return {
+        ok: true,
+        accessToken: data.access_token,
+        scope: data.scope,
+        message: `Lấy token thành công! Quyền: ${data.scope || 'mặc định'}`,
+      };
+    } catch (err: any) {
+      return { ok: false, message: `Không thể kết nối tới Shopify: ${err.message}` };
+    }
+  }
+
+  /**
    * Kiểm tra kết nối token với shopify đích
    */
   async testConnection(targetStoreId: number): Promise<{ ok: boolean; shopName?: string; message?: string }> {

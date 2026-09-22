@@ -20,8 +20,52 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
 
   // Step 2: Target
   const [selectedTargetId, setSelectedTargetId] = useState<number | string>(targets[0]?.id || 'custom');
-  const [customDomain, setCustomDomain] = useState('');
+  const [customDomain, setCustomDomain] = useState('20xzcv-hy.myshopify.com');
   const [customToken, setCustomToken] = useState('');
+
+  // OAuth Dev Dashboard Helper
+  const [useOAuth, setUseOAuth] = useState(false);
+  const [clientId, setClientId] = useState('08c9208f9ba84171d1b26d3372057643');
+  const [clientSecret, setClientSecret] = useState('');
+  const [isExchanging, setIsExchanging] = useState(false);
+  const [exchangeMsg, setExchangeMsg] = useState<string | null>(null);
+
+  const handleExchangeToken = async () => {
+    const domain = customDomain.trim() || '20xzcv-hy.myshopify.com';
+    if (!domain) {
+      alert('Vui lòng nhập tên miền shop trước (vd: 20xzcv-hy.myshopify.com)!');
+      return;
+    }
+    if (!clientId.trim() || !clientSecret.trim()) {
+      alert('Vui lòng nhập đầy đủ Client ID và Client Secret từ Dev Dashboard!');
+      return;
+    }
+
+    setIsExchanging(true);
+    setExchangeMsg(null);
+    try {
+      const res = await fetch('/api/product-sync/exchange-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shopDomain: domain,
+          clientId: clientId.trim(),
+          clientSecret: clientSecret.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok && data.accessToken) {
+        setCustomToken(data.accessToken);
+        setExchangeMsg(`✅ Lấy token thành công! Quyền: ${data.scope || 'Toàn quyền'}`);
+      } else {
+        setExchangeMsg(`❌ ${data.message || 'Không thể lấy token'}`);
+      }
+    } catch (err: any) {
+      setExchangeMsg(`❌ Lỗi kết nối: ${err.message}`);
+    } finally {
+      setIsExchanging(false);
+    }
+  };
 
   // Step 3: Pricing & Rules
   const [priceMultiplier, setPriceMultiplier] = useState('1.25');
@@ -275,21 +319,103 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
             </select>
 
             {selectedTargetId === 'custom' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.25rem' }}>
                 <input
                   type="text"
-                  placeholder="Domain: your-shop.myshopify.com"
+                  placeholder="Domain: 20xzcv-hy.myshopify.com"
                   value={customDomain}
                   onChange={e => setCustomDomain(e.target.value)}
                   style={{ padding: '0.6rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid #475569', color: '#FFF', fontSize: '0.825rem' }}
                 />
-                <input
-                  type="password"
-                  placeholder="Admin Access Token: shpat_..."
-                  value={customToken}
-                  onChange={e => setCustomToken(e.target.value)}
-                  style={{ padding: '0.6rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid #475569', color: '#FFF', fontSize: '0.825rem' }}
-                />
+
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setUseOAuth(false)}
+                    style={{
+                      flex: 1,
+                      padding: '0.35rem',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      background: !useOAuth ? '#38BDF8' : 'rgba(255,255,255,0.05)',
+                      color: !useOAuth ? '#000' : '#94A3B8',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Dán Token (shpat_...)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUseOAuth(true)}
+                    style={{
+                      flex: 1,
+                      padding: '0.35rem',
+                      borderRadius: '4px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      background: useOAuth ? '#10B981' : 'rgba(255,255,255,0.05)',
+                      color: useOAuth ? '#000' : '#94A3B8',
+                      border: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🔑 Dùng Client ID & Secret
+                  </button>
+                </div>
+
+                {!useOAuth ? (
+                  <input
+                    type="password"
+                    placeholder="Admin Access Token: shpat_..."
+                    value={customToken}
+                    onChange={e => setCustomToken(e.target.value)}
+                    style={{ padding: '0.6rem', borderRadius: '6px', background: 'rgba(0,0,0,0.4)', border: '1px solid #475569', color: '#FFF', fontSize: '0.825rem' }}
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(0,0,0,0.3)', padding: '0.6rem', borderRadius: '6px', border: '1px dashed #10B981' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#A7F3D0' }}>
+                      ⚡ Nhập Client ID &amp; Secret từ <strong>Dev Dashboard &gt; App Settings</strong>:
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Client ID (vd: 08c9208f9ba841...)"
+                      value={clientId}
+                      onChange={e => setClientId(e.target.value)}
+                      style={{ padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid #334155', color: '#FFF', fontSize: '0.8rem' }}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Client Secret (Copy từ App Settings)"
+                      value={clientSecret}
+                      onChange={e => setClientSecret(e.target.value)}
+                      style={{ padding: '0.5rem', borderRadius: '4px', background: 'rgba(0,0,0,0.5)', border: '1px solid #334155', color: '#FFF', fontSize: '0.8rem' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleExchangeToken}
+                      disabled={isExchanging}
+                      style={{
+                        padding: '0.5rem',
+                        borderRadius: '4px',
+                        background: '#10B981',
+                        color: '#000',
+                        fontWeight: 700,
+                        fontSize: '0.8rem',
+                        border: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {isExchanging ? '⏳ Đang đổi token...' : '⚡ Lấy Token Tự Động Từ Shopify'}
+                    </button>
+                    {exchangeMsg && (
+                      <div style={{ fontSize: '0.75rem', color: exchangeMsg.startsWith('✅') ? '#4ADE80' : '#F87171' }}>
+                        {exchangeMsg}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
