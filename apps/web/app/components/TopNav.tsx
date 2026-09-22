@@ -7,6 +7,7 @@ import { useI18n } from '../i18n/I18nProvider';
 const NAV: [string, string][] = [
   ['/googleads', 'Google Ads'], ['/facebookads', 'Facebook Ads'], ['/tiktokads', 'TikTok Ads'],
   ['/shophuntershopify', 'Shopify'], ['/localdb/shops', 'Local DB'], ['/trackshopify', 'Track'],
+  ['/clonesync', 'Clone & Sync'],
   ['/import', 'Import'], ['/reportlocaldb', 'Báo cáo'], ['/affnet', 'Affiliate Nets'], ['/afflibrary', 'Aff Library'], ['/traffic', 'Traffic'], ['/checkdomain', 'Check Domain'], ['/settings', 'Cài đặt'],
   ['/admin/users', 'Người dùng'],
   // TODO(saas): tạm ẩn tab 'Doanh thu' (/admin/dashboard) + 'Gói' (/admin/plans) — phát triển sau
@@ -26,6 +27,7 @@ function activeHref(p: string): string {
   if (p.startsWith('/shophuntershopify') || p.startsWith('/product') || p.startsWith('/shop')) return '/shophuntershopify';
   if (p.startsWith('/localdb')) return '/localdb/shops';
   if (p.startsWith('/trackshopify')) return '/trackshopify';
+  if (p.startsWith('/clonesync')) return '/clonesync';
   if (p.startsWith('/reportlocaldb')) return '/reportlocaldb';
   if (p.startsWith('/afflibrary')) return '/afflibrary';
   if (p.startsWith('/affnet')) return '/affnet';

@@ -295,3 +295,104 @@ model GrantLog {
 
   @@index([userId])
 }
+
+// ============================================================================
+// PRODUCT SYNC HUB (TASK-043) — CÀO ĐA NGUỒN VÀ ĐỒNG BỘ SHOPIFY M:N
+// ============================================================================
+
+model SyncSourceStore {
+  id                   Int           @id @default(autoincrement())
+  name                 String
+  domain               String        @unique
+  platform             String        @default("shopify")
+  status               String        @default("active") // active | paused | error
+  cronEnabled          Boolean       @default(true)
+  checkIntervalMinutes Int           @default(30)
+  lastScrapedAt        DateTime?
+  lastStatusMessage    String?
+  productCount         Int           @default(0)
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  products             SyncProduct[]
+  rules                SyncRule[]
+}
+
+model SyncTargetStore {
+  id          Int        @id @default(autoincrement())
+  name        String
+  domain      String     // vd: my-shop.myshopify.com
+  platform    String     @default("shopify")
+  apiType     String     @default("shopify_admin_rest")
+  accessToken String?    // shpat_...
+  apiVersion  String     @default("2024-01")
+  status      String     @default("active") // active | error
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  rules       SyncRule[]
+  syncLogs    SyncLog[]
+}
+
+model SyncRule {
+  id              Int             @id @default(autoincrement())
+  name            String
+  sourceStoreId   Int
+  targetStoreId   Int
+  enabled         Boolean         @default(true)
+  priceMultiplier Float           @default(1.0)
+  priceAddition   Float           @default(0.0)
+  priceRounding   String          @default("none") // none | 99 | 95
+  overrideVendor  String?
+  tagAction       String          @default("keep") // keep | append | replace
+  tagsToAdd       String?
+  titlePrefix     String?
+  titleSuffix     String?
+  removeWords     String?
+  productStatus   String          @default("active") // active | draft
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  sourceStore     SyncSourceStore @relation(fields: [sourceStoreId], references: [id], onDelete: Cascade)
+  targetStore     SyncTargetStore @relation(fields: [targetStoreId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceStoreId, targetStoreId])
+}
+
+model SyncProduct {
+  id                Int             @id @default(autoincrement())
+  sourceStoreId     Int
+  sourceProductId   String          // id gốc của shop đối thủ (chuỗi số lớn)
+  handle            String
+  title             String
+  bodyHtml          String?
+  vendor            String?
+  productType       String?
+  tags              String?
+  optionsRaw        String          // JSON mảng options [{name, values}]
+  variantsRaw       String          // JSON mảng variants
+  imagesRaw         String          // JSON mảng images [{src, position, alt}]
+  sourcePublishedAt DateTime?
+  sourceCreatedAt   DateTime?
+  sourceUpdatedAt   DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  sourceStore       SyncSourceStore @relation(fields: [sourceStoreId], references: [id], onDelete: Cascade)
+  syncLogs          SyncLog[]
+
+  @@unique([sourceStoreId, sourceProductId])
+  @@index([sourceStoreId])
+  @@index([handle])
+}
+
+model SyncLog {
+  id              Int             @id @default(autoincrement())
+  syncProductId   Int
+  targetStoreId   Int
+  targetProductId String?         // ID sản phẩm được tạo thành công trên shop đích của Tony
+  status          String          // success | failed | pending | skipped
+  errorMessage    String?
+  syncedAt        DateTime        @default(now())
+  syncProduct     SyncProduct     @relation(fields: [syncProductId], references: [id], onDelete: Cascade)
+  targetStore     SyncTargetStore @relation(fields: [targetStoreId], references: [id], onDelete: Cascade)
+
+  @@unique([syncProductId, targetStoreId])
+  @@index([targetStoreId])
+}

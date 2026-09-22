@@ -1,0 +1,14 @@
+# .clinerules
+
+# Mọi quy định làm việc, nguyên tắc kiến trúc và luật code đã được chuẩn hóa tập trung tại:
+# 1. AGENTS.md (Hiến pháp dành cho AI Agent & 20 luật cứng)
+# 2. Docs/rules.md (Quy chuẩn kỹ thuật, tech stack, coding conventions)
+# 3. Docs/Architecture/ (Tài liệu kiến trúc hệ thống)
+# 4. .ai/tasks/ (Nhiệm vụ cụ thể theo Task ID)
+
+# Quy tắc cốt lõi:
+# - KHÔNG code khi chưa có Task ID trong .ai/tasks/.
+# - KHÔNG commit trực tiếp vào main.
+# - KHÔNG sửa test để làm xanh.
+# - Luôn kiểm tra file lock tại .ai/locks.json trước khi sửa.
+# - Sau khi đổi trạng thái task, luôn chạy: python scripts/update-todos.py

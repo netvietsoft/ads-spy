@@ -1,0 +1,30 @@
+# TASK-043: Shopify Product Sync Hub — Cào đa nguồn, đồng bộ linh hoạt 1-N / N-1 và xuất CSV chuẩn
+
+- **Task ID**: TASK-043
+- **Title**: Shopify Product Sync Hub — Cào đa nguồn, đồng bộ linh hoạt 1-N / N-1 và xuất CSV chuẩn
+- **Owner**: Agent 2 (BACKEND) & Agent 3 (FRONTEND)
+- **Status**: DONE
+- **Branch**: agent/backend/TASK-043
+- **Files Allowed / Modified**:
+  - `apps/api/prisma/schema.prisma`
+  - `apps/api/src/product-sync/*`
+  - `apps/api/src/app.module.ts`
+  - `apps/web/app/components/ProductSyncPanel.tsx`
+  - `apps/web/app/components/TopNav.tsx`
+  - `apps/web/app/page.tsx`
+- **Acceptance Criteria**:
+  - [x] Hỗ trợ thêm nhiều domain shop đối thủ (nguồn cào), cào đầy đủ 100% trường dữ liệu (Title, Body HTML, Variants, Options, Images, Price, Tags, Vendor).
+  - [x] Lưu trữ catalog trung gian vào database có bảng riêng biệt (SyncSourceStore, SyncTargetStore, SyncRule, SyncProduct, SyncLog).
+  - [x] Hỗ trợ Cron Job nền tự động quét phát hiện sản phẩm mới định kỳ (`product-sync-cron.service.ts`).
+  - [x] Hỗ trợ cấu hình ma trận định tuyến linh hoạt: 1 nguồn -> nhiều đích (1-N) và nhiều nguồn -> 1 đích (N-1).
+  - [x] Bộ quy tắc biến đổi: Tự động điều chỉnh giá (nhân hệ số, cộng tiền, làm tròn .99), ghi đè Vendor, làm sạch từ khoá cấm/thương hiệu đối thủ (`product-transform.service.ts`).
+  - [x] Tích hợp Shopify Admin REST API đẩy sản phẩm tự động kèm cơ chế Rate Limit an toàn (`shopify-publisher.service.ts`).
+  - [x] Hỗ trợ xuất file CSV chuẩn 100% định dạng Shopify Product CSV quốc tế 56 cột (`csv-export.service.ts`).
+  - [x] Giao diện Web trực quan: Kho sản phẩm, Quản lý Shop Nguồn, Quản lý Shop Đích, Cấu hình Luật & Lịch sử log (`ProductSyncPanel.tsx`).
+  - [x] Build API (`npm run build:api`) và Web (`npm run build:web`) PASS.
+- **Verification**:
+  - Prisma migrate & generate thành công.
+  - Cào mẫu thử từ `overtimegearz.shop` hiển thị đúng đầy đủ 15 ảnh và biến thể.
+  - Xuất thử file CSV khớp định dạng 56 cột mẫu của Tony.
+  - Unit tests `src/product-sync` PASS 100%.
+  - Build toàn bộ monorepo PASS không lỗi typecheck.

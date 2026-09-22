@@ -36,6 +36,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { DashboardPanel } from './components/DashboardPanel';
 import { UsersAdminPanel } from './components/UsersAdminPanel';
 import { PlansAdminPanel } from './components/PlansAdminPanel';
+import { ProductSyncPanel } from './components/ProductSyncPanel';
 import { Favorites } from './components/Favorites';
 import { Paginator, paginate } from './components/Paginator';
 import { LazyGrid } from './components/LazyGrid';
@@ -133,11 +134,11 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
-type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'checkdomain' | 'import' | 'report' | 'affnet' | 'afflib' | 'traffic' | 'settings' | 'dashboard' | 'users' | 'plans';
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'clonesync' | 'checkdomain' | 'import' | 'report' | 'affnet' | 'afflib' | 'traffic' | 'settings' | 'dashboard' | 'users' | 'plans';
 // Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
 const SOURCE_TO_PATH: Record<Source, string> = {
   google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
-  localdb: '/localdb/shops', track: '/trackshopify', checkdomain: '/checkdomain', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', traffic: '/traffic', settings: '/settings',
+  localdb: '/localdb/shops', track: '/trackshopify', clonesync: '/clonesync', checkdomain: '/checkdomain', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', traffic: '/traffic', settings: '/settings',
   dashboard: '/admin/dashboard', users: '/admin/users', plans: '/admin/plans',
 };
 function pathToSource(p: string): Source {
@@ -146,6 +147,7 @@ function pathToSource(p: string): Source {
   if (p.startsWith('/shophuntershopify')) return 'shophunter';
   if (p.startsWith('/localdb')) return 'localdb';
   if (p.startsWith('/trackshopify')) return 'track';
+  if (p.startsWith('/clonesync')) return 'clonesync';
   if (p.startsWith('/checkdomain')) return 'checkdomain';
   if (p.startsWith('/reportlocaldb')) return 'report';
   if (p.startsWith('/afflibrary')) return 'afflib';
@@ -497,7 +499,7 @@ export default function Home() {
   // Bảng nhiều cột cần ~1440px → bỏ chặn 1180px của .container (xem .container-wide trong globals.css):
   // Aff Library (16 cột) và trang 1 net của Affiliate Nets (/affnet/{net}, 15 cột). Riêng /affnet (danh
   // sách net) giữ bề rộng thường.
-  const wide = source === 'afflib' || /^\/affnet\/.+/.test(pathname || '');
+  const wide = source === 'afflib' || source === 'clonesync' || /^\/affnet\/.+/.test(pathname || '');
   return (
     <div className={wide ? 'container container-wide' : 'container'}>
       {source === 'facebook' && <FacebookPanel />}
@@ -505,6 +507,7 @@ export default function Home() {
       {source === 'shophunter' && <ShopHunterPanel />}
       {source === 'localdb' && role !== 'user' && <LocalDbPanel subTab={pathname === '/localdb/products' ? 'products' : 'shops'} />}
       {source === 'track' && <TrackPanel />}
+      {source === 'clonesync' && <ProductSyncPanel />}
       {source === 'checkdomain' && role !== 'user' && <CheckDomainPanel />}
       {source === 'import' && <ImportPanel />}
       {source === 'report' && <ReportPanel />}
