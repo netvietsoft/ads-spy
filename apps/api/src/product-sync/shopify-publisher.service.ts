@@ -77,7 +77,19 @@ export class ShopifyPublisherService {
         body,
       });
 
-      const data: any = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        const match = text.match(/Oauth error[^<]*/i) || text.match(/<div class="content--desc">([^<]*)<\/div>/i);
+        const errMsg = match ? match[1] || match[0] : `Mã HTTP ${res.status}`;
+        return {
+          ok: false,
+          message: `Shopify từ chối: ${errMsg.trim()}. Vui lòng kiểm tra lại Client ID và Client Secret từ Dev Dashboard > App settings!`,
+        };
+      }
+
       if (!res.ok || !data.access_token) {
         return {
           ok: false,
