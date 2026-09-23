@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma.service';
 import { ProductScraperService } from '../product-sync/product-scraper.service';
 import { ProductTransformService } from '../product-sync/product-transform.service';
 import { ShopifyPublisherService } from '../product-sync/shopify-publisher.service';
+import { ThemePackagerService } from './theme-packager.service';
 import {
   StorefrontBlueprint,
   ThemeDeployOptions,
@@ -19,6 +20,7 @@ export class ThemeDeployerService {
     private readonly productScraper: ProductScraperService,
     private readonly productTransform: ProductTransformService,
     private readonly shopifyPublisher: ShopifyPublisherService,
+    private readonly packagerService: ThemePackagerService,
   ) {}
 
   async deploy(
@@ -229,9 +231,9 @@ export class ThemeDeployerService {
       }
     }
 
-    // 5. Deploy Theme Assets (Banner & Logo)
+    // 5. Deploy Theme Assets, Banners, Popup & Sections
     if (options.deployThemeAssets !== false) {
-      addLog('ThemeAssets', 'in_progress', 'Locating active theme on Target Store...');
+      addLog('ThemeAssets', 'in_progress', 'Đang thiết lập Theme Dawn 15.2, Banner HD, Logo, Popup Giảm Giá và Lưới Sản Phẩm...');
       try {
         let themeId = options.themeId;
         if (!themeId) {
@@ -241,13 +243,35 @@ export class ThemeDeployerService {
             const mainTheme = themesData.themes?.find((t: any) => t.role === 'main') || themesData.themes?.[0];
             if (mainTheme) {
               themeId = mainTheme.id;
-              addLog('ThemeAssets', 'success', `Found main active theme: "${mainTheme.name}" (ID: ${themeId})`);
+              addLog('ThemeAssets', 'success', `Tìm thấy Theme đang kích hoạt: "${mainTheme.name}" (ID: ${themeId})`);
             }
           }
         }
 
         if (themeId) {
-          // Push Hero banner
+          // Đảm bảo Smart Collection "All Products" (handle: all) tồn tại để chứa toàn bộ sản phẩm
+          try {
+            await fetch(`${apiBase}/smart_collections.json`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                smart_collection: {
+                  title: 'All Products',
+                  handle: 'all',
+                  rules: [
+                    {
+                      column: 'variant_price',
+                      relation: 'greater_than',
+                      condition: '-1',
+                    },
+                  ],
+                  published: true,
+                },
+              }),
+            });
+          } catch {}
+
+          // 5.1 Push Hero banner HD
           if (blueprint.heroBannerUrl) {
             try {
               const bannerBuffer = await this.downloadBinary(blueprint.heroBannerUrl);
@@ -265,15 +289,15 @@ export class ThemeDeployerService {
                 });
                 if (assetRes.ok) {
                   deployedAssets.push('assets/hero-banner.jpg');
-                  addLog('ThemeAssets', 'success', 'Uploaded Hero Banner to theme assets/hero-banner.jpg');
+                  addLog('ThemeAssets', 'success', 'Đã tải và nạp Hero Banner HD vào assets/hero-banner.jpg');
                 }
               }
             } catch (e) {
-              addLog('ThemeAssets', 'failed', `Failed to upload hero banner: ${e.message}`);
+              addLog('ThemeAssets', 'failed', `Lỗi nạp Hero Banner: ${e.message}`);
             }
           }
 
-          // Push Logo
+          // 5.2 Push Logo
           if (blueprint.logoUrl) {
             try {
               const logoBuffer = await this.downloadBinary(blueprint.logoUrl);
@@ -291,18 +315,130 @@ export class ThemeDeployerService {
                 });
                 if (assetRes.ok) {
                   deployedAssets.push('assets/logo.png');
-                  addLog('ThemeAssets', 'success', 'Uploaded Logo to theme assets/logo.png');
+                  addLog('ThemeAssets', 'success', 'Đã tải và nạp Logo Brand vào assets/logo.png');
                 }
               }
             } catch (e) {
-              addLog('ThemeAssets', 'failed', `Failed to upload logo: ${e.message}`);
+              addLog('ThemeAssets', 'failed', `Lỗi nạp Logo: ${e.message}`);
             }
           }
+
+          // 5.3 Push Base CSS & Sections
+          const sectionsToDeploy: Array<{ key: string; value: string; label: string }> = [
+            {
+              key: 'assets/base.css',
+              value: this.packagerService.generateBaseCss(blueprint),
+              label: 'Base Styling CSS',
+            },
+            {
+              key: 'sections/image-banner.liquid',
+              value: this.packagerService.generateImageBannerSection(),
+              label: 'Hero Banner Section',
+            },
+            {
+              key: 'sections/announcement-bar.liquid',
+              value: this.packagerService.generateAnnouncementBarSection(),
+              label: 'Announcement Bar Section',
+            },
+            {
+              key: 'sections/newsletter-popup.liquid',
+              value: this.packagerService.generateNewsletterPopupSection(blueprint),
+              label: 'Discount & Newsletter Popup',
+            },
+            {
+              key: 'sections/collection-list.liquid',
+              value: this.packagerService.generateCollectionListSection(),
+              label: 'Collection List Section',
+            },
+            {
+              key: 'sections/featured-collection.liquid',
+              value: this.packagerService.generateFeaturedCollectionSection(),
+              label: 'Featured Products Grid Section',
+            },
+            {
+              key: 'sections/header.liquid',
+              value: this.packagerService.generateHeaderSection(blueprint),
+              label: 'Header Section with Logo',
+            },
+            {
+              key: 'sections/footer.liquid',
+              value: this.packagerService.generateFooterSection(blueprint),
+              label: 'Footer Section',
+            },
+            {
+              key: 'templates/index.json',
+              value: JSON.stringify(this.packagerService.generateIndexJson(blueprint), null, 2),
+              label: 'Homepage Template (index.json)',
+            },
+            {
+              key: 'templates/collection.liquid',
+              value: this.packagerService.generateCollectionLiquid(),
+              label: 'Collection Products Grid Template',
+            },
+            {
+              key: 'templates/product.liquid',
+              value: this.packagerService.generateProductLiquid(),
+              label: 'Product Detail & Cart Template',
+            },
+            {
+              key: 'config/settings_data.json',
+              value: JSON.stringify(this.packagerService.generateSettingsData(blueprint), null, 2),
+              label: 'Theme Settings Data',
+            },
+          ];
+
+          for (const sec of sectionsToDeploy) {
+            try {
+              const secRes = await fetch(`${apiBase}/themes/${themeId}/assets.json`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({
+                  asset: {
+                    key: sec.key,
+                    value: sec.value,
+                  },
+                }),
+              });
+              if (secRes.ok) {
+                deployedAssets.push(sec.key);
+              }
+            } catch (err) {
+              this.logger.warn(`Could not deploy asset ${sec.key}: ${err.message}`);
+            }
+            await this.delay(80);
+          }
+
+          // Cố gắng chèn popup vào layout/theme.liquid nếu chưa có
+          try {
+            const themeLiquidRes = await fetch(`${apiBase}/themes/${themeId}/assets.json?asset[key]=layout/theme.liquid`, { headers });
+            if (themeLiquidRes.ok) {
+              const themeLiquidData = await themeLiquidRes.json();
+              let content = themeLiquidData.asset?.value || '';
+              if (content && !content.includes('newsletter-popup')) {
+                content = content.replace('</body>', "{% section 'newsletter-popup' %}\n</body>");
+                await fetch(`${apiBase}/themes/${themeId}/assets.json`, {
+                  method: 'PUT',
+                  headers,
+                  body: JSON.stringify({
+                    asset: {
+                      key: 'layout/theme.liquid',
+                      value: content,
+                    },
+                  }),
+                });
+                deployedAssets.push('layout/theme.liquid (popup injected)');
+              }
+            }
+          } catch (e) {
+            this.logger.warn(`Could not inject popup into theme.liquid: ${e.message}`);
+          }
+
+          addLog('ThemeAssets', 'success', `Đã đồng bộ toàn bộ giao diện: Banner HD, Logo, Popup Giảm Giá, và ${deployedAssets.length} thành phần giao diện & lưới sản phẩm!`);
         } else {
-          addLog('ThemeAssets', 'skipped', 'No active theme found to push assets directly.');
+          addLog('ThemeAssets', 'skipped', 'Không tìm thấy theme hoạt động để nạp assets trực tiếp.');
         }
       } catch (err) {
-        addLog('ThemeAssets', 'failed', `Theme asset deployment error: ${err.message}`);
+        addLog('ThemeAssets', 'failed', `Lỗi thiết lập Theme: ${err.message}`);
       }
     }
 

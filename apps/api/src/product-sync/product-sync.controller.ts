@@ -179,6 +179,7 @@ export class ProductSyncController {
     return this.publisher.testConnection(id);
   }
 
+  @Public()
   @Post('exchange-token')
   async exchangeToken(
     @Body() body: { shopDomain: string; clientId: string; clientSecret: string },

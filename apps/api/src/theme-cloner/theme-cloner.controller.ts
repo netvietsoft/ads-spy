@@ -173,4 +173,38 @@ export class ThemeClonerController {
       );
     }
   }
+
+  @Public()
+  @Post('deploy-theme-only')
+  async deployThemeOnly(
+    @Body()
+    body: {
+      sourceDomain: string;
+      options: ThemeDeployOptions;
+    },
+  ) {
+    if (!body.sourceDomain) {
+      throw new HttpException('Source domain is required', HttpStatus.BAD_REQUEST);
+    }
+    try {
+      const blueprint = await this.analyzerService.analyze(body.sourceDomain);
+      const deployOpts: ThemeDeployOptions = {
+        deployPages: false,
+        deployPolicies: false,
+        deployCollections: false,
+        deployMenus: false,
+        deployProducts: false,
+        deployThemeAssets: true,
+        ...body.options,
+      };
+      const result = await this.deployerService.deploy(blueprint, deployOpts);
+      return { success: result.success, result, blueprint };
+    } catch (err) {
+      throw new HttpException(
+        `Deploy theme failed: ${err.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }
+

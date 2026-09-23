@@ -108,13 +108,9 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
   const [resultAdminUrl, setResultAdminUrl] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isDeployingTheme, setIsDeployingTheme] = useState(false);
 
-  const handleStartComboClone = async () => {
-    if (!sourceUrl.trim()) {
-      alert('Vui lòng nhập URL shop nguồn đối thủ!');
-      return;
-    }
-
+  const getValidatedOptions = async () => {
     const options: any = {
       priceMultiplier: parseFloat(priceMultiplier) || 1.0,
       priceAddition: parseFloat(priceAddition) || 0,
@@ -136,23 +132,22 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
             '2. Vào Cài đặt (Settings) > Tên miền (Domains).\n' +
             '3. Copy tên miền chính đuôi .myshopify.com rồi dán lại vào đây.'
         );
-        return;
+        return null;
       }
 
       let activeToken = customToken.trim();
       if (useOAuth) {
-        // Tự động lấy token mới nhất bằng Client ID & Secret để đảm bảo không bị 401 do token cũ hết hạn
         const freshToken = await handleExchangeToken(true);
         if (!freshToken) {
           alert('❌ Không thể tự động lấy Token từ Shopify bằng Client ID & Secret.\n\nVui lòng kiểm tra lại Client ID và Client Secret từ Dev Dashboard > App settings!');
-          return;
+          return null;
         }
         activeToken = freshToken;
       }
 
       if (!cleanCustomDomain || !activeToken) {
         alert('Vui lòng nhập đầy đủ Shopify Domain và Admin Access Token của Shop Đích!');
-        return;
+        return null;
       }
 
       options.shopDomain = cleanCustomDomain;
@@ -165,10 +160,91 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
             'Shop đích "' + selected.name + '" đang lưu địa chỉ Email: "' + selected.domain + '"\n\n' +
             '👉 Vui lòng chuyển sang Tab "🏪 Shop Đích (Target Stores)" để sửa lại tên miền thành dạng ten-shop.myshopify.com (không dùng email).'
         );
-        return;
+        return null;
       }
       options.targetStoreId = selectedTargetId;
     }
+
+    return options;
+  };
+
+  const handleDeployThemeOnly = async () => {
+    if (!sourceUrl.trim()) {
+      alert('Vui lòng nhập URL shop nguồn đối thủ!');
+      return;
+    }
+    const options = await getValidatedOptions();
+    if (!options) return;
+
+    setIsDeployingTheme(true);
+    setErrorMsg(null);
+    setCurrentStepText('Đang nạp Theme Dawn 15.2, Banner HD, Logo, Popup Giảm Giá & Lưới Sản Phẩm...');
+    setProgressPercent(30);
+
+    setLogs([
+      {
+        step: 'Init',
+        status: 'in_progress',
+        message: `Bắt đầu đồng bộ Theme, Banner, Popup và Lưới sản phẩm từ: ${sourceUrl}`,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    ]);
+
+    try {
+      const res = await fetch('/api/theme-cloner/deploy-theme-only', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceDomain: sourceUrl,
+          options,
+        }),
+      });
+
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(`Máy chủ phản hồi: ${text.slice(0, 120)}`);
+      }
+
+      if (data.result && data.result.logs) {
+        setLogs(data.result.logs);
+      }
+
+      if (data.success) {
+        setProgressPercent(100);
+        setIsSuccess(true);
+        setCurrentStepText('Đã nạp xong Theme, Banner, Popup Giảm Giá và Lưới Sản Phẩm vào Shopify!');
+        const domain = options.shopDomain || targets.find(t => t.id === Number(selectedTargetId))?.domain || '';
+        const shopName = domain.replace('.myshopify.com', '');
+        setResultAdminUrl(`https://admin.shopify.com/store/${shopName}/products`);
+      } else {
+        throw new Error(data.message || data.result?.error || 'Có lỗi khi cài theme');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Lỗi xử lý cài theme');
+      setLogs(prev => [
+        ...prev,
+        {
+          step: 'Error',
+          status: 'failed',
+          message: `Lỗi: ${err.message}`,
+          timestamp: new Date().toLocaleTimeString(),
+        },
+      ]);
+    } finally {
+      setIsDeployingTheme(false);
+    }
+  };
+
+  const handleStartComboClone = async () => {
+    if (!sourceUrl.trim()) {
+      alert('Vui lòng nhập URL shop nguồn đối thủ!');
+      return;
+    }
+    const options = await getValidatedOptions();
+    if (!options) return;
 
     setIsRunning(true);
     setIsSuccess(false);
@@ -596,6 +672,62 @@ export function OneClickComboPanel({ targets }: OneClickComboPanelProps) {
               </>
             )}
           </button>
+
+          {/* SECONDARY FAST ACTIONS */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+            <button
+              onClick={handleDeployThemeOnly}
+              disabled={isDeployingTheme || isRunning}
+              style={{
+                padding: '1rem',
+                borderRadius: '10px',
+                background: (isDeployingTheme || isRunning) ? '#374151' : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                color: '#FFF',
+                border: '1px solid #38BDF8',
+                fontWeight: 700,
+                fontSize: '0.925rem',
+                cursor: (isDeployingTheme || isRunning) ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                boxShadow: '0 4px 15px rgba(2, 132, 199, 0.3)',
+              }}
+            >
+              {isDeployingTheme ? (
+                <span>⏳ ĐANG NẠP THEME & POPUP...</span>
+              ) : (
+                <>
+                  <span>🎨</span>
+                  <span>CÀI GIAO DIỆN (BANNER + POPUP + SẢN PHẨM) (5S)</span>
+                </>
+              )}
+            </button>
+
+            <a
+              href={`/api/theme-cloner/download-zip?domain=${encodeURIComponent(sourceUrl || 'overtimegearz.shop')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: '1rem',
+                borderRadius: '10px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: '#F1F5F9',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                fontWeight: 700,
+                fontSize: '0.925rem',
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                textAlign: 'center',
+              }}
+            >
+              <span>📥</span>
+              <span>TẢI THEME ZIP (DAWN 15.2 FULL)</span>
+            </a>
+          </div>
         </div>
 
         {errorMsg && (
