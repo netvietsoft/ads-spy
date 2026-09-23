@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, Req, Res } from '@nestjs/common';
+import { Request, Response } from 'express';
+import { Public } from '../auth/roles.decorator';
 import { PrismaService } from '../prisma.service';
 import { ProductScraperService } from './product-scraper.service';
 import { ShopifyPublisherService } from './shopify-publisher.service';
@@ -183,6 +184,114 @@ export class ProductSyncController {
     @Body() body: { shopDomain: string; clientId: string; clientSecret: string },
   ) {
     return this.publisher.exchangeClientCredentials(body.shopDomain, body.clientId, body.clientSecret);
+  }
+
+  @Public()
+  @Get('shopify/auth')
+  async shopifyAuth(
+    @Query('shop') shop: string,
+    @Query('clientId') clientId: string,
+    @Query('clientSecret') clientSecret: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const domain = this.publisher.cleanStoreDomain(shop || '20xzcv-hy.myshopify.com');
+    const cId = clientId?.trim() || '2384dca9a665265f228887383a456c77';
+    const cSec = clientSecret?.trim() || '';
+
+    // Lấy host và proto chính xác
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+    const proto = forwardedProto.split(',')[0].trim();
+    const forwardedHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'dpboss.pet';
+    const reqHost = forwardedHost.split(',')[0].trim();
+    const appOrigin = `${proto}://${reqHost}`;
+    const redirectUri = `${appOrigin}/api/product-sync/shopify/callback`;
+
+    const scopes = 'write_products,read_products,write_content,read_content,write_themes,read_themes';
+    const statePayload = Buffer.from(JSON.stringify({ cId, cSec, origin: appOrigin })).toString('base64url');
+    const authUrl = `https://${domain}/admin/oauth/authorize?client_id=${encodeURIComponent(cId)}&scope=${encodeURIComponent(scopes)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${statePayload}`;
+    return res.redirect(authUrl);
+  }
+
+  @Public()
+  @Get('shopify/callback')
+  async shopifyCallback(
+    @Query('code') code: string,
+    @Query('shop') shop: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+  ) {
+    let cId = '2384dca9a665265f228887383a456c77';
+    let cSec = '';
+    let appOrigin = '';
+
+    if (state) {
+      try {
+        const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
+        if (decoded.cId) cId = decoded.cId;
+        if (decoded.cSec) cSec = decoded.cSec;
+        if (decoded.origin) appOrigin = decoded.origin;
+      } catch (e) {}
+    }
+
+    if (!code || !shop) {
+      return res.redirect(`${appOrigin}/clonesync?oauthError=${encodeURIComponent('Thiếu mã code hoặc shop domain từ Shopify')}`);
+    }
+
+    const domain = this.publisher.cleanStoreDomain(shop);
+
+    try {
+      const tokenRes = await fetch(`https://${domain}/admin/oauth/access_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: cId,
+          client_secret: cSec,
+          code,
+        }),
+      });
+
+      const text = await tokenRes.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        return res.redirect(`${appOrigin}/clonesync?oauthError=${encodeURIComponent(`Shopify phản hồi: ${text.slice(0, 150)}`)}`);
+      }
+
+      if (!tokenRes.ok || !data.access_token) {
+        const msg = data.error_description || data.error || `Lỗi đổi token HTTP ${tokenRes.status}`;
+        return res.redirect(`${appOrigin}/clonesync?oauthError=${encodeURIComponent(msg)}`);
+      }
+
+      // Lưu lại Target Store vào Database
+      const existing = await this.prisma.syncTargetStore.findFirst({
+        where: { domain },
+      });
+      if (existing) {
+        await this.prisma.syncTargetStore.update({
+          where: { id: existing.id },
+          data: {
+            accessToken: data.access_token,
+            status: 'active',
+          },
+        });
+      } else {
+        await this.prisma.syncTargetStore.create({
+          data: {
+            name: domain,
+            domain,
+            accessToken: data.access_token,
+            platform: 'shopify',
+            status: 'active',
+          },
+        });
+      }
+
+      return res.redirect(`${appOrigin}/clonesync?shopDomain=${encodeURIComponent(domain)}&accessToken=${encodeURIComponent(data.access_token)}&scope=${encodeURIComponent(data.scope || '')}&oauthSuccess=1`);
+    } catch (err: any) {
+      return res.redirect(`${appOrigin}/clonesync?oauthError=${encodeURIComponent(err.message)}`);
+    }
   }
 
   // ==========================================================================

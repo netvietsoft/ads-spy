@@ -159,7 +159,7 @@ export class ThemeDeployerService {
         } catch (err) {
           addLog('Pages', 'failed', `Failed to create page ${page.title}: ${err.message}`);
         }
-        await this.delay(300);
+        await this.delay(100);
       }
     }
 
@@ -191,7 +191,7 @@ export class ThemeDeployerService {
         } catch (err) {
           addLog('Policies', 'failed', `Failed to create policy ${policy.title}: ${err.message}`);
         }
-        await this.delay(300);
+        await this.delay(100);
       }
     }
 
@@ -225,7 +225,7 @@ export class ThemeDeployerService {
         } catch (err) {
           addLog('Collections', 'failed', `Failed to create collection ${col.title}: ${err.message}`);
         }
-        await this.delay(300);
+        await this.delay(100);
       }
     }
 
@@ -355,34 +355,48 @@ export class ThemeDeployerService {
           const rawP = products[i];
           const transformed = this.productTransform.transformProduct(rawP, transformConfig);
 
-          try {
-            const productRes = await fetch(`${apiBase}/products.json`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ product: transformed }),
-            });
+          let success = false;
+          let retries = 0;
 
-            if (productRes.ok) {
-              totalProductsSynced++;
-              if (i % 5 === 0 || i === products.length - 1) {
-                addLog('Products', 'in_progress', `Đã đẩy ${totalProductsSynced}/${products.length} sản phẩm: "${transformed.title}"`);
-              }
-            } else {
-              const errData: any = await productRes.json().catch(() => ({}));
-              const errStr = typeof errData?.errors === 'string' ? errData.errors : JSON.stringify(errData);
-              this.logger.warn(`Failed to push product ${rawP.title}: ${errStr}`);
-              if (i === 0) {
-                addLog('Products', 'failed', `Lỗi đẩy sản phẩm mẫu: ${errStr}`);
-              }
-              if (errStr.includes('merchant approval') || errStr.includes('scope')) {
-                addLog('Products', 'failed', `Dừng đồng bộ: App chưa được cấp quyền write_products trên Shopify. Chi tiết: ${errStr}`);
+          while (!success && retries < 3) {
+            try {
+              const productRes = await fetch(`${apiBase}/products.json`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ product: transformed }),
+              });
+
+              if (productRes.ok) {
+                totalProductsSynced++;
+                success = true;
+                if (i % 10 === 0 || i === products.length - 1) {
+                  addLog('Products', 'in_progress', `Đã đẩy ${totalProductsSynced}/${products.length} sản phẩm: "${transformed.title}"`);
+                }
+              } else if (productRes.status === 429) {
+                const retryAfterSec = parseFloat(productRes.headers.get('Retry-After') || '2');
+                this.logger.warn(`Shopify 429 rate limit. Waiting ${retryAfterSec}s before retrying product ${rawP.title}...`);
+                await this.delay(Math.max(retryAfterSec * 1000, 1500));
+                retries++;
+              } else {
+                const errData: any = await productRes.json().catch(() => ({}));
+                const errStr = typeof errData?.errors === 'string' ? errData.errors : JSON.stringify(errData);
+                this.logger.warn(`Failed to push product ${rawP.title}: ${errStr}`);
+                if (i === 0) {
+                  addLog('Products', 'failed', `Lỗi đẩy sản phẩm mẫu: ${errStr}`);
+                }
+                if (errStr.includes('merchant approval') || errStr.includes('scope')) {
+                  addLog('Products', 'failed', `Dừng đồng bộ: App chưa được cấp quyền write_products trên Shopify. Chi tiết: ${errStr}`);
+                  break;
+                }
                 break;
               }
+            } catch (e) {
+              this.logger.warn(`Push product error: ${e.message}`);
+              retries++;
+              await this.delay(1000);
             }
-          } catch (e) {
-            this.logger.warn(`Push product error: ${e.message}`);
           }
-          await this.delay(500); // 2 req/s safe rate limit
+          await this.delay(200); // 5 req/s fast burst within Shopify limits
         }
 
         addLog('Products', 'success', `Đồng bộ thành công ${totalProductsSynced}/${products.length} sản phẩm sang Shop Đích!`);
