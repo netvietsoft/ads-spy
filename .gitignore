@@ -20,6 +20,7 @@ Screen shoot/
 
 # proxy credentials — KHONG commit
 scripts/proxies.txt
+cookies.txt
 logs/
 # `scripts/proxies.txt` ở trên có dấu / nên bị anchor vào ROOT → bỏ sót proxy.txt ở thư mục khác.
 # 2 dòng dưới KHÔNG có dấu / nên chặn ở MỌI cấp (đã có 15 dòng user:pass ở

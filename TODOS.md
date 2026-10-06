@@ -1,6 +1,6 @@
 # BẢNG TIẾN ĐỘ NHIỆM VỤ (TODOS.md)
 
-> **Cập nhật lần cuối**: 2026-09-22 14:38:00 (GMT+7)  
+> **Cập nhật lần cuối**: 2026-09-23 21:36:00 (GMT+7)  
 > **Dự án**: Google Ads Spy & SaaS Intelligence Platform  
 > **Nguồn trạng thái**: `.ai/tasks/` & `.ai/state.json`
 
@@ -31,10 +31,19 @@
 ---
 
 ## 🟡 ĐANG THỰC HIỆN (RUNNING)
-*(Hiện không có task nào đang chạy)*
+
+- [/] **TASK-046**: Deploy mmo-coin.com + Fix Theme Cloner Product Grid
+  - **Mô tả**: Fix lưới sản phẩm rỗng sau khi clone theme (2-tier fallback Liquid+JS fetch, auto-tạo Smart Collection `all`). Build production xong trên `srv1257781`, đang chờ Tony restart PM2 thủ công.
+  - **Blocked**: PM2 processes `errored` — cần chạy: `source ~/.bashrc && pm2 delete ads-spy-api ads-spy-web 2>/dev/null || true && pm2 start ecosystem.config.js`
+  - **Files**: `theme-packager.service.ts`, `theme-deployer.service.ts`
+  - **Handoff**: [`docs/handoff-2026-09-23-theme-cloner-fix-deploy-mmo-coin.md`](docs/handoff-2026-09-23-theme-cloner-fix-deploy-mmo-coin.md)
 
 ---
 
 ## ⚪ SẴN SÀNG (READY / BACKLOG)
+
+- [ ] **TASK-047**: Debug Shopify App install flow — HMAC verify pass URL nhưng không confirm cài thành công vào shop.
+- [ ] **TASK-048**: Clone Banner + Popup JS từ shop nguồn (popup timer, targeting, JS injection).
+- [ ] **TASK-049**: 1-Click COMBO end-to-end test sau fix lỗi `Unexpected token '<'` (shop nguồn trả HTML thay JSON).
 - [ ] **Track (theo dõi shop nâng cao, per-user notification/alert)**: theo dõi biến động định kỳ theo tài khoản user.
 - [ ] **Rate-limit tra cứu live theo khách**: bảo vệ token + proxy ShopHunter.

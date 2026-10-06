@@ -647,4 +647,63 @@ describe('saveTraffic — lưu traffic dán tay theo domain', () => {
     expect(db.upsertDomainTraffic).not.toHaveBeenCalled();
     expect(db.getDomainTraffic).toHaveBeenCalledWith('editgpt.app');
   });
+
+  describe('recomsale platform', () => {
+    it('platformOf nhận diện recomsale.com', () => {
+      const s = new AffnetService(mkDb() as any, mkFetch() as any, mkTraffic() as any);
+      expect(s.platformOf('recomsale.com')).toBe('recomsale');
+      expect(s.platformOf('https://recomsale.com')).toBe('recomsale');
+    });
+
+    it('fetchStep xử lý host recomsale: active lưu program + mark active, notfound mark notfound', async () => {
+      const db = mkDb();
+      db.pickNetToFetch.mockResolvedValue({ net: 'recomsale.com', platform: 'recomsale' });
+      db.takeHostsToCheck
+        .mockResolvedValueOnce([
+          { slug: 'avenila', checkTries: 0 },
+          { slug: 'dead-shop', checkTries: 0 },
+          { slug: 'err-shop', checkTries: 0 },
+        ])
+        .mockResolvedValueOnce([]); // vòng 2 rỗng để kết thúc
+
+      const mockRecomsale = {
+        fetchConfig: jest.fn().mockImplementation(async (slug: string) => {
+          if (slug === 'avenila') {
+            return {
+              shopId: '6869',
+              brandName: 'Avenila Lighting',
+              signUrl: 'https://www.avenila.com/community/affiliate/signup',
+              welcomeSlogan: 'Welcome to Avenila',
+              loginPageSubHead: 'Subhead info',
+            };
+          }
+          if (slug === 'dead-shop') {
+            return { shopId: '-1', brandName: '', signUrl: '' };
+          }
+          throw new Error('Network timeout');
+        }),
+      };
+
+      const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any, undefined, undefined, undefined, mockRecomsale as any);
+      (AffnetService as any).RECOMSALE_PACE_MS = 0;
+
+      const r = await s.fetchStep({ batch: 10, paceMs: 0 });
+
+      expect(r.net).toBe('recomsale.com');
+      expect(r.active).toBe(1);
+      expect(r.notfound).toBe(1);
+      expect(r.laneErrors).toBe(1);
+
+      expect(db.upsertProgram).toHaveBeenCalledWith(expect.objectContaining({
+        net: 'recomsale.com',
+        slug: 'avenila',
+        web: 'avenila.com',
+        brand: 'Avenila Lighting',
+        status: 'active',
+      }));
+      expect(db.markHostChecked).toHaveBeenCalledWith('recomsale.com', 'avenila', 'active');
+      expect(db.markHostChecked).toHaveBeenCalledWith('recomsale.com', 'dead-shop', 'notfound');
+      expect(db.bumpHostTries).toHaveBeenCalledWith('recomsale.com', 'err-shop');
+    });
+  });
 });

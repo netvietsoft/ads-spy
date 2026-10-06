@@ -1,0 +1,32 @@
+{
+  "task_id": "TASK-046-PENDING",
+  "title": "Deploy mmo-coin.com + Fix Theme Cloner + App Install Debug",
+  "status": "blocked",
+  "blocked_reason": "PM2 processes errored trên srv1257781 — cần Tony chạy lệnh restart thủ công",
+  "owner": "Tony",
+  "created": "2026-09-23T21:36:00+07:00",
+  "files_changed": [
+    "apps/api/src/theme-cloner/theme-packager.service.ts",
+    "apps/api/src/theme-cloner/theme-deployer.service.ts",
+    "apps/api/src/product-sync/product-sync.controller.ts",
+    "apps/web/app/components/OneClickComboPanel.tsx"
+  ],
+  "pending_actions": [
+    {
+      "who": "Tony (manual on server)",
+      "cmd": "source ~/.bashrc && pm2 delete ads-spy-api ads-spy-web 2>/dev/null || true && cd /var/www/ads-spy && pm2 start ecosystem.config.js && pm2 status",
+      "why": "Restart PM2 processes bị errored"
+    },
+    {
+      "who": "Tony (verify)",
+      "cmd": "curl http://localhost:3062 && curl http://localhost:8075/health",
+      "why": "Confirm Web + API online"
+    }
+  ],
+  "next_tasks": [
+    "TASK-046: Debug Shopify App install HMAC verify",
+    "TASK-047: Clone Banner + Popup JS",
+    "TASK-048: 1-Click COMBO end-to-end test"
+  ],
+  "handoff_doc": "docs/handoff-2026-09-23-theme-cloner-fix-deploy-mmo-coin.md"
+}

@@ -8,6 +8,7 @@ import { TrafficService } from '../traffic/traffic.service';
 import { AffnetGoaffpro, GOAFFPRO_NET, GOAFFPRO_PAGE_LIMIT, parseGoaffpro, joinUrlOfGoaffpro } from './affnet.goaffpro';
 import { AffnetAffiliatly, AFFILIATLY_NET, AFFILIATLY_PAGE_SIZE, parseAffiliatly, joinUrlOfAffiliatly } from './affnet.affiliatly';
 import { AffnetUppromote, UPPROMOTE_NET, UPPROMOTE_PAGE_LIMIT, parseUppromote, joinUrlOfUppromote } from './affnet.uppromote';
+import { AffnetRecomsale, RECOMSALE_DOMAIN, parseRecomsale, joinUrlOfRecomsale } from './affnet.recomsale';
 
 @Injectable()
 export class AffnetService {
@@ -18,6 +19,7 @@ export class AffnetService {
     private readonly goaffpro?: AffnetGoaffpro,
     private readonly affiliatly?: AffnetAffiliatly,
     private readonly uppromote?: AffnetUppromote,
+    private readonly recomsale?: AffnetRecomsale,
   ) {}
 
   // Nhánh cho net kiểu API (goaffpro): phân trang /v1/public/sites rồi ghi thẳng host+program.
@@ -188,6 +190,54 @@ export class AffnetService {
     return out;
   }
 
+  // Nhánh cho recomsale.com — Shopify affiliate tracking platform.
+  // Subdomain được phát hiện qua discovery, mỗi subdomain có API riêng:
+  // GET https://api.recomsale.com/v1/affiliate/webConfig/outGet?domain={slug}.recomsale.com&sign={sign}
+  // Nếu shopId > 0 && signUrl != '': chương trình active, trích xuất web của merchant trực tiếp từ signUrl.
+  // Nếu shopId == '-1' || shopId == '0' || !signUrl: chương trình notfound.
+  private static readonly RECOMSALE_STEP_BUDGET_MS = 120_000;
+  private static readonly RECOMSALE_PACE_MS = 50;
+
+  private async fetchStepRecomsale(net: string, batch = 30): Promise<{
+    net: string; checked: number; active: number; inactive: number; notfound: number; blocked: number;
+    laneErrors: number; lanes: number; quotaCost: number;
+  }> {
+    const out = { net, checked: 0, active: 0, inactive: 0, notfound: 0, blocked: 0, laneErrors: 0, lanes: 1, quotaCost: 0 };
+    if (!this.recomsale) return out;
+    const deadline = Date.now() + AffnetService.RECOMSALE_STEP_BUDGET_MS;
+    do {
+      const hosts = await this.db.takeHostsToCheck(net, batch);
+      if (!hosts.length) break;
+
+      for (const h of hosts) {
+        try {
+          const cfg = await this.recomsale.fetchConfig(h.slug);
+          out.quotaCost++;
+          out.checked++;
+          if (cfg && cfg.shopId && cfg.shopId !== '-1' && cfg.shopId !== '0' && cfg.signUrl) {
+            out.active++;
+            const parsed = parseRecomsale(h.slug, cfg);
+            await this.db.upsertProgram({
+              ...parsed, net, slug: h.slug,
+              joinUrl: joinUrlOfRecomsale(h.slug, cfg),
+              termsText: cfg.loginPageSubHead || null,
+              status: 'active', fetchedAt: Date.now(),
+            });
+            await this.db.markHostChecked(net, h.slug, 'active');
+          } else {
+            out.notfound++;
+            await this.db.markHostChecked(net, h.slug, 'notfound');
+          }
+        } catch {
+          out.laneErrors++;
+          await this.db.bumpHostTries(net, h.slug);
+        }
+        if (AffnetService.RECOMSALE_PACE_MS > 0) await this.delay(AffnetService.RECOMSALE_PACE_MS);
+      }
+    } while (Date.now() < deadline);
+    return out;
+  }
+
   // Giống normalizeDomain của search.service.ts: bỏ scheme, bỏ www., cắt tại '/', lowercase.
   normalizeNet(raw: string): string {
     return String(raw || '').trim().toLowerCase()
@@ -195,14 +245,17 @@ export class AffnetService {
   }
 
   platformOf(net: string): string {
-    if (net === 'getrewardful.com') return 'rewardful';
+    const n = this.normalizeNet(net);
+    if (n === 'getrewardful.com') return 'rewardful';
     // goaffpro lấy dữ liệu bằng API JSON công khai, KHÔNG dò subdomain + mở trang như rewardful.
-    if (net === GOAFFPRO_NET) return 'goaffpro';
+    if (n === GOAFFPRO_NET) return 'goaffpro';
     // affiliatly: directory HTML công khai 2 tầng. KHÔNG có wildcard subdomain (trả NXDOMAIN) nên đường
     // 'generic' dò {slug}.affiliatly.com sẽ ra ĐÚNG 0 kết quả mà không báo lỗi gì.
-    if (net === AFFILIATLY_NET) return 'affiliatly';
+    if (n === AFFILIATLY_NET) return 'affiliatly';
     // uppromote: API JSON nhưng BẮT BUỘC token (không có → 401) → token lấy từ getNetCred, dán ở Cài đặt.
-    if (net === UPPROMOTE_NET) return 'uppromote';
+    if (n === UPPROMOTE_NET) return 'uppromote';
+    // recomsale: Shopify affiliate app, subdomain có API config ký bằng MD5(SHA1(domain+key)).
+    if (n === RECOMSALE_DOMAIN) return 'recomsale';
     return 'generic';
   }
 
@@ -265,6 +318,7 @@ export class AffnetService {
     if (n.platform === 'goaffpro') return this.fetchStepGoaffpro(n.net); // cfg.batch không dùng: xem ghi chú ở hàm
     if (n.platform === 'affiliatly') return this.fetchStepAffiliatly(n.net);
     if (n.platform === 'uppromote') return this.fetchStepUppromote(n.net);
+    if (n.platform === 'recomsale') return this.fetchStepRecomsale(n.net, cfg.batch);
     const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
     if (!hosts.length) return out; // race hiếm (host vừa bị lượt khác lấy) → bỏ lượt
     // Token của net (nếu có) — đọc ĐÚNG 1 LẦN/lượt rồi dùng cho cả lô, khỏi đọc lại từng host.

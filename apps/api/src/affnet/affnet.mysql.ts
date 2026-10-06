@@ -162,6 +162,7 @@ export class AffnetMysql {
     // fetch_polled_at: mốc lần fetch gần nhất — để fetchStep XOAY VÒNG công bằng (net fetch lâu nhất được ưu tiên),
     // tránh 1 net đầu bảng chữ cái / có host toàn 'blocked' độc chiếm mọi lượt (xem pickNetToFetch/markNetFetched).
     await this.ensureColumn(pool, 'aff_net', 'fetch_polled_at', 'fetch_polled_at BIGINT');
+    try { await pool.query("UPDATE aff_net SET platform = 'recomsale' WHERE net = 'recomsale.com' AND platform = 'generic'"); } catch { /* ignore */ }
 
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_host (
       net VARCHAR(255) NOT NULL,
@@ -306,7 +307,7 @@ export class AffnetMysql {
   async rescanNet(net: string): Promise<{ hosts: number }> {
     const pool = await this.sh.getPool();
     const [r] = await pool.query('UPDATE aff_host SET checked_at = NULL WHERE net = ?', [net]);
-    await pool.query('UPDATE aff_net SET discover_polls = 0, discover_last_new = NULL WHERE net = ?', [net]);
+    await pool.query('UPDATE aff_net SET discover_polls = 0, discover_last_new = NULL, fetch_polled_at = 0 WHERE net = ?', [net]);
     // Net kiểu API/directory (goaffpro/affiliatly/uppromote) phân trang theo CON TRỎ TRANG ở KV, KHÔNG
     // theo hàng đợi host — nên chỉ xoá checked_at là nút "Quét lại net" KHÔNG thực sự quét lại từ đầu như
     // lời hứa trên hộp xác nhận: adapter vẫn tiếp tục từ trang đang dở. Phải đưa con trỏ về đầu.
@@ -409,7 +410,7 @@ export class AffnetMysql {
               fake_len, fake_hash, fake_checked_at
        FROM aff_net n
        WHERE enabled = 1 AND ${NET_FETCHABLE_SQL}
-       ORDER BY fetch_polled_at IS NOT NULL, fetch_polled_at LIMIT 1`,
+       ORDER BY (fetch_polled_at <=> 0) DESC, fetch_polled_at IS NOT NULL, fetch_polled_at LIMIT 1`,
     );
     const r = (rows as any[])[0];
     return r ? rowToAffNet(r) : null;
