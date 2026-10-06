@@ -333,11 +333,24 @@ export function AffnetPanel() {
   // Trạng thái quét: true khi CẢ 2 job scan đang bật. null = chưa đọc được (lỗi/đang tải).
   const [scanOn, setScanOn] = useState<boolean | null>(null);
   const [scanBusy, setScanBusy] = useState(false);
+  const [scanErr, setScanErr] = useState<string | null>(null);
 
   const refreshNets = () => affNets().then((r) => { setNets(r); setNetsErr(null); }).catch((e) => setNetsErr((e as Error).message));
   const refreshScan = () => shJobs()
-    .then((js) => { const m = Object.fromEntries(js.map((j) => [j.name, j])); setScanOn(SCAN_JOBS.every((n) => m[n]?.enabled)); })
-    .catch(() => {});
+    .then((js) => {
+      if (Array.isArray(js)) {
+        const m = Object.fromEntries(js.map((j) => [j.name, j]));
+        setScanOn(SCAN_JOBS.every((n) => m[n]?.enabled));
+        setScanErr(null);
+      } else {
+        setScanOn((prev) => (prev === null ? false : prev));
+      }
+    })
+    .catch((e) => {
+      console.warn('[AffnetPanel] refreshScan error:', e);
+      setScanOn((prev) => (prev === null ? false : prev));
+      setScanErr((e as Error).message);
+    });
   useEffect(() => { refreshNets(); refreshScan(); }, []);
   // Poll bảng Net + trạng thái quét mỗi 10s trong lúc tab đang mở (job quét chạy nền, thấy tiến độ tăng dần).
   useEffect(() => {
@@ -349,13 +362,14 @@ export function AffnetPanel() {
   const toggleScan = async () => {
     if (scanBusy) return;
     setScanBusy(true);
+    setScanErr(null);
     try {
-      const turnOn = !scanOn;
+      const turnOn = scanOn === null ? true : !scanOn;
       for (const n of SCAN_JOBS) await shToggleJob(n, turnOn);
       if (turnOn) for (const n of SCAN_JOBS) await shRunJobOnce(n).catch(() => {});
       await refreshScan();
     } catch (e) {
-      setNetsErr('Không đổi được trạng thái quét: ' + (e as Error).message);
+      setScanErr('Không đổi được trạng thái quét: ' + (e as Error).message);
     } finally {
       setScanBusy(false);
     }
@@ -647,16 +661,17 @@ export function AffnetPanel() {
       {importMsg && <p className="hint" style={{ margin: '6px 0 0' }}>{importMsg}</p>}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '10px 0 0', flexWrap: 'wrap' }}>
-        <button className={scanOn ? 'srcbtn' : 'srcbtn active'} onClick={toggleScan} disabled={scanBusy || scanOn == null}>
+        <button className={scanOn ? 'srcbtn' : 'srcbtn active'} onClick={toggleScan} disabled={scanBusy}>
           {scanBusy ? <span className="spinner" /> : scanOn ? '⏸ Dừng quét' : '▶ Bắt đầu quét'}
         </button>
         <span className="hint" style={{ margin: 0 }}>
-          {scanOn == null ? 'Đang đọc trạng thái quét…'
+          {scanOn == null ? 'Đang đọc trạng thái quét… (Bấm để kích hoạt quét)'
             : scanOn ? 'Đang quét nền (dò subdomain + quét trang) cho tất cả net — số liệu tự tăng dần.'
               : 'Quét đang tắt. Bấm để bắt đầu dò subdomain và quét trang cho mọi net.'}
         </span>
       </div>
 
+      {scanErr && <div className="err" style={{ margin: '6px 0 0' }}>Trạng thái quét: {scanErr}</div>}
       {netsErr && <div className="err">{netsErr}</div>}
 
       {/* Menu sort số liệu cho danh sách net — nets tải hết 1 lần nên sort ngay ở client. */}
