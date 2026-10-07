@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import * as XLSX from 'xlsx';
 import { affNets, affAddNets, affAddHosts, affDeleteNet, affRescanNet, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, affLibRevScanNet, affLibRevScanOne, trafficSearch, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
@@ -282,6 +282,7 @@ export function AffnetPanel() {
   const [nets, setNets] = useState<AffNetRow[]>([]);
   const [netsErr, setNetsErr] = useState<string | null>(null);
   const [netSort, setNetSort] = useState<NetSortKey>('active');
+  const [netSearch, setNetSearch] = useState('');
   const [rescanning, setRescanning] = useState<string | null>(null); // net đang quét lại
   // Hộp xác nhận TRONG APP, thay cho confirm() của trình duyệt (xem ghi chú ở doRescan).
   const [ask, setAsk] = useState<{ msg: string; onYes: () => void } | null>(null);
@@ -567,8 +568,12 @@ export function AffnetPanel() {
     setNetRevBusy(false);
   };
 
-  // Sort số liệu cho danh sách net (client-side).
-  const sortedNets = [...nets].sort((a, b) => (netSort === 'net' ? a.net.localeCompare(b.net) : (b[netSort] as number) - (a[netSort] as number)));
+  // Sort và lọc số liệu cho danh sách net (client-side).
+  const sortedNets = useMemo(() => {
+    const q = netSearch.trim().toLowerCase();
+    const list = q ? nets.filter((n) => n.net.toLowerCase().includes(q) || (n.platform && n.platform.toLowerCase().includes(q))) : nets;
+    return [...list].sort((a, b) => (netSort === 'net' ? a.net.localeCompare(b.net) : (b[netSort] as number) - (a[netSort] as number)));
+  }, [nets, netSearch, netSort]);
 
   // Mở/đóng ô nhập traffic.
   const openEdit = (web: string) => { setEditWeb(web); setEditText(''); setEditMsg(null); };
@@ -708,11 +713,16 @@ export function AffnetPanel() {
 
       {/* Menu sort số liệu cho danh sách net — nets tải hết 1 lần nên sort ngay ở client. */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '10px 0 0', flexWrap: 'wrap', fontSize: 13 }}>
+        <input className="fbselect" placeholder="Tìm tên net (vd: recomsale, shareasale)..."
+          value={netSearch} onChange={(e) => setNetSearch(e.target.value)}
+          style={{ minWidth: 220, padding: '5px 8px' }} />
+        {netSearch && <button className="srcbtn" onClick={() => setNetSearch('')}>✕</button>}
         <span className="hint" style={{ margin: 0 }}>Sắp xếp net:</span>
         <select value={netSort} onChange={(e) => setNetSort(e.target.value as NetSortKey)}
                 style={{ padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', fontFamily: 'inherit', fontSize: 13 }}>
           {NET_SORTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
+        <span className="hint" style={{ margin: 0 }}>({sortedNets.length}/{nets.length} net)</span>
       </div>
 
       {isMobile ? (

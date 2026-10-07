@@ -742,8 +742,12 @@ export class AffnetMysql {
       params.push(q.maxPct);
     }
     if (q.q) {
-      where.push('(h.slug LIKE ? OR p.program_name LIKE ? OR p.web LIKE ?)');
-      params.push('%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%');
+      const qTrim = q.q.trim().toLowerCase();
+      const netBase = q.net.toLowerCase().replace(/\.[^.]+$/, '');
+      if (qTrim !== q.net.toLowerCase() && qTrim !== netBase) {
+        where.push('(h.slug LIKE ? OR p.program_name LIKE ? OR p.web LIKE ? OR p.join_url LIKE ?)');
+        params.push('%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%');
+      }
     }
     const whereSql = 'WHERE ' + where.join(' AND ');
     // Tie-breaker h.slug: thiếu nó thì 2 dòng cùng giá trị sort có thứ tự KHÔNG xác định giữa các lượt
