@@ -58,8 +58,9 @@ export function TrafficPanel() {
           Object.assign(merged.traffic, data.traffic);
           Object.assign(merged.whois, data.whois);
           setResult({ traffic: { ...merged.traffic }, whois: { ...merged.whois } });
-        } catch {
-          failedChunks.push(`${i + 1}-${i + chunk.length}`);
+        } catch (e) {
+          const errMsg = (e as Error).message || 'Lỗi không xác định';
+          failedChunks.push(`${i + 1}-${i + chunk.length}: ${errMsg}`);
         }
 
         setProgress({
@@ -69,9 +70,10 @@ export function TrafficPanel() {
       }
 
       if (Object.keys(merged.traffic).length === 0) {
-        setError('Khong lay duoc du lieu cho cac domain nay');
+        const detail = failedChunks[0] ? ` (${failedChunks[0]})` : '';
+        setError(`Không lấy được dữ liệu traffic${detail}`);
       } else if (failedChunks.length > 0) {
-        setError(`Co lo loi (domain thu ${failedChunks.join(', ')}), phan con lai van hien ben duoi`);
+        setError(`Có lô lỗi (domain thứ ${failedChunks.join('; ')}), phần còn lại vẫn hiện bên dưới`);
       }
     } finally {
       setLoading(false);

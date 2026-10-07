@@ -1,4 +1,26 @@
 import 'reflect-metadata';
+import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Nạp các file .env / .env.local từ repo root và apps/api (ưu tiên biến môi trường hiện có)
+const envDirs = [
+  process.cwd(),
+  path.resolve(process.cwd(), '..'),
+  path.resolve(process.cwd(), '..', '..'),
+  __dirname,
+  path.resolve(__dirname, '..'),
+  path.resolve(__dirname, '..', '..'),
+];
+for (const dir of envDirs) {
+  for (const file of ['.env', '.env.local']) {
+    const full = path.join(dir, file);
+    if (fs.existsSync(full)) {
+      dotenv.config({ path: full });
+    }
+  }
+}
+
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded, raw } from 'express';
 import type { NextFunction, Request, Response } from 'express';
