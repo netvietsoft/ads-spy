@@ -800,6 +800,15 @@ export async function affAddNets(nets: string): Promise<{ imported: number; skip
     }),
   );
 }
+export async function affAddHosts(net: string, hosts: string): Promise<{ imported: number; skipped: number }> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/aff/nets/${encodeURIComponent(net)}/hosts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ hosts }),
+    }),
+  );
+}
 export async function affDeleteNet(net: string): Promise<void> {
   await fetch(`${API}/api/aff/nets/${encodeURIComponent(net)}`, { method: 'DELETE' });
 }

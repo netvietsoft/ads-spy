@@ -191,32 +191,38 @@ export class AffnetMysql {
     // Index cho hot-path takeHostsToCheck (WHERE net = ? AND checked_at IS NULL ORDER BY first_seen).
     await this.ensureIndexMulti(pool, 'aff_host', 'idx_queue', 'net, checked_at');
 
-    // Nạp sẵn danh sách subdomains cho recomsale.com nếu chưa có để sẵn sàng fetch ngay lập tức
+    // Nạp sẵn danh sách subdomains cho recomsale.com (144 slugs đã xác thực qua OSINT & urlscan)
     try {
-      const [rh] = await pool.query("SELECT COUNT(*) AS n FROM aff_host WHERE net = 'recomsale.com'");
-      if (Number((rh as any[])[0]?.n) === 0) {
-        const RECOMSALE_SEED_SLUGS = [
-          'store', 'nerdlabs', 'kikitextiles', 'affiliate', 'thethreadshop', 'syrebocare', 'palaam', '4a7b7a',
-          'whisperz', 'partners', 'invictauk', 'flipndip', 'namastecita', 'lumarasystems', 'stylefitnessapparel',
-          'policies', 'littlenbrave', 'apiba', 'gtrsimulator', 'barkpotty', 'xd21', 'frankiesfabdesigns',
-          'boxlinestore', 'app-test', 'cdnb', 'longruncoffee', 'faithandflame', 'biohackinglabs',
-          'instantlyunique', 'nayabjewellery', 'easeeasecurtains', 'creationsbyizzy-affiliateportal',
-          'app-test2', 'app-test1', 'iphoneplug', 'thrive-nutra', 'shopblackbirdboutique', 'garucosmetics',
-          'shop-test', 'theheelsluxxx', 'mcderardparisstore', 'poseidonracks', 'miaoustyle', 'comenii',
-          'vlandus', 'theroadrush', 'rarawbotanicals', 'cdn-r2', 'shop', '45bd8d-2', 'scentimental',
-          'omniblueminerals', 'garucosmeticsparis', 'yeshansarees', 'cypherproject', '999tee', 'dezilix',
-          'bluerivercarp', 'goingallin', 'fashionaftermath', 'elsystyle', 'xoshowpony', 'comeherebuddy',
-          'dipacci', 'wildcard', 'chameleonsandcandle', 'hudmon', 'kartelian', 'edmnova', 'avenila',
-          '1irontrendy', 'animelodic', 'arborfill', 'audioki', 'buhairllc', 'deviousdrawing',
-          'discountedsarms', 'disinishop', 'doggielawn', 'dstreet', 'hairloss', 'leafbrandsco', 'longrunco',
-        ];
-        const now = Date.now();
-        const vals = RECOMSALE_SEED_SLUGS.map((slug) => ['recomsale.com', slug, now, now, 'seed']);
-        await pool.query(
-          `INSERT IGNORE INTO aff_host (net, slug, first_seen, last_seen, sources) VALUES ${vals.map(() => '(?,?,?,?,?)').join(',')}`,
-          vals.flat(),
-        );
-      }
+      const RECOMSALE_SEED_SLUGS = [
+        '1irontrendy', '45bd8d-2', '4a7b7a', '999tee', 'abimbola', 'affiliate', 'allamericancanine', 'allwear',
+        'animelodic', 'apiba', 'app-test', 'app-test1', 'app-test2', 'arborfill', 'audioki', 'avenila',
+        'azorahwines', 'barkpotty', 'bawdee', 'bestbookstore', 'biohackinglabs', 'bkoutlooks', 'bluerivercarp',
+        'bossciglam', 'boxlinestore', 'buhairllc', 'cajosenatural', 'cbathleticwear', 'cdn-r2', 'cdnb',
+        'chameleonsandcandle', 'collectparis', 'comeherebuddy', 'comenii', 'cotodama-speaker',
+        'creationsbyizzy-affiliateportal', 'cypherproject', 'demonracing', 'design-kontrol', 'deviousdrawing',
+        'dezilix', 'diamond-faction', 'dipacci', 'discountedsarms', 'disinishop', 'doggielawn',
+        'doublethesprinkles', 'dstreet', 'easeeasecurtains', 'edmnova', 'elsystyle', 'elysianparfum',
+        'epicdesignpads', 'execuluxe', 'faithandflame', 'fakeittan', 'fashionaftermath', 'flipndip',
+        'frankiesfabdesigns', 'garucosmetics', 'garucosmeticsparis', 'giantex', 'goingallin', 'gtrsimulator',
+        'hairloss', 'happygetfit', 'haritea', 'herselfjewelry', 'honorskinbody', 'hudmon', 'humblematcha',
+        'iamastrobrand', 'instantlyunique', 'invictauk', 'iphoneplug', 'jbaumgardt', 'jirano', 'joycat',
+        'kartelian', 'kikitextiles', 'leafbrandsco', 'link-shoes', 'litgels', 'littlenbrave', 'longrunco',
+        'longruncoffee', 'lumarasystems', 'lumicandlesph', 'lyricalhair', 'matchasunday', 'mcderardparisstore',
+        'meikomichele', 'meolaleatherdogs', 'miaoustyle', 'midnightromanceshop', 'molecule53', 'momcozy',
+        'msgigisbeauty', 'mymenowell', 'namastecita', 'nayabjewellery', 'nerdlabs', 'nikikay', 'omniblueminerals',
+        'onotone', 'origoshoes', 'outlookbunch', 'oyatsuclub', 'palaam', 'partners', 'phaedraskin', 'policies',
+        'poppinsperiod', 'poseidonracks', 'rarawbotanicals', 'recoverasia', 'revivaldiamond', 'rizwardsleather',
+        'sakuraheadspa', 'scentimental', 'shop', 'shop-test', 'shopblackbirdboutique', 'store',
+        'stylefitnessapparel', 'syrebocare', 'theedwardsedge', 'theheelsluxxx', 'theluxenude', 'theroadrush',
+        'thethreadshop', 'threegirls', 'thrive-nutra', 'topuniquehair', 'treselite', 'trulygrounded', 'ventour',
+        'vlandus', 'whisperz', 'wildcard', 'wisteriasnow', 'xd21', 'xoshowpony', 'yeshansarees',
+      ];
+      const now = Date.now();
+      const vals = RECOMSALE_SEED_SLUGS.map((slug) => ['recomsale.com', slug, now, now, 'seed']);
+      await pool.query(
+        `INSERT IGNORE INTO aff_host (net, slug, first_seen, last_seen, sources) VALUES ${vals.map(() => '(?,?,?,?,?)').join(',')}`,
+        vals.flat(),
+      );
     } catch { /* ignore */ }
 
     // terms_text để MEDIUMTEXT riêng, KHÔNG bao giờ SELECT * (list query phải liệt kê cột, tránh kéo cột nặng này).
@@ -345,6 +351,12 @@ export class AffnetMysql {
     // Với net 'generic' thì khoá này không tồn tại/không dùng → set 0 là vô hại.
     await this.setNetOffset(net, 0);
     return { hosts: Number((r as any).affectedRows) || 0 };
+  }
+
+  // Ưu tiên net này cho lượt fetchStep tiếp theo (fetch_polled_at = 0)
+  async prioritizeNet(net: string): Promise<void> {
+    const pool = await this.sh.getPool();
+    await pool.query('UPDATE aff_net SET fetch_polled_at = 0 WHERE net = ?', [net]);
   }
 
   // Xoá sạch 1 net: aff_program → aff_host → aff_net (thứ tự để không mồ côi dữ liệu con).

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import * as XLSX from 'xlsx';
-import { affNets, affAddNets, affDeleteNet, affRescanNet, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, affLibRevScanNet, affLibRevScanOne, trafficSearch, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
+import { affNets, affAddNets, affAddHosts, affDeleteNet, affRescanNet, affNetTrafficFill, affHosts, affUpdateHost, affDeleteHost, affSaveTraffic, affLibRevScanNet, affLibRevScanOne, trafficSearch, AffNetRow, AffHostRow, AffHostFilter, shJobs, shToggleJob, shRunJobOnce } from '../api';
 import { Paginator } from './Paginator';
 import { TrafficHistoryModal } from './TrafficHistoryModal';
 import { toUsd } from '../currency';
@@ -293,6 +293,11 @@ export function AffnetPanel() {
   const [importBusy, setImportBusy] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
 
+  const [hostImportText, setHostImportText] = useState('');
+  const [hostImportBusy, setHostImportBusy] = useState(false);
+  const [hostImportMsg, setHostImportMsg] = useState<string | null>(null);
+  const [showHostImport, setShowHostImport] = useState(false);
+
   const [data, setData] = useState<{ rows: AffHostRow[]; total: number }>({ rows: [], total: 0 });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -414,6 +419,29 @@ export function AffnetPanel() {
       setImportMsg('Lỗi: ' + (e as Error).message);
     } finally {
       setImportBusy(false);
+    }
+  };
+
+  const doImportHosts = async () => {
+    if (!hostImportText.trim() || hostImportBusy || !activeNet) return;
+    setHostImportBusy(true); setHostImportMsg(null);
+    try {
+      const r = await affAddHosts(activeNet, hostImportText);
+      let msg = `Đã thêm ${r.imported} domain/subdomain (bỏ qua ${r.skipped})`;
+      if (r.imported > 0) {
+        try {
+          for (const n of SCAN_JOBS) await shToggleJob(n, true);
+          for (const n of SCAN_JOBS) await shRunJobOnce(n).catch(() => {});
+          msg += ' — bot đang quét ngay';
+        } catch {}
+      }
+      setHostImportMsg(msg);
+      setHostImportText('');
+      setReloadTick((t) => t + 1);
+    } catch (e) {
+      setHostImportMsg('Lỗi: ' + (e as Error).message);
+    } finally {
+      setHostImportBusy(false);
     }
   };
 
@@ -750,10 +778,32 @@ export function AffnetPanel() {
               title={`Cào doanh thu cho domain của ${activeNet}: domain nào là Shopify thì đồng bộ doanh thu sang`}>
               {netRevBusy ? '⏳ Đang cào doanh thu…' : 'scan Revenue'}
             </button>
+            <button className="srcbtn" onClick={() => setShowHostImport(!showHostImport)}
+              title={`Thêm danh sách subdomain hoặc domain website riêng vào ${activeNet}`}>
+              {showHostImport ? '✕ Đóng ô thêm' : '+ Thêm domain / store'}
+            </button>
             {netTrafMsg && <span className="hint" style={{ margin: 0 }}>{netTrafMsg}</span>}
             {netRevMsg && <span className="hint" style={{ margin: 0 }}>{netRevMsg}</span>}
             {importMsg && <span className="hint" style={{ margin: 0, color: 'var(--success, #10b981)' }}>{importMsg}</span>}
           </div>
+
+          {showHostImport && (
+            <div className="proxybox" style={{ margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+                Dán danh sách domain store hoặc subdomain (vd: <code>allwear.com</code>, <code>momcozy.com</code>, hoặc <code>allwear.recomsale.com</code>). Bot sẽ tự động thêm và quét ngay:
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+                <textarea rows={2} style={{ flex: '1 1 auto', minWidth: 0 }}
+                  placeholder="Mỗi dòng 1 domain hoặc subdomain, vd:&#10;allwear.com&#10;momcozy.com"
+                  value={hostImportText} onChange={(e) => setHostImportText(e.target.value)} disabled={hostImportBusy} />
+                <button className="srcbtn active" style={{ flex: '0 0 auto', whiteSpace: 'nowrap' }}
+                  onClick={doImportHosts} disabled={hostImportBusy || !hostImportText.trim()}>
+                  {hostImportBusy ? <span className="spinner" /> : 'Nạp & quét'}
+                </button>
+              </div>
+              {hostImportMsg && <p className="hint" style={{ margin: '4px 0 0', color: 'var(--success, #10b981)' }}>{hostImportMsg}</p>}
+            </div>
+          )}
           <p className="hint" style={{ marginTop: 0 }}>
             Mặc định chỉ hiện domain <b>có chương trình affiliate</b> ({data.total.toLocaleString()} domain). Đổi ô lọc sang “Tất cả domain” để xem
             <b> toàn bộ domain đã phát hiện</b>, kể cả domain quét rồi không có affiliate và domain chưa quét.

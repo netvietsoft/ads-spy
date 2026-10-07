@@ -287,6 +287,38 @@ export class AffnetService {
     return { imported: await this.db.upsertNets(nets), skipped };
   }
 
+  // Nhập subdomain / domain merchant trực tiếp vào 1 net cụ thể (vd allwear.recomsale.com hoặc allwear.com).
+  // Đưa thẳng vào aff_host với checked_at = NULL để lượt fetchStep tiếp theo ưu tiên quét ngay.
+  async importHosts(net: string, text: string): Promise<{ imported: number; skipped: number }> {
+    const rawLines = String(text || '').split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
+    const slugs = new Set<string>();
+    let skipped = 0;
+    const netLower = this.normalizeNet(net);
+
+    for (const raw of rawLines) {
+      let s = raw.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim();
+      if (!s) { skipped++; continue; }
+      if (s.endsWith('.' + netLower)) {
+        s = s.slice(0, -(netLower.length + 1)).trim();
+      } else if (s.includes('.')) {
+        // Tách root name từ domain merchant (vd allwear.com -> allwear, momcozy.com -> momcozy)
+        const parts = s.split('.');
+        s = parts.length > 2 && parts[parts.length - 2].length <= 3 ? parts[parts.length - 3] : parts[0];
+      }
+      if (/^[a-z0-9-_]+$/.test(s)) {
+        slugs.add(s);
+      } else {
+        skipped++;
+      }
+    }
+    if (!slugs.size) return { imported: 0, skipped };
+    await this.db.ensureTables();
+    const hostsToAdd = Array.from(slugs).map((slug) => ({ slug, sources: ['manual-import'] }));
+    const imported = await this.db.upsertHosts(netLower, hostsToAdd);
+    await this.db.prioritizeNet(netLower);
+    return { imported, skipped };
+  }
+
   // 1 net/lượt, net có discover_polled_at cũ nhất (NULL trước).
   async discoverStep(cfg: { paceMs: number }, onLog?: (m: string) => void): Promise<{ net: string | null; found: number; added: number }> {
     await this.db.ensureTables();

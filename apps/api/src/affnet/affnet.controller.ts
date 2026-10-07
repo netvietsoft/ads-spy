@@ -32,6 +32,13 @@ export class AffnetController {
     return { ok: true, ...r };
   }
 
+  // Thêm subdomain / store domain trực tiếp vào 1 net (vd allwear.recomsale.com hoặc allwear.com)
+  @Post('aff/nets/:net/hosts')
+  addHosts(@Param('net') net: string, @Body('hosts') hosts: string) {
+    if (!hosts || !String(hosts).trim()) throw new BadRequestException('Chưa nhập domain/subdomain nào');
+    return this.svc.importHosts(net, String(hosts));
+  }
+
   // Scan traffic cho toàn bộ web trong 1 net — mỗi lần 1 lô 50, trả `remaining` để FE gọi tiếp.
   @Post('aff/nets/:net/traffic-fill')
   netTrafficFill(@Param('net') net: string, @Body('limit') limit: number) {

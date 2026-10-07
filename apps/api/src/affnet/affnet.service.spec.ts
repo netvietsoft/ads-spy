@@ -37,6 +37,7 @@ const mkDb = () => ({
   setNetOffset: jest.fn().mockResolvedValue(undefined),
   countHosts: jest.fn().mockResolvedValue(0),
   rescanNet: jest.fn().mockResolvedValue({ hosts: 0 }),
+  prioritizeNet: jest.fn().mockResolvedValue(undefined),
 });
 // AffnetService nay nhận thêm TrafficService (cho nút "Scan traffic" của cả net) — stub, không gọi AITDK thật.
 const mkTraffic = () => ({ search: jest.fn().mockResolvedValue({ traffic: {}, whois: {} }) });
@@ -734,6 +735,32 @@ describe('saveTraffic — lưu traffic dán tay theo domain', () => {
       expect(mockedDiscoverNet).toHaveBeenCalledWith('recomsale.com', 200);
       expect(db.upsertHosts).toHaveBeenCalled();
       expect(db.rescanNet).toHaveBeenCalledWith('recomsale.com');
+    });
+  });
+
+  describe('importHosts', () => {
+    it('nhập subdomain và merchant domain cho recomsale.com và ưu tiên net', async () => {
+      const db = mkDb();
+      db.upsertHosts.mockResolvedValue(2);
+      const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
+
+      const r = await s.importHosts('recomsale.com', 'allwear.recomsale.com\nhttps://momcozy.com\nallwear');
+      expect(db.ensureTables).toHaveBeenCalled();
+      expect(db.upsertHosts).toHaveBeenCalledWith('recomsale.com', [
+        { slug: 'allwear', sources: ['manual-import'] },
+        { slug: 'momcozy', sources: ['manual-import'] },
+      ]);
+      expect(db.prioritizeNet).toHaveBeenCalledWith('recomsale.com');
+      expect(r).toEqual({ imported: 2, skipped: 0 });
+    });
+
+    it('bỏ qua dòng trống hoặc ký tự không hợp lệ', async () => {
+      const db = mkDb();
+      const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
+
+      const r = await s.importHosts('recomsale.com', '   \n@@@\n');
+      expect(r).toEqual({ imported: 0, skipped: 1 });
+      expect(db.upsertHosts).not.toHaveBeenCalled();
     });
   });
 });
