@@ -35,6 +35,8 @@ const mkDb = () => ({
   // Con trỏ phân trang cho net kiểu API (goaffpro).
   getNetOffset: jest.fn().mockResolvedValue(0),
   setNetOffset: jest.fn().mockResolvedValue(undefined),
+  countHosts: jest.fn().mockResolvedValue(0),
+  rescanNet: jest.fn().mockResolvedValue({ hosts: 0 }),
 });
 // AffnetService nay nhận thêm TrafficService (cho nút "Scan traffic" của cả net) — stub, không gọi AITDK thật.
 const mkTraffic = () => ({ search: jest.fn().mockResolvedValue({ traffic: {}, whois: {} }) });
@@ -704,6 +706,34 @@ describe('saveTraffic — lưu traffic dán tay theo domain', () => {
       expect(db.markHostChecked).toHaveBeenCalledWith('recomsale.com', 'avenila', 'active');
       expect(db.markHostChecked).toHaveBeenCalledWith('recomsale.com', 'dead-shop', 'notfound');
       expect(db.bumpHostTries).toHaveBeenCalledWith('recomsale.com', 'err-shop');
+    });
+
+    it('fetchStep tự động fallback platformOf nếu DB lưu platform là generic', async () => {
+      const db = mkDb();
+      db.pickNetToFetch.mockResolvedValue({ net: 'recomsale.com', platform: 'generic' });
+      db.takeHostsToCheck.mockResolvedValueOnce([]);
+      (db as any).countHosts = jest.fn().mockResolvedValue(10);
+
+      const mockRecomsale = { fetchConfig: jest.fn() };
+      const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any, undefined, undefined, undefined, mockRecomsale as any);
+      (AffnetService as any).RECOMSALE_PACE_MS = 0;
+
+      const r = await s.fetchStep({ batch: 10, paceMs: 0 });
+      expect(r.net).toBe('recomsale.com');
+      expect(mockRecomsale.fetchConfig).toBeDefined();
+    });
+
+    it('rescanNet tự động discover và gọi db.rescanNet cho recomsale.com', async () => {
+      mockedDiscoverNet.mockResolvedValueOnce({ hosts: [{ slug: 'avenila', sources: ['test'] }], failed: [] });
+      const db = mkDb();
+      db.rescanNet.mockResolvedValue({ hosts: 83 });
+      const s = new AffnetService(db as any, mkFetch() as any, mkTraffic() as any);
+
+      const res = await s.rescanNet('recomsale.com');
+      expect(res.hosts).toBe(83);
+      expect(mockedDiscoverNet).toHaveBeenCalledWith('recomsale.com', 200);
+      expect(db.upsertHosts).toHaveBeenCalled();
+      expect(db.rescanNet).toHaveBeenCalledWith('recomsale.com');
     });
   });
 });

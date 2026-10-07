@@ -434,8 +434,12 @@ export function AffnetPanel() {
       msg: `Quét lại net "${net}"? Toàn bộ host sẽ được quét lại từ đầu (dữ liệu cũ vẫn giữ, job nền cập nhật dần).`,
       onYes: async () => {
         setRescanning(net); setNetsErr(null); setImportMsg(null);
-        try { const r = await affRescanNet(net); setImportMsg(`Đã đưa ${r.hosts.toLocaleString()} host của ${net} vào lại hàng đợi quét.`); refreshNets(); }
-        catch (e) { setNetsErr(`Quét lại ${net} thất bại: ${(e as Error).message}`); }
+        try {
+          const r = await affRescanNet(net);
+          setImportMsg(`Đã đưa ${r.hosts.toLocaleString()} host của ${net} vào lại hàng đợi quét.`);
+          refreshNets();
+          setReloadTick((t) => t + 1);
+        } catch (e) { setNetsErr(`Quét lại ${net} thất bại: ${(e as Error).message}`); }
         setRescanning(null);
       },
     });
@@ -730,6 +734,11 @@ export function AffnetPanel() {
             <h3 style={{ margin: 0, fontSize: 14, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Dự án của {activeNet}
             </h3>
+            {/* Quét lại net này: đưa toàn bộ host về chờ quét và nạp subdomain mới nhất */}
+            <button className="srcbtn" onClick={() => doRescan(activeNet)} disabled={rescanning === activeNet}
+              title={`Quét lại toàn bộ host của ${activeNet}`}>
+              {rescanning === activeNet ? '⏳ Đang quét lại…' : '⟳ Quét lại net'}
+            </button>
             {/* Scan traffic cả net: điền traffic cho MỌI web của net còn trống (không phải từng dòng một). */}
             <button className="srcbtn" onClick={runNetTraffic} disabled={netTrafBusy}
               title={`Lấy traffic (AITDK) cho toàn bộ web của ${activeNet} còn thiếu`}>
@@ -743,9 +752,10 @@ export function AffnetPanel() {
             </button>
             {netTrafMsg && <span className="hint" style={{ margin: 0 }}>{netTrafMsg}</span>}
             {netRevMsg && <span className="hint" style={{ margin: 0 }}>{netRevMsg}</span>}
+            {importMsg && <span className="hint" style={{ margin: 0, color: 'var(--success, #10b981)' }}>{importMsg}</span>}
           </div>
           <p className="hint" style={{ marginTop: 0 }}>
-            Mặc định chỉ hiện domain <b>có chương trình affiliate</b>. Đổi ô lọc sang “Tất cả domain” để xem
+            Mặc định chỉ hiện domain <b>có chương trình affiliate</b> ({data.total.toLocaleString()} domain). Đổi ô lọc sang “Tất cả domain” để xem
             <b> toàn bộ domain đã phát hiện</b>, kể cả domain quét rồi không có affiliate và domain chưa quét.
           </p>
 

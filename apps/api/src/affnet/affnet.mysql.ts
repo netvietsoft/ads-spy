@@ -162,7 +162,7 @@ export class AffnetMysql {
     // fetch_polled_at: mốc lần fetch gần nhất — để fetchStep XOAY VÒNG công bằng (net fetch lâu nhất được ưu tiên),
     // tránh 1 net đầu bảng chữ cái / có host toàn 'blocked' độc chiếm mọi lượt (xem pickNetToFetch/markNetFetched).
     await this.ensureColumn(pool, 'aff_net', 'fetch_polled_at', 'fetch_polled_at BIGINT');
-    try { await pool.query("UPDATE aff_net SET platform = 'recomsale' WHERE net = 'recomsale.com' AND platform = 'generic'"); } catch { /* ignore */ }
+    try { await pool.query("UPDATE aff_net SET platform = 'recomsale' WHERE net = 'recomsale.com'"); } catch { /* ignore */ }
 
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_host (
       net VARCHAR(255) NOT NULL,
@@ -190,6 +190,34 @@ export class AffnetMysql {
     }
     // Index cho hot-path takeHostsToCheck (WHERE net = ? AND checked_at IS NULL ORDER BY first_seen).
     await this.ensureIndexMulti(pool, 'aff_host', 'idx_queue', 'net, checked_at');
+
+    // Nạp sẵn danh sách subdomains cho recomsale.com nếu chưa có để sẵn sàng fetch ngay lập tức
+    try {
+      const [rh] = await pool.query("SELECT COUNT(*) AS n FROM aff_host WHERE net = 'recomsale.com'");
+      if (Number((rh as any[])[0]?.n) === 0) {
+        const RECOMSALE_SEED_SLUGS = [
+          'store', 'nerdlabs', 'kikitextiles', 'affiliate', 'thethreadshop', 'syrebocare', 'palaam', '4a7b7a',
+          'whisperz', 'partners', 'invictauk', 'flipndip', 'namastecita', 'lumarasystems', 'stylefitnessapparel',
+          'policies', 'littlenbrave', 'apiba', 'gtrsimulator', 'barkpotty', 'xd21', 'frankiesfabdesigns',
+          'boxlinestore', 'app-test', 'cdnb', 'longruncoffee', 'faithandflame', 'biohackinglabs',
+          'instantlyunique', 'nayabjewellery', 'easeeasecurtains', 'creationsbyizzy-affiliateportal',
+          'app-test2', 'app-test1', 'iphoneplug', 'thrive-nutra', 'shopblackbirdboutique', 'garucosmetics',
+          'shop-test', 'theheelsluxxx', 'mcderardparisstore', 'poseidonracks', 'miaoustyle', 'comenii',
+          'vlandus', 'theroadrush', 'rarawbotanicals', 'cdn-r2', 'shop', '45bd8d-2', 'scentimental',
+          'omniblueminerals', 'garucosmeticsparis', 'yeshansarees', 'cypherproject', '999tee', 'dezilix',
+          'bluerivercarp', 'goingallin', 'fashionaftermath', 'elsystyle', 'xoshowpony', 'comeherebuddy',
+          'dipacci', 'wildcard', 'chameleonsandcandle', 'hudmon', 'kartelian', 'edmnova', 'avenila',
+          '1irontrendy', 'animelodic', 'arborfill', 'audioki', 'buhairllc', 'deviousdrawing',
+          'discountedsarms', 'disinishop', 'doggielawn', 'dstreet', 'hairloss', 'leafbrandsco', 'longrunco',
+        ];
+        const now = Date.now();
+        const vals = RECOMSALE_SEED_SLUGS.map((slug) => ['recomsale.com', slug, now, now, 'seed']);
+        await pool.query(
+          `INSERT IGNORE INTO aff_host (net, slug, first_seen, last_seen, sources) VALUES ${vals.map(() => '(?,?,?,?,?)').join(',')}`,
+          vals.flat(),
+        );
+      }
+    } catch { /* ignore */ }
 
     // terms_text để MEDIUMTEXT riêng, KHÔNG bao giờ SELECT * (list query phải liệt kê cột, tránh kéo cột nặng này).
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_program (
@@ -302,12 +330,15 @@ export class AffnetMysql {
   }
 
   // Quét lại 1 net: trả toàn bộ host của net về "chờ quét" (checked_at NULL) để fetchStep fetch lại, và
-  // reset discover_polls để discoverStep đi tìm subdomain mới. KHÔNG xoá aff_program đang có — fetch lại sẽ
-  // upsert đè, nên dữ liệu cũ vẫn xem được trong lúc quét.
+  // reset discover_polls, discover_polled_at = 0, dry_rounds = 0 để discoverStep đi tìm subdomain mới
+  // với ưu tiên cao nhất (fetch_polled_at = 0, discover_polled_at = 0).
   async rescanNet(net: string): Promise<{ hosts: number }> {
     const pool = await this.sh.getPool();
     const [r] = await pool.query('UPDATE aff_host SET checked_at = NULL WHERE net = ?', [net]);
-    await pool.query('UPDATE aff_net SET discover_polls = 0, discover_last_new = NULL, fetch_polled_at = 0 WHERE net = ?', [net]);
+    await pool.query(
+      'UPDATE aff_net SET discover_polls = 0, discover_last_new = NULL, dry_rounds = 0, discover_polled_at = 0, fetch_polled_at = 0 WHERE net = ?',
+      [net],
+    );
     // Net kiểu API/directory (goaffpro/affiliatly/uppromote) phân trang theo CON TRỎ TRANG ở KV, KHÔNG
     // theo hàng đợi host — nên chỉ xoá checked_at là nút "Quét lại net" KHÔNG thực sự quét lại từ đầu như
     // lời hứa trên hộp xác nhận: adapter vẫn tiếp tục từ trang đang dở. Phải đưa con trỏ về đầu.
@@ -324,7 +355,8 @@ export class AffnetMysql {
     await pool.query('DELETE FROM aff_net WHERE net = ?', [net]);
   }
 
-  // Net để poll discovery kế tiếp: chưa poll lần nào (NULL) đứng trước, rồi tới poll cũ nhất.
+  // Net để poll discovery kế tiếp: net vừa bấm "Quét lại net" (discover_polled_at = 0) ưu tiên TRƯỚC HẾT,
+  // tiếp đến chưa poll lần nào (NULL), rồi tới poll cũ nhất.
   // Bỏ qua net ĐÃ BÃO HOÀ (dry_rounds >= DRY_ROUNDS_TO_SATURATE) MÀ vừa poll gần đây (còn trong cooldown) —
   // net chưa poll lần nào vẫn LUÔN được chọn dù dry_rounds cao (không lẽ xảy ra, nhưng không loại trừ).
   async pickNetToPoll(): Promise<AffNet | null> {
@@ -337,7 +369,7 @@ export class AffnetMysql {
          -- Net kiểu API/directory không có subdomain để dò → discovery vô nghĩa, bỏ hẳn khỏi vòng poll.
          AND ${NET_POLLABLE_PLATFORM_SQL}
          AND ${NET_ELIGIBLE_SQL}
-       ORDER BY discover_polled_at IS NOT NULL, discover_polled_at LIMIT 1`,
+       ORDER BY (discover_polled_at <=> 0) DESC, discover_polled_at IS NOT NULL, discover_polled_at LIMIT 1`,
       [DRY_ROUNDS_TO_SATURATE, cutoff],
     );
     const r = (rows as any[])[0];
@@ -420,6 +452,13 @@ export class AffnetMysql {
   async markNetFetched(net: string): Promise<void> {
     const pool = await this.sh.getPool();
     await pool.query('UPDATE aff_net SET fetch_polled_at = ? WHERE net = ?', [Date.now(), net]);
+  }
+
+  // Đếm tổng số host đã phát hiện của 1 net trong aff_host.
+  async countHosts(net: string): Promise<number> {
+    const pool = await this.sh.getPool();
+    const [rows] = await pool.query('SELECT COUNT(*) AS n FROM aff_host WHERE net = ?', [net]);
+    return Number((rows as any[])[0]?.n) || 0;
   }
 
   async takeHostsToCheck(net: string, limit: number): Promise<AffHostRow[]> {

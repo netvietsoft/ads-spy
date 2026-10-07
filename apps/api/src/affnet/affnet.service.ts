@@ -206,8 +206,20 @@ export class AffnetService {
     if (!this.recomsale) return out;
     const deadline = Date.now() + AffnetService.RECOMSALE_STEP_BUDGET_MS;
     do {
-      const hosts = await this.db.takeHostsToCheck(net, batch);
-      if (!hosts.length) break;
+      let hosts = await this.db.takeHostsToCheck(net, batch);
+      if (!hosts.length) {
+        const total = await this.db.countHosts(net);
+        if (total === 0) {
+          try {
+            const disc = await discoverNet(net, 200);
+            if (disc && Array.isArray(disc.hosts) && disc.hosts.length > 0) {
+              await this.db.upsertHosts(net, disc.hosts);
+              hosts = await this.db.takeHostsToCheck(net, batch);
+            }
+          } catch { /* ignore discovery error */ }
+        }
+        if (!hosts.length) break;
+      }
 
       for (const h of hosts) {
         try {
@@ -318,7 +330,7 @@ export class AffnetService {
     if (n.platform === 'goaffpro') return this.fetchStepGoaffpro(n.net); // cfg.batch không dùng: xem ghi chú ở hàm
     if (n.platform === 'affiliatly') return this.fetchStepAffiliatly(n.net);
     if (n.platform === 'uppromote') return this.fetchStepUppromote(n.net);
-    if (n.platform === 'recomsale') return this.fetchStepRecomsale(n.net, cfg.batch);
+    if (n.platform === 'recomsale' || n.net === RECOMSALE_DOMAIN) return this.fetchStepRecomsale(n.net, cfg.batch);
     const hosts = await this.db.takeHostsToCheck(n.net, cfg.batch);
     if (!hosts.length) return out; // race hiếm (host vừa bị lượt khác lấy) → bỏ lượt
     // Token của net (nếu có) — đọc ĐÚNG 1 LẦN/lượt rồi dùng cho cả lô, khỏi đọc lại từng host.
@@ -389,8 +401,17 @@ export class AffnetService {
     return this.db.netSummaries();
   }
 
-  rescanNet(net: string): Promise<{ hosts: number }> {
-    return this.db.rescanNet(this.normalizeNet(net));
+  async rescanNet(net: string): Promise<{ hosts: number }> {
+    const norm = this.normalizeNet(net);
+    if (this.platformOf(norm) === 'recomsale') {
+      try {
+        const disc = await discoverNet(norm, 200);
+        if (disc && Array.isArray(disc.hosts) && disc.hosts.length > 0) {
+          await this.db.upsertHosts(norm, disc.hosts);
+        }
+      } catch { /* ignore discovery network error */ }
+    }
+    return this.db.rescanNet(norm);
   }
 
   // Scan traffic cho TOÀN BỘ web trong 1 net (AITDK batch 50/lần → gọi lặp từ FE theo `remaining`).

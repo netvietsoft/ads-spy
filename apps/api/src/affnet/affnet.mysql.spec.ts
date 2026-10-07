@@ -175,8 +175,23 @@ describe('AffnetMysql', () => {
     expect(r.hosts).toBeGreaterThan(0);
     const [rows] = await pool.query('SELECT COUNT(*) n FROM aff_host WHERE net = ? AND checked_at IS NOT NULL', [NET]);
     expect(Number((rows as any[])[0].n)).toBe(0);
-    const [n2] = await pool.query('SELECT discover_polls FROM aff_net WHERE net = ?', [NET]);
+    const [n2] = await pool.query('SELECT discover_polls, fetch_polled_at, discover_polled_at, dry_rounds FROM aff_net WHERE net = ?', [NET]);
     expect(Number((n2 as any[])[0].discover_polls)).toBe(0);
+    expect(Number((n2 as any[])[0].fetch_polled_at)).toBe(0);
+    expect(Number((n2 as any[])[0].discover_polled_at)).toBe(0);
+    expect(Number((n2 as any[])[0].dry_rounds)).toBe(0);
+  });
+
+  it('countHosts đếm đúng số host của net', async () => {
+    const c = await db.countHosts(NET);
+    expect(c).toBeGreaterThanOrEqual(2);
+  });
+
+  it('pickNetToPoll ưu tiên net vừa rescan (discover_polled_at = 0)', async () => {
+    const pool = await sh.getPool();
+    await pool.query('UPDATE aff_net SET discover_polled_at = 0, dry_rounds = 0 WHERE net = ?', [NET]);
+    const picked = await db.pickNetToPoll();
+    expect(picked?.net).toBe(NET);
   });
 
   // Net kiểu API/directory (goaffpro, affiliatly): 2 câu SQL chọn net phải nhất quán. Trước đây 2 vế này
