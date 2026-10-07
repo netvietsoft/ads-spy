@@ -8,7 +8,14 @@ import { TrafficService } from '../traffic/traffic.service';
 import { AffnetGoaffpro, GOAFFPRO_NET, GOAFFPRO_PAGE_LIMIT, parseGoaffpro, joinUrlOfGoaffpro } from './affnet.goaffpro';
 import { AffnetAffiliatly, AFFILIATLY_NET, AFFILIATLY_PAGE_SIZE, parseAffiliatly, joinUrlOfAffiliatly } from './affnet.affiliatly';
 import { AffnetUppromote, UPPROMOTE_NET, UPPROMOTE_PAGE_LIMIT, parseUppromote, joinUrlOfUppromote } from './affnet.uppromote';
-import { AffnetRecomsale, RECOMSALE_DOMAIN, parseRecomsale, joinUrlOfRecomsale } from './affnet.recomsale';
+import {
+  AffnetRecomsale,
+  RECOMSALE_DOMAIN,
+  RECOMSALE_SEED_SLUGS,
+  RecomsaleCustomformData,
+  parseRecomsale,
+  joinUrlOfRecomsale,
+} from './affnet.recomsale';
 
 @Injectable()
 export class AffnetService {
@@ -228,7 +235,16 @@ export class AffnetService {
           out.checked++;
           if (cfg && cfg.shopId && cfg.shopId !== '-1' && cfg.shopId !== '0' && cfg.signUrl) {
             out.active++;
-            const parsed = parseRecomsale(h.slug, cfg);
+            let customform: RecomsaleCustomformData | null = null;
+            if (cfg.signUrl) {
+              try {
+                const shopifyDomain = await this.recomsale.resolveShopifyDomain(cfg.signUrl);
+                if (shopifyDomain) {
+                  customform = await this.recomsale.fetchCustomformConfig(shopifyDomain);
+                }
+              } catch { /* ignore customform fetch error */ }
+            }
+            const parsed = parseRecomsale(h.slug, cfg, customform);
             await this.db.upsertProgram({
               ...parsed, net, slug: h.slug,
               joinUrl: joinUrlOfRecomsale(h.slug, cfg),
@@ -437,6 +453,7 @@ export class AffnetService {
     const norm = this.normalizeNet(net);
     if (this.platformOf(norm) === 'recomsale') {
       try {
+        await this.db.upsertHosts(norm, RECOMSALE_SEED_SLUGS.map((s) => ({ slug: s, sources: ['seed'] })));
         const disc = await discoverNet(norm, 200);
         if (disc && Array.isArray(disc.hosts) && disc.hosts.length > 0) {
           await this.db.upsertHosts(norm, disc.hosts);

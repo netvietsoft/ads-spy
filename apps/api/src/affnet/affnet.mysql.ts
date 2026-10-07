@@ -7,6 +7,7 @@ import { Injectable } from '@nestjs/common';
 import mysql from 'mysql2/promise';
 import { ShMysql, buildOrderBy } from '../shophunter/sh.mysql';
 import { AffNet, AffHostRow, AffProgram, NetSummary, DiscoveredHost, ProxyOpt } from './affnet.types';
+import { RECOMSALE_SEED_SLUGS } from './affnet.recomsale';
 
 // Cột sort hợp lệ cho programList (whitelist — tránh SQL injection qua tên cột).
 // Qualify bằng p. vì programList LEFT JOIN với aff_domain_traffic (t.) — web tồn tại ở CẢ 2 bảng,
@@ -193,30 +194,6 @@ export class AffnetMysql {
 
     // Nạp sẵn danh sách subdomains cho recomsale.com (144 slugs đã xác thực qua OSINT & urlscan)
     try {
-      const RECOMSALE_SEED_SLUGS = [
-        '1irontrendy', '45bd8d-2', '4a7b7a', '999tee', 'abimbola', 'affiliate', 'allamericancanine', 'allwear',
-        'animelodic', 'apiba', 'app-test', 'app-test1', 'app-test2', 'arborfill', 'audioki', 'avenila',
-        'azorahwines', 'barkpotty', 'bawdee', 'bestbookstore', 'biohackinglabs', 'bkoutlooks', 'bluerivercarp',
-        'bossciglam', 'boxlinestore', 'buhairllc', 'cajosenatural', 'cbathleticwear', 'cdn-r2', 'cdnb',
-        'chameleonsandcandle', 'collectparis', 'comeherebuddy', 'comenii', 'cotodama-speaker',
-        'creationsbyizzy-affiliateportal', 'cypherproject', 'demonracing', 'design-kontrol', 'deviousdrawing',
-        'dezilix', 'diamond-faction', 'dipacci', 'discountedsarms', 'disinishop', 'doggielawn',
-        'doublethesprinkles', 'dstreet', 'easeeasecurtains', 'edmnova', 'elsystyle', 'elysianparfum',
-        'epicdesignpads', 'execuluxe', 'faithandflame', 'fakeittan', 'fashionaftermath', 'flipndip',
-        'frankiesfabdesigns', 'garucosmetics', 'garucosmeticsparis', 'giantex', 'goingallin', 'gtrsimulator',
-        'hairloss', 'happygetfit', 'haritea', 'herselfjewelry', 'honorskinbody', 'hudmon', 'humblematcha',
-        'iamastrobrand', 'instantlyunique', 'invictauk', 'iphoneplug', 'jbaumgardt', 'jirano', 'joycat',
-        'kartelian', 'kikitextiles', 'leafbrandsco', 'link-shoes', 'litgels', 'littlenbrave', 'longrunco',
-        'longruncoffee', 'lumarasystems', 'lumicandlesph', 'lyricalhair', 'matchasunday', 'mcderardparisstore',
-        'meikomichele', 'meolaleatherdogs', 'miaoustyle', 'midnightromanceshop', 'molecule53', 'momcozy',
-        'msgigisbeauty', 'mymenowell', 'namastecita', 'nayabjewellery', 'nerdlabs', 'nikikay', 'omniblueminerals',
-        'onotone', 'origoshoes', 'outlookbunch', 'oyatsuclub', 'palaam', 'partners', 'phaedraskin', 'policies',
-        'poppinsperiod', 'poseidonracks', 'rarawbotanicals', 'recoverasia', 'revivaldiamond', 'rizwardsleather',
-        'sakuraheadspa', 'scentimental', 'shop', 'shop-test', 'shopblackbirdboutique', 'store',
-        'stylefitnessapparel', 'syrebocare', 'theedwardsedge', 'theheelsluxxx', 'theluxenude', 'theroadrush',
-        'thethreadshop', 'threegirls', 'thrive-nutra', 'topuniquehair', 'treselite', 'trulygrounded', 'ventour',
-        'vlandus', 'whisperz', 'wildcard', 'wisteriasnow', 'xd21', 'xoshowpony', 'yeshansarees',
-      ];
       const now = Date.now();
       const vals = RECOMSALE_SEED_SLUGS.map((slug) => ['recomsale.com', slug, now, now, 'seed']);
       await pool.query(
