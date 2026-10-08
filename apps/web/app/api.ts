@@ -1025,6 +1025,13 @@ export async function shopifyBwScan(domains: string): Promise<ShopifyBwPage> {
 export async function shopifyBwImportFile(filePath: string): Promise<{ ok: boolean; inserted: number; message?: string }> {
   return jsonOrThrow(await fetch(`${API}/api/shopify-bw/import-file`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filePath }) }));
 }
+export async function shopifyBwBatchInsert(body: { domains?: string[]; items?: { web: string; sku?: number; shop_name?: string }[] }): Promise<{ ok: boolean; inserted: number; total: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/batch-insert`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+}
 export async function shopifyBwRows(page = 1, pageSize = 100, filter: AffLibFilter = 'all', sort?: string, dir?: AffLibDir, search?: string): Promise<ShopifyBwPage> {
   const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize), filter });
   if (sort) { qs.set('sort', sort); qs.set('dir', dir || 'desc'); }

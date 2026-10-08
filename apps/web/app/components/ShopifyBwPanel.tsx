@@ -7,7 +7,7 @@ import {
   shopifyBwSyncLocaldb, shopifyBwDetectStart, shopifyBwDetectStatus, shopifyBwDetectStop,
   shopifyBwDnsCheck, shopifyBwDetectOne, shopifyBwBulkDelete, shopifyBwBulkRetry,
   shopifyBwTrafficFill, shopifyBwRevScan, shopifyBwPrefillProgram, shopifyBwTermsScan,
-  shopifyBwImportFile, ShopifyBwRow, ShopifyBwDetectStatus, ShopifyBwDir, ShopifyBwFilter,
+  shopifyBwImportFile, shopifyBwBatchInsert, ShopifyBwRow, ShopifyBwDetectStatus, ShopifyBwDir, ShopifyBwFilter,
 } from '../api';
 import { toUsd } from '../currency';
 import { useIsMobile } from '../useIsMobile';
@@ -57,6 +57,71 @@ function shopifyDot(r: ShopifyBwRow) {
 }
 
 interface AffEdit { web: string; join_url: string; commission_pct: string; payout: string; cookie_days: string; note: string }
+
+export interface UploadProgress {
+  fileName: string;
+  fileSize: number;
+  bytesRead: number;
+  totalParsed: number;
+  totalInserted: number;
+  pct: number;
+  speed?: number;
+  status: 'reading' | 'uploading' | 'done' | 'cancelled' | 'error';
+  err?: string;
+}
+
+function parseLineForDomain(line: string, isBuiltWith: boolean): { web: string; sku?: number; shop_name?: string } | null {
+  if (!line || !line.trim()) return null;
+  let rawWeb = '';
+  let sku: number | undefined;
+  let shop_name: string | undefined;
+
+  if (line.includes(',')) {
+    let cur = '';
+    let inQuotes = false;
+    let colIdx = 0;
+    const cols: string[] = [];
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; }
+        else { inQuotes = !inQuotes; }
+      } else if (c === ',' && !inQuotes) {
+        cols.push(cur);
+        cur = '';
+        colIdx++;
+        if (colIdx > 9) break;
+      } else {
+        cur += c;
+      }
+    }
+    cols.push(cur);
+
+    rawWeb = (cols[0] || '').replace(/^["']|["']$/g, '');
+    if (isBuiltWith && cols.length > 8) {
+      const rawSku = cols[7] ? cols[7].replace(/["',]/g, '').trim() : '';
+      if (rawSku && !isNaN(Number(rawSku))) sku = Number(rawSku);
+      const rawCompany = cols[8] ? cols[8].replace(/^["']|["']$/g, '').trim() : '';
+      if (rawCompany && rawCompany.toLowerCase() !== 'unknown') shop_name = rawCompany;
+    }
+  } else {
+    rawWeb = line.trim();
+  }
+
+  const web = rawWeb
+    .replace(/^\ufeff/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0]
+    .trim();
+
+  if (!web || !web.includes('.') || web.includes(' ') || web.length > 250) {
+    return null;
+  }
+  return { web, sku, shop_name };
+}
 
 const FILTERS: { v: ShopifyBwFilter; label: string }[] = [
   { v: 'all', label: 'tất cả' }, { v: 'aff', label: 'chỉ web có aff' },
@@ -181,6 +246,9 @@ export function ShopifyBwPanel() {
   const [edit, setEdit] = useState<AffEdit | null>(null);
   const [traffic, setTraffic] = useState<{ web: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cancelUploadRef = useRef<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [detect, setDetect] = useState<ShopifyBwDetectStatus | null>(null);
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<any>(null);
@@ -219,7 +287,7 @@ export function ShopifyBwPanel() {
     set();
     window.addEventListener('resize', set);
     return () => window.removeEventListener('resize', set);
-  }, [detect?.running, err, loading]);
+  }, [detect?.running, err, loading, uploadProgress]);
 
   const scan = async () => {
     setLoading(true); setErr(null);
@@ -231,9 +299,154 @@ export function ShopifyBwPanel() {
     setLoading(false);
   };
 
-  const importCsvFile = async () => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    if (!confirm(`Xác nhận nạp file "${file.name}" (~${sizeMb} MB) từ máy tính lên database shopify_buildwith trên VPS?`)) {
+      return;
+    }
+
+    cancelUploadRef.current = false;
+    const startTime = Date.now();
+    let lastTime = startTime;
+    let lastParsedCount = 0;
+
+    setUploadProgress({
+      fileName: file.name,
+      fileSize: file.size,
+      bytesRead: 0,
+      totalParsed: 0,
+      totalInserted: 0,
+      pct: 0,
+      status: 'uploading',
+    });
+
+    try {
+      const CHUNK_SIZE = 4 * 1024 * 1024; // 4 MB chunks
+      const BATCH_SIZE = 5000;
+      let offset = 0;
+      let remainder = '';
+      let isFirstLine = true;
+      let isBuiltWith = false;
+      let buffer: { web: string; sku?: number; shop_name?: string }[] = [];
+      let totalParsed = 0;
+      let totalInserted = 0;
+
+      const flushBuffer = async (bytesRead: number) => {
+        if (!buffer.length) return;
+        const chunk = buffer;
+        buffer = [];
+
+        const res = await shopifyBwBatchInsert({ items: chunk });
+        totalInserted += (res.inserted || 0);
+
+        const now = Date.now();
+        const elapsedSec = (now - lastTime) / 1000;
+        let speed: number | undefined;
+        if (elapsedSec >= 0.8) {
+          speed = (totalParsed - lastParsedCount) / elapsedSec;
+          lastTime = now;
+          lastParsedCount = totalParsed;
+        }
+
+        const pct = Math.min(99.9, (bytesRead / file.size) * 100);
+        setUploadProgress((prev) => prev ? {
+          ...prev,
+          bytesRead,
+          totalParsed,
+          totalInserted,
+          pct,
+          speed: speed ?? prev.speed,
+        } : null);
+      };
+
+      while (offset < file.size) {
+        if (cancelUploadRef.current) {
+          setUploadProgress((prev) => prev ? { ...prev, status: 'cancelled' } : null);
+          await load(1);
+          return;
+        }
+
+        const sliceEnd = Math.min(file.size, offset + CHUNK_SIZE);
+        const blob = file.slice(offset, sliceEnd);
+        const text = remainder + (await blob.text());
+        offset = sliceEnd;
+
+        const lines = text.split(/\r?\n/);
+        remainder = lines.pop() || '';
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (!line || !line.trim()) continue;
+
+          if (isFirstLine) {
+            isFirstLine = false;
+            const lower = line.toLowerCase();
+            if (lower.includes('root domain') || lower.includes('technology spend') || lower.startsWith('domain,')) {
+              isBuiltWith = lower.includes('root domain');
+              continue;
+            }
+          }
+
+          const item = parseLineForDomain(line, isBuiltWith);
+          if (item && item.web) {
+            buffer.push(item);
+            totalParsed++;
+          }
+
+          if (buffer.length >= BATCH_SIZE) {
+            await flushBuffer(offset);
+            if (cancelUploadRef.current) break;
+          }
+        }
+      }
+
+      if (remainder.trim()) {
+        const item = parseLineForDomain(remainder, isBuiltWith);
+        if (item && item.web) {
+          buffer.push(item);
+          totalParsed++;
+        }
+      }
+
+      if (buffer.length > 0 && !cancelUploadRef.current) {
+        await flushBuffer(file.size);
+      }
+
+      setUploadProgress({
+        fileName: file.name,
+        fileSize: file.size,
+        bytesRead: file.size,
+        totalParsed,
+        totalInserted,
+        pct: 100,
+        status: 'done',
+      });
+
+      await load(1);
+      alert(`🎉 Nạp file hoàn tất!\nFile: ${file.name}\nTổng domain đã xử lý: ${totalParsed.toLocaleString()}\nSố domain mới chèn vào database: ${totalInserted.toLocaleString()}`);
+    } catch (err) {
+      setUploadProgress((prev) => prev ? {
+        ...prev,
+        status: 'error',
+        err: (err as Error).message,
+      } : null);
+      setErr(`Lỗi khi nạp file: ${(err as Error).message}`);
+    }
+  };
+
+  const cancelUpload = () => {
+    if (confirm('Bạn có chắc chắn muốn dừng nạp file? Dữ liệu đã nạp trước đó sẽ được giữ nguyên.')) {
+      cancelUploadRef.current = true;
+    }
+  };
+
+  const importCsvServerPath = async () => {
     const defaultPath = 'D:/0/Netviet/HD QC/VAST MEDIA/08-2026/Shopify_-_2026-10-07_verified_shopify.csv';
-    const filePath = window.prompt('Nhập đường dẫn file CSV danh sách domain Shopify trên server:', defaultPath);
+    const filePath = window.prompt('Nhập đường dẫn file CSV danh sách domain Shopify trên server VPS:', defaultPath);
     if (!filePath || !filePath.trim()) return;
     if (!confirm(`Xác nhận nạp file CSV vào database riêng shopify_buildwith?\nFile: ${filePath}`)) return;
     setBusy(true); setErr(null);
@@ -418,15 +631,89 @@ export function ShopifyBwPanel() {
                   style={{ flex: isMobile ? '1 1 100%' : '0 0 30%', maxWidth: isMobile ? '100%' : '30%', minHeight: 74, padding: 10, borderRadius: 9, border: '1px solid #d1d5db', fontSize: 14, fontFamily: 'inherit' }} />
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <button className="srcbtn active" onClick={scan} disabled={loading} title="Nạp nhanh các domain vừa dán">{loading ? 'Đang…' : 'Scan now'}</button>
-          <button className="srcbtn" onClick={importCsvFile} disabled={busy} style={{ background: '#2563eb', color: '#fff', fontWeight: 600 }}
-                  title="Nhập trực tiếp 560,200 domain Shopify từ file CSV của server vào kho riêng shopify_buildwith">
-            {busy ? 'Đang nạp file…' : '📁 Nạp 560k Domain (CSV)'}
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".csv,.txt"
+            style={{ display: 'none' }}
+            onChange={handleFileSelect}
+          />
+          <button
+            className="srcbtn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy || uploadProgress?.status === 'uploading'}
+            style={{ background: '#2563eb', color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            title="Chọn file CSV từ máy tính (ví dụ Shopify_-_2026-10-07_verified_shopify.csv 560k domain) để nạp thẳng lên database VPS"
+          >
+            {uploadProgress?.status === 'uploading' ? '⏳ Đang nạp CSV…' : '📁 Chọn file CSV từ máy (560k)'}
+          </button>
+          <button
+            className="lcbtn"
+            onClick={importCsvServerPath}
+            disabled={busy || uploadProgress?.status === 'uploading'}
+            title="Hoặc nạp từ đường dẫn file đã có sẵn trên ổ cứng server VPS"
+            style={{ fontSize: 11, opacity: 0.65, border: 'none', background: 'transparent', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            path server
           </button>
           <button className="srcbtn" onClick={sync} disabled={busy} title="Kéo shop affiliate_status='yes' từ Local DB vào kho">Syn DB</button>
           <button className="srcbtn" onClick={prefill} disabled={busy} title="Điền %hoa hồng, cookie, link đăng ký, nền tảng từ dữ liệu affnet">Điền hoa hồng</button>
           <button className="srcbtn" onClick={termsScan} disabled={busy} title="Cào trang điều khoản thật của từng shop">Cào nội quy</button>
         </div>
       </div>
+
+      {uploadProgress && (
+        <div style={{
+          background: uploadProgress.status === 'error' ? 'rgba(239, 68, 68, 0.08)' : uploadProgress.status === 'done' ? 'rgba(22, 163, 74, 0.08)' : 'rgba(37, 99, 235, 0.06)',
+          border: `1.5px solid ${uploadProgress.status === 'error' ? '#ef4444' : uploadProgress.status === 'done' ? '#16a34a' : '#2563eb'}`,
+          borderRadius: 10,
+          padding: '12px 16px',
+          marginBottom: 10,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18 }}>
+                {uploadProgress.status === 'uploading' ? '⏳' : uploadProgress.status === 'done' ? '✅' : uploadProgress.status === 'error' ? '❌' : '⏸'}
+              </span>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>
+                {uploadProgress.status === 'uploading' && `Đang nạp từ máy tính lên VPS: ${uploadProgress.fileName}`}
+                {uploadProgress.status === 'done' && `Hoàn tất nạp file: ${uploadProgress.fileName}`}
+                {uploadProgress.status === 'error' && `Lỗi khi nạp: ${uploadProgress.fileName}`}
+                {uploadProgress.status === 'cancelled' && `Đã dừng nạp: ${uploadProgress.fileName}`}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {uploadProgress.status === 'uploading' && (
+                <button className="srcbtn" onClick={cancelUpload} style={{ background: '#ef4444', color: '#fff', fontSize: 12, padding: '4px 10px' }}>
+                  ⏹ Huỷ
+                </button>
+              )}
+              {uploadProgress.status !== 'uploading' && (
+                <button className="srcbtn" onClick={() => setUploadProgress(null)} style={{ fontSize: 12, padding: '4px 10px' }}>
+                  ✕ Đóng
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 8, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <span>Đã đọc: <b>{uploadProgress.totalParsed.toLocaleString()}</b> domain</span>
+            <span>Mới thêm vào DB: <b style={{ color: '#16a34a' }}>{uploadProgress.totalInserted.toLocaleString()}</b></span>
+            <span>Tiến độ đọc file: <b>{uploadProgress.pct.toFixed(1)}%</b> ({(uploadProgress.bytesRead / (1024 * 1024)).toFixed(1)} / {(uploadProgress.fileSize / (1024 * 1024)).toFixed(1)} MB)</span>
+            {uploadProgress.speed ? <span>Tốc độ: <b>~{Math.round(uploadProgress.speed).toLocaleString()} domain/s</b></span> : null}
+            {uploadProgress.err ? <span style={{ color: '#ef4444' }}>Lỗi: {uploadProgress.err}</span> : null}
+          </div>
+
+          <div style={{ width: '100%', height: 10, background: 'rgba(0,0,0,0.08)', borderRadius: 5, overflow: 'hidden' }}>
+            <div style={{
+              width: `${Math.min(100, uploadProgress.pct)}%`,
+              height: '100%',
+              background: uploadProgress.status === 'error' ? '#ef4444' : uploadProgress.status === 'done' ? '#16a34a' : 'linear-gradient(90deg, #2563eb, #38bdf8)',
+              transition: 'width 0.2s ease',
+            }} />
+          </div>
+        </div>
+      )}
 
       <div ref={barRef} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: 13,
         position: 'sticky', top: 'var(--topbar-h, 135px)', zIndex: 20,

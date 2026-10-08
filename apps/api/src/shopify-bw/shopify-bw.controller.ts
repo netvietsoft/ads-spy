@@ -15,6 +15,11 @@ export class ShopifyBwController {
     return this.svc.importFile(filePath);
   }
 
+  @Post('batch-insert')
+  batchInsert(@Body() body: { domains?: string[]; items?: { web: string; sku?: number; shop_name?: string }[] }) {
+    return this.svc.batchInsert(body || {});
+  }
+
   @Get('rows')
   rows(
     @Query('page') page: string,

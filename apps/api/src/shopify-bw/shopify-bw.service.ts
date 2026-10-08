@@ -178,6 +178,23 @@ export class ShopifyBwService {
     return this.db.importFromCsvPath(targetPath);
   }
 
+  async batchInsert(body: { domains?: string[]; items?: { web: string; sku?: number; shop_name?: string }[] }): Promise<{ ok: boolean; inserted: number; total: number }> {
+    if (body.items && Array.isArray(body.items) && body.items.length > 0) {
+      const valid = body.items
+        .map((it) => ({
+          web: normalizeDomain(it.web),
+          sku: it.sku != null && !isNaN(Number(it.sku)) ? Number(it.sku) : undefined,
+          shop_name: it.shop_name ? String(it.shop_name).trim() : undefined,
+        }))
+        .filter((it) => it.web && it.web.includes('.'));
+      const res = await this.db.batchInsertItems(valid, 1);
+      return { ok: true, ...res };
+    }
+    const domains = (body.domains || []).map(normalizeDomain).filter((w) => w && w.includes('.'));
+    const res = await this.db.batchInsertWebs(domains, 1);
+    return { ok: true, ...res };
+  }
+
   async rows(o: { page?: number; pageSize?: number; affOnly?: boolean; filter?: string; sort?: string; dir?: string; search?: string }): Promise<any> {
     return this.db.listRows(o);
   }

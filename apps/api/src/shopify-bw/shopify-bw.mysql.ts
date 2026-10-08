@@ -632,6 +632,41 @@ export class ShopifyBwMysql {
     return { inserted, total: webs.length };
   }
 
+  async batchInsertItems(
+    items: { web: string; sku?: number | null; shop_name?: string | null }[],
+    defaultShopify = 1,
+  ): Promise<{ inserted: number; total: number }> {
+    if (!items.length) return { inserted: 0, total: 0 };
+    await this.ensureTables();
+    const pool = await this.sh.getPool();
+    const now = Date.now();
+    let inserted = 0;
+    const batchSize = 2500;
+
+    for (let i = 0; i < items.length; i += batchSize) {
+      const chunk = items.slice(i, i + batchSize);
+      const ph = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(',');
+      const vals: any[] = [];
+      for (const it of chunk) {
+        vals.push(
+          it.web,
+          it.shop_name ? String(it.shop_name).slice(0, 250) : null,
+          it.sku != null && !isNaN(Number(it.sku)) ? Number(it.sku) : null,
+          defaultShopify,
+          now,
+          now,
+          now,
+        );
+      }
+      const [res] = await pool.query(
+        `INSERT IGNORE INTO shopify_buildwith (web, shop_name, sku, shopify, shopify_checked_at, created_at, updated_at) VALUES ${ph}`,
+        vals,
+      );
+      inserted += Number((res as any).affectedRows) || 0;
+    }
+    return { inserted, total: items.length };
+  }
+
   // Import trực tiếp từ đường dẫn tệp CSV trên máy chủ
   async importFromCsvPath(filePath: string): Promise<{ totalRead: number; inserted: number; elapsedMs: number }> {
     await this.ensureTables();
