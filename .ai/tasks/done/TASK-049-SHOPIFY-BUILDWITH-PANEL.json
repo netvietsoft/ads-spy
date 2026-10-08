@@ -1,0 +1,17 @@
+{
+  "task_id": "TASK-049",
+  "title": "Thêm menu /shopify-buildwith có tính năng như /afflibrary dành riêng cho dữ liệu BuiltWith",
+  "status": "done",
+  "owner": "Agent 3 - FRONTEND & Agent 2 - BACKEND",
+  "created": "2026-10-08T00:47:00+07:00",
+  "completed": "2026-10-08T01:01:00+07:00",
+  "files_allowed": [
+    "apps/api/src/shopify-bw/**",
+    "apps/api/src/app.module.ts",
+    "apps/web/app/components/ShopifyBwPanel.tsx",
+    "apps/web/app/components/TopNav.tsx",
+    "apps/web/app/api.ts",
+    "apps/web/app/page.tsx"
+  ],
+  "description": "Tạo module riêng biệt shopify-bw quản lý kho dữ liệu domain BuiltWith (bảng shopify_buildwith), cung cấp đầy đủ chức năng như afflibrary (quét aff, doanh thu, traffic, dns check, lọc, tìm kiếm, xuất excel) và hỗ trợ nạp hàng trăm nghìn domain từ file CSV."
+}

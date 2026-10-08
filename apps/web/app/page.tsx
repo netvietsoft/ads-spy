@@ -31,6 +31,7 @@ import { ImportPanel } from './components/ImportPanel';
 import { ReportPanel } from './components/ReportPanel';
 import { AffnetPanel } from './components/AffnetPanel';
 import { AffLibraryPanel } from './components/AffLibraryPanel';
+import { ShopifyBwPanel } from './components/ShopifyBwPanel';
 import { TrafficPanel } from './components/TrafficPanel';
 import { SettingsPanel } from './components/SettingsPanel';
 import { DashboardPanel } from './components/DashboardPanel';
@@ -134,11 +135,11 @@ function fmtDate(unix?: number) {
   return new Date(unix * 1000).toLocaleDateString('vi-VN');
 }
 
-type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'clonesync' | 'checkdomain' | 'import' | 'report' | 'affnet' | 'afflib' | 'traffic' | 'settings' | 'dashboard' | 'users' | 'plans';
+type Source = 'google' | 'facebook' | 'tiktok' | 'shophunter' | 'localdb' | 'track' | 'clonesync' | 'checkdomain' | 'import' | 'report' | 'affnet' | 'afflib' | 'shopifybw' | 'traffic' | 'settings' | 'dashboard' | 'users' | 'plans';
 // Mỗi tab 1 URL riêng (route thật). '/', '/googleads' → Google.
 const SOURCE_TO_PATH: Record<Source, string> = {
   google: '/googleads', facebook: '/facebookads', tiktok: '/tiktokads', shophunter: '/shophuntershopify',
-  localdb: '/localdb/shops', track: '/trackshopify', clonesync: '/clonesync', checkdomain: '/checkdomain', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', traffic: '/traffic', settings: '/settings',
+  localdb: '/localdb/shops', track: '/trackshopify', clonesync: '/clonesync', checkdomain: '/checkdomain', report: '/reportlocaldb', import: '/import', affnet: '/affnet', afflib: '/afflibrary', shopifybw: '/shopify-buildwith', traffic: '/traffic', settings: '/settings',
   dashboard: '/admin/dashboard', users: '/admin/users', plans: '/admin/plans',
 };
 function pathToSource(p: string): Source {
@@ -151,6 +152,7 @@ function pathToSource(p: string): Source {
   if (p.startsWith('/checkdomain')) return 'checkdomain';
   if (p.startsWith('/reportlocaldb')) return 'report';
   if (p.startsWith('/afflibrary')) return 'afflib';
+  if (p.startsWith('/shopify-buildwith')) return 'shopifybw';
   if (p.startsWith('/affnet')) return 'affnet';
   if (p.startsWith('/traffic')) return 'traffic';
   if (p.startsWith('/import')) return 'import';
@@ -499,7 +501,7 @@ export default function Home() {
   // Bảng nhiều cột cần ~1440px → bỏ chặn 1180px của .container (xem .container-wide trong globals.css):
   // Aff Library (16 cột) và trang 1 net của Affiliate Nets (/affnet/{net}, 15 cột). Riêng /affnet (danh
   // sách net) giữ bề rộng thường.
-  const wide = source === 'afflib' || source === 'clonesync' || /^\/affnet\/.+/.test(pathname || '');
+  const wide = source === 'afflib' || source === 'shopifybw' || source === 'clonesync' || /^\/affnet\/.+/.test(pathname || '');
   return (
     <div className={wide ? 'container container-wide' : 'container'}>
       {source === 'facebook' && <FacebookPanel />}
@@ -513,6 +515,7 @@ export default function Home() {
       {source === 'report' && <ReportPanel />}
       {source === 'affnet' && <AffnetPanel />}
       {source === 'afflib' && <AffLibraryPanel />}
+      {source === 'shopifybw' && <ShopifyBwPanel />}
       {source === 'traffic' && <TrafficPanel />}
       {source === 'settings' && <SettingsPanel />}
       {source === 'dashboard' && <DashboardPanel />}

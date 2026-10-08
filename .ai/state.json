@@ -1,8 +1,14 @@
 {
-  "updated_at": "2026-09-22T14:38:00+07:00",
+  "updated_at": "2026-10-08T08:35:00+07:00",
   "project": "Google Ads Spy & SaaS Intelligence Platform",
   "active_task": null,
   "recent_tasks": [
+    {
+      "id": "TASK-049",
+      "title": "Menu /shopify-buildwith & Database riêng shopify_buildwith (Kho 560k domain BuiltWith)",
+      "status": "done",
+      "completed_at": "2026-10-08T01:01:00+07:00"
+    },
     {
       "id": "TASK-045",
       "title": "Combo 1-Click Store Cloner — Nhân bản trọn gói A-Z (Theme, Assets, Pages, Policies, Collections, Sản phẩm & Giá)",

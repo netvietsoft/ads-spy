@@ -1012,6 +1012,74 @@ export async function affLibDetectStop(): Promise<AffLibDetectStatus> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/detect/stop`, { method: 'POST' }));
 }
 
+// ---- Shopify BuiltWith (/api/shopify-bw/*) — thư viện riêng cho danh sách shopify từ BuiltWith (~560k domain) ----
+export type ShopifyBwRow = AffLibRow;
+export type ShopifyBwPage = AffLibPage;
+export type ShopifyBwDetectStatus = AffLibDetectStatus;
+export type ShopifyBwFilter = AffLibFilter;
+export type ShopifyBwDir = AffLibDir;
+
+export async function shopifyBwScan(domains: string): Promise<ShopifyBwPage> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }) }));
+}
+export async function shopifyBwImportFile(filePath: string): Promise<{ ok: boolean; inserted: number; message?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/import-file`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ filePath }) }));
+}
+export async function shopifyBwRows(page = 1, pageSize = 100, filter: AffLibFilter = 'all', sort?: string, dir?: AffLibDir, search?: string): Promise<ShopifyBwPage> {
+  const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize), filter });
+  if (sort) { qs.set('sort', sort); qs.set('dir', dir || 'desc'); }
+  if (search) qs.set('search', search);
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/rows?${qs.toString()}`));
+}
+export async function shopifyBwDnsCheck(limit = 5000): Promise<{ checked: number; alive: number; dead: number; unknown: number; remaining: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/dns-check`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
+}
+export async function shopifyBwRevScan(limit = 20): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/rev-scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
+}
+export async function shopifyBwRevScanOne(web: string): Promise<{ web: string; kind: 'revved' | 'shopify' | 'notShopify' | 'fail'; error?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/${encodeURIComponent(web)}/rev-scan`, { method: 'POST' }));
+}
+export async function shopifyBwDetectOne(web: string): Promise<{ web: string; aff_status: string; aff_platform: string | null; join_url: string | null }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/${encodeURIComponent(web)}/detect`, { method: 'POST' }));
+}
+export async function shopifyBwTrafficFill(limit = 50): Promise<{ filled: number; remaining: number; error?: string }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/traffic-fill`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }) }));
+}
+export async function shopifyBwBulkDelete(webs: string[]): Promise<{ ok: boolean; deleted: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/bulk-delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ webs }) }));
+}
+export async function shopifyBwBulkRetry(webs: string[]): Promise<{ ok: boolean; reset: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/bulk-retry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ webs }) }));
+}
+export async function shopifyBwUpdate(web: string, patch: { join_url?: string; commission_pct?: number | null; payout?: number | null; cookie_days?: number | null; note?: string }): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/${encodeURIComponent(web)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) }));
+}
+export async function shopifyBwDelete(web: string): Promise<{ ok: boolean }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/${encodeURIComponent(web)}`, { method: 'DELETE' }));
+}
+export async function shopifyBwSyncLocaldb(): Promise<{ ok: boolean; synced: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/sync-localdb`, { method: 'POST' }));
+}
+export async function shopifyBwPrefillProgram(): Promise<{ ok: boolean; webs: number; filled: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/prefill-program`, { method: 'POST' }));
+}
+export async function shopifyBwTermsScan(limit = 100): Promise<{ ok: boolean; scanned: number; found: number; thin: number; notfound: number; error: number; remaining: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/terms-scan`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ limit }),
+  }));
+}
+export async function shopifyBwDetectStart(): Promise<ShopifyBwDetectStatus> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/detect/start`, { method: 'POST' }));
+}
+export async function shopifyBwDetectStatus(): Promise<ShopifyBwDetectStatus> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/detect/status`));
+}
+export async function shopifyBwDetectStop(): Promise<ShopifyBwDetectStatus> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/detect/stop`, { method: 'POST' }));
+}
+
+
 // ===== Job nền (Settings) =====
 export interface ShJobLog { ts: number; level: string; msg: string }
 export interface ShJob {

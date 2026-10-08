@@ -34,6 +34,10 @@ import { AffLibController } from './afflib/afflib.controller';
 import { AffLibService } from './afflib/afflib.service';
 import { AffLibMysql } from './afflib/afflib.mysql';
 import { AffLibDetect } from './afflib/afflib.detect';
+import { ShopifyBwController } from './shopify-bw/shopify-bw.controller';
+import { ShopifyBwService } from './shopify-bw/shopify-bw.service';
+import { ShopifyBwMysql } from './shopify-bw/shopify-bw.mysql';
+import { ShopifyBwDetect } from './shopify-bw/shopify-bw.detect';
 import { TrafficController } from './traffic/traffic.controller';
 import { TrafficService } from './traffic/traffic.service';
 import { CheckDomainController } from './check-domain/check-domain.controller';
@@ -43,7 +47,7 @@ import { ThemeClonerModule } from './theme-cloner/theme-cloner.module';
 
 @Module({
   imports: [ScheduleModule.forRoot(), PrismaModule, AuthModule, SubscriptionsModule, PaymentsModule, AdminModule, ProductSyncModule, ThemeClonerModule],
-  controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController, AffLibController, TrafficController, CheckDomainController],
-  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetGoaffpro, AffnetAffiliatly, AffnetUppromote, AffnetRecomsale, AffnetService, AffLibMysql, AffLibDetect, AffLibService, TrafficService, CheckDomainService],
+  controllers: [HealthController, SearchController, FbController, FavoritesController, TiktokController, ShController, AffnetController, AffLibController, ShopifyBwController, TrafficController, CheckDomainController],
+  providers: [GoogleClient, SearchService, FbPlaywrightService, FbService, TiktokService, ShService, ShClient, ShAuth, ShMysql, ShHarvestService, ShJobsService, AffnetMysql, AffnetFetch, AffnetGoaffpro, AffnetAffiliatly, AffnetUppromote, AffnetRecomsale, AffnetService, AffLibMysql, AffLibDetect, AffLibService, ShopifyBwMysql, ShopifyBwDetect, ShopifyBwService, TrafficService, CheckDomainService],
 })
 export class AppModule {}

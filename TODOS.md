@@ -8,6 +8,11 @@
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
 
+- [x] **TASK-049**: Menu `/shopify-buildwith` — Kho dữ liệu Shopify riêng từ BuiltWith (560k domain)
+  - **Mô tả**: Tạo route và menu `/shopify-buildwith` tách biệt hoàn toàn với `aff_library`, dùng bảng DB riêng `shopify_buildwith`. Đầy đủ tính năng như `/afflibrary`: quét affiliate (job nền + nút quét ⟳ từng dòng), scan doanh thu (ShopHunter), điền traffic AITDK, lọc DNS, tìm kiếm, lọc theo trạng thái, sắp xếp đa cột, xuất file Excel, và nút **"📁 Nạp 560k Domain (CSV)"** nạp trực tiếp file `Shopify_-_2026-10-07_verified_shopify.csv` trên server.
+  - **Files**: `apps/api/src/shopify-bw/**`, `apps/web/app/components/ShopifyBwPanel.tsx`, `apps/web/app/components/TopNav.tsx`, `apps/web/app/api.ts`, `apps/web/app/page.tsx`
+
+
 - [x] **TASK-045**: Combo 1-Click Store Cloner — Nhân bản trọn gói A-Z (Theme, Assets, Pages, Policies, Collections, Sản phẩm & Giá)
   - **Mô tả**: Tích hợp tính năng "Combo 1-Click: Bấm Phát Ăn Tất" trên giao diện `/clonesync` và pipeline backend tự động hoá A-Z: cào đối thủ, thiết lập giao diện Theme Dawn 15.2, Banner HD, Logo trong suốt, 9 trang Pages & Policies, Menu điều hướng, Collections và đẩy toàn bộ sản phẩm (kèm options, variants, images HD, công thức giá x1.25, làm tròn .99, đổi vendor) qua Shopify Admin REST API. Kết thúc có link mở trực tiếp Shopify Admin quản lý sản phẩm.
   - **Branch**: `agent/backend/TASK-045`

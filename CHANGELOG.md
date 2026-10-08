@@ -4,6 +4,18 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-10-08 — Menu /shopify-buildwith & Database riêng `shopify_buildwith` (Kho 560k domain BuiltWith)
+
+Chi tiết: [`Docs/handoff-2026-10-08-shopify-buildwith-panel.md`](Docs/handoff-2026-10-08-shopify-buildwith-panel.md).
+
+- **Menu & Route riêng `/shopify-buildwith`**: Thêm trang quản lý và khai thác riêng cho danh sách hơn 560.200 domain Shopify sống đã lọc trùng và xác minh từ BuiltWith (`Shopify_-_2026-10-07_verified_shopify.csv`, 118.6 MB).
+- **Cách ly cơ sở dữ liệu (`shopify_buildwith` + `shopify_bw_terms`)**: Tạo bảng riêng biệt trong database `shophunter` với 8 index tối ưu, không trộn vào bảng `aff_library` nhằm bảo vệ toàn vẹn và hiệu năng truy vấn của kho affiliate cũ.
+- **Backend Module `ShopifyBwModule` (`/api/shopify-bw/*`)**: Triển khai đầy đủ service và controller hỗ trợ phân trang, tìm kiếm domain/tên shop, lọc trạng thái (`all`, `aff`, `unscanned`, `junk`, `norev`, `notshopify`), sắp xếp đa cột (doanh thu USD, traffic, SKU, bounce, update), worker nền tự động quét affiliate xoay proxy (`detect`), scan revenue (ShopHunter), điền traffic (AITDK), lọc DNS chết (`dns-check`), và cào nội quy điều khoản (`terms-scan`).
+- **Nạp Stream file CSV siêu tốc (`/api/shopify-bw/import-file`)**: Nạp trực tiếp file CSV từ ổ cứng server vào MySQL theo stream chunk 4.000 dòng/lần, xử lý trọn vẹn 560k domain mà không làm đơ browser hay timeout HTTP.
+- **Frontend `ShopifyBwPanel` & Điều hướng**: Tạo component đầy đủ tính năng tương tự `AffLibraryPanel`, hỗ trợ bảng desktop 16 cột (sticky header), mobile card view (≤760px), popup lịch sử traffic 12 tháng, form chỉnh sửa affiliate, nút nạp file CSV trực tiếp, và thêm menu "Shopify BuiltWith" trên thanh TopNav.
+
+---
+
 ## 2026-09-11 — Track Shopify: Lưu domain vào Local DB `sh_shop` + Bóc tách hiển thị doanh thu Lịch sử quét 10 cột
 
 Chi tiết: [`docs/handoff-2026-09-11-track-revenue-history-localdb.md`](docs/handoff-2026-09-11-track-revenue-history-localdb.md). Commits: `2d2d099`, `4d6356c`, `067b59a` trên `main`.

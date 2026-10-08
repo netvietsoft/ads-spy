@@ -35,6 +35,10 @@ Hệ thống dùng **2 kho tách biệt**, không chia sẻ schema hay migration
 | `sh_deep_frontier` | `(type, cat_id)` | Danh sách "biên" danh mục còn phải crawl ở deep mode. |
 | `sh_track_history` | `domain` | Lịch sử domain đã "track" (nhận diện platform) qua tính năng Track Shopify. |
 | `sh_fav_shop` | `shop_id` | Shop được user đánh dấu yêu thích (tim đỏ). |
+| `aff_library` | `web` | Kho thư viện affiliate: shop data + affiliate links + AITDK traffic + doanh thu ShopHunter (~36k domain). |
+| `aff_terms` | `web` | Bảng phụ lưu nội quy điều khoản chương trình affiliate cào từ trang chính shop. |
+| `shopify_buildwith` | `web` | Kho chuyên dụng lưu trữ hơn 560k domain Shopify BuiltWith, tách biệt hoàn toàn để tối ưu truy vấn. |
+| `shopify_bw_terms` | `web` | Bảng phụ lưu nội quy điều khoản chương trình affiliate cho kho BuiltWith. |
 
 ### 1.2 Prisma/SQLite (`apps/api/prisma/schema.prisma`)
 
