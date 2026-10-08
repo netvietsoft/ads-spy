@@ -8,8 +8,9 @@ import { makeProxiedGet, ProxyForGet } from './shopify.proxy-get';
 import { isGlobalBlock } from './sh.harvest.util';
 import { AffnetService } from '../affnet/affnet.service';
 import { AffLibService } from '../afflib/afflib.service';
+import { ShopifyBwService } from '../shopify-bw/shopify-bw.service';
 
-export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh', 'affdiscover', 'afffetch', 'afflibrev', 'affterms'] as const;
+export const JOB_NAMES = ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh', 'affdiscover', 'afffetch', 'afflibrev', 'affterms', 'bwrev', 'bwdns', 'bwtraffic', 'bwdetect', 'bwterms'] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 const DESC: Record<JobName, string> = {
@@ -24,6 +25,11 @@ const DESC: Record<JobName, string> = {
   afflibrev: 'Scan Revenue cho domain trong Aff Library còn THIẾU doanh thu tháng: nhận diện Shopify (ShopHunter + probe storefront) → lấy shop_id → cào doanh thu. Domain kết luận KHÔNG phải Shopify bị loại trừ vĩnh viễn. Cào lại sau staleDays ngày.',
   affterms: 'Cào ĐIỀU KHOẢN chương trình affiliate từ trang của chính shop (đoán /pages/affiliate* → không có thì đọc sitemap.xml), tách nội dung chính khỏi menu/footer rồi rút trích nội quy kèm trích đoạn → aff_terms, tóm tắt vào cột Note. Đo thật: ~30% shop có trang dùng được; ~2,6s/domain. Domain không ra kết quả được thử lại tối đa 3 lần, cách nhau 6 giờ.',
   afffetch: 'Mở từng trang campaign bằng Chromium (chờ Cloudflare) → lấy %hoa hồng/web/điều khoản. Xoay proxy dùng chung (Cài đặt → Proxy): mỗi proxy 1 làn IP, giãn 10s/làn. Không proxy → 1 làn trực tiếp (chậm hơn).',
+  bwrev: '[Shopify BuiltWith] Scan Doanh thu: nhận diện Shopify → lấy shop_id → cào doanh thu ngày/tuần/tháng/tổng. Domain không phải Shopify bị loại trừ. Cào lại sau staleDays ngày.',
+  bwdns: '[Shopify BuiltWith] Lọc DNS: phân giải domain sống/chết (DNS A record) cho 560k domain. Domain chết (NXDOMAIN/SERVFAIL) được đánh dấu loại trừ.',
+  bwtraffic: '[Shopify BuiltWith] Điền Traffic AITDK: lấy lượt truy cập 12 tháng, tỷ lệ thoát (bounce), thời gian trên site (time-onsite).',
+  bwdetect: '[Shopify BuiltWith] Quét Affiliate: phát hiện shop có chương trình affiliate (link đăng ký, app affiliate) qua proxy xoay.',
+  bwterms: '[Shopify BuiltWith] Cào Điều khoản/Nội quy: đọc trang /pages/affiliate* hoặc sitemap của shop → bóc tách %hoa hồng, cookie, payout, nội quy.',
 };
 
 const IDLE_MS = 120000;  // 2' khi hết việc
@@ -57,6 +63,11 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   // batch 20 ≈ 50s/lô (2,6s/domain). daily 2000 ≈ đủ phủ 9.883 domain trong ~5 ngày mà không đập liên tục.
   affterms: { batch: 20, daily: 2000, paceMs: 3000, concurrency: 6, activeStart: 0, activeEnd: 24 },
   afflibrev: { batch: 20, daily: 500, paceMs: 1500, staleDays: 1, activeStart: 0, activeEnd: 24 },
+  bwrev: { batch: 20, daily: 2000, paceMs: 1500, staleDays: 1, activeStart: 0, activeEnd: 24 },
+  bwdns: { batch: 1000, daily: 50000, paceMs: 2000, activeStart: 0, activeEnd: 24 },
+  bwtraffic: { batch: 50, daily: 5000, paceMs: 3000, activeStart: 0, activeEnd: 24 },
+  bwdetect: { batch: 20, daily: 5000, paceMs: 1500, concurrency: 3, activeStart: 0, activeEnd: 24 },
+  bwterms: { batch: 20, daily: 2000, paceMs: 3000, concurrency: 6, activeStart: 0, activeEnd: 24 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
 const CFG_BOUNDS: Record<string, [number, number]> = {
@@ -77,7 +88,12 @@ export interface JobView {
 @Injectable()
 export class ShJobsService implements OnModuleInit {
   private readonly logger = new Logger('ShJobs');
-  private mem: Record<JobName, JobMem> = { harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(), affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank(), affdiscover: this.blank(), afffetch: this.blank(), afflibrev: this.blank(), affterms: this.blank() };
+  private mem: Record<JobName, JobMem> = {
+    harvest: this.blank(), enrich: this.blank(), catalog: this.blank(), productrev: this.blank(),
+    affiliate: this.blank(), importenrich: this.blank(), refresh: this.blank(), affdiscover: this.blank(),
+    afffetch: this.blank(), afflibrev: this.blank(), affterms: this.blank(),
+    bwrev: this.blank(), bwdns: this.blank(), bwtraffic: this.blank(), bwdetect: this.blank(), bwterms: this.blank(),
+  };
   private catalogProxies: ProxyForGet[] = [];
   private origShopifyGet: typeof shopifyHttp.get | null = null;
 
@@ -87,6 +103,7 @@ export class ShJobsService implements OnModuleInit {
     private readonly harvest: ShHarvestService,
     private readonly affnet: AffnetService,
     private readonly afflib: AffLibService,
+    private readonly bwSvc?: ShopifyBwService,
   ) {}
 
   private blank(): JobMem { return { running: false, lastRunAt: null, lastStatus: null, stats: {} }; }
@@ -94,7 +111,7 @@ export class ShJobsService implements OnModuleInit {
   private sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
   async onModuleInit(): Promise<void> {
-    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'affdiscover', 'afffetch', 'afflibrev', 'affterms'] as JobName[]) {
+    for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'affdiscover', 'afffetch', 'afflibrev', 'affterms', 'bwrev', 'bwdns', 'bwtraffic', 'bwdetect', 'bwterms'] as JobName[]) {
       try { if (await this.isEnabled(name)) this.start(name); } catch { /* MySQL/Prisma chưa sẵn sàng — bỏ qua, bật lại từ web */ }
     }
   }
@@ -232,10 +249,14 @@ export class ShJobsService implements OnModuleInit {
     }
   }
 
-  // afflibrev cũng cần proxy: bước nhận diện Shopify đi qua seam shopifyHttp.get (probe /meta.json),
+  // afflibrev và bwrev/bwdetect cũng cần proxy: bước nhận diện Shopify đi qua seam shopifyHttp.get (probe /meta.json),
   // không mượn proxy xoay thì dễ bị chặn như job catalog/affiliate.
-  private needsProxy(name: JobName): boolean { return name === 'catalog' || name === 'affiliate' || name === 'productrev' || name === 'afflibrev'; }
-  private anyProxyJobRunning(): boolean { return this.mem.catalog.running || this.mem.affiliate.running || this.mem.productrev.running || this.mem.afflibrev.running; }
+  private needsProxy(name: JobName): boolean {
+    return name === 'catalog' || name === 'affiliate' || name === 'productrev' || name === 'afflibrev' || name === 'bwrev' || name === 'bwdetect';
+  }
+  private anyProxyJobRunning(): boolean {
+    return this.mem.catalog.running || this.mem.affiliate.running || this.mem.productrev.running || this.mem.afflibrev.running || this.mem.bwrev.running || this.mem.bwdetect.running;
+  }
 
   // Đồng bộ giá+DT 1 sản phẩm (từ web) qua PROXY xoay (storefront chặn IP datacenter). Mượn seam proxy, khôi phục nếu không có loop proxy chạy.
   async syncProductPriceRevenueViaProxy(shopId: string, productId: string) {
@@ -291,7 +312,109 @@ export class ShJobsService implements OnModuleInit {
     if (name === 'afffetch') return this.stepAffFetch(force);
     if (name === 'afflibrev') return this.stepAffLibRev(force);
     if (name === 'affterms') return this.stepAffTerms(force);
+    if (name === 'bwrev') return this.stepBwRev(force);
+    if (name === 'bwdns') return this.stepBwDns(force);
+    if (name === 'bwtraffic') return this.stepBwTraffic(force);
+    if (name === 'bwdetect') return this.stepBwDetect(force);
+    if (name === 'bwterms') return this.stepBwTerms(force);
     return this.stepEnrich();
+  }
+
+  // [Shopify BuiltWith] Scan Doanh thu: nhận diện Shopify → lấy shop_id → cào doanh thu
+  private async stepBwRev(force = false): Promise<{ pace: number }> {
+    if (!this.bwSvc) return { pace: IDLE_MS };
+    const cfg = await this.getJobCfg('bwrev');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.bwrev.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('bwrev');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwrev.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: Awaited<ReturnType<ShopifyBwService['revScan']>>;
+    try { r = await this.bwSvc.revScan(cfg.batch, Math.max(1, cfg.staleDays || 1) * 24 * 3600000); }
+    catch (e) { this.mem.bwrev.lastStatus = 'error'; await this.mysql.appendJobLog('bwrev', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, r.scanned).catch(() => {});
+    this.mem.bwrev.lastRunAt = Date.now();
+    this.mem.bwrev.stats = { quet: r.scanned, ra_doanh_thu: r.revved, shopify: r.shopify, khong_shopify: r.notShopify, con_lai: r.remaining };
+    if (r.error) { this.mem.bwrev.lastStatus = 'blocked'; await this.mysql.appendJobLog('bwrev', 'warn', `Dừng lô: ${r.error}`).catch(() => {}); return { pace: BLOCK_MS }; }
+    if (!r.scanned) { this.mem.bwrev.lastStatus = 'idle'; await this.mysql.appendJobLog('bwrev', 'info', 'Không còn domain nào thiếu doanh thu trong BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    this.mem.bwrev.lastStatus = 'ok';
+    await this.mysql.appendJobLog('bwrev', 'info', `Quét ${r.scanned}: +${r.revved} có doanh thu, ${r.shopify} shopify chưa ra id, ${r.notShopify} không phải shopify; còn ${r.remaining}`).catch(() => {});
+    return { pace: cfg.paceMs };
+  }
+
+  // [Shopify BuiltWith] Lọc DNS: phân giải domain sống/chết (DNS A record) cho 560k domain BuiltWith
+  private async stepBwDns(force = false): Promise<{ pace: number }> {
+    if (!this.bwSvc) return { pace: IDLE_MS };
+    const cfg = await this.getJobCfg('bwdns');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.bwdns.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('bwdns');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwdns.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: Awaited<ReturnType<ShopifyBwService['dnsCheck']>>;
+    try { r = await this.bwSvc.dnsCheck(cfg.batch); }
+    catch (e) { this.mem.bwdns.lastStatus = 'error'; await this.mysql.appendJobLog('bwdns', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, r.checked).catch(() => {});
+    this.mem.bwdns.lastRunAt = Date.now();
+    this.mem.bwdns.stats = { quet: r.checked, song: r.alive, chet: r.dead, chua_ro: r.unknown, con_lai: r.remaining };
+    if (!r.checked) { this.mem.bwdns.lastStatus = 'idle'; await this.mysql.appendJobLog('bwdns', 'info', 'Đã phân giải hết DNS cho các domain BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    this.mem.bwdns.lastStatus = 'ok';
+    await this.mysql.appendJobLog('bwdns', 'info', `Lọc DNS ${r.checked}: ${r.alive} sống, ${r.dead} chết${r.unknown ? `, ${r.unknown} chưa rõ` : ''}; còn ${r.remaining}`).catch(() => {});
+    return { pace: cfg.paceMs };
+  }
+
+  // [Shopify BuiltWith] Điền Traffic AITDK: lấy lượt truy cập 12 tháng, bounce, time-onsite
+  private async stepBwTraffic(force = false): Promise<{ pace: number }> {
+    if (!this.bwSvc) return { pace: IDLE_MS };
+    const cfg = await this.getJobCfg('bwtraffic');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.bwtraffic.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('bwtraffic');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwtraffic.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: Awaited<ReturnType<ShopifyBwService['fillTraffic']>>;
+    try { r = await this.bwSvc.fillTraffic(cfg.batch); }
+    catch (e) { this.mem.bwtraffic.lastStatus = 'error'; await this.mysql.appendJobLog('bwtraffic', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, r.filled).catch(() => {});
+    this.mem.bwtraffic.lastRunAt = Date.now();
+    this.mem.bwtraffic.stats = { da_dien: r.filled, con_lai: r.remaining };
+    if (r.error) { this.mem.bwtraffic.lastStatus = 'blocked'; await this.mysql.appendJobLog('bwtraffic', 'warn', `Lỗi traffic: ${r.error}`).catch(() => {}); return { pace: BLOCK_MS }; }
+    if (!r.filled && r.remaining === 0) { this.mem.bwtraffic.lastStatus = 'idle'; await this.mysql.appendJobLog('bwtraffic', 'info', 'Đã điền hết traffic cho các domain BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    this.mem.bwtraffic.lastStatus = 'ok';
+    await this.mysql.appendJobLog('bwtraffic', 'info', `Điền traffic +${r.filled} domain; còn ${r.remaining}`).catch(() => {});
+    return { pace: cfg.paceMs };
+  }
+
+  // [Shopify BuiltWith] Quét Affiliate: phát hiện shop có chương trình affiliate qua proxy xoay
+  private async stepBwDetect(force = false): Promise<{ pace: number }> {
+    if (!this.bwSvc) return { pace: IDLE_MS };
+    const cfg = await this.getJobCfg('bwdetect');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.bwdetect.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('bwdetect');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwdetect.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: Awaited<ReturnType<ShopifyBwService['detectStep']>>;
+    try { r = await this.bwSvc.detectStep(cfg.batch, cfg.concurrency); }
+    catch (e) { this.mem.bwdetect.lastStatus = 'error'; await this.mysql.appendJobLog('bwdetect', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, r.checked).catch(() => {});
+    this.mem.bwdetect.lastRunAt = Date.now();
+    this.mem.bwdetect.stats = { quet: r.checked, co_link: r.yes, co_app: r.app, khong_co: r.no, bi_chan: r.blocked, con_lai: r.remaining };
+    if (!r.checked) { this.mem.bwdetect.lastStatus = 'idle'; await this.mysql.appendJobLog('bwdetect', 'info', 'Đã quét hết domain trong hàng đợi BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    this.mem.bwdetect.lastStatus = 'ok';
+    await this.mysql.appendJobLog('bwdetect', 'info', `Quét ${r.checked}: ${r.yes} có link, ${r.app} có app, ${r.no} không có, ${r.blocked} chặn/lỗi; còn ${r.remaining}`).catch(() => {});
+    return { pace: cfg.paceMs };
+  }
+
+  // [Shopify BuiltWith] Cào Điều khoản/Nội quy affiliate từ chính shop (/pages/affiliate*, sitemap.xml)
+  private async stepBwTerms(force = false): Promise<{ pace: number }> {
+    if (!this.bwSvc) return { pace: IDLE_MS };
+    const cfg = await this.getJobCfg('bwterms');
+    if (!force && !this.withinActiveHours(cfg)) { this.mem.bwterms.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
+    const dk = this.dayKey('bwterms');
+    if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwterms.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    let r: Awaited<ReturnType<ShopifyBwService['termsScan']>>;
+    try { r = await this.bwSvc.termsScan(cfg.batch); }
+    catch (e) { this.mem.bwterms.lastStatus = 'error'; await this.mysql.appendJobLog('bwterms', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    await this.mysql.addDailyCount(dk, r.scanned).catch(() => {});
+    this.mem.bwterms.lastRunAt = Date.now();
+    this.mem.bwterms.stats = { quet: r.scanned, ra_noi_quy: r.found, trang_mong: r.thin, khong_co: r.notfound, loi: r.error, con_lai: r.remaining };
+    if (!r.scanned) { this.mem.bwterms.lastStatus = 'idle'; await this.mysql.appendJobLog('bwterms', 'info', 'Hết domain cần cào điều khoản trong BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    this.mem.bwterms.lastStatus = 'ok';
+    await this.mysql.appendJobLog('bwterms', 'info', `Quét ${r.scanned}: +${r.found} ra nội quy, ${r.thin} trang mỏng, ${r.notfound} không có trang; còn ${r.remaining}`).catch(() => {});
+    return { pace: cfg.paceMs };
   }
 
   // Scan Revenue cho Aff Library: domain thiếu doanh thu → nhận diện Shopify → cào doanh thu.

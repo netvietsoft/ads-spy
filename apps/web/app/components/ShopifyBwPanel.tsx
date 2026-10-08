@@ -8,6 +8,7 @@ import {
   shopifyBwDnsCheck, shopifyBwDetectOne, shopifyBwBulkDelete, shopifyBwBulkRetry,
   shopifyBwTrafficFill, shopifyBwRevScan, shopifyBwPrefillProgram, shopifyBwTermsScan,
   shopifyBwImportFile, shopifyBwBatchInsert, ShopifyBwRow, ShopifyBwDetectStatus, ShopifyBwDir, ShopifyBwFilter,
+  shJobs, shToggleJob, shRunJobOnce, ShJob,
 } from '../api';
 import { toUsd } from '../currency';
 import { useIsMobile } from '../useIsMobile';
@@ -252,6 +253,127 @@ export function ShopifyBwPanel() {
   const [detect, setDetect] = useState<ShopifyBwDetectStatus | null>(null);
   const [starting, setStarting] = useState(false);
   const pollRef = useRef<any>(null);
+
+  const [bgJobs, setBgJobs] = useState<Record<string, ShJob>>({});
+  const [jobBusy, setJobBusy] = useState<string>('');
+
+  const reloadBgJobs = () => {
+    shJobs()
+      .then((list) => {
+        if (Array.isArray(list)) {
+          const map: Record<string, ShJob> = {};
+          for (const j of list) {
+            if (['bwdns', 'bwtraffic', 'bwdetect', 'bwrev', 'bwterms'].includes(j.name)) {
+              map[j.name] = j;
+            }
+          }
+          setBgJobs(map);
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    reloadBgJobs();
+    const timer = setInterval(reloadBgJobs, 4000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const toggleBgJob = async (name: string, on: boolean) => {
+    setJobBusy(name);
+    try {
+      await shToggleJob(name, on);
+      await reloadBgJobs();
+      setScanMsg(on ? `Đã BẬT chạy ngầm job "${name}". Tắt trình duyệt server vẫn tiếp tục quét 24/7!` : `Đã TẮT chạy ngầm job "${name}".`);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setJobBusy('');
+    }
+  };
+
+  const runBgJobOnce = async (name: string) => {
+    setJobBusy(name + ':run');
+    try {
+      await shRunJobOnce(name);
+      await reloadBgJobs();
+      setScanMsg(`Đã kích hoạt chạy 1 lượt ngầm "${name}". Tiến trình đang thực hiện trên server.`);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setJobBusy('');
+    }
+  };
+
+  const renderJobCard = (name: string, title: string, subtitle: string) => {
+    const j = bgJobs[name];
+    const isRunning = j?.running;
+    const isEnabled = j?.enabled;
+    const isBusy = jobBusy === name || jobBusy === `${name}:run`;
+    const statsStr = j?.stats ? Object.entries(j.stats).map(([k, v]) => `${k}=${Number(v).toLocaleString()}`).join(' · ') : '';
+
+    return (
+      <div key={name} style={{
+        background: '#fff',
+        border: `1.5px solid ${isRunning ? '#16a34a' : isEnabled ? '#2563eb' : '#e5e7eb'}`,
+        borderRadius: 8,
+        padding: '8px 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        gap: 6,
+        boxShadow: isRunning ? '0 0 0 1px #16a34a' : 'none',
+      }}>
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>{title}</span>
+            {isRunning ? (
+              <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700, background: '#dcfce7', padding: '1px 6px', borderRadius: 4 }}>
+                ● Đang quét
+              </span>
+            ) : isEnabled ? (
+              <span style={{ fontSize: 11, color: '#2563eb', fontWeight: 600, background: '#dbeafe', padding: '1px 6px', borderRadius: 4 }}>
+                Bật (chờ)
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: '#6b7280', opacity: 0.7, background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>
+                Tắt
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>{subtitle}</div>
+          {statsStr ? (
+            <div style={{ fontSize: 11, color: '#4b5563', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={statsStr}>
+              {statsStr}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          <button
+            type="button"
+            className={`srcbtn ${isEnabled ? 'active' : ''}`}
+            disabled={isBusy}
+            onClick={() => toggleBgJob(name, !isEnabled)}
+            style={{ flex: 1, padding: '3px 6px', fontSize: 11, fontWeight: 600 }}
+            title={isEnabled ? 'Tắt job ngầm' : 'Bật chạy ngầm liên tục 24/7 trên server (tắt máy vẫn chạy)'}
+          >
+            {isBusy && jobBusy === name ? '…' : isEnabled ? 'Tắt' : 'Bật ngầm'}
+          </button>
+          <button
+            type="button"
+            className="srcbtn"
+            disabled={isBusy}
+            onClick={() => runBgJobOnce(name)}
+            style={{ padding: '3px 8px', fontSize: 11 }}
+            title="Chạy 1 lượt ngầm ngay bây giờ"
+          >
+            {isBusy && jobBusy === `${name}:run` ? '…' : 'Chạy ngay'}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const load = (p = page, s = sort, ps = pageSize, f = filter, q = search) => {
     setLoading(true);
@@ -715,28 +837,69 @@ export function ShopifyBwPanel() {
         </div>
       )}
 
+      {/* Khung Điều khiển & Giám sát Quét Ngầm BuiltWith (Daemon VPS 24/7) */}
+      <div style={{
+        background: 'var(--panel-bg, #f8fafc)',
+        border: '1.5px solid #3b82f6',
+        borderRadius: 12,
+        padding: '12px 14px',
+        marginBottom: 10,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#1e40af' }}>⚡ TIẾN TRÌNH QUÉT NGẦM BUILTWITH (VPS DAEMON 24/7)</span>
+            <span style={{ fontSize: 11, background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>
+              Tắt web máy tính dịch vụ vẫn tiếp tục chạy
+            </span>
+          </div>
+          <button
+            type="button"
+            className="srcbtn"
+            onClick={() => router.push('/settings#bw')}
+            style={{ background: '#059669', color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 6 }}
+            title="Mở tab Cài đặt để tinh chỉnh tốc độ (batch/pace/daily/luồng) và xem log thời gian thực chi tiết"
+          >
+            ⚙️ Tinh chỉnh Tốc độ & Xem Log (Cài đặt)
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+          {renderJobCard('bwdns', '1. Lọc DNS', 'Phân giải IP sống/chết (560k domain)')}
+          {renderJobCard('bwtraffic', '2. Điền Traffic', 'Lấy traffic AITDK (visits/bounce/time)')}
+          {renderJobCard('bwdetect', '3. Quét Affiliate', 'Phát hiện link/app affiliate qua proxy')}
+          {renderJobCard('bwrev', '4. Scan Doanh thu', 'Nhận diện Shopify & cào doanh thu')}
+          {renderJobCard('bwterms', '5. Cào Nội quy', 'Trích xuất điều khoản, %hoa hồng, note')}
+        </div>
+      </div>
+
       <div ref={barRef} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: 13,
         position: 'sticky', top: 'var(--topbar-h, 135px)', zIndex: 20,
         background: 'var(--bg)', margin: '4px 0 0', padding: '8px 0 10px', borderBottom: '1px solid var(--border)' }}>
         {!detect?.running ? (
-          <button className="srcbtn" onClick={startDetect} disabled={starting} title="Job nền: quét phát hiện affiliate cho các domain chưa quét">{starting ? 'Đang khởi động…' : 'scan Affiliate'}</button>
+          <button className="srcbtn" onClick={startDetect} disabled={starting} title="Quét phát hiện affiliate (vòng lặp client)">
+            {starting ? 'Đang khởi động…' : 'Quét Affiliate (client)'}
+          </button>
         ) : (
           <>
             <span>Đang phát hiện: <b>{detect.done}/{detect.total}</b> · thấy aff: <b style={{ color: '#16a34a' }}>{detect.found}</b>{detect.current ? ` · ${detect.current}` : ''}{detect.noProxy ? ' · ⚠ không proxy (dễ bị chặn)' : ''}</span>
             <button className="srcbtn" onClick={stopDetect}>⏹ Dừng</button>
           </>
         )}
-        <button className="srcbtn" onClick={runDnsCheck} disabled={busy || loading} title="Phân giải DNS toàn kho (~ms/domain, không cần proxy)">
-          {busy && dns ? 'Đang lọc DNS…' : 'Scan DBS'}
+        <button className="srcbtn" onClick={runDnsCheck} disabled={busy || loading} title="Lọc DNS 1 lượt client">
+          {busy && dns ? 'Đang lọc DNS…' : 'Lọc DNS (client)'}
         </button>
         {dns && <span style={{ opacity: 0.75 }}>{dns}</span>}
-        <button className="srcbtn" onClick={runTrafficFill} disabled={busy || loading} title="Lấy Traffic/Bounce/Time từ AITDK cho các dòng còn trống">
-          {busy && traf ? 'Đang lấy traffic…' : 'Scan Traffic'}
+        <button className="srcbtn" onClick={runTrafficFill} disabled={busy || loading} title="Lấy Traffic 1 lượt client">
+          {busy && traf ? 'Đang lấy traffic…' : 'Lấy Traffic (client)'}
         </button>
         {traf && <span style={{ opacity: 0.75 }}>{traf}</span>}
         <button className="srcbtn" onClick={runRevScan} disabled={busy || loading}
-          title="Domain thiếu doanh thu: nhận diện Shopify → lấy shop_id → cào doanh thu.">
-          {busy && rev ? 'Đang cào doanh thu…' : 'Scan Revenue'}
+          title="Scan Doanh thu 1 lượt client">
+          {busy && rev ? 'Đang cào doanh thu…' : 'Scan Doanh thu (client)'}
         </button>
         {rev && <span style={{ opacity: 0.75 }}>{rev}</span>}
         {scanMsg && <span style={{ color: scanning ? '#6b7280' : '#16a34a', fontWeight: 600 }}>{scanMsg}</span>}

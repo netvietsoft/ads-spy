@@ -8,6 +8,11 @@
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
 
+- [x] **TASK-051**: Bổ sung cơ chế chạy ngầm (Background Jobs) cho các mục scan của Shopify BuiltWith vào Settings
+  - **Mô tả**: Chuyển toàn bộ các tác vụ scan của `shopify-buildwith` (Scan Doanh thu `bwrev`, Lọc DNS `bwdns`, Điền Traffic `bwtraffic`, Quét Affiliate `bwdetect`, Cào nội quy terms `bwterms`) từ vòng lặp client browser `for(;;)` sang Background Jobs chuẩn trên backend NestJS (`ShJobsService`), vận hành độc lập dưới dạng daemon service 24/7 (tắt web máy tính dịch vụ vẫn tiếp tục chạy). Tích hợp toàn diện vào tab **Cài đặt** (`/settings` -> `SettingsPanel`) với bộ lọc nhóm, tuỳ chỉnh tốc độ (batch/daily/paceMs/concurrency/activeStart/activeEnd/staleDays) và theo dõi log thời gian thực. Bổ sung bảng điều khiển tiến trình chạy ngầm trực tiếp trên giao diện `ShopifyBwPanel`.
+  - **Branch**: `agent/backend/TASK-051`
+  - **Files**: `apps/api/src/shophunter/sh.jobs.service.ts`, `apps/api/src/shopify-bw/shopify-bw.service.ts`, `apps/api/src/shopify-bw/shopify-bw.detect.ts`, `apps/api/src/shophunter/sh.jobs.shopify-bw.spec.ts`, `apps/web/app/components/SettingsPanel.tsx`, `apps/web/app/components/ShopifyBwPanel.tsx`
+
 - [x] **TASK-050**: Cải tiến bộ quét nhận diện Shopify — Mở rộng Regex HTML & Tự động dò Subdomain E-commerce (shop/store/myshopify)
   - **Mô tả**: Nâng cấp `detectShopifyStorefront` và `ShService.checkDomain`: bắt `[a-z0-9-]+\.myshopify\.com` và shop id từ các script tracker bên thứ ba (Nosto, Klaviyo, v.v.); tự động phát hiện và kiểm tra các subdomain thương mại điện tử liên kết (`shop.<domain>`, `store.<domain>`). Giúp hệ thống nhận diện chính xác 100% store Shopify ngay cả khi người dùng chỉ nhập domain cha / portal tập đoàn (ví dụ: `simon.com` / `www.simon.com` -> tự động phát hiện `shop.simon.com` / `shoppremiumoutlets.myshopify.com`).
   - **Branch**: `agent/backend/TASK-050`

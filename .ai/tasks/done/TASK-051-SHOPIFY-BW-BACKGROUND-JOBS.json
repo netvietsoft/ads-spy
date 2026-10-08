@@ -1,0 +1,18 @@
+{
+  "task_id": "TASK-051",
+  "title": "Bổ sung cơ chế chạy ngầm (Background Jobs) cho các mục scan của Shopify BuiltWith vào Settings",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND",
+  "created": "2026-10-08T15:16:00+07:00",
+  "completed": "2026-10-08T15:26:00+07:00",
+  "files_allowed": [
+    "apps/api/src/shophunter/sh.jobs.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.detect.ts",
+    "apps/api/src/shopify-bw/shopify-bw.controller.ts",
+    "apps/api/src/shophunter/sh.jobs.shopify-bw.spec.ts",
+    "apps/web/app/components/ShopifyBwPanel.tsx",
+    "apps/web/app/components/SettingsPanel.tsx"
+  ],
+  "description": "Chuyển toàn bộ các tác vụ scan của shopify_buildwith (Scan Revenue, Lọc DNS, Điền Traffic, Quét Affiliate, Cào nội quy terms) từ client-side for(;;) sang background jobs trên backend NestJS (ShJobsService: bwdns, bwtraffic, bwdetect, bwrev, bwterms). Tích hợp đầy đủ vào tab Cài đặt (/settings) gồm bật/tắt daemon 24/7, chạy ngay, tinh chỉnh tốc độ (batch/daily/paceMs/concurrency) và theo dõi log thời gian thực. Cập nhật ShopifyBwPanel hiển thị bảng giám sát trạng thái job và điều khiển job server-side (tắt web máy tính dịch vụ vẫn tiếp tục chạy)."
+}

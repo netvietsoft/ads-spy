@@ -139,4 +139,46 @@ export class ShopifyBwDetect {
       await Promise.all(workers);
     }
   }
+
+  async detectStep(batchSize = 20, concurrency = 3): Promise<{ checked: number; yes: number; app: number; no: number; blocked: number; remaining: number }> {
+    await this.db.ensureTables();
+    const batch = await this.db.rowsToDetect(Math.max(1, Math.min(200, batchSize)));
+    if (!batch.length) {
+      return { checked: 0, yes: 0, app: 0, no: 0, blocked: 0, remaining: 0 };
+    }
+    const proxies = (await this.sh.listProxiesFull(true).catch(() => []))
+      .filter((r: any) => (r.type || 'http') === 'http')
+      .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+    const get = proxies.length > 0 ? makeProxiedGet(() => proxies) : shopifyHttp.get;
+    const nThreads = Math.max(1, Math.min(concurrency, batch.length));
+
+    let idx = 0;
+    let checked = 0, yes = 0, app = 0, no = 0, blocked = 0;
+    const worker = async () => {
+      while (idx < batch.length) {
+        const web = batch[idx++];
+        try {
+          const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
+          checked++;
+          if (r.status === 'ratelimited') {
+            await this.db.markTryFailed(web, r.error || 'ratelimited');
+            blocked++;
+          } else {
+            await this.db.setDetect(web, r.status, r.via, r.link);
+            if (r.status === 'yes') yes++;
+            else if (r.status === 'app') app++;
+            else if (r.status === 'no') no++;
+            else blocked++;
+          }
+        } catch (e: any) {
+          checked++;
+          blocked++;
+          await this.db.markTryFailed(web, String(e?.code || e?.message || 'error'));
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: nThreads }, () => worker()));
+    const remaining = await this.db.countToDetect();
+    return { checked, yes, app, no, blocked, remaining };
+  }
 }

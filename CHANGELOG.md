@@ -4,6 +4,27 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-10-08 — Bổ sung Background Jobs cho các mục scan của Shopify BuiltWith vào Settings (Daemon 24/7)
+
+- **Đưa toàn bộ tiến trình quét BuiltWith về Background Worker Daemon (`ShJobsService`)**:
+  - `bwdns`: Lọc phân giải DNS hàng loạt (A record) kiểm tra sống/chết cho 560k domain BuiltWith, loại trừ domain chết vĩnh viễn.
+  - `bwtraffic`: Tự động điền traffic AITDK (visits, bounce rate, time-onsite) cho các domain còn trống số liệu.
+  - `bwdetect`: Tự động quét phát hiện chương trình affiliate (link đăng ký, app affiliate) qua pool proxy xoay.
+  - `bwrev`: Tự động quét nhận diện Shopify, lấy shop id và cào doanh thu ngày/tuần/tháng/tổng từ ShopHunter API; tự động cào lại sau `staleDays` ngày.
+  - `bwterms`: Tự động cào trang điều khoản/nội quy affiliate (`/pages/affiliate*`, sitemap.xml), bóc tách %hoa hồng, cookie, payout và trích xuất quy định chương trình.
+- **Vận hành độc lập trên VPS daemon — Khắc phục lỗi tắt web dịch vụ bị dừng**:
+  - Không còn phụ thuộc vào vòng lặp vô hạn `for (;;)` trên trình duyệt người dùng.
+  - Tự động duy trì trạng thái, tôn trọng khung giờ làm việc (`activeStart`/`activeEnd`), hạn mức ngày (`daily quota`), và nhịp giãn cách (`paceMs`).
+  - Tự động phục hồi vòng lặp khi server khởi động lại (`onModuleInit`).
+- **Nâng cấp giao diện Cài đặt (`/settings` -> `SettingsPanel`)**:
+  - Phân nhóm trực quan các job: `⚡ Shopify BuiltWith (560k)`, `🌐 Affiliate Nets & Library`, `🛒 ShopHunter & Catalog`.
+  - Cung cấp đầy đủ tính năng: Bật/Tắt daemon, Chạy ngay (run once thủ công), Tinh chỉnh tốc độ (`JobTuner`: batch, paceMs, daily, concurrency, staleDays, activeStart, activeEnd) và theo dõi log thời gian thực chi tiết.
+- **Nâng cấp giao diện `/shopify-buildwith` (`ShopifyBwPanel`)**:
+  - Bổ sung bảng điều khiển & giám sát 5 background job trực tiếp trên đầu trang.
+  - Cập nhật các nút thao tác nhanh kết nối tới background daemon, kèm link nhanh sang tab Cài đặt.
+
+---
+
 ## 2026-10-08 — Cải tiến bộ quét nhận diện Shopify: Mở rộng Regex HTML & Tự động dò Subdomain E-commerce
 
 - **Mở rộng nhận diện HTML trong `detectShopifyStorefront`**: Bổ sung regex nhận diện `[a-z0-9-]+\.myshopify\.com` và shop id từ các script nhúng của nền tảng bên thứ ba (Nosto, Klaviyo tracker, v.v.).

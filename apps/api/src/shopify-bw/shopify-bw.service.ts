@@ -81,9 +81,9 @@ export class ShopifyBwService {
     }
   }
 
-  async revScan(limit = 20): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
+  async revScan(limit = 20, staleMs?: number): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
     await this.db.ensureTables();
-    const rows = await this.db.rowsToRevScan(limit);
+    const rows = await this.db.rowsToRevScan(limit, staleMs);
     let revved = 0;
     let shopify = 0;
     let notShopify = 0;
@@ -100,7 +100,7 @@ export class ShopifyBwService {
         await this.db.setRevScanned(row.web, { err: lastError }).catch(() => {});
       }
     }
-    const remaining = await this.db.countToRevScan();
+    const remaining = await this.db.countToRevScan(staleMs);
     return { scanned: rows.length, revved, shopify, notShopify, remaining, error: lastError };
   }
 
@@ -339,5 +339,9 @@ export class ShopifyBwService {
     const r = await this.detect.detectOne(normalizeDomain(web));
     await this.fillTrafficFor([r.web]).catch(() => {});
     return r;
+  }
+
+  detectStep(batch = 20, concurrency = 3) {
+    return this.detect.detectStep(batch, concurrency);
   }
 }

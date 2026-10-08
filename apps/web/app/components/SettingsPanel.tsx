@@ -81,10 +81,28 @@ function JobCard({ job, busyToggle, busyRun, busyCfg, onToggle, onRunNow, onSave
   );
 }
 
+const JOB_GROUPS: { id: string; label: string; jobs?: string[] }[] = [
+  { id: 'all', label: 'Tất cả job' },
+  { id: 'bw', label: '⚡ Shopify BuiltWith (560k)', jobs: ['bwdns', 'bwtraffic', 'bwdetect', 'bwrev', 'bwterms'] },
+  { id: 'aff', label: '🌐 Affiliate Nets & Library', jobs: ['affdiscover', 'afffetch', 'afflibrev', 'affterms'] },
+  { id: 'sh', label: '🛒 ShopHunter & Catalog', jobs: ['harvest', 'enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'refresh'] },
+];
+
 export function SettingsPanel() {
   const [jobs, setJobs] = useState<ShJob[]>([]);
+  const [group, setGroup] = useState<string>('all');
   const [busy, setBusy] = useState(''); // '' | '<name>' (toggle) | '<name>:run' (chạy ngay)
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const h = window.location.hash.replace(/^#/, '');
+      if (h === 'bw' || h === 'shopify-bw' || h === 'builtwith') setGroup('bw');
+      else if (h === 'aff' || h === 'affnet') setGroup('aff');
+      else if (h === 'sh' || h === 'shophunter') setGroup('sh');
+    }
+  }, []);
+
   const reload = () => shJobs().then((j) => { setJobs(j); setErr(null); }).catch((e) => setErr((e as Error).message));
   useEffect(() => { reload(); const t = setInterval(reload, 4000); return () => clearInterval(t); }, []);
   const toggle = async (name: string, on: boolean) => {
@@ -102,6 +120,12 @@ export function SettingsPanel() {
     try { await shSetJobConfig(name, cfg); await reload(); } catch { /* ignore */ }
     setBusy('');
   };
+
+  const currentGroupObj = JOB_GROUPS.find((g) => g.id === group);
+  const visibleJobs = !currentGroupObj || currentGroupObj.id === 'all'
+    ? jobs
+    : jobs.filter((j) => currentGroupObj.jobs?.includes(j.name));
+
   return (
     <div style={{ maxWidth: 960 }}>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
@@ -110,14 +134,28 @@ export function SettingsPanel() {
         <div style={{ flex: '1 1 340px', minWidth: 0 }}><AffnetTokenBox /></div>
       </div>
       <h3 style={{ margin: '18px 0 4px' }}>⚙️ Cài đặt — Job nền</h3>
-      <p style={{ fontSize: 13, opacity: 0.7 }}>Bật/tắt và theo dõi log các job. harvest chạy theo lịch (cron); enrich/catalog chạy nền liên tục khi bật. Bấm <b>Chạy ngay</b> để chạy 1 lượt liền, không đợi lịch.</p>
+      <p style={{ fontSize: 13, opacity: 0.7 }}>
+        Bật/tắt và theo dõi log các job. Toàn bộ tiến trình chạy ngầm trực tiếp trên backend daemon (tắt web máy tính dịch vụ vẫn tiếp tục chạy 24/7). Bấm <b>Chạy ngay</b> để kích hoạt 1 lượt liền.
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, margin: '14px 0 16px', flexWrap: 'wrap' }}>
+        {JOB_GROUPS.map((g) => (
+          <button key={g.id} type="button"
+            className={`srcbtn ${group === g.id ? 'active' : ''}`}
+            onClick={() => setGroup(g.id)}
+            style={{ fontWeight: group === g.id ? 700 : 500 }}>
+            {g.label}
+          </button>
+        ))}
+      </div>
+
       {err && jobs.length === 0 && (
         <div className="err">
           Không tải được danh sách job: {err}. Kiểm tra API (NEXT_PUBLIC_API_ORIGIN khi build web).{' '}
           <button className="srcbtn" onClick={reload}>Thử lại</button>
         </div>
       )}
-      {jobs.map((j) => (
+      {visibleJobs.map((j) => (
         <JobCard key={j.name} job={j}
           busyToggle={busy === j.name} busyRun={busy === j.name + ':run'} busyCfg={busy === j.name + ':cfg'}
           onToggle={(on) => toggle(j.name, on)} onRunNow={() => runNow(j.name)} onSaveCfg={(c) => saveCfg(j.name, c)} />
