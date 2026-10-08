@@ -1,0 +1,14 @@
+{
+  "task_id": "TASK-050",
+  "title": "Cải tiến bộ quét nhận diện Shopify: Mở rộng Regex HTML & Tự động dò Subdomain E-commerce (shop/store/myshopify)",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND",
+  "created": "2026-10-08T14:50:00+07:00",
+  "completed": "2026-10-08T15:05:00+07:00",
+  "files_allowed": [
+    "apps/api/src/shophunter/shopify.client.ts",
+    "apps/api/src/shophunter/sh.service.ts",
+    "apps/api/src/shophunter/shopify.client.spec.ts"
+  ],
+  "description": "Nâng cấp cơ chế nhận diện Shopify trong detectShopifyStorefront và checkDomain: (1) Mở rộng regex HTML bắt [a-z0-9-]+\\.myshopify\\.com và shopify-(\\d+) script tags từ tracker bên thứ ba; (2) Khi quét domain chính không ra Shopify nhưng có dấu vết hoặc liên kết tới subdomain shop./store. hoặc myshopify, tự động dò tìm và lấy thông tin storefront Shopify tương ứng (ví dụ: simon.com -> shop.simon.com)."
+}

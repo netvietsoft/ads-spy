@@ -8,6 +8,11 @@
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
 
+- [x] **TASK-050**: Cải tiến bộ quét nhận diện Shopify — Mở rộng Regex HTML & Tự động dò Subdomain E-commerce (shop/store/myshopify)
+  - **Mô tả**: Nâng cấp `detectShopifyStorefront` và `ShService.checkDomain`: bắt `[a-z0-9-]+\.myshopify\.com` và shop id từ các script tracker bên thứ ba (Nosto, Klaviyo, v.v.); tự động phát hiện và kiểm tra các subdomain thương mại điện tử liên kết (`shop.<domain>`, `store.<domain>`). Giúp hệ thống nhận diện chính xác 100% store Shopify ngay cả khi người dùng chỉ nhập domain cha / portal tập đoàn (ví dụ: `simon.com` / `www.simon.com` -> tự động phát hiện `shop.simon.com` / `shoppremiumoutlets.myshopify.com`).
+  - **Branch**: `agent/backend/TASK-050`
+  - **Files**: `apps/api/src/shophunter/shopify.client.ts`, `apps/api/src/shophunter/sh.service.ts`, `apps/api/src/shophunter/shopify.client.spec.ts`
+
 - [x] **TASK-049**: Menu `/shopify-buildwith` — Kho dữ liệu Shopify riêng từ BuiltWith (560k domain)
   - **Mô tả**: Tạo route và menu `/shopify-buildwith` tách biệt hoàn toàn với `aff_library`, dùng bảng DB riêng `shopify_buildwith`. Đầy đủ tính năng như `/afflibrary`: quét affiliate (job nền + nút quét ⟳ từng dòng), scan doanh thu (ShopHunter), điền traffic AITDK, lọc DNS, tìm kiếm, lọc theo trạng thái, sắp xếp đa cột, xuất file Excel, và nút **"📁 Nạp 560k Domain (CSV)"** nạp trực tiếp file `Shopify_-_2026-10-07_verified_shopify.csv` trên server.
   - **Files**: `apps/api/src/shopify-bw/**`, `apps/web/app/components/ShopifyBwPanel.tsx`, `apps/web/app/components/TopNav.tsx`, `apps/web/app/api.ts`, `apps/web/app/page.tsx`

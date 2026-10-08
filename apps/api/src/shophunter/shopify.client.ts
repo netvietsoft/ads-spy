@@ -80,7 +80,8 @@ export interface StorefrontMeta { id: number | null; name: string | null; curren
 
 // Phát hiện Shopify ĐỘC LẬP với ShopHunter (giống "view-source"): meta.json trước (JSON meta có id/currency/
 // myshopify_domain — id CHÍNH LÀ shop_id Shopify); nếu meta.json fail → bắt marker Shopify trong HTML trang chủ.
-export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShopify: boolean; meta: StorefrontMeta | null }> {
+// Hỗ trợ nhận diện nâng cao: bắt [a-z0-9-]+\.myshopify\.com trong script bên thứ 3 và tự động dò subdomain e-commerce (shop.*, store.*).
+export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShopify: boolean; meta: StorefrontMeta | null; detectedDomain?: string }> {
   const domain = normalizeDomain(shopUrl);
   try {
     const res = await shopifyHttp.get(`https://${domain}/meta.json`, { 'user-agent': STOREFRONT_UA });
@@ -89,6 +90,7 @@ export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShop
       if (j && (j.id != null || j.myshopify_domain)) {
         return {
           isShopify: true,
+          detectedDomain: domain,
           meta: {
             id: j.id != null && /^\d+$/.test(String(j.id)) ? Number(j.id) : null,
             name: typeof j.name === 'string' ? j.name : null,
@@ -100,12 +102,100 @@ export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShop
       }
     }
   } catch { /* thử marker HTML */ }
+
   try {
     const res = await shopifyHttp.get(`https://${domain}/`, { 'user-agent': STOREFRONT_UA });
-    if (res.status === 200 && /cdn\.shopify\.com|cdn\.shopifycloud\.com|shopifycdn\.com|monorail-edge\.shopifysvc\.com|\/cdn\/shop\/|Shopify\.theme/i.test(res.body)) {
-      return { isShopify: true, meta: null };
+    if (res.status === 200) {
+      const html = res.body;
+
+      // 1. Kiểm tra marker trực tiếp
+      const hasDirectShopifyMarker =
+        /cdn\.shopify\.com|cdn\.shopifycloud\.com|shopifycdn\.com|monorail-edge\.shopifysvc\.com|\/cdn\/shop\/|Shopify\.theme|Shopify\.shop\s*=/i.test(html);
+
+      // 2. Tìm myshopify domain trong HTML (kể cả script nhúng tracker như Nosto, Klaviyo, v.v.)
+      const myShopMatch = html.match(/([a-z0-9][a-z0-9-]*)\.myshopify\.com/i);
+      const myShopDomain = myShopMatch ? `${myShopMatch[1].toLowerCase()}.myshopify.com` : null;
+
+      // 3. Tìm shop id Shopify xuất hiện trong HTML (ví dụ: shopify-29145366588.js hoặc Shopify.shop = "...")
+      const idMatch =
+        html.match(/shopify-(\d{8,})/i) ||
+        html.match(/Shopify\.shop\s*=\s*["']?(\d+)["']?/i);
+      const extractedId = idMatch && /^\d+$/.test(idMatch[1]) ? Number(idMatch[1]) : null;
+
+      // 4. Tìm title trang nếu có
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const extractedTitle = titleMatch ? titleMatch[1].trim() : null;
+
+      // 5. Nếu trang chính không phải Shopify trực tiếp, nhưng là domain cha (vd simon.com):
+      // Dò các link trỏ tới subdomain bán hàng nội bộ: shop.<root> hoặc store.<root>
+      const cleanDom = domain.replace(/^www\./i, '');
+      const subCandidateRegex = new RegExp(`https?:\\/\\/((?:shop|store)\\.${cleanDom.replace(/\./g, '\\.')})[\\/?"'\\s]`, 'i');
+      const subMatch = html.match(subCandidateRegex);
+      const candidateSubdomain = subMatch ? subMatch[1].toLowerCase() : `shop.${cleanDom}`;
+
+      if (candidateSubdomain && candidateSubdomain !== domain && candidateSubdomain !== `www.${domain}`) {
+        try {
+          const subRes = await shopifyHttp.get(`https://${candidateSubdomain}/meta.json`, { 'user-agent': STOREFRONT_UA });
+          if (subRes.status === 200) {
+            const sj = JSON.parse(subRes.body);
+            if (sj && (sj.id != null || sj.myshopify_domain)) {
+              return {
+                isShopify: true,
+                detectedDomain: candidateSubdomain,
+                meta: {
+                  id: sj.id != null && /^\d+$/.test(String(sj.id)) ? Number(sj.id) : extractedId,
+                  name: typeof sj.name === 'string' ? sj.name : extractedTitle,
+                  currency: typeof sj.currency === 'string' && /^[A-Za-z]{3}$/.test(sj.currency) ? sj.currency.toUpperCase() : null,
+                  country: typeof sj.country === 'string' ? sj.country : null,
+                  myshopifyDomain: typeof sj.myshopify_domain === 'string' ? sj.myshopify_domain : myShopDomain,
+                },
+              };
+            }
+          }
+        } catch { /* subdomain meta.json không tồn tại */ }
+      }
+
+      if (hasDirectShopifyMarker || myShopDomain || extractedId) {
+        return {
+          isShopify: true,
+          detectedDomain: domain,
+          meta: {
+            id: extractedId,
+            name: extractedTitle,
+            currency: null,
+            country: null,
+            myshopifyDomain: myShopDomain,
+          },
+        };
+      }
     }
   } catch { /* bỏ qua */ }
+
+  // 6. Fallback thăm dò chủ động subdomain shop.<domain> nếu chưa thử
+  const cleanDom = domain.replace(/^www\./i, '');
+  if (!cleanDom.startsWith('shop.') && !cleanDom.startsWith('store.')) {
+    const directShopSub = `shop.${cleanDom}`;
+    try {
+      const subRes = await shopifyHttp.get(`https://${directShopSub}/meta.json`, { 'user-agent': STOREFRONT_UA });
+      if (subRes.status === 200) {
+        const sj = JSON.parse(subRes.body);
+        if (sj && (sj.id != null || sj.myshopify_domain)) {
+          return {
+            isShopify: true,
+            detectedDomain: directShopSub,
+            meta: {
+              id: sj.id != null && /^\d+$/.test(String(sj.id)) ? Number(sj.id) : null,
+              name: typeof sj.name === 'string' ? sj.name : null,
+              currency: typeof sj.currency === 'string' && /^[A-Za-z]{3}$/.test(sj.currency) ? sj.currency.toUpperCase() : null,
+              country: typeof sj.country === 'string' ? sj.country : null,
+              myshopifyDomain: typeof sj.myshopify_domain === 'string' ? sj.myshopify_domain : null,
+            },
+          };
+        }
+      }
+    } catch { /* không có shop subdomain */ }
+  }
+
   return { isShopify: false, meta: null };
 }
 

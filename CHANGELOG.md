@@ -4,6 +4,14 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-10-08 — Cải tiến bộ quét nhận diện Shopify: Mở rộng Regex HTML & Tự động dò Subdomain E-commerce
+
+- **Mở rộng nhận diện HTML trong `detectShopifyStorefront`**: Bổ sung regex nhận diện `[a-z0-9-]+\.myshopify\.com` và shop id từ các script nhúng của nền tảng bên thứ ba (Nosto, Klaviyo tracker, v.v.).
+- **Tự động dò tìm subdomain E-commerce**: Khi domain người dùng nhập là portal tập đoàn / cổng thông tin không chạy trực tiếp trên Shopify (như `simon.com` hoặc `www.simon.com`), hệ thống tự động quét liên kết nội bộ hoặc thăm dò subdomain bán hàng (`shop.<domain>`, `store.<domain>`). Nếu phát hiện store Shopify (ví dụ: `shop.simon.com` với Store ID `29145366588`), hệ thống tự động kết nối và trả về kết quả Shopify của subdomain bán hàng đó.
+- **Tương thích `ShService.checkDomain`**: Tự động liên kết `effectiveDomain` với `shopId`, lưu lịch sử quét theo domain đã nhập đồng thời hiển thị URL shop chính xác, hỗ trợ cả `track` và `localdb`.
+
+---
+
 ## 2026-10-08 — Menu /shopify-buildwith & Database riêng `shopify_buildwith` (Kho 560k domain BuiltWith)
 
 Chi tiết: [`Docs/handoff-2026-10-08-shopify-buildwith-panel.md`](Docs/handoff-2026-10-08-shopify-buildwith-panel.md).
