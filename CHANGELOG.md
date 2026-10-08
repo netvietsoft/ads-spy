@@ -4,6 +4,22 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-10-08 — Tối ưu Bể Proxy Dùng Chung, Chống Chặn & Tăng Tốc Độ Quét BuiltWith 560k Domain (TASK-052)
+
+- **Kết nối triệt để Bể Proxy dùng chung từ Cài đặt (`sh_proxy`)**:
+  - Khắc phục lỗi `wireProxy` không nạp proxy trong `loop()` khiến `shopifyHttp.get` bị `EPROXY_EMPTY` và rơi xuống IP datacenter làm Shopify & Cloudflare chặn (`bi_chan: 16/20`).
+  - Tự động nạp proxy từ database khi module khởi động (`onModuleInit`) và liên tục làm mới `this.catalogProxies` trong chu kỳ quét, proxy thêm mới trong Cài đặt có hiệu lực tức thì mà không cần restart server.
+- **Cơ chế Xoay vòng & Tự động Thử lại Chống Chặn (Auto-Retry Proxy Rotation)**:
+  - Nâng cấp `makeProxiedGet` (`shopify.proxy-get.ts`): Tự động xoay sang proxy khác trong bể và thử lại tối đa 3 lần khi một proxy gặp lỗi timeout, proxy error hoặc kết nối rớt.
+  - Chống chặn cho `bwdetect`: Khi gặp phản hồi `ratelimited` hoặc bot challenge, tự động đổi proxy khác trong pool thử lại thay vì kết luận chặn oan.
+- **Tăng tốc độ Quét Đa Luồng Song Song (Multi-threading)**:
+  - Mở rộng giới hạn cấu hình `CFG_BOUNDS`: Cho phép cấu hình `concurrency` lên tới 50 luồng, `daily` lên tới 1.000.000 domain/ngày, `batch` tới 2.000.
+  - Nâng cấp `revScan` của BuiltWith hỗ trợ worker pool đa luồng song song (thay vì quét tuần tự 1-by-1), tăng tốc độ cào doanh thu lên gấp 5-10 lần.
+  - Bảo vệ cờ `shopify`: Lỗi kết nối/proxy mạng sẽ không bị ghi đè thành `shopify = 0` (non-shopify) để đảm bảo không mất dấu các shop chuẩn.
+- **Tối ưu DNS Resolution & Giao diện Điều khiển**:
+  - Bổ sung cơ chế retry nhẹ cho DNS lookup, giảm thiểu tối đa các domain bị rơi vào trạng thái `chua_ro` (unknown).
+  - Bổ sung nút truy cập nhanh **`🛡️ Bể Proxy Dùng Chung (Cài đặt)`** trên `ShopifyBwPanel` liên kết trực tiếp tới danh sách proxy trong Cài đặt.
+
 ## 2026-10-08 — Bổ sung Background Jobs cho các mục scan của Shopify BuiltWith vào Settings (Daemon 24/7)
 
 - **Đưa toàn bộ tiến trình quét BuiltWith về Background Worker Daemon (`ShJobsService`)**:

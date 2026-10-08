@@ -69,10 +69,10 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   bwdetect: { batch: 20, daily: 5000, paceMs: 1500, concurrency: 3, activeStart: 0, activeEnd: 24 },
   bwterms: { batch: 20, daily: 2000, paceMs: 3000, concurrency: 6, activeStart: 0, activeEnd: 24 },
 };
-// Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7).
+// Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7). Hỗ trợ pool proxy lớn với concurrency tới 50 luồng.
 const CFG_BOUNDS: Record<string, [number, number]> = {
-  daily: [1, 100000], perTick: [1, 2000], skipPct: [0, 100], delayMs: [0, 60000],
-  concurrency: [1, 8], batch: [1, 1000], paceMs: [0, 600000], activeStart: [0, 24], activeEnd: [0, 24], staleDays: [1, 90],
+  daily: [1, 1000000], perTick: [1, 2000], skipPct: [0, 100], delayMs: [0, 60000],
+  concurrency: [1, 50], batch: [1, 2000], paceMs: [0, 600000], activeStart: [0, 24], activeEnd: [0, 24], staleDays: [1, 90],
 };
 
 interface JobMem { running: boolean; lastRunAt: number | null; lastStatus: string | null; stats: Record<string, number>; }
@@ -111,7 +111,9 @@ export class ShJobsService implements OnModuleInit {
   private sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
   async onModuleInit(): Promise<void> {
+    await this.refreshProxies().catch(() => {});
     for (const name of ['enrich', 'catalog', 'productrev', 'affiliate', 'importenrich', 'affdiscover', 'afffetch', 'afflibrev', 'affterms', 'bwrev', 'bwdns', 'bwtraffic', 'bwdetect', 'bwterms'] as JobName[]) {
+
       try { if (await this.isEnabled(name)) this.start(name); } catch { /* MySQL/Prisma chưa sẵn sàng — bỏ qua, bật lại từ web */ }
     }
   }
@@ -231,9 +233,15 @@ export class ShJobsService implements OnModuleInit {
   private stop(_name: JobName): void { /* loop tự thoát khi isEnabled=false (kiểm mỗi TICK_MS) */ }
 
   private async loop(name: JobName): Promise<void> {
-    if (this.needsProxy(name)) this.wireProxy();
+    if (this.needsProxy(name)) {
+      await this.refreshProxies().catch(() => {});
+      this.wireProxy();
+    }
     try {
       while (await this.stillEnabled(name)) {
+        if (this.needsProxy(name)) {
+          await this.refreshProxies().catch(() => {});
+        }
         let pace = BLOCK_MS;
         try {
           pace = (await this.runStepGuarded(name)).pace;
@@ -248,6 +256,7 @@ export class ShJobsService implements OnModuleInit {
       if (this.needsProxy(name) && !this.anyProxyJobRunning()) this.unwireProxy();
     }
   }
+
 
   // afflibrev và bwrev/bwdetect cũng cần proxy: bước nhận diện Shopify đi qua seam shopifyHttp.get (probe /meta.json),
   // không mượn proxy xoay thì dễ bị chặn như job catalog/affiliate.
@@ -328,7 +337,12 @@ export class ShJobsService implements OnModuleInit {
     const dk = this.dayKey('bwrev');
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwrev.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
     let r: Awaited<ReturnType<ShopifyBwService['revScan']>>;
-    try { r = await this.bwSvc.revScan(cfg.batch, Math.max(1, cfg.staleDays || 1) * 24 * 3600000); }
+    const staleMs = Math.max(1, cfg.staleDays || 1) * 24 * 3600000;
+    try {
+      r = cfg.concurrency
+        ? await this.bwSvc.revScan(cfg.batch, staleMs, cfg.concurrency)
+        : await this.bwSvc.revScan(cfg.batch, staleMs);
+    }
     catch (e) { this.mem.bwrev.lastStatus = 'error'; await this.mysql.appendJobLog('bwrev', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     await this.mysql.addDailyCount(dk, r.scanned).catch(() => {});
     this.mem.bwrev.lastRunAt = Date.now();

@@ -8,6 +8,11 @@
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
 
+- [x] **TASK-052**: Tích hợp bể proxy dùng chung từ Cài đặt, tự động xoay & thử lại chống chặn (429/Cloudflare) và tăng tốc độ scan BuiltWith 560k domain
+  - **Mô tả**: Kết nối triệt để bể proxy chung trong Cài đặt (`sh_proxy`) vào toàn bộ background jobs và crawler BuiltWith (`bwdetect`, `bwrev`, `bwterms`, `bwtraffic`). Khắc phục lỗi wireProxy không nạp proxy khiến request bị `EPROXY_EMPTY` và fallback IP datacenter dẫn đến bị Cloudflare/Shopify chặn (`bi_chan: 16`). Bổ sung cơ chế xoay vòng và retry qua proxy khác khi gặp 429 / bot challenge. Mở rộng concurrency (lên tới 30-50 luồng), hỗ trợ song song cho `revScan`, nâng cấu hình batch và trần daily để quét nhanh kho 560k-700k domain mà không lo bị ban. Thêm nút truy cập nhanh Bể Proxy dùng chung trên giao diện `ShopifyBwPanel`.
+  - **Branch**: `agent/backend/TASK-052`
+  - **Files**: `apps/api/src/shophunter/shopify.proxy-get.ts`, `apps/api/src/shophunter/sh.jobs.service.ts`, `apps/api/src/shopify-bw/shopify-bw.service.ts`, `apps/api/src/shopify-bw/shopify-bw.detect.ts`, `apps/api/src/afflib/afflib.dns.ts`, `apps/web/app/components/ShopifyBwPanel.tsx`, `apps/web/app/components/SettingsPanel.tsx`, `docs/handoff-2026-10-08-optimize-proxy-pool-and-scanner-speed.md`
+
 - [x] **TASK-051**: Bổ sung cơ chế chạy ngầm (Background Jobs) cho các mục scan của Shopify BuiltWith vào Settings
   - **Mô tả**: Chuyển toàn bộ các tác vụ scan của `shopify-buildwith` (Scan Doanh thu `bwrev`, Lọc DNS `bwdns`, Điền Traffic `bwtraffic`, Quét Affiliate `bwdetect`, Cào nội quy terms `bwterms`) từ vòng lặp client browser `for(;;)` sang Background Jobs chuẩn trên backend NestJS (`ShJobsService`), vận hành độc lập dưới dạng daemon service 24/7 (tắt web máy tính dịch vụ vẫn tiếp tục chạy). Tích hợp toàn diện vào tab **Cài đặt** (`/settings` -> `SettingsPanel`) với bộ lọc nhóm, tuỳ chỉnh tốc độ (batch/daily/paceMs/concurrency/activeStart/activeEnd/staleDays) và theo dõi log thời gian thực. Bổ sung bảng điều khiển tiến trình chạy ngầm trực tiếp trên giao diện `ShopifyBwPanel`.
   - **Branch**: `agent/backend/TASK-051`

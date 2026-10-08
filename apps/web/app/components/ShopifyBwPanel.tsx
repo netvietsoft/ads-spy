@@ -856,15 +856,26 @@ export function ShopifyBwPanel() {
               Tắt web máy tính dịch vụ vẫn tiếp tục chạy
             </span>
           </div>
-          <button
-            type="button"
-            className="srcbtn"
-            onClick={() => router.push('/settings#bw')}
-            style={{ background: '#059669', color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 6 }}
-            title="Mở tab Cài đặt để tinh chỉnh tốc độ (batch/pace/daily/luồng) và xem log thời gian thực chi tiết"
-          >
-            ⚙️ Tinh chỉnh Tốc độ & Xem Log (Cài đặt)
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="srcbtn"
+              onClick={() => router.push('/settings#proxy')}
+              style={{ background: '#2563eb', color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 6 }}
+              title="Quản lý bể proxy dùng chung (thêm/sửa/xóa, kiểm tra live/die, bật/tắt để crawler xoay vòng chống chặn)"
+            >
+              🛡️ Bể Proxy Dùng Chung (Cài đặt)
+            </button>
+            <button
+              type="button"
+              className="srcbtn"
+              onClick={() => router.push('/settings#bw')}
+              style={{ background: '#059669', color: '#fff', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 6 }}
+              title="Mở tab Cài đặt để tinh chỉnh tốc độ (batch/pace/daily/luồng) và xem log thời gian thực chi tiết"
+            >
+              ⚙️ Tinh chỉnh Tốc độ & Xem Log (Cài đặt)
+            </button>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>

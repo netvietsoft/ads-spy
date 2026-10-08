@@ -33,8 +33,10 @@ export class ShopifyBwService {
     if (!shopId) {
       const r = await this.shSvc.checkDomain(web, { skipDetailIfFresh: true });
       if (!r.isShopify) {
-        await this.db.setRevScanned(web, { shopify: 0, err: r.reason || 'not_shopify' });
-        return 'notShopify';
+        const reason = r.reason || 'not_shopify';
+        const isTransientErr = /proxy|timeout|connect|reset|refused|econn|etimedout|ratelimit|429|challenge/i.test(reason);
+        await this.db.setRevScanned(web, { shopify: isTransientErr ? null : 0, err: reason });
+        return isTransientErr ? 'fail' : 'notShopify';
       }
       markShopify = 1;
       shopId = (r as any).shopId ? String((r as any).shopId) : '';
@@ -81,7 +83,7 @@ export class ShopifyBwService {
     }
   }
 
-  async revScan(limit = 20, staleMs?: number): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
+  async revScan(limit = 20, staleMs?: number, concurrency = 3): Promise<{ scanned: number; revved: number; shopify: number; notShopify: number; remaining: number; error?: string }> {
     await this.db.ensureTables();
     const rows = await this.db.rowsToRevScan(limit, staleMs);
     let revved = 0;
@@ -89,20 +91,27 @@ export class ShopifyBwService {
     let notShopify = 0;
     let lastError: string | undefined;
 
-    for (const row of rows) {
-      try {
-        const kind = await this.revScanOne(row);
-        if (kind === 'revved') revved++;
-        else if (kind === 'shopify') shopify++;
-        else if (kind === 'notShopify') notShopify++;
-      } catch (e: any) {
-        lastError = e?.message || 'Lỗi không rõ';
-        await this.db.setRevScanned(row.web, { err: lastError }).catch(() => {});
+    const nThreads = Math.max(1, Math.min(concurrency, rows.length));
+    let idx = 0;
+    const worker = async () => {
+      while (idx < rows.length) {
+        const row = rows[idx++];
+        try {
+          const kind = await this.revScanOne(row);
+          if (kind === 'revved') revved++;
+          else if (kind === 'shopify') shopify++;
+          else if (kind === 'notShopify') notShopify++;
+        } catch (e: any) {
+          lastError = e?.message || 'Lỗi không rõ';
+          await this.db.setRevScanned(row.web, { err: lastError }).catch(() => {});
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: nThreads }, () => worker()));
     const remaining = await this.db.countToRevScan(staleMs);
     return { scanned: rows.length, revved, shopify, notShopify, remaining, error: lastError };
   }
+
 
   private cleanWebs(webs: string[]): string[] {
     return Array.from(new Set((webs || []).map(normalizeDomain).filter(Boolean))).slice(0, 1000);

@@ -39,7 +39,11 @@ export async function resolveDomains(webs: string[], concurrency = 30): Promise<
       const idx = i++;
       if (idx >= webs.length) return;
       const web = webs[idx];
-      const r = await resolveOne(web);
+      let r = await resolveOne(web);
+      if (r === 'unknown') {
+        await new Promise((res) => setTimeout(res, 80));
+        r = await resolveOne(web);
+      }
       if (r === 'alive') out.alive.push(web);
       else if (r === 'unknown') out.unknown.push(web);
       else out.dead.push({ web, error: r.error });

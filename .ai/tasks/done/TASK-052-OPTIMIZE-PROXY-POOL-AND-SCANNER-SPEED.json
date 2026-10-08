@@ -1,0 +1,21 @@
+{
+  "task_id": "TASK-052",
+  "title": "Tích hợp bể proxy dùng chung từ Cài đặt, tự động xoay & thử lại chống chặn (429/Cloudflare) và tăng tốc độ scan BuiltWith 560k domain",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND & Agent 3 - FRONTEND",
+  "created": "2026-10-08T18:10:00+07:00",
+  "completed": "2026-10-08T18:20:00+07:00",
+  "files_allowed": [
+    "apps/api/src/shophunter/sh.jobs.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.detect.ts",
+    "apps/api/src/shophunter/shopify.proxy-get.ts",
+    "apps/api/src/shophunter/shopify.proxy-get.spec.ts",
+    "apps/api/src/shophunter/sh.jobs.shopify-bw.spec.ts",
+    "apps/api/src/afflib/afflib.dns.ts",
+    "apps/web/app/components/SettingsPanel.tsx",
+    "apps/web/app/components/ShopifyBwPanel.tsx",
+    "docs/handoff-2026-10-08-optimize-proxy-pool-and-scanner-speed.md"
+  ],
+  "description": "Kết nối triệt để bể proxy chung trong Cài đặt (bảng sh_proxy) vào toàn bộ background jobs và crawler BuiltWith (bwdetect, bwrev, bwterms, bwtraffic). Khắc phục lỗi wireProxy không nạp proxy khiến request bị EPROXY_EMPTY và fallback IP datacenter dẫn đến bị Cloudflare/Shopify chặn (bi_chan: 16). Bổ sung cơ chế xoay vòng và retry qua proxy khác khi gặp 429 / bot challenge. Mở rộng concurrency (lên tới 30-50 luồng), hỗ trợ song song cho revScan, nâng cấu hình batch và trần daily để quét nhanh kho 560k-700k domain mà không lo bị ban."
+}

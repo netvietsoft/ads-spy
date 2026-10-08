@@ -142,7 +142,7 @@ export class ShopifyBwDetect {
 
   async detectStep(batchSize = 20, concurrency = 3): Promise<{ checked: number; yes: number; app: number; no: number; blocked: number; remaining: number }> {
     await this.db.ensureTables();
-    const batch = await this.db.rowsToDetect(Math.max(1, Math.min(200, batchSize)));
+    const batch = await this.db.rowsToDetect(Math.max(1, Math.min(1000, batchSize)));
     if (!batch.length) {
       return { checked: 0, yes: 0, app: 0, no: 0, blocked: 0, remaining: 0 };
     }
@@ -158,7 +158,13 @@ export class ShopifyBwDetect {
       while (idx < batch.length) {
         const web = batch[idx++];
         try {
-          const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
+          let r: any = null;
+          const attempts = proxies.length > 1 ? 2 : 1;
+          for (let att = 0; att < attempts; att++) {
+            r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
+            if (r.status !== 'ratelimited') break;
+            if (att < attempts - 1) await new Promise((r2) => setTimeout(r2, 200));
+          }
           checked++;
           if (r.status === 'ratelimited') {
             await this.db.markTryFailed(web, r.error || 'ratelimited');
@@ -181,4 +187,5 @@ export class ShopifyBwDetect {
     const remaining = await this.db.countToDetect();
     return { checked, yes, app, no, blocked, remaining };
   }
+
 }

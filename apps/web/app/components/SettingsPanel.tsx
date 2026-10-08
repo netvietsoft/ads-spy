@@ -160,7 +160,7 @@ export function SettingsPanel() {
           busyToggle={busy === j.name} busyRun={busy === j.name + ':run'} busyCfg={busy === j.name + ':cfg'}
           onToggle={(on) => toggle(j.name, on)} onRunNow={() => runNow(j.name)} onSaveCfg={(c) => saveCfg(j.name, c)} />
       ))}
-      <div style={{ marginTop: 24 }}>
+      <div id="proxy" style={{ marginTop: 24, scrollMarginTop: 80 }}>
         <ProxyPanel />
       </div>
     </div>
