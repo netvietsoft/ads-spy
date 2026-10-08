@@ -4,6 +4,18 @@
   "active_task": null,
   "recent_tasks": [
     {
+      "id": "TASK-051",
+      "title": "Bổ sung cơ chế chạy ngầm (Background Jobs) cho các mục scan của Shopify BuiltWith vào Settings",
+      "status": "done",
+      "completed_at": "2026-10-08T15:26:00+07:00"
+    },
+    {
+      "id": "TASK-050",
+      "title": "Cải tiến bộ quét nhận diện Shopify — Mở rộng Regex HTML & Tự động dò Subdomain E-commerce (shop/store/myshopify)",
+      "status": "done",
+      "completed_at": "2026-10-08T15:05:00+07:00"
+    },
+    {
       "id": "TASK-049",
       "title": "Menu /shopify-buildwith & Database riêng shopify_buildwith (Kho 560k domain BuiltWith)",
       "status": "done",
