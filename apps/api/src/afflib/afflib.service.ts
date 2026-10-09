@@ -11,7 +11,19 @@ import { ShMysql } from '../shophunter/sh.mysql';
 
 // Chuẩn hoá domain (bản sao logic affnet normalizeNet): lowercase, bỏ scheme/www, cắt tại '/'.
 export function normalizeDomain(raw: string): string {
-  return String(raw || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim();
+  if (!raw) return '';
+  const s = String(raw).trim().toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0]
+    .split(':')[0]
+    .split('?')[0]
+    .split('#')[0]
+    .trim();
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(s)) {
+    return '';
+  }
+  return s;
 }
 const isDomain = (s: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s);
 const numOrNull = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v));
@@ -257,11 +269,12 @@ export class AffLibService {
     if (!list.length) return 0;
     try {
       const r = await this.traffic.search(list, false, true); // save=true → tự upsert aff_domain_traffic
-      await this.db.markTrafficTried(list);
+      const successfulDomains = Array.from(new Set([...Object.keys(r.traffic), ...Object.keys(r.whois)]));
+      if (successfulDomains.length) {
+        await this.db.markTrafficTried(successfulDomains);
+      }
       return Object.keys(r.traffic).length;
     } catch (e) {
-      // Vẫn đánh dấu đã thử để hàng đợi không tắc ở đúng lô này mãi; lỗi trả lên cho caller quyết.
-      await this.db.markTrafficTried(list).catch(() => {});
       throw e;
     }
   }

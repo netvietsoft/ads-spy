@@ -10,7 +10,19 @@ import { ShService, summarizeShopChart } from '../shophunter/sh.service';
 import { ShMysql } from '../shophunter/sh.mysql';
 
 export function normalizeDomain(raw: string): string {
-  return String(raw || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim();
+  if (!raw) return '';
+  const s = String(raw).trim().toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0]
+    .split(':')[0]
+    .split('?')[0]
+    .split('#')[0]
+    .trim();
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(s)) {
+    return '';
+  }
+  return s;
 }
 const isDomain = (s: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s);
 const numOrNull = (v: any) => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v));
@@ -148,7 +160,11 @@ export class ShopifyBwService {
     if (!list.length) return 0;
     try {
       const r = await this.traffic.search(list, false, true);
-      await this.db.markTrafficTried(list);
+      // Chỉ đánh dấu traffic_tried cho những domain AITDK thực sự trả về dữ liệu (kể cả visits = 0)
+      const successfulDomains = Array.from(new Set([...Object.keys(r.traffic), ...Object.keys(r.whois)]));
+      if (successfulDomains.length) {
+        await this.db.markTrafficTried(successfulDomains);
+      }
       return Object.keys(r.traffic).length;
     } catch (e) {
       // Tuyệt đối không markTrafficTried ở catch: nếu bị lỗi mạng/timeout/abort thì domain CHƯA được lấy

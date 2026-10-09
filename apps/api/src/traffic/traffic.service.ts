@@ -14,13 +14,13 @@ interface ProxyState {
 
 const BASE_URL = 'https://wapi.aitdk.com';
 const VERSION = '2.7.0';
-const BATCH_SIZE = 25;
+const BATCH_SIZE = 10;
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_PROXY_ATTEMPTS = 3;
-const PROXY_TIMEOUT_MS = 15_000;
-// 25s timeout cho kết nối trực tiếp tới AITDK. Với chunk 25 domain, AITDK phản hồi trong 1.5 - 3s,
+const PROXY_TIMEOUT_MS = 10_000;
+// 30s timeout cho kết nối trực tiếp tới AITDK. Với chunk 10 domain, AITDK phản hồi trong 1.5 - 2.5s,
 // hoàn toàn nằm trong biên an toàn và không bao giờ bị abort oan.
-const DIRECT_TIMEOUT_MS = 25_000;
+const DIRECT_TIMEOUT_MS = 30_000;
 const CIRCUIT_TRIP_AFTER = 4;
 
 const HEADERS = {
@@ -44,7 +44,19 @@ function bounceRate(value: unknown): number {
 }
 
 function normalizeDomain(value: string): string {
-  return value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  if (!value) return '';
+  const s = String(value).trim().toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0]
+    .split(':')[0]
+    .split('?')[0]
+    .split('#')[0]
+    .trim();
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(s)) {
+    return '';
+  }
+  return s;
 }
 
 @Injectable()
@@ -67,10 +79,19 @@ export class TrafficService {
         Object.assign(merged.traffic, result.traffic);
         Object.assign(merged.whois, result.whois);
       } catch (error) {
-        if (normalized.length <= BATCH_SIZE) throw error;
-        console.error(`AITDK batch ${offset / BATCH_SIZE + 1} failed`, error);
+        console.warn(`[TrafficService] AITDK lô ${offset / BATCH_SIZE + 1} (${batch.length} domains) thất bại: ${error instanceof Error ? error.message : error}. Thử từng domain lẻ...`);
+        // Fallback: nếu cả lô bị lỗi (ví dụ do 1 domain dị làm AITDK treo), thử từng domain lẻ để cứu các domain tốt
+        for (const singleDomain of batch) {
+          try {
+            const singleResult = await this.fetchBatch([singleDomain], history);
+            Object.assign(merged.traffic, singleResult.traffic);
+            Object.assign(merged.whois, singleResult.whois);
+          } catch {
+            // Bỏ qua domain lỗi, các domain khác vẫn tiếp tục
+          }
+        }
       }
-      if (offset + BATCH_SIZE < normalized.length) await this.delay(2_000);
+      if (offset + BATCH_SIZE < normalized.length) await this.delay(1_000);
     }
 
     if (!Object.keys(merged.traffic).length && normalized.length === 1 && !save) {
@@ -124,17 +145,17 @@ export class TrafficService {
     const url = `${BASE_URL}${path}?${query}`;
 
     // DIRECT FIRST: AITDK là API chính thức có SECRET_KEY và HMAC-SHA256, gọi trực tiếp từ VPS
-    // chỉ mất ~1-3s. Tuyệt đối không để proxy xoay cào web chặn đầu vì proxy công cộng thường
-    // lag 5-10s hoặc không mở được HTTPS làm abort oan.
-    // Chỉ fallback sang proxy nếu gọi trực tiếp thất bại (bị rate limit 429 hoặc lỗi mạng).
+    // chỉ mất ~1-2s. Tuyệt đối không dùng proxy cào web của cửa hàng vì proxy cào web không mở được
+    // kết nối HTTPS tới wapi.aitdk.com, làm timeout 15s x 3 = 45s và che mất lỗi thật.
     const targets: (ProxyState | null)[] = [null];
     const available = this.getAvailableProxies();
     for (let i = 0; i < Math.min(available.length, MAX_PROXY_ATTEMPTS); i++) {
       const p = this.nextProxy();
       if (p) targets.push(p);
     }
+    let directError: unknown;
     let lastError: unknown;
-    let clientError: Error | null = null; // 4xx của AITDK — xem ghi chú ở nhánh dưới
+    let clientError: Error | null = null;
 
     for (const proxy of targets) {
       const controller = new AbortController();
@@ -151,18 +172,8 @@ export class TrafficService {
           await this.delay(5_000);
           continue;
         }
-        // Body của AITDK ĐÃ nằm trong `text` ở trên — kèm nó vào message. Trước đây chỉ ném
-        // "AITDK HTTP 400", tức vứt đúng phần giải thích tại sao 400 (sai signature? timestamp lệch?
-        // domain không hợp lệ?) → 2026-08-07 phải soi tận code mới biết body bị bỏ. An toàn: secret
-        // KHÔNG nằm trong response (request chỉ gửi hash signature), và đã cắt còn 200 ký tự.
         const detail = text.replace(/\s+/g, ' ').trim().slice(0, 200);
 
-        // 4xx (trừ 429 đã xử lý ở trên) = AITDK từ chối CHÍNH REQUEST/DOMAIN, không phải lỗi đường
-        // truyền. Trước đây nhánh này rơi chung vào `!response.ok`: markProxyFailed + `continue` →
-        // (1) proxy KHOẺ bị đánh dấu chết oan chỉ vì một domain sai chính tả, làm hỏng trạng thái cả
-        // pool, và (2) vẫn nướng thêm MAX_PROXY_ATTEMPTS lượt gọi dù đổi proxy không bao giờ sửa được
-        // 4xx. Nay: DỪNG ngay, KHÔNG đổ lỗi cho proxy, và trả 400 cho client thay vì 502 — vì 502
-        // ("Bad Gateway") khiến người dùng tưởng hạ tầng sập, trong khi lỗi nằm ở tham số gửi lên.
         if (response.status >= 400 && response.status < 500) {
           clientError = new BadRequestException(`AITDK từ chối yêu cầu — HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
           break;
@@ -170,24 +181,30 @@ export class TrafficService {
 
         if (!response.ok) {
           if (proxy) this.markProxyFailed(proxy);
-          lastError = new Error(`AITDK HTTP ${response.status}${detail ? ` — ${detail}` : ''} (${proxy ? 'qua proxy' : 'gọi trực tiếp'})`);
+          const err = new Error(`AITDK HTTP ${response.status}${detail ? ` — ${detail}` : ''} (${proxy ? 'qua proxy' : 'gọi trực tiếp'})`);
+          if (!proxy) directError = err;
+          lastError = err;
           continue;
         }
         const result = this.parseSse(text);
         if (proxy) this.consecutiveProxyFailures = 0;
         return result;
       } catch (error) {
-        lastError = error;
-        if (proxy) this.markProxyFailed(proxy);
+        if (!proxy) {
+          directError = error;
+          console.warn(`[TrafficService] AITDK gọi trực tiếp lỗi: ${error instanceof Error ? error.message : error}`);
+        } else {
+          lastError = error;
+          this.markProxyFailed(proxy);
+        }
       } finally {
         clearTimeout(timer);
       }
     }
 
-    // 4xx đi trước: nó là kết luận CHẮC CHẮN (đổi proxy/thử lại không đổi được gì), còn lastError chỉ là
-    // lỗi tạm của lượt cuối. Ném 400 để phân biệt "yêu cầu sai" với "không gọi được AITDK" (502).
     if (clientError) throw clientError;
-    throw new BadGatewayException(lastError instanceof Error ? lastError.message : 'Không gọi được AITDK');
+    const finalErr = directError || lastError;
+    throw new BadGatewayException(finalErr instanceof Error ? finalErr.message : 'Không gọi được AITDK');
   }
 
   private parseSse(text: string): TrafficResult {
@@ -229,15 +246,16 @@ export class TrafficService {
     return result;
   }
 
-  // Proxy lấy từ danh sách xoay trong Cài đặt (bảng sh_proxy) — cùng một chỗ quản lý với job quét affiliate,
-  // khỏi phải maintain 2 nguồn. File AITDK_PROXY_FILE chỉ còn là dự phòng khi Cài đặt chưa có proxy nào.
+  // Proxy chỉ lấy từ file AITDK_PROXY_FILE nếu người dùng cố ý cấu hình riêng cho traffic.
+  // Tuyệt đối không nạp proxy cào storefront (sh_proxy) vào AITDK vì sẽ làm hỏng kết nối HTTPS.
   private async ensureProxies(): Promise<void> {
     if (this.proxies) return;
-    const fromDb = await this.sh.listProxiesFull(true).catch(() => [] as any[]);
-    const urls = fromDb
-      .filter((r: any) => (r.type || 'http') === 'http' && r.host && r.port)
-      .map((r: any) => (r.username ? `http://${r.username}:${r.password || ''}@${r.host}:${r.port}` : `http://${r.host}:${r.port}`));
-    this.proxies = urls.length ? urls.map((url) => ({ url, failedUntil: 0 })) : this.loadProxies();
+    const configured = process.env.AITDK_PROXY_FILE?.trim();
+    if (configured) {
+      this.proxies = this.loadProxies();
+      return;
+    }
+    this.proxies = [];
   }
 
   private loadProxies(): ProxyState[] {
