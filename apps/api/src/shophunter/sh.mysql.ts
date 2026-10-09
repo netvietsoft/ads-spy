@@ -2138,29 +2138,31 @@ export class ShMysql implements OnModuleInit {
   async getShopsNeedingAffiliate(limit: number, staleMs: number): Promise<{ shopId: string; url: string }[]> {
     await this.ensureReady();
     const cutoff = Date.now() - staleMs;
+    const retryCutoff = Date.now() - 3600_000; // Thử lại shop bị 429/lỗi mạng sau 1 giờ hạ nhiệt
     const [rows] = await this.pool!.query(
       `SELECT shop_id, shop_url AS url FROM sh_shop
         WHERE shop_url IS NOT NULL
-          AND (affiliate_checked_at IS NULL OR affiliate_checked_at < ?)
-          AND (affiliate_status IS NULL OR affiliate_status != 'blocked' OR affiliate_checked_at < ?)
+          AND (
+            (affiliate_status IS NULL AND (affiliate_checked_at IS NULL OR affiliate_checked_at < ?))
+            OR (affiliate_status IS NOT NULL AND affiliate_status != 'blocked' AND affiliate_checked_at < ?)
+            OR (affiliate_status = 'blocked' AND affiliate_checked_at < ?)
+          )
           AND COALESCE(affiliate_try_count, 0) < ${SH_AFF_MAX_TRIES}
         ORDER BY affiliate_checked_at ASC LIMIT ?`,
-      // ORDER BY CHỈ theo affiliate_checked_at để còn dùng được idx_sh_shop_aff_check: index đã sắp sẵn
-      // nên MySQL lấy đủ LIMIT rồi DỪNG. Bản 78a0513 của tôi thêm "affiliate_try_count ASC" lên trước —
-      // cột đó KHÔNG có index nên MySQL phải filesort TOÀN bảng, mà SELECT lại chứa JSON_EXTRACT(raw,…)
-      // nên nó đọc cả cột LONGTEXT ~1GB: đo trên prod 2026-08-07 = 124 GIÂY mỗi lượt job, các lượt chồng
-      // nhau làm nghẽn cả DB. Bỏ nó đi VÔ HẠI: vế WHERE try_count < 3 ở trên đã loại shop lỗi lặp rồi,
-      // thứ tự theo try_count chỉ là trang trí. (Bài học: đừng thêm cột không index vào ORDER BY.)
-      [cutoff, cutoff, limit],
+      [retryCutoff, cutoff, cutoff, limit],
     );
     return (rows as any[]).map((r) => ({ shopId: r.shop_id, url: r.url }));
   }
 
   // 429/lỗi mạng: chưa kết luận được nên KHÔNG ghi affiliate_status, nhưng VẪN tính 1 lần thử.
   // Đủ SH_AFF_MAX_TRIES lần → rơi khỏi hàng đợi getShopsNeedingAffiliate, hết vòng lặp vô hạn.
+  // Gán affiliate_checked_at = Date.now() để shop lùi xuống sau các shop chưa quét (NULL), tránh bị đập lại liên tục.
   async bumpShopAffiliateTries(shopId: string): Promise<void> {
     await this.ensureReady();
-    await this.pool!.query('UPDATE sh_shop SET affiliate_try_count = COALESCE(affiliate_try_count, 0) + 1 WHERE shop_id = ?', [shopId]);
+    await this.pool!.query(
+      'UPDATE sh_shop SET affiliate_try_count = COALESCE(affiliate_try_count, 0) + 1, affiliate_checked_at = ? WHERE shop_id = ?',
+      [Date.now(), shopId],
+    );
   }
 
   // Quét được (dù kết quả là 'yes'/'no'/'blocked') → reset đếm thử, để lần stale sau shop được quét lại bình thường.

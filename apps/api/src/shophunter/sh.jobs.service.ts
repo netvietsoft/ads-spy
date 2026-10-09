@@ -389,7 +389,7 @@ export class ShJobsService implements OnModuleInit {
     if (r.error) {
       this.mem.bwtraffic.lastStatus = 'warn';
       await this.mysql.appendJobLog('bwtraffic', 'warn', `Lỗi traffic: ${r.error}`).catch(() => {});
-      return { pace: cfg.paceMs || 2000 };
+      return { pace: Math.max(cfg.paceMs || 2000, 8000) };
     }
     if (!r.filled && r.remaining === 0) { this.mem.bwtraffic.lastStatus = 'idle'; await this.mysql.appendJobLog('bwtraffic', 'info', 'Đã điền hết traffic cho các domain BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
     this.mem.bwtraffic.lastStatus = 'ok';
@@ -656,9 +656,13 @@ export class ShJobsService implements OnModuleInit {
     this.mem.affiliate.lastRunAt = Date.now();
     this.mem.affiliate.stats = { shops: r.shops, yes: r.yes, app: r.app, blocked: r.blocked, bop_429: r.rateLimited };
     if (r.shops === 0) { this.mem.affiliate.lastStatus = 'idle'; await this.mysql.appendJobLog('affiliate', 'info', 'Hết shop cần quét; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
-    // Cả lô bị 429 = Shopify đang bóp IP/proxy. Trước đây nhánh này báo lastStatus='ok' + pace 1.5s nên
-    // job đập lại ngay, tự duy trì 429. Nghỉ BLOCK_MS như nhánh blocked bên dưới.
-    if (r.rateLimited >= r.shops) { this.mem.affiliate.lastStatus = 'ratelimited'; await this.mysql.appendJobLog('affiliate', 'warn', `Bị bóp 429 (${r.rateLimited}/${r.shops}); nghỉ 5'.`).catch(() => {}); return { pace: BLOCK_MS }; }
+    // Nếu đa số shop bị 429 (>= 50%) = Shopify đang bóp IP/proxy. Trước đây nhánh này đòi 100% (r.rateLimited >= r.shops)
+    // nên chỉ cần 1 shop lọt (vd 19/20) là pace vẫn 1.5s tiếp tục đập. Nghỉ 3' để proxy hạ nhiệt.
+    if (r.rateLimited > 0 && r.rateLimited >= Math.ceil(r.shops * 0.5)) {
+      this.mem.affiliate.lastStatus = 'ratelimited';
+      await this.mysql.appendJobLog('affiliate', 'warn', `Bị bóp 429 (${r.rateLimited}/${r.shops}); nghỉ 3'.`).catch(() => {});
+      return { pace: Math.min(BLOCK_MS, 180_000) };
+    }
     if (r.blocked >= r.shops) { this.mem.affiliate.lastStatus = 'blocked'; await this.mysql.appendJobLog('affiliate', 'warn', `Bị chặn nhiều (${r.blocked}/${r.shops}); nghỉ.`).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.affiliate.lastStatus = 'ok';
     await this.mysql.appendJobLog('affiliate', 'info', `${r.shops} shop · ${r.yes} yes · ${r.app} app · ${r.blocked} chặn${r.rateLimited ? ` · ${r.rateLimited} bóp 429` : ''}`).catch(() => {});

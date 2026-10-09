@@ -18,9 +18,10 @@ const BATCH_SIZE = 10;
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_PROXY_ATTEMPTS = 3;
 const PROXY_TIMEOUT_MS = 10_000;
-// 30s timeout cho kết nối trực tiếp tới AITDK. Với chunk 10 domain, AITDK phản hồi trong 1.5 - 2.5s,
-// hoàn toàn nằm trong biên an toàn và không bao giờ bị abort oan.
-const DIRECT_TIMEOUT_MS = 30_000;
+// 15s timeout cho kết nối trực tiếp tới AITDK. Với chunk 10 domain, AITDK phản hồi trong 1.5 - 2.5s,
+// 15s là biên an toàn cao và tránh treo lâu khi mạng/server chậm.
+const DIRECT_TIMEOUT_MS = 15_000;
+const SINGLE_TIMEOUT_MS = 6_000;
 const CIRCUIT_TRIP_AFTER = 4;
 
 const HEADERS = {
@@ -79,19 +80,29 @@ export class TrafficService {
         Object.assign(merged.traffic, result.traffic);
         Object.assign(merged.whois, result.whois);
       } catch (error) {
-        console.warn(`[TrafficService] AITDK lô ${offset / BATCH_SIZE + 1} (${batch.length} domains) thất bại: ${error instanceof Error ? error.message : error}. Thử từng domain lẻ...`);
-        // Fallback: nếu cả lô bị lỗi (ví dụ do 1 domain dị làm AITDK treo), thử từng domain lẻ để cứu các domain tốt
-        for (const singleDomain of batch) {
-          try {
-            const singleResult = await this.fetchBatch([singleDomain], history);
-            Object.assign(merged.traffic, singleResult.traffic);
-            Object.assign(merged.whois, singleResult.whois);
-          } catch {
-            // Bỏ qua domain lỗi, các domain khác vẫn tiếp tục
+        const errMsg = error instanceof Error ? error.message : String(error);
+        const isAbort = errMsg.toLowerCase().includes('aborted') || errMsg.toLowerCase().includes('timeout');
+        console.warn(
+          `[TrafficService] AITDK lô ${offset / BATCH_SIZE + 1} (${batch.length} domains) thất bại: ${errMsg}.${isAbort ? ' (AITDK đang quá tải/timeout, nghỉ 3s...)' : ' Thử từng domain lẻ...'}`
+        );
+        if (isAbort) {
+          // Khi cả lô 10 domain bị timeout / abort, không thử lại 10 domain lẻ vì sẽ bị treo tiếp 10 lần.
+          // Nghỉ 3s để AITDK hồi phục rồi sang lô tiếp.
+          await this.delay(3_000);
+        } else {
+          // Fallback: nếu lỗi logic / bad domain, thử từng domain lẻ với timeout ngắn để cứu domain tốt
+          for (const singleDomain of batch) {
+            try {
+              const singleResult = await this.fetchBatch([singleDomain], history, SINGLE_TIMEOUT_MS);
+              Object.assign(merged.traffic, singleResult.traffic);
+              Object.assign(merged.whois, singleResult.whois);
+            } catch {
+              // Bỏ qua domain lỗi, các domain khác vẫn tiếp tục
+            }
           }
         }
       }
-      if (offset + BATCH_SIZE < normalized.length) await this.delay(1_000);
+      if (offset + BATCH_SIZE < normalized.length) await this.delay(2_000);
     }
 
     if (!Object.keys(merged.traffic).length && normalized.length === 1 && !save) {
@@ -124,7 +135,7 @@ export class TrafficService {
     return this.affnetDb.getDomainMonths(normalizeDomain(web));
   }
 
-  private async fetchBatch(domains: string[], history: boolean): Promise<TrafficResult> {
+  private async fetchBatch(domains: string[], history: boolean, timeoutOverrideMs?: number): Promise<TrafficResult> {
     const secret = process.env.AITDK_SECRET_KEY?.trim();
     if (!secret) throw new ServiceUnavailableException('Chưa cấu hình SECRET_KEY cho API');
     await this.ensureProxies();
@@ -159,7 +170,8 @@ export class TrafficService {
 
     for (const proxy of targets) {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), proxy ? PROXY_TIMEOUT_MS : DIRECT_TIMEOUT_MS);
+      const timeoutMs = timeoutOverrideMs ?? (proxy ? PROXY_TIMEOUT_MS : DIRECT_TIMEOUT_MS);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetch(url, {
           method: 'GET',

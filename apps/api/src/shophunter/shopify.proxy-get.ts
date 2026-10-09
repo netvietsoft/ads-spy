@@ -79,6 +79,8 @@ function doSingleProxiedGet(
   });
 }
 
+const CHALLENGE_RE = /just a moment\.\.\.|checking your browser before|cf-browser-verification|challenge-platform|__cf_chl|cf_chl_opt|attention required! \| cloudflare|enable javascript and cookies to continue|ddos protection by cloudflare/i;
+
 export function makeProxiedGet(getProxies: () => ProxyForGet[], maxRetries = 2) {
   return async function proxiedGet(url: string, headers: Record<string, string>, timeoutMs = 12000, redir = 4): Promise<{ status: number; body: string }> {
     const proxies = getProxies();
@@ -89,11 +91,19 @@ export function makeProxiedGet(getProxies: () => ProxyForGet[], maxRetries = 2) 
     const pool = [...proxies].sort(() => Math.random() - 0.5);
     const attempts = Math.max(1, Math.min(maxRetries + 1, pool.length));
     let lastErr: any = null;
+    let lastRes: { status: number; body: string } | null = null;
 
     for (let att = 0; att < attempts; att++) {
       const px = pool[att % pool.length];
       try {
-        return await doSingleProxiedGet(px, url, headers, timeoutMs, redir, (nextUrl) => proxiedGet(nextUrl, headers, timeoutMs, redir - 1));
+        const res = await doSingleProxiedGet(px, url, headers, timeoutMs, redir, (nextUrl) => proxiedGet(nextUrl, headers, timeoutMs, redir - 1));
+        // Nếu proxy này bị Shopify bóp IP (429) hoặc dính Cloudflare bot challenge, và còn proxy khác trong pool → thử proxy kế tiếp
+        if ((res.status === 429 || CHALLENGE_RE.test(res.body)) && att < attempts - 1) {
+          lastRes = res;
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
+        return res;
       } catch (err: any) {
         lastErr = err;
         if (att < attempts - 1) {
@@ -101,6 +111,7 @@ export function makeProxiedGet(getProxies: () => ProxyForGet[], maxRetries = 2) 
         }
       }
     }
+    if (lastRes) return lastRes;
     throw lastErr;
   };
 }

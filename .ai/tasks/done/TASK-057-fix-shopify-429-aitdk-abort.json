@@ -1,0 +1,16 @@
+{
+  "task_id": "TASK-057",
+  "title": "Fix Shopify 429 rate limit proxy rotation and AITDK abort cascading timeouts",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND & Agent 7 - FIXER",
+  "created": "2026-10-09T20:05:00+07:00",
+  "completed": "2026-10-09T20:07:00+07:00",
+  "files_changed": [
+    "apps/api/src/shophunter/shopify.proxy-get.ts",
+    "apps/api/src/shophunter/affiliate.client.ts",
+    "apps/api/src/shophunter/sh.mysql.ts",
+    "apps/api/src/shophunter/sh.jobs.service.ts",
+    "apps/api/src/traffic/traffic.service.ts"
+  ],
+  "summary": "1) Rotate proxy in makeProxiedGet on 429 or Cloudflare challenge instead of failing immediately; 2) Add standard browser headers in affiliate.client.ts; 3) Cool down 429 shops in sh.mysql.ts for 1h and set affiliate_checked_at to avoid instant retry loop; 4) Gracefully back off in sh.jobs.service.ts when >= 50% rate limited; 5) Prevent cascading 30s timeouts in TrafficService when AITDK aborts, reduce batch timeout to 15s, single fallback to 6s, and batch pacing to 2s."
+}
