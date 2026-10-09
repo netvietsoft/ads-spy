@@ -50,12 +50,32 @@
 
 ---
 
-## 3. Hướng Dẫn Deploy Lên VPS `root@srv1257781:~# mmo-coin`
+## 3. Hướng Dẫn Deploy Lên VPS `root@srv1257781`
+
+> ⚠️ **LƯU Ý QUAN TRỌNG VỀ TÊN TIẾN TRÌNH PM2**:  
+> Tên tiến trình PM2 cho backend API trên VPS là **`ads-spy-api`** (không phải `api`).  
+> Đường dẫn mã nguồn trên VPS là **`/var/www/ads-spy`**.
+
+Chạy các lệnh sau trên terminal VPS để cập nhật và khởi động lại:
 
 ```bash
-cd /root/mmo-coin
+cd /var/www/ads-spy
 git pull origin main
 npm run build:api
-pm2 restart api
-pm2 logs api --lines 50
+pm2 restart ads-spy-api
+pm2 logs ads-spy-api --lines 50
 ```
+
+---
+
+## 4. Cải Tiến Bổ Sung (TASK-055 - Commit `4c46dca`)
+
+1. **Giảm `BATCH_SIZE` xuống 10 domain**:
+   - 10 domain phản hồi trong 1.5 - 2 giây, nằm cực sâu dưới ngưỡng timeout 30 giây (`DIRECT_TIMEOUT_MS = 30_000`).
+2. **Cô lập proxy cào web (`sh_proxy`) khỏi AITDK**:
+   - `TrafficService` gọi trực tiếp `wapi.aitdk.com` bằng IP sạch của VPS; không nạp proxy cào storefront vào AITDK tránh làm timeout 15s x 3 và che lấp lỗi thật.
+3. **Cơ chế dự phòng từng domain lẻ (Per-Domain Fallback)**:
+   - Nếu một lô 10 domain gặp sự cố do 1 domain bất thường, hệ thống tự động fallback thử lại 9 domain còn lại theo từng domain đơn lẻ, cứu vãn toàn bộ dữ liệu hợp lệ.
+4. **Chỉ đánh dấu `traffic_tried` cho domain AITDK thực sự trả về**:
+   - Ngăn chặn hoàn toàn việc mất domain khi có sự cố mạng gián đoạn.
+
