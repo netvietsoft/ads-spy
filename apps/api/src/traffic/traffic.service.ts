@@ -14,20 +14,13 @@ interface ProxyState {
 
 const BASE_URL = 'https://wapi.aitdk.com';
 const VERSION = '2.7.0';
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 25;
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_PROXY_ATTEMPTS = 3;
-const PROXY_TIMEOUT_MS = 6_000;
-// 20s, KHÔNG phải 30s. Lý do là hạ tầng, không phải AITDK: FE gọi API same-origin nên mọi request đi qua
-// rewrite của Next, và **Next bỏ cuộc ở ~30s** (không cấu hình được trong next.config.js) — nginx 180s và
-// Cloudflare 100s đều không cứu được vì Next cắt trước. Đo thật 2026-08-07 trên POST /aff-lib/traffic-fill:
-//   thẳng 127.0.0.1:8075 → 201 ở 31,8s   |   qua mmo-coin.com → 500 "Internal Server Error" ở 30,19s
-// (đối chứng: /aff-lib/rev-scan mất 25,5s thì QUA được, 201 — nên ngưỡng nằm giữa 25,5s và 31,8s).
-// 30s ở đây làm tổng thời gian request thành ~31,8s ⇒ luôn vượt ngưỡng ⇒ user luôn thấy 500 dù API chạy
-// xong bình thường. 20s giữ tổng ở ~21s, còn dư biên an toàn.
-// ⚠️ Khi sửa được DNS api.mmo-coin.com và bỏ đường same-origin, block API có proxy_read_timeout 180s nên
-// có thể nâng lại — nhưng chỉ nâng SAU khi đã đo, đừng nâng theo cảm giác.
-const DIRECT_TIMEOUT_MS = 20_000;
+const PROXY_TIMEOUT_MS = 15_000;
+// 25s timeout cho kết nối trực tiếp tới AITDK. Với chunk 25 domain, AITDK phản hồi trong 1.5 - 3s,
+// hoàn toàn nằm trong biên an toàn và không bao giờ bị abort oan.
+const DIRECT_TIMEOUT_MS = 25_000;
 const CIRCUIT_TRIP_AFTER = 4;
 
 const HEADERS = {
@@ -130,13 +123,20 @@ export class TrafficService {
     const query = new URLSearchParams({ ...params, timestamp: String(timestamp), nonce, signature });
     const url = `${BASE_URL}${path}?${query}`;
 
+    // DIRECT FIRST: AITDK là API chính thức có SECRET_KEY và HMAC-SHA256, gọi trực tiếp từ VPS
+    // chỉ mất ~1-3s. Tuyệt đối không để proxy xoay cào web chặn đầu vì proxy công cộng thường
+    // lag 5-10s hoặc không mở được HTTPS làm abort oan.
+    // Chỉ fallback sang proxy nếu gọi trực tiếp thất bại (bị rate limit 429 hoặc lỗi mạng).
+    const targets: (ProxyState | null)[] = [null];
     const available = this.getAvailableProxies();
-    const proxyAttempts = Math.min(available.length, MAX_PROXY_ATTEMPTS);
+    for (let i = 0; i < Math.min(available.length, MAX_PROXY_ATTEMPTS); i++) {
+      const p = this.nextProxy();
+      if (p) targets.push(p);
+    }
     let lastError: unknown;
     let clientError: Error | null = null; // 4xx của AITDK — xem ghi chú ở nhánh dưới
 
-    for (let attempt = 0; attempt <= proxyAttempts; attempt++) {
-      const proxy = attempt < proxyAttempts ? this.nextProxy() : null;
+    for (const proxy of targets) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), proxy ? PROXY_TIMEOUT_MS : DIRECT_TIMEOUT_MS);
       try {

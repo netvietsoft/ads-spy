@@ -8,6 +8,11 @@
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
 
+- [x] **TASK-054**: Khắc phục triệt để lỗi 'This operation was aborted' ở job bwtraffic: Direct API first cho AITDK, giảm batch chunk 25 domain, loại bỏ markTrafficTried khi gặp lỗi mạng và phục hồi các domain bị skip oan
+  - **Mô tả**: 1) Ưu tiên gọi Direct API trước cho AITDK (API chính thức có SECRET_KEY) với độ trễ siêu nhanh (1.5 - 3s) thay vì bắt buộc đi qua 3 proxy cào web với timeout ngắn 6s gây chu kỳ abort liên tục 24s. Chỉ fallback proxy khi gặp lỗi mạng hoặc rate limit 429. 2) Giảm BATCH_SIZE chunk xuống 25 domain để AITDK phản hồi tức thì và không chạm ngưỡng timeout. 3) Nâng timeout an toàn (DIRECT 25s, PROXY 15s). 4) Loại bỏ markTrafficTried trong catch của fillTrafficFor để tránh mất domain khi gặp lỗi mạng/timeout. 5) Tự động phục hồi các domain bị đánh dấu tried nhầm trước đó qua `resetFailedTrafficTried()`.
+  - **Branch**: `main`
+  - **Files**: `apps/api/src/traffic/traffic.service.ts`, `apps/api/src/shopify-bw/shopify-bw.service.ts`, `apps/api/src/shopify-bw/shopify-bw.mysql.ts`
+
 - [x] **TASK-053**: Khắc phục triệt để hiệu suất quét và giải phóng các điểm nghẽn của 5 background jobs BuiltWith (`bwdns`, `bwtraffic`, `bwdetect`, `bwrev`, `bwterms`)
   - **Mô tả**: Xử lý triệt để 5 điểm nghẽn: 1) Lọc DNS chuyển sang c-ares Resolver thuần UDP (8.8.8.8, 1.1.1.1) loại bỏ nghẽn threadpool libuv, lưu mốc thử để giải phóng vòng lặp vô tận 480 domain unknown, tăng tốc độ lên 2000 domain/lô ở 50 luồng. 2) Điền Traffic loại bỏ ngoại lệ 502 khi AITDK trả về dữ liệu rỗng cho các domain chưa có traffic, xoá bỏ hình phạt nghẽn 60s và cập nhật đúng mốc thử để duyệt mượt mà toàn bộ kho 700k domain. 3) Quét Affiliate nâng cấu hình lên batch 50, concurrency 10 luồng, tự động xoay và thử lại tới 3 proxy khác nhau khi gặp 429 hoặc Cloudflare bot-challenge. 4) Scan Doanh thu cào storefront meta.json an toàn qua proxy xoay, tránh bị Cloudflare chặn IP datacenter gây nhận diện nhầm non-shopify. 5) Cào nội quy sẵn sàng nhận luồng domain yes liên tục từ Quét affiliate.
   - **Branch**: `agent/fixer/TASK-053-FIX-BUILTWITH-SCAN-EFFICIENCY`

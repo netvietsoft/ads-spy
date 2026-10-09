@@ -108,6 +108,15 @@ export class ShopifyBwMysql {
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_dns_ok', 'dns_ok');
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_aff_last_try', 'aff_last_try_at');
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_shopify', 'shopify');
+    await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_traffic_tried', 'traffic_tried_at');
+
+    // Tự động khôi phục các domain bị đánh dấu tried nhầm do lỗi mạng/abort khi chưa kịp lưu traffic
+    await pool.query(`
+      UPDATE shopify_buildwith sb
+      LEFT JOIN aff_domain_traffic t ON t.web = sb.web COLLATE utf8mb4_unicode_ci
+      SET sb.traffic_tried_at = NULL
+      WHERE t.web IS NULL AND sb.traffic_tried_at IS NOT NULL
+    `).catch(() => {});
   }
 
   private async ensureIndex(pool: any, table: string, indexName: string, column: string): Promise<void> {
@@ -622,6 +631,17 @@ export class ShopifyBwMysql {
     if (!webs.length) return;
     const pool = await this.sh.getPool();
     await pool.query('UPDATE shopify_buildwith SET traffic_tried_at = ? WHERE web IN (?)', [Date.now(), webs]);
+  }
+
+  async resetFailedTrafficTried(): Promise<number> {
+    const pool = await this.sh.getPool();
+    const [r] = await pool.query(`
+      UPDATE shopify_buildwith sb
+      LEFT JOIN aff_domain_traffic t ON t.web = sb.web COLLATE utf8mb4_unicode_ci
+      SET sb.traffic_tried_at = NULL
+      WHERE t.web IS NULL AND sb.traffic_tried_at IS NOT NULL
+    `);
+    return Number((r as any).affectedRows) || 0;
   }
 
   async deleteRows(webs: string[]): Promise<number> {

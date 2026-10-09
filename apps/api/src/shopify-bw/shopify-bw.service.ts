@@ -151,7 +151,8 @@ export class ShopifyBwService {
       await this.db.markTrafficTried(list);
       return Object.keys(r.traffic).length;
     } catch (e) {
-      await this.db.markTrafficTried(list).catch(() => {});
+      // Tuyệt đối không markTrafficTried ở catch: nếu bị lỗi mạng/timeout/abort thì domain CHƯA được lấy
+      // traffic thật từ AITDK, phải để nguyên trong hàng đợi để lần sau quét tiếp, không được bỏ qua.
       throw e;
     }
   }

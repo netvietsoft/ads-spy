@@ -1,0 +1,14 @@
+{
+  "task_id": "TASK-054",
+  "title": "Khắc phục triệt để lỗi 'This operation was aborted' ở job bwtraffic: Direct API first cho AITDK, giảm batch chunk 25 domain, loại bỏ markTrafficTried khi gặp lỗi mạng và phục hồi các domain bị skip oan",
+  "status": "done",
+  "owner": "Agent 7 - FIXER & Agent 2 - BACKEND",
+  "created": "2026-10-09T10:00:00+07:00",
+  "completed": "2026-10-09T10:05:00+07:00",
+  "files_allowed": [
+    "apps/api/src/traffic/traffic.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.mysql.ts"
+  ],
+  "description": "Giải quyết dứt điểm lỗi 'This operation was aborted' trên job bwtraffic: 1) AITDK là API chính thức có SECRET_KEY và HMAC-SHA256, ưu tiên gọi Direct API trước (chỉ mất 1.5 - 3s) thay vì bắt buộc đi qua 3 lượt proxy cào web với timeout ngắn 6s gây abort liên tục 24s. 2) Giảm BATCH_SIZE chunk xuống 25 domain/lượt gọi AITDK để API phản hồi tức thì và không chạm ngưỡng timeout. 3) Tăng PROXY_TIMEOUT_MS lên 15s và DIRECT_TIMEOUT_MS lên 25s làm biên an toàn tuyệt đối. 4) Loại bỏ markTrafficTried trong catch của fillTrafficFor để khi gặp lỗi mạng/timeout không bị đánh dấu nhầm là đã thử làm mất domain. 5) Thêm hàm resetFailedTrafficTried tự động phục hồi các domain đã bị đánh dấu tried nhầm trong các lần abort trước đó."
+}
