@@ -1,0 +1,16 @@
+{
+  "task_id": "TASK-058",
+  "title": "Fix AITDK poison-pill infinite loop, reduce batch size to 5, and mark unindexed domains as tried",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND & Agent 7 - FIXER",
+  "created": "2026-10-09T21:40:00+07:00",
+  "completed": "2026-10-09T21:55:00+07:00",
+  "files_changed": [
+    "apps/api/src/traffic/traffic.types.ts",
+    "apps/api/src/traffic/traffic.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.mysql.ts",
+    "apps/api/src/afflib/afflib.service.ts"
+  ],
+  "summary": "1) Return queriedDomains in TrafficResult so callers know all domains requested; 2) In shopify-bw.service.ts and afflib.service.ts, mark all queried domains in traffic_tried_at regardless of whether AITDK had traffic data or 0 visits/unindexed, stopping the permanent queue-head blocker loop; 3) Remove destructive doEnsureTables query resetting traffic_tried_at to NULL; 4) Normalize trailing slashes on domain lookup and markTrafficTried; 5) Reduce AITDK BATCH_SIZE from 10 to 5 for fast 1.5-2.5s response times, set DIRECT_TIMEOUT_MS to 30s to eliminate aborts, and single domain timeout to 8s."
+}

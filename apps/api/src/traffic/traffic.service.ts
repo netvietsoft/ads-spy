@@ -14,14 +14,14 @@ interface ProxyState {
 
 const BASE_URL = 'https://wapi.aitdk.com';
 const VERSION = '2.7.0';
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 5;
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_PROXY_ATTEMPTS = 3;
 const PROXY_TIMEOUT_MS = 10_000;
-// 15s timeout cho kết nối trực tiếp tới AITDK. Với chunk 10 domain, AITDK phản hồi trong 1.5 - 2.5s,
-// 15s là biên an toàn cao và tránh treo lâu khi mạng/server chậm.
-const DIRECT_TIMEOUT_MS = 15_000;
-const SINGLE_TIMEOUT_MS = 6_000;
+// 30s timeout cho kết nối trực tiếp tới AITDK. Với chunk nhỏ 5 domain, AITDK chỉ mất ~1.5 - 2.5s,
+// biên 30s đảm bảo không bao giờ bị abort oan ngay cả khi AITDK bận tải.
+const DIRECT_TIMEOUT_MS = 30_000;
+const SINGLE_TIMEOUT_MS = 8_000;
 const CIRCUIT_TRIP_AFTER = 4;
 
 const HEADERS = {
@@ -71,7 +71,7 @@ export class TrafficService {
 
   async search(domains: string[], history = false, save = true): Promise<TrafficResult> {
     const normalized = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
-    const merged: TrafficResult = { traffic: {}, whois: {} };
+    const merged: TrafficResult = { traffic: {}, whois: {}, queriedDomains: [] };
 
     for (let offset = 0; offset < normalized.length; offset += BATCH_SIZE) {
       const batch = normalized.slice(offset, offset + BATCH_SIZE);
@@ -79,30 +79,26 @@ export class TrafficService {
         const result = await this.fetchBatch(batch, history);
         Object.assign(merged.traffic, result.traffic);
         Object.assign(merged.whois, result.whois);
+        merged.queriedDomains!.push(...batch);
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
-        const isAbort = errMsg.toLowerCase().includes('aborted') || errMsg.toLowerCase().includes('timeout');
         console.warn(
-          `[TrafficService] AITDK lô ${offset / BATCH_SIZE + 1} (${batch.length} domains) thất bại: ${errMsg}.${isAbort ? ' (AITDK đang quá tải/timeout, nghỉ 3s...)' : ' Thử từng domain lẻ...'}`
+          `[TrafficService] AITDK lô ${offset / BATCH_SIZE + 1} (${batch.length} domains) thất bại: ${errMsg}. Thử từng domain lẻ...`
         );
-        if (isAbort) {
-          // Khi cả lô 10 domain bị timeout / abort, không thử lại 10 domain lẻ vì sẽ bị treo tiếp 10 lần.
-          // Nghỉ 3s để AITDK hồi phục rồi sang lô tiếp.
-          await this.delay(3_000);
-        } else {
-          // Fallback: nếu lỗi logic / bad domain, thử từng domain lẻ với timeout ngắn để cứu domain tốt
-          for (const singleDomain of batch) {
-            try {
-              const singleResult = await this.fetchBatch([singleDomain], history, SINGLE_TIMEOUT_MS);
-              Object.assign(merged.traffic, singleResult.traffic);
-              Object.assign(merged.whois, singleResult.whois);
-            } catch {
-              // Bỏ qua domain lỗi, các domain khác vẫn tiếp tục
-            }
+        // Fallback: với batch nhỏ 5 domain, thử từng domain lẻ để cứu domain tốt
+        for (const singleDomain of batch) {
+          try {
+            const singleResult = await this.fetchBatch([singleDomain], history, SINGLE_TIMEOUT_MS);
+            Object.assign(merged.traffic, singleResult.traffic);
+            Object.assign(merged.whois, singleResult.whois);
+            merged.queriedDomains!.push(singleDomain);
+          } catch {
+            // Dù domain lẻ này không lấy được dữ liệu, vẫn đưa vào queriedDomains để không bị nghẽn đầu hàng đợi
+            merged.queriedDomains!.push(singleDomain);
           }
         }
       }
-      if (offset + BATCH_SIZE < normalized.length) await this.delay(2_000);
+      if (offset + BATCH_SIZE < normalized.length) await this.delay(1_500);
     }
 
     if (!Object.keys(merged.traffic).length && normalized.length === 1 && !save) {

@@ -160,15 +160,20 @@ export class ShopifyBwService {
     if (!list.length) return 0;
     try {
       const r = await this.traffic.search(list, false, true);
-      // Chỉ đánh dấu traffic_tried cho những domain AITDK thực sự trả về dữ liệu (kể cả visits = 0)
-      const successfulDomains = Array.from(new Set([...Object.keys(r.traffic), ...Object.keys(r.whois)]));
-      if (successfulDomains.length) {
-        await this.db.markTrafficTried(successfulDomains);
+      // Đánh dấu traffic_tried cho toàn bộ các domain đã được xử lý trong lượt này
+      // (bao gồm cả domain có traffic và domain unindexed/rỗng mà AITDK đã tra cứu).
+      // Tránh việc các domain AITDK không có traffic bị kẹt vĩnh viễn ở đầu hàng đợi (poison pill).
+      const triedDomains = Array.from(new Set([
+        ...(r.queriedDomains || []),
+        ...Object.keys(r.traffic),
+        ...Object.keys(r.whois),
+        ...list,
+      ]));
+      if (triedDomains.length) {
+        await this.db.markTrafficTried(triedDomains);
       }
       return Object.keys(r.traffic).length;
     } catch (e) {
-      // Tuyệt đối không markTrafficTried ở catch: nếu bị lỗi mạng/timeout/abort thì domain CHƯA được lấy
-      // traffic thật từ AITDK, phải để nguyên trong hàng đợi để lần sau quét tiếp, không được bỏ qua.
       throw e;
     }
   }

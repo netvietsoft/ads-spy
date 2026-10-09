@@ -14,4 +14,5 @@ export interface TrafficData {
 export interface TrafficResult {
   traffic: Record<string, TrafficData>;
   whois: Record<string, unknown>;
+  queriedDomains?: string[];
 }

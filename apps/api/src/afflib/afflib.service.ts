@@ -269,9 +269,14 @@ export class AffLibService {
     if (!list.length) return 0;
     try {
       const r = await this.traffic.search(list, false, true); // save=true → tự upsert aff_domain_traffic
-      const successfulDomains = Array.from(new Set([...Object.keys(r.traffic), ...Object.keys(r.whois)]));
-      if (successfulDomains.length) {
-        await this.db.markTrafficTried(successfulDomains);
+      const triedDomains = Array.from(new Set([
+        ...(r.queriedDomains || []),
+        ...Object.keys(r.traffic),
+        ...Object.keys(r.whois),
+        ...list,
+      ]));
+      if (triedDomains.length) {
+        await this.db.markTrafficTried(triedDomains);
       }
       return Object.keys(r.traffic).length;
     } catch (e) {

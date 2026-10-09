@@ -110,13 +110,8 @@ export class ShopifyBwMysql {
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_shopify', 'shopify');
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_traffic_tried', 'traffic_tried_at');
 
-    // Tự động khôi phục các domain bị đánh dấu tried nhầm do lỗi mạng/abort khi chưa kịp lưu traffic
-    await pool.query(`
-      UPDATE shopify_buildwith sb
-      LEFT JOIN aff_domain_traffic t ON t.web = sb.web COLLATE utf8mb4_unicode_ci
-      SET sb.traffic_tried_at = NULL
-      WHERE t.web IS NULL AND sb.traffic_tried_at IS NOT NULL
-    `).catch(() => {});
+    // Dọn dẹp dấu gạch chéo cuối nếu có trong cột web
+    await pool.query(`UPDATE IGNORE shopify_buildwith SET web = TRIM(TRAILING '/' FROM web) WHERE web LIKE '%/'`).catch(() => {});
   }
 
   private async ensureIndex(pool: any, table: string, indexName: string, column: string): Promise<void> {
@@ -634,7 +629,10 @@ export class ShopifyBwMysql {
   async markTrafficTried(webs: string[]): Promise<void> {
     if (!webs.length) return;
     const pool = await this.sh.getPool();
-    await pool.query('UPDATE shopify_buildwith SET traffic_tried_at = ? WHERE web IN (?)', [Date.now(), webs]);
+    const withSlash = webs.map((w) => (w.endsWith('/') ? w : w + '/'));
+    const withoutSlash = webs.map((w) => w.replace(/\/+$/, ''));
+    const all = Array.from(new Set([...webs, ...withSlash, ...withoutSlash]));
+    await pool.query('UPDATE shopify_buildwith SET traffic_tried_at = ? WHERE web IN (?)', [Date.now(), all]);
   }
 
   async resetFailedTrafficTried(): Promise<number> {
