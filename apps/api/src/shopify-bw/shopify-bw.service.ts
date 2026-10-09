@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ShopifyBwMysql, ShopifyBwSnapshot } from './shopify-bw.mysql';
 import { ShopifyBwDetect } from './shopify-bw.detect';
 import { TERMS_PATHS, TERMS_HEADERS, analyzeTermsPage, sitemapPageMaps, sitemapAffiliateUrls } from '../afflib/afflib.terms';
-import { shopifyHttp } from '../shophunter/shopify.client';
+import { shopifyHttp, detectShopifyStorefront } from '../shophunter/shopify.client';
 import { makeProxiedGet } from '../shophunter/shopify.proxy-get';
 import { resolveDomains } from '../afflib/afflib.dns';
 import { TrafficService } from '../traffic/traffic.service';
@@ -25,28 +25,49 @@ export class ShopifyBwService {
     private readonly shDb: ShMysql,
   ) {}
 
-  private async revScanOne(row: { web: string; shop_id: string | null; shopify: number | null }): Promise<'revved' | 'shopify' | 'notShopify' | 'fail'> {
+  private async revScanOne(
+    row: { web: string; shop_id: string | null; shopify: number | null },
+    get?: (url: string, headers?: any) => Promise<{ status: number; body: string }>,
+  ): Promise<'revved' | 'shopify' | 'notShopify' | 'fail'> {
     const web = row.web;
     let shopId = row.shop_id ? String(row.shop_id) : '';
     let markShopify: 0 | 1 | undefined;
 
     if (!shopId) {
-      const r = await this.shSvc.checkDomain(web, { skipDetailIfFresh: true });
-      if (!r.isShopify) {
-        const reason = r.reason || 'not_shopify';
-        const isTransientErr = /proxy|timeout|connect|reset|refused|econn|etimedout|ratelimit|429|challenge/i.test(reason);
-        await this.db.setRevScanned(web, { shopify: isTransientErr ? null : 0, err: reason });
-        return isTransientErr ? 'fail' : 'notShopify';
+      // 1. Kiểm tra xem web có trong Local DB sh_shop không
+      const localShopId = await this.db.findShopIdByWeb(web).catch(() => null);
+      if (localShopId) {
+        shopId = localShopId;
+        markShopify = 1;
+      } else {
+        // 2. Thăm dò storefront trực tiếp qua proxy xoay (meta.json & marker HTML)
+        try {
+          const sf = await detectShopifyStorefront(web, get);
+          if (sf.isShopify) {
+            markShopify = 1;
+            shopId = sf.meta?.id ? String(sf.meta.id) : '';
+            if (sf.meta?.currency) {
+              await this.db.setRevScanned(web, { shopify: 1, shopId: shopId || null, currency: sf.meta.currency });
+            }
+          } else {
+            await this.db.setRevScanned(web, { shopify: 0, err: 'not_shopify' });
+            return 'notShopify';
+          }
+        } catch (e: any) {
+          const reason = String(e?.message || e?.code || 'storefront_err');
+          const isTransient = /proxy|timeout|connect|reset|refused|econn|etimedout|ratelimit|429|challenge/i.test(reason);
+          await this.db.setRevScanned(web, { shopify: isTransient ? null : 0, err: `probe_err: ${reason}` });
+          return isTransient ? 'fail' : 'notShopify';
+        }
       }
-      markShopify = 1;
-      shopId = (r as any).shopId ? String((r as any).shopId) : '';
+
       if (!shopId) {
-        await this.db.setRevScanned(web, { shopify: 1, err: 'shopify_no_shop_id' });
+        await this.db.setRevScanned(web, { shopify: markShopify ?? 1, err: 'shopify_no_shop_id' });
         return 'shopify';
       }
     }
 
-    await this.shSvc.syncShopRevenue(shopId);
+    await this.shSvc.syncShopRevenue(shopId).catch(() => {});
     const [daily, currency, total] = await Promise.all([
       this.shDb.getRevenueDaily(shopId).catch(() => [] as any[]),
       this.shDb.getStorefrontCurrency(shopId).catch(() => null),
@@ -91,13 +112,18 @@ export class ShopifyBwService {
     let notShopify = 0;
     let lastError: string | undefined;
 
+    const proxies = (await this.shDb.listProxiesFull(true).catch(() => []))
+      .filter((r: any) => (r.type || 'http') === 'http')
+      .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+    const get = proxies.length > 0 ? makeProxiedGet(() => proxies) : shopifyHttp.get;
+
     const nThreads = Math.max(1, Math.min(concurrency, rows.length));
     let idx = 0;
     const worker = async () => {
       while (idx < rows.length) {
         const row = rows[idx++];
         try {
-          const kind = await this.revScanOne(row);
+          const kind = await this.revScanOne(row, get);
           if (kind === 'revved') revved++;
           else if (kind === 'shopify') shopify++;
           else if (kind === 'notShopify') notShopify++;
@@ -143,14 +169,14 @@ export class ShopifyBwService {
     }
   }
 
-  async dnsCheck(limit = 5000): Promise<{ checked: number; alive: number; dead: number; unknown: number; remaining: number }> {
+  async dnsCheck(limit = 5000, concurrency = 50): Promise<{ checked: number; alive: number; dead: number; unknown: number; remaining: number }> {
     await this.db.ensureTables();
     const webs = await this.db.rowsToDnsCheck(limit);
     if (!webs.length) {
       return { checked: 0, alive: 0, dead: 0, unknown: 0, remaining: 0 };
     }
-    const { alive, dead, unknown } = await resolveDomains(webs);
-    await this.db.setDnsBulk(alive, dead);
+    const { alive, dead, unknown } = await resolveDomains(webs, concurrency);
+    await this.db.setDnsBulk(alive, dead, unknown);
     const remaining = await this.db.countDnsPending();
     return { checked: webs.length, alive: alive.length, dead: dead.length, unknown: unknown.length, remaining };
   }

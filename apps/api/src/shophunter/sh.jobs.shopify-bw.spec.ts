@@ -22,19 +22,19 @@ describe('5 background jobs cho Shopify BuiltWith', () => {
   it('DEFAULT_CFG cho 5 job BuiltWith có đầy đủ thông số hợp lệ', async () => {
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, {} as any, {} as any);
     const dnsCfg = await svc.getJobCfg('bwdns');
-    expect(dnsCfg.batch).toBe(1000);
-    expect(dnsCfg.daily).toBe(50000);
+    expect(dnsCfg.batch).toBe(2000);
+    expect(dnsCfg.daily).toBe(200000);
 
     const trafCfg = await svc.getJobCfg('bwtraffic');
     expect(trafCfg.batch).toBe(50);
-    expect(trafCfg.paceMs).toBe(3000);
+    expect(trafCfg.paceMs).toBe(1500);
 
     const detCfg = await svc.getJobCfg('bwdetect');
-    expect(detCfg.batch).toBe(20);
-    expect(detCfg.concurrency).toBe(3);
+    expect(detCfg.batch).toBe(50);
+    expect(detCfg.concurrency).toBe(10);
 
     const revCfg = await svc.getJobCfg('bwrev');
-    expect(revCfg.batch).toBe(20);
+    expect(revCfg.batch).toBe(50);
     expect(revCfg.staleDays).toBe(1);
 
     const termsCfg = await svc.getJobCfg('bwterms');
@@ -56,10 +56,10 @@ describe('5 background jobs cho Shopify BuiltWith', () => {
     };
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, {} as any, {} as any, bwSvc as any);
     const r = await (svc as any).step('bwdns', true);
-    expect(bwSvc.dnsCheck).toHaveBeenCalledWith(1000);
+    expect(bwSvc.dnsCheck).toHaveBeenCalledWith(2000, 50);
     expect((svc as any).mem.bwdns.stats.song).toBe(90);
     expect((svc as any).mem.bwdns.stats.chet).toBe(10);
-    expect(r.pace).toBe(2000);
+    expect(r.pace).toBe(1000);
   });
 
   it('step bwtraffic gọi ShopifyBwService.fillTraffic', async () => {
@@ -70,30 +70,30 @@ describe('5 background jobs cho Shopify BuiltWith', () => {
     const r = await (svc as any).step('bwtraffic', true);
     expect(bwSvc.fillTraffic).toHaveBeenCalledWith(50);
     expect((svc as any).mem.bwtraffic.stats.da_dien).toBe(35);
-    expect(r.pace).toBe(3000);
+    expect(r.pace).toBe(1500);
   });
 
   it('step bwdetect gọi ShopifyBwService.detectStep với batch & concurrency', async () => {
     const bwSvc = {
-      detectStep: jest.fn().mockResolvedValue({ checked: 20, yes: 4, app: 2, no: 12, blocked: 2, remaining: 400 }),
+      detectStep: jest.fn().mockResolvedValue({ checked: 50, yes: 4, app: 2, no: 12, blocked: 2, remaining: 400 }),
     };
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, {} as any, {} as any, bwSvc as any);
     const r = await (svc as any).step('bwdetect', true);
-    expect(bwSvc.detectStep).toHaveBeenCalledWith(20, 3);
+    expect(bwSvc.detectStep).toHaveBeenCalledWith(50, 10);
     expect((svc as any).mem.bwdetect.stats.co_link).toBe(4);
     expect((svc as any).mem.bwdetect.stats.co_app).toBe(2);
-    expect(r.pace).toBe(1500);
+    expect(r.pace).toBe(1000);
   });
 
   it('step bwrev gọi ShopifyBwService.revScan với batch & staleDays*24h', async () => {
     const bwSvc = {
-      revScan: jest.fn().mockResolvedValue({ scanned: 20, revved: 5, shopify: 3, notShopify: 12, remaining: 300 }),
+      revScan: jest.fn().mockResolvedValue({ scanned: 50, revved: 5, shopify: 3, notShopify: 12, remaining: 300 }),
     };
     const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, {} as any, {} as any, bwSvc as any);
     const r = await (svc as any).step('bwrev', true);
-    expect(bwSvc.revScan).toHaveBeenCalledWith(20, 1 * 24 * 3600000);
+    expect(bwSvc.revScan).toHaveBeenCalledWith(50, 1 * 24 * 3600000, 10);
     expect((svc as any).mem.bwrev.stats.ra_doanh_thu).toBe(5);
-    expect(r.pace).toBe(1500);
+    expect(r.pace).toBe(1000);
   });
 
   it('step bwterms gọi ShopifyBwService.termsScan', async () => {
@@ -104,7 +104,7 @@ describe('5 background jobs cho Shopify BuiltWith', () => {
     const r = await (svc as any).step('bwterms', true);
     expect(bwSvc.termsScan).toHaveBeenCalledWith(20);
     expect((svc as any).mem.bwterms.stats.ra_noi_quy).toBe(6);
-    expect(r.pace).toBe(3000);
+    expect(r.pace).toBe(2000);
   });
 
   it('khi hết hàng (scanned/checked = 0) -> chuyển trạng thái idle và nhịp nghỉ IDLE_MS (120s)', async () => {

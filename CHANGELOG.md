@@ -4,6 +4,33 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-10-09 — Khắc Phục Triệt Để Hiệu Suất & Điểm Nghẽn 5 Background Jobs BuiltWith (TASK-053)
+
+- **Giải phóng điểm nghẽn Lọc DNS (`bwdns`) — Nâng cấp c-ares Resolver**:
+  - Chuyển toàn bộ phân giải DNS từ `dns.lookup` (vốn dùng `getaddrinfo` qua libuv threadpool chỉ 4 thread, gây nghẽn và timeout hàng loạt 480/1000 domain `unknown`) sang **c-ares Resolver bất đồng bộ thuần UDP** (`dns.promises.Resolver`).
+  - Cấu hình nameservers hiệu năng cao trực tiếp (`8.8.8.8`, `1.1.1.1`, `8.8.4.4`, `1.0.0.1`), không ngốn threadpool hệ điều hành.
+  - Phân loại chuẩn xác `ENOTFOUND`, `NXDOMAIN`, `ENODATA`, `NODATA` (hỗ trợ thử tiếp IPv6 khi thiếu IPv4).
+  - Cập nhật cơ chế đánh dấu mốc thử `aff_last_try_at` và `aff_try_count` cho các domain timeout, phá vỡ hoàn toàn vòng lặp vô tận quét lại cùng một tập domain `chua_ro`.
+  - Nâng batch mặc định lên 2.000 domain ở 50 luồng, phân giải 2.000 domain chỉ trong 2-3 giây.
+- **Khắc phục lỗi Điền Traffic AITDK (`bwtraffic`) ném ngoại lệ 502 và block 60s**:
+  - Khắc phục bug nghiêm trọng: Khi một lô 50 domain không có dữ liệu trên AITDK, hệ thống ném `BadGatewayException('không trả về dữ liệu traffic')`, phạt job ngủ 60 giây (`BLOCK_MS`) và đánh dấu proxy là hỏng (`markProxyFailed`).
+  - Sửa lại cơ chế trả về kết quả rỗng hợp lệ (HTTP 200 từ AITDK là thành công), không phạt proxy, cập nhật mốc `traffic_tried_at` để lướt qua các domain không có traffic mượt mà mà không dừng job.
+- **Tăng tốc & Giảm Chặn cho Quét Affiliate (`bwdetect`)**:
+  - Nâng cấu hình mặc định lên `batch: 50, concurrency: 10`.
+  - Cải tiến cơ chế tự động xoay và thử lại tới 3 proxy ngẫu nhiên trong bể proxy khi gặp `ratelimited` hoặc Cloudflare bot-challenge trước khi kết luận.
+- **Tối ưu Scan Doanh Thu (`bwrev`) qua Proxy Xoay**:
+  - Nâng cấp `detectShopifyStorefront` cho phép truyền hàm `getFn` qua proxy xoay (`makeProxiedGet`).
+  - Không còn gọi `trackShop` của ShopHunter API trực tiếp hoặc dùng IP datacenter VPS (vốn bị Cloudflare chặn không đọc được `meta.json` dẫn đến đánh nhầm `not_shopify_store`).
+  - Kiểm tra storefront an toàn qua proxy, trích xuất `shop_id` từ `meta.json` hoặc HTML rồi đồng bộ doanh thu.
+- **Cập nhật Cấu hình Mặc định Toàn diện trong Cài đặt**:
+  - `bwdns`: batch 2.000, daily 200.000, concurrency 50, pace 1.000ms.
+  - `bwtraffic`: batch 50, daily 50.000, pace 1.500ms.
+  - `bwdetect`: batch 50, daily 50.000, concurrency 10, pace 1.000ms.
+  - `bwrev`: batch 50, daily 50.000, concurrency 10, pace 1.000ms.
+  - `bwterms`: batch 20, daily 5.000, concurrency 6, pace 2.000ms.
+
+---
+
 ## 2026-10-08 — Tối ưu Bể Proxy Dùng Chung, Chống Chặn & Tăng Tốc Độ Quét BuiltWith 560k Domain (TASK-052)
 
 - **Kết nối triệt để Bể Proxy dùng chung từ Cài đặt (`sh_proxy`)**:

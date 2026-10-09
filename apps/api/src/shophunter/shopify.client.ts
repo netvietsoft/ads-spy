@@ -81,10 +81,14 @@ export interface StorefrontMeta { id: number | null; name: string | null; curren
 // Phát hiện Shopify ĐỘC LẬP với ShopHunter (giống "view-source"): meta.json trước (JSON meta có id/currency/
 // myshopify_domain — id CHÍNH LÀ shop_id Shopify); nếu meta.json fail → bắt marker Shopify trong HTML trang chủ.
 // Hỗ trợ nhận diện nâng cao: bắt [a-z0-9-]+\.myshopify\.com trong script bên thứ 3 và tự động dò subdomain e-commerce (shop.*, store.*).
-export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShopify: boolean; meta: StorefrontMeta | null; detectedDomain?: string }> {
+export async function detectShopifyStorefront(
+  shopUrl: string,
+  getFn?: (url: string, headers?: any) => Promise<{ status: number; body: string }>,
+): Promise<{ isShopify: boolean; meta: StorefrontMeta | null; detectedDomain?: string }> {
   const domain = normalizeDomain(shopUrl);
+  const get = getFn || shopifyHttp.get;
   try {
-    const res = await shopifyHttp.get(`https://${domain}/meta.json`, { 'user-agent': STOREFRONT_UA });
+    const res = await get(`https://${domain}/meta.json`, { 'user-agent': STOREFRONT_UA });
     if (res.status === 200) {
       const j = JSON.parse(res.body);
       if (j && (j.id != null || j.myshopify_domain)) {
@@ -104,7 +108,7 @@ export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShop
   } catch { /* thử marker HTML */ }
 
   try {
-    const res = await shopifyHttp.get(`https://${domain}/`, { 'user-agent': STOREFRONT_UA });
+    const res = await get(`https://${domain}/`, { 'user-agent': STOREFRONT_UA });
     if (res.status === 200) {
       const html = res.body;
 
@@ -135,7 +139,7 @@ export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShop
 
       if (candidateSubdomain && candidateSubdomain !== domain && candidateSubdomain !== `www.${domain}`) {
         try {
-          const subRes = await shopifyHttp.get(`https://${candidateSubdomain}/meta.json`, { 'user-agent': STOREFRONT_UA });
+          const subRes = await get(`https://${candidateSubdomain}/meta.json`, { 'user-agent': STOREFRONT_UA });
           if (subRes.status === 200) {
             const sj = JSON.parse(subRes.body);
             if (sj && (sj.id != null || sj.myshopify_domain)) {
@@ -176,7 +180,7 @@ export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShop
   if (!cleanDom.startsWith('shop.') && !cleanDom.startsWith('store.')) {
     const directShopSub = `shop.${cleanDom}`;
     try {
-      const subRes = await shopifyHttp.get(`https://${directShopSub}/meta.json`, { 'user-agent': STOREFRONT_UA });
+      const subRes = await get(`https://${directShopSub}/meta.json`, { 'user-agent': STOREFRONT_UA });
       if (subRes.status === 200) {
         const sj = JSON.parse(subRes.body);
         if (sj && (sj.id != null || sj.myshopify_domain)) {
@@ -193,7 +197,7 @@ export async function detectShopifyStorefront(shopUrl: string): Promise<{ isShop
           };
         }
       }
-    } catch { /* không có shop subdomain */ }
+    } catch { /* fallback probe thất bại */ }
   }
 
   return { isShopify: false, meta: null };

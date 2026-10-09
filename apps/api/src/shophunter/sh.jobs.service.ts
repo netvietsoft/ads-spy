@@ -63,16 +63,16 @@ const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   // batch 20 ≈ 50s/lô (2,6s/domain). daily 2000 ≈ đủ phủ 9.883 domain trong ~5 ngày mà không đập liên tục.
   affterms: { batch: 20, daily: 2000, paceMs: 3000, concurrency: 6, activeStart: 0, activeEnd: 24 },
   afflibrev: { batch: 20, daily: 500, paceMs: 1500, staleDays: 1, activeStart: 0, activeEnd: 24 },
-  bwrev: { batch: 20, daily: 2000, paceMs: 1500, staleDays: 1, activeStart: 0, activeEnd: 24 },
-  bwdns: { batch: 1000, daily: 50000, paceMs: 2000, activeStart: 0, activeEnd: 24 },
-  bwtraffic: { batch: 50, daily: 5000, paceMs: 3000, activeStart: 0, activeEnd: 24 },
-  bwdetect: { batch: 20, daily: 5000, paceMs: 1500, concurrency: 3, activeStart: 0, activeEnd: 24 },
-  bwterms: { batch: 20, daily: 2000, paceMs: 3000, concurrency: 6, activeStart: 0, activeEnd: 24 },
+  bwrev: { batch: 50, daily: 50000, paceMs: 1000, concurrency: 10, staleDays: 1, activeStart: 0, activeEnd: 24 },
+  bwdns: { batch: 2000, daily: 200000, paceMs: 1000, concurrency: 50, activeStart: 0, activeEnd: 24 },
+  bwtraffic: { batch: 50, daily: 50000, paceMs: 1500, activeStart: 0, activeEnd: 24 },
+  bwdetect: { batch: 50, daily: 50000, paceMs: 1000, concurrency: 10, activeStart: 0, activeEnd: 24 },
+  bwterms: { batch: 20, daily: 5000, paceMs: 2000, concurrency: 6, activeStart: 0, activeEnd: 24 },
 };
 // Kẹp an toàn khi chỉnh từ web (min,max). activeStart/End: 0–24 (0 & 24 = chạy 24/7). Hỗ trợ pool proxy lớn với concurrency tới 50 luồng.
 const CFG_BOUNDS: Record<string, [number, number]> = {
-  daily: [1, 1000000], perTick: [1, 2000], skipPct: [0, 100], delayMs: [0, 60000],
-  concurrency: [1, 50], batch: [1, 2000], paceMs: [0, 600000], activeStart: [0, 24], activeEnd: [0, 24], staleDays: [1, 90],
+  daily: [1, 1000000], perTick: [1, 5000], skipPct: [0, 100], delayMs: [0, 60000],
+  concurrency: [1, 50], batch: [1, 5000], paceMs: [0, 600000], activeStart: [0, 24], activeEnd: [0, 24], staleDays: [1, 90],
 };
 
 interface JobMem { running: boolean; lastRunAt: number | null; lastStatus: string | null; stats: Record<string, number>; }
@@ -362,7 +362,7 @@ export class ShJobsService implements OnModuleInit {
     const dk = this.dayKey('bwdns');
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwdns.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
     let r: Awaited<ReturnType<ShopifyBwService['dnsCheck']>>;
-    try { r = await this.bwSvc.dnsCheck(cfg.batch); }
+    try { r = await this.bwSvc.dnsCheck(cfg.batch, cfg.concurrency || 50); }
     catch (e) { this.mem.bwdns.lastStatus = 'error'; await this.mysql.appendJobLog('bwdns', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     await this.mysql.addDailyCount(dk, r.checked).catch(() => {});
     this.mem.bwdns.lastRunAt = Date.now();
@@ -386,7 +386,11 @@ export class ShJobsService implements OnModuleInit {
     await this.mysql.addDailyCount(dk, r.filled).catch(() => {});
     this.mem.bwtraffic.lastRunAt = Date.now();
     this.mem.bwtraffic.stats = { da_dien: r.filled, con_lai: r.remaining };
-    if (r.error) { this.mem.bwtraffic.lastStatus = 'blocked'; await this.mysql.appendJobLog('bwtraffic', 'warn', `Lỗi traffic: ${r.error}`).catch(() => {}); return { pace: BLOCK_MS }; }
+    if (r.error) {
+      this.mem.bwtraffic.lastStatus = 'warn';
+      await this.mysql.appendJobLog('bwtraffic', 'warn', `Lỗi traffic: ${r.error}`).catch(() => {});
+      return { pace: cfg.paceMs || 2000 };
+    }
     if (!r.filled && r.remaining === 0) { this.mem.bwtraffic.lastStatus = 'idle'; await this.mysql.appendJobLog('bwtraffic', 'info', 'Đã điền hết traffic cho các domain BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
     this.mem.bwtraffic.lastStatus = 'ok';
     await this.mysql.appendJobLog('bwtraffic', 'info', `Điền traffic +${r.filled} domain; còn ${r.remaining}`).catch(() => {});

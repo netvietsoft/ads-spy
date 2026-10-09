@@ -8,6 +8,11 @@
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
 
+- [x] **TASK-053**: Khắc phục triệt để hiệu suất quét và giải phóng các điểm nghẽn của 5 background jobs BuiltWith (`bwdns`, `bwtraffic`, `bwdetect`, `bwrev`, `bwterms`)
+  - **Mô tả**: Xử lý triệt để 5 điểm nghẽn: 1) Lọc DNS chuyển sang c-ares Resolver thuần UDP (8.8.8.8, 1.1.1.1) loại bỏ nghẽn threadpool libuv, lưu mốc thử để giải phóng vòng lặp vô tận 480 domain unknown, tăng tốc độ lên 2000 domain/lô ở 50 luồng. 2) Điền Traffic loại bỏ ngoại lệ 502 khi AITDK trả về dữ liệu rỗng cho các domain chưa có traffic, xoá bỏ hình phạt nghẽn 60s và cập nhật đúng mốc thử để duyệt mượt mà toàn bộ kho 700k domain. 3) Quét Affiliate nâng cấu hình lên batch 50, concurrency 10 luồng, tự động xoay và thử lại tới 3 proxy khác nhau khi gặp 429 hoặc Cloudflare bot-challenge. 4) Scan Doanh thu cào storefront meta.json an toàn qua proxy xoay, tránh bị Cloudflare chặn IP datacenter gây nhận diện nhầm non-shopify. 5) Cào nội quy sẵn sàng nhận luồng domain yes liên tục từ Quét affiliate.
+  - **Branch**: `agent/fixer/TASK-053-FIX-BUILTWITH-SCAN-EFFICIENCY`
+  - **Files**: `apps/api/src/afflib/afflib.dns.ts`, `apps/api/src/shopify-bw/shopify-bw.mysql.ts`, `apps/api/src/shopify-bw/shopify-bw.service.ts`, `apps/api/src/shophunter/shopify.client.ts`, `apps/api/src/traffic/traffic.service.ts`, `apps/api/src/shophunter/sh.jobs.service.ts`, `apps/api/src/shophunter/sh.jobs.shopify-bw.spec.ts`, `docs/handoff-2026-10-09-fix-builtwith-scanner-bottlenecks.md`
+
 - [x] **TASK-052**: Tích hợp bể proxy dùng chung từ Cài đặt, tự động xoay & thử lại chống chặn (429/Cloudflare) và tăng tốc độ scan BuiltWith 560k domain
   - **Mô tả**: Kết nối triệt để bể proxy chung trong Cài đặt (`sh_proxy`) vào toàn bộ background jobs và crawler BuiltWith (`bwdetect`, `bwrev`, `bwterms`, `bwtraffic`). Khắc phục lỗi wireProxy không nạp proxy khiến request bị `EPROXY_EMPTY` và fallback IP datacenter dẫn đến bị Cloudflare/Shopify chặn (`bi_chan: 16`). Bổ sung cơ chế xoay vòng và retry qua proxy khác khi gặp 429 / bot challenge. Mở rộng concurrency (lên tới 30-50 luồng), hỗ trợ song song cho `revScan`, nâng cấu hình batch và trần daily để quét nhanh kho 560k-700k domain mà không lo bị ban. Thêm nút truy cập nhanh Bể Proxy dùng chung trên giao diện `ShopifyBwPanel`.
   - **Branch**: `agent/backend/TASK-052`

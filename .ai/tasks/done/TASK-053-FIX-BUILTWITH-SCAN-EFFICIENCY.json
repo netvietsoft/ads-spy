@@ -1,0 +1,21 @@
+{
+  "task_id": "TASK-053",
+  "title": "Khắc phục triệt để hiệu suất quét và giải phóng các điểm nghẽn của 5 background jobs BuiltWith (bwdns, bwtraffic, bwdetect, bwrev, bwterms)",
+  "status": "done",
+  "owner": "Agent 7 - FIXER & Agent 2 - BACKEND",
+  "created": "2026-10-09T08:50:00+07:00",
+  "completed": "2026-10-09T08:58:00+07:00",
+  "files_allowed": [
+    "apps/api/src/afflib/afflib.dns.ts",
+    "apps/api/src/shopify-bw/shopify-bw.mysql.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.detect.ts",
+    "apps/api/src/traffic/traffic.service.ts",
+    "apps/api/src/shophunter/sh.jobs.service.ts",
+    "apps/api/src/shophunter/sh.service.ts",
+    "apps/api/src/shophunter/shopify.client.ts",
+    "apps/api/src/shophunter/sh.jobs.shopify-bw.spec.ts",
+    "docs/handoff-2026-10-09-fix-builtwith-scanner-bottlenecks.md"
+  ],
+  "description": "Xử lý triệt để 5 điểm nghẽn khiến 5 background jobs chạy không hiệu quả: 1) Lọc DNS nghẽn threadpool libuv và kẹt vòng lặp 480 domain chua_ro: chuyển sang c-ares resolver thuần UDP (8.8.8.8, 1.1.1.1), tăng concurrency, ghi nhận aff_last_try_at cho domain unknown để không quét lặp. 2) Điền Traffic ném exception khi 50 domain không có traffic dẫn đến block 60s và da_dien=0: sửa graceful return và đánh dấu traffic_tried_at. 3) Quét Affiliate bị_chan 13/20: nâng batch/concurrency, tăng cường cơ chế thử lại qua proxy khác trong bể, thêm log chi tiết khi thiếu proxy. 4) Scan Doanh thu không ra shopify do storefront detect đi qua IP trực tiếp của máy chủ: chuyển sang qua proxy xoay. 5) Cào nội quy sẵn sàng nhận dữ liệu khi Quét Affiliate tìm ra shop có chương trình affiliate."
+}

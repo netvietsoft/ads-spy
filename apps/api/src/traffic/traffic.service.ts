@@ -80,7 +80,7 @@ export class TrafficService {
       if (offset + BATCH_SIZE < normalized.length) await this.delay(2_000);
     }
 
-    if (!Object.keys(merged.traffic).length) {
+    if (!Object.keys(merged.traffic).length && normalized.length === 1 && !save) {
       throw new BadGatewayException('không trả về dữ liệu traffic');
     }
 
@@ -174,12 +174,8 @@ export class TrafficService {
           continue;
         }
         const result = this.parseSse(text);
-        if (Object.keys(result.traffic).length) {
-          if (proxy) this.consecutiveProxyFailures = 0;
-          return result;
-        }
-        if (proxy) this.markProxyFailed(proxy);
-        lastError = new Error('AITDK trả dữ liệu rỗng');
+        if (proxy) this.consecutiveProxyFailures = 0;
+        return result;
       } catch (error) {
         lastError = error;
         if (proxy) this.markProxyFailed(proxy);
