@@ -54,14 +54,14 @@ export class ShopifyBwController {
   }
 
   @Post('terms-scan')
-  async termsScan(@Body() b: { limit?: number }) {
-    const r = await this.svc.termsScan(Number(b?.limit) || 100);
+  async termsScan(@Body() b: { limit?: number; force?: boolean }) {
+    const r = await this.svc.termsScan(Number(b?.limit) || 100, !!b?.force);
     return { ok: true, ...r };
   }
 
   @Get('terms-remaining')
-  async termsRemaining() {
-    return { ok: true, remaining: await this.svc.termsRemaining() };
+  async termsRemaining(@Query('force') force?: string) {
+    return { ok: true, remaining: await this.svc.termsRemaining(force === 'true' || force === '1') };
   }
 
   @Post('detect/start')

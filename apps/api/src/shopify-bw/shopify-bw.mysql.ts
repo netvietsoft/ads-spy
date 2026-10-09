@@ -369,27 +369,31 @@ export class ShopifyBwMysql {
 
   private static readonly TERMS_RETRY_COOLDOWN_MS = 6 * 3600_000;
 
-  async nextTermsBatch(limit: number): Promise<string[]> {
+  async nextTermsBatch(limit: number, force = false): Promise<string[]> {
     await this.ensureTables();
     const pool = await this.sh.getPool();
+    const cutoff = force ? Date.now() + 1000 : Date.now() - ShopifyBwMysql.TERMS_RETRY_COOLDOWN_MS;
+    const maxTries = force ? 10 : 3;
     const [rows] = await pool.query(
       `SELECT sb.web FROM shopify_buildwith sb LEFT JOIN shopify_bw_terms t ON t.web = sb.web
-        WHERE sb.aff_status = 'yes' AND (sb.dns_ok IS NULL OR sb.dns_ok = 1)
-          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < 3 AND t.scanned_at < ?))
-        ORDER BY sb.rev_month DESC LIMIT ?`,
-      [Date.now() - ShopifyBwMysql.TERMS_RETRY_COOLDOWN_MS, Math.min(1000, Math.max(1, limit))],
+        WHERE sb.aff_status IN ('yes', 'app') AND (sb.dns_ok IS NULL OR sb.dns_ok = 1)
+          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < ? AND t.scanned_at < ?))
+        ORDER BY (t.web IS NULL) DESC, sb.rev_month DESC LIMIT ?`,
+      [maxTries, cutoff, Math.min(1000, Math.max(1, limit))],
     );
     return (rows as any[]).map((r) => r.web as string);
   }
 
-  async termsRemaining(): Promise<number> {
+  async termsRemaining(force = false): Promise<number> {
     await this.ensureTables();
     const pool = await this.sh.getPool();
+    const cutoff = force ? Date.now() + 1000 : Date.now() - ShopifyBwMysql.TERMS_RETRY_COOLDOWN_MS;
+    const maxTries = force ? 10 : 3;
     const [r] = await pool.query(
       `SELECT COUNT(*) n FROM shopify_buildwith sb LEFT JOIN shopify_bw_terms t ON t.web = sb.web
-        WHERE sb.aff_status = 'yes' AND (sb.dns_ok IS NULL OR sb.dns_ok = 1)
-          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < 3 AND t.scanned_at < ?))`,
-      [Date.now() - ShopifyBwMysql.TERMS_RETRY_COOLDOWN_MS],
+        WHERE sb.aff_status IN ('yes', 'app') AND (sb.dns_ok IS NULL OR sb.dns_ok = 1)
+          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < ? AND t.scanned_at < ?))`,
+      [maxTries, cutoff],
     );
     return Number((r as any[])[0].n) || 0;
   }

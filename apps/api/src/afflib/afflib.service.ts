@@ -321,8 +321,8 @@ export class AffLibService {
   //
   // Thứ tự tìm trang QUAN TRỌNG: đoán đường dẫn trước (rẻ, trúng 40%), thất bại mới đọc sitemap
   // (thêm 25%). Bỏ bước sitemap là mất hơn một phần ba độ phủ.
-  async termsScan(limit = 100): Promise<{ scanned: number; found: number; thin: number; notfound: number; error: number; remaining: number }> {
-    const webs = await this.db.nextTermsBatch(limit);
+  async termsScan(limit = 100, force = false): Promise<{ scanned: number; found: number; thin: number; notfound: number; error: number; remaining: number }> {
+    const webs = await this.db.nextTermsBatch(limit, force);
     const proxies = (await this.shDb.listProxiesFull(true).catch(() => []))
       .filter((r: any) => (r.type || 'http') === 'http')
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
@@ -344,7 +344,7 @@ export class AffLibService {
         }
       }),
     );
-    stat.remaining = await this.db.termsRemaining();
+    stat.remaining = await this.db.termsRemaining(force);
     return stat;
   }
 
@@ -415,8 +415,8 @@ export class AffLibService {
     }
   }
 
-  termsRemaining(): Promise<number> {
-    return this.db.termsRemaining();
+  termsRemaining(force = false): Promise<number> {
+    return this.db.termsRemaining(force);
   }
 
   // (A2) Điền hoa hồng/cookie/link/nền tảng cho CẢ KHO từ aff_program. Trước đây chỉ có bản chạy theo

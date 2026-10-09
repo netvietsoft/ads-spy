@@ -537,30 +537,36 @@ export class AffLibMysql {
   private static readonly TERMS_RETRY_COOLDOWN_MS = 6 * 3600_000;
 
   // Hàng đợi cào điều khoản: domain ĐÃ xác định có affiliate, DNS chưa chết, chưa quét (hoặc đã quá cooldown).
-  // `tries < 3` giữ đúng quy ước của kho: thử đủ 3 lần không ra thì thôi, khỏi tắc hàng đợi mãi ở lô đầu
-  // (cùng lý do đã có QUEUE_COND cho detect).
-  async nextTermsBatch(limit: number): Promise<string[]> {
+  // `tries < 3` giữ đúng quy ước của kho: thử đủ 3 lần không ra thì thôi, khỏi tắc hàng đợi mãi ở lô đầu.
+  // force=true khi người dùng bấm "Chạy ngay": bỏ qua cooldown 6h và cho phép thử lại (tries < 10).
+  async nextTermsBatch(limit: number, force = false): Promise<string[]> {
     await this.ensureTables();
     const pool = await this.sh.getPool();
+    const cutoff = force ? Date.now() + 1000 : Date.now() - AffLibMysql.TERMS_RETRY_COOLDOWN_MS;
+    const maxTries = force ? 10 : 3;
     const [rows] = await pool.query(
       `SELECT al.web FROM aff_library al LEFT JOIN aff_terms t ON t.web = al.web
-        WHERE al.aff_status = 'yes' AND (al.dns_ok IS NULL OR al.dns_ok = 1)
-          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < 3 AND t.scanned_at < ?))
-        ORDER BY al.rev_month DESC LIMIT ?`,
-      [Date.now() - AffLibMysql.TERMS_RETRY_COOLDOWN_MS, Math.min(1000, Math.max(1, limit))],
+        WHERE (al.aff_status IN ('yes', 'app') OR al.aff_status IS NULL)
+          AND (al.dns_ok IS NULL OR al.dns_ok = 1)
+          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < ? AND t.scanned_at < ?))
+        ORDER BY (t.web IS NULL) DESC, al.rev_month DESC LIMIT ?`,
+      [maxTries, cutoff, Math.min(1000, Math.max(1, limit))],
     );
     return (rows as any[]).map((r) => r.web as string);
   }
 
   // Còn bao nhiêu domain trong hàng đợi — để FE biết bấm tiếp hay đã xong.
-  async termsRemaining(): Promise<number> {
+  async termsRemaining(force = false): Promise<number> {
     await this.ensureTables();
     const pool = await this.sh.getPool();
+    const cutoff = force ? Date.now() + 1000 : Date.now() - AffLibMysql.TERMS_RETRY_COOLDOWN_MS;
+    const maxTries = force ? 10 : 3;
     const [r] = await pool.query(
       `SELECT COUNT(*) n FROM aff_library al LEFT JOIN aff_terms t ON t.web = al.web
-        WHERE al.aff_status = 'yes' AND (al.dns_ok IS NULL OR al.dns_ok = 1)
-          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < 3 AND t.scanned_at < ?))`,
-      [Date.now() - AffLibMysql.TERMS_RETRY_COOLDOWN_MS],
+        WHERE (al.aff_status IN ('yes', 'app') OR al.aff_status IS NULL)
+          AND (al.dns_ok IS NULL OR al.dns_ok = 1)
+          AND (t.web IS NULL OR (t.status <> 'ok' AND t.tries < ? AND t.scanned_at < ?))`,
+      [maxTries, cutoff],
     );
     return Number((r as any[])[0].n) || 0;
   }
@@ -598,17 +604,25 @@ export class AffLibMysql {
     // nên đây là cách nhanh nhất để nội dung cào được nhìn thấy ở mọi nơi mà không đổi cấu trúc bảng.
     // CHỈ ghi khi note đang TRỐNG: 22.837/36.241 dòng đã có note (do "Điền hoa hồng" lấy từ blurb của mạng)
     // và người dùng còn sửa tay được qua updateAffiliate — đè lên là xoá cả hai.
-    if (p.status === 'ok' && p.rules && p.rules.length) {
-      const num = [
-        p.commissionPct != null ? `${p.commissionPct}%` : '',
-        p.cookieDays != null ? `cookie ${p.cookieDays}d` : '',
-        p.payoutThreshold != null ? `payout $${p.payoutThreshold}` : '',
-      ].filter(Boolean).join(' · ');
-      const note = `${num ? `${num} — ` : ''}Nội quy: ${p.rules.map((r) => r.label).join(', ')}`.slice(0, 500);
-      await pool.query(
-        "UPDATE aff_library SET note = ?, updated_at = ? WHERE web = ? AND (note IS NULL OR TRIM(note) = '')",
-        [note, Date.now(), web],
-      );
+    // Nếu status='ok', bảo đảm cập nhật aff_status='yes' nếu trước đó đang NULL.
+    if (p.status === 'ok') {
+      if (p.rules && p.rules.length) {
+        const num = [
+          p.commissionPct != null ? `${p.commissionPct}%` : '',
+          p.cookieDays != null ? `cookie ${p.cookieDays}d` : '',
+          p.payoutThreshold != null ? `payout $${p.payoutThreshold}` : '',
+        ].filter(Boolean).join(' · ');
+        const note = `${num ? `${num} — ` : ''}Nội quy: ${p.rules.map((r) => r.label).join(', ')}`.slice(0, 500);
+        await pool.query(
+          "UPDATE aff_library SET note = ?, aff_status = IF(aff_status IS NULL, 'yes', aff_status), updated_at = ? WHERE web = ? AND (note IS NULL OR TRIM(note) = '')",
+          [note, Date.now(), web],
+        );
+      } else {
+        await pool.query(
+          "UPDATE aff_library SET aff_status = IF(aff_status IS NULL, 'yes', aff_status), updated_at = ? WHERE web = ?",
+          [Date.now(), web],
+        );
+      }
     }
   }
 

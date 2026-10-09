@@ -424,7 +424,7 @@ export class ShJobsService implements OnModuleInit {
     const dk = this.dayKey('bwterms');
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwterms.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
     let r: Awaited<ReturnType<ShopifyBwService['termsScan']>>;
-    try { r = await this.bwSvc.termsScan(cfg.batch); }
+    try { r = await this.bwSvc.termsScan(cfg.batch, force); }
     catch (e) { this.mem.bwterms.lastStatus = 'error'; await this.mysql.appendJobLog('bwterms', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     await this.mysql.addDailyCount(dk, r.scanned).catch(() => {});
     this.mem.bwterms.lastRunAt = Date.now();
@@ -470,7 +470,7 @@ export class ShJobsService implements OnModuleInit {
     const dk = this.dayKey('affterms');
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.affterms.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
     let r: Awaited<ReturnType<AffLibService['termsScan']>>;
-    try { r = await this.afflib.termsScan(cfg.batch); }
+    try { r = await this.afflib.termsScan(cfg.batch, force); }
     catch (e) { this.mem.affterms.lastStatus = 'error'; await this.mysql.appendJobLog('affterms', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     await this.mysql.addDailyCount(dk, r.scanned).catch(() => {});
     this.mem.affterms.lastRunAt = Date.now();
@@ -512,12 +512,12 @@ export class ShJobsService implements OnModuleInit {
     // FIX 4: wire onLog thật vào log job — trước đây discoverStep không nhận onLog nào nên 1 nguồn discovery
     // lỗi (429 subdomain.center...) không hiện ở đâu cả, không cách nào chẩn đoán từ web.
     const onDiscoverLog = (m: string) => { void this.mysql.appendJobLog('affdiscover', 'info', m).catch(() => {}); };
-    try { r = await this.affnet.discoverStep({ paceMs: cfg.paceMs }, onDiscoverLog); }
+    try { r = await this.affnet.discoverStep({ paceMs: cfg.paceMs }, onDiscoverLog, force); }
     catch (e) { this.mem.affdiscover.lastStatus = 'error'; await this.mysql.appendJobLog('affdiscover', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.affdiscover.lastRunAt = Date.now();
-    // net=null: hoặc chưa thêm net nào, hoặc mọi net đã bão hoà và đang trong cooldown ~24h (xem pickNetToPoll) —
+    // net=null: hoặc chưa thêm net nào, hoặc mọi net đã bão hoà và đang trong cooldown ~2h (xem pickNetToPoll) —
     // KHÔNG được kết luận "chưa thêm net" (dễ khiến operator tưởng net đã thêm bị mất). Idle 2', vô hại (không gọi API ngoài).
-    if (!r?.net) { this.mem.affdiscover.lastStatus = 'idle'; await this.mysql.appendJobLog('affdiscover', 'info', 'Không có net nào cần poll lúc này (chưa thêm net ở tab Affiliate Nets, hoặc mọi net đã bão hoà và đang chờ ~24h).').catch(() => {}); return { pace: IDLE_MS }; }
+    if (!r?.net) { this.mem.affdiscover.lastStatus = 'idle'; await this.mysql.appendJobLog('affdiscover', 'info', 'Không có net nào cần poll lúc này (chưa thêm net ở tab Affiliate Nets, hoặc mọi net đã bão hoà và đang chờ ~2h).').catch(() => {}); return { pace: IDLE_MS }; }
     await this.mysql.addDailyCount(dk, 1).catch(() => {});
     this.mem.affdiscover.stats = { thay: r.found || 0, moi: r.added || 0 };
     this.mem.affdiscover.lastStatus = 'ok';

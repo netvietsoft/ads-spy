@@ -335,10 +335,10 @@ export class AffnetService {
     return { imported, skipped };
   }
 
-  // 1 net/lượt, net có discover_polled_at cũ nhất (NULL trước).
-  async discoverStep(cfg: { paceMs: number }, onLog?: (m: string) => void): Promise<{ net: string | null; found: number; added: number }> {
+  // 1 net/lượt, net có discover_polled_at cũ nhất (NULL trước). force=true khi người dùng bấm "Chạy ngay"
+  async discoverStep(cfg: { paceMs: number }, onLog?: (m: string) => void, force = false): Promise<{ net: string | null; found: number; added: number }> {
     await this.db.ensureTables();
-    const net = await this.db.pickNetToPoll();
+    const net = await this.db.pickNetToPoll(force);
     if (!net) return { net: null, found: 0, added: 0 };
     const { hosts, failed } = await discoverNet(net.net, cfg.paceMs, onLog);
     const added = await this.db.upsertHosts(net.net, hosts);

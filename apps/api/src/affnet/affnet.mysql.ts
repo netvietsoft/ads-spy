@@ -52,8 +52,8 @@ const HOST_FILTERS: Record<string, string> = {
 export const DRY_THRESHOLD = 5;
 // Số lượt "no hoà" LIÊN TIẾP để coi net đã bão hoà.
 export const DRY_ROUNDS_TO_SATURATE = 3;
-// Net đã bão hoà → giãn poll xuống ~1 lần/ngày (thay vì mỗi vài giây) để đỡ đốt quota + tránh 429 subdomain.center.
-export const SATURATED_COOLDOWN_MS = 24 * 3600 * 1000;
+// Net đã bão hoà → giãn poll xuống ~2 giờ (thay vì 24h) để tiếp tục poll tích luỹ mẫu ngẫu nhiên mà không spam.
+export const SATURATED_COOLDOWN_MS = 2 * 3600 * 1000;
 
 // Điều kiện net ĐỦ ĐIỀU KIỆN được poll — MỘT NGUỒN CHÂN LÝ DUY NHẤT, dùng ở CẢ pickNetToPoll() lẫn
 // affnet.mysql.spec.ts (test đọc trực tiếp hằng số này, không copy tay). Tham số bind theo đúng thứ tự
@@ -348,20 +348,26 @@ export class AffnetMysql {
   // tiếp đến chưa poll lần nào (NULL), rồi tới poll cũ nhất.
   // Bỏ qua net ĐÃ BÃO HOÀ (dry_rounds >= DRY_ROUNDS_TO_SATURATE) MÀ vừa poll gần đây (còn trong cooldown) —
   // net chưa poll lần nào vẫn LUÔN được chọn dù dry_rounds cao (không lẽ xảy ra, nhưng không loại trừ).
-  async pickNetToPoll(): Promise<AffNet | null> {
+  async pickNetToPoll(force = false): Promise<AffNet | null> {
     const pool = await this.sh.getPool();
     const cutoff = Date.now() - SATURATED_COOLDOWN_MS; // tính ở JS, bind vào query — không nội suy vào chuỗi SQL
+    const eligibleCond = force ? '1=1' : NET_ELIGIBLE_SQL;
+    const params = force ? [] : [DRY_ROUNDS_TO_SATURATE, cutoff];
     const [rows] = await pool.query(
       `SELECT net, platform, enabled, note, discover_polled_at, discover_polls, discover_last_new,
               fake_len, fake_hash, fake_checked_at
        FROM aff_net WHERE enabled = 1
          -- Net kiểu API/directory không có subdomain để dò → discovery vô nghĩa, bỏ hẳn khỏi vòng poll.
          AND ${NET_POLLABLE_PLATFORM_SQL}
-         AND ${NET_ELIGIBLE_SQL}
+         AND ${eligibleCond}
        ORDER BY (discover_polled_at <=> 0) DESC, discover_polled_at IS NOT NULL, discover_polled_at LIMIT 1`,
-      [DRY_ROUNDS_TO_SATURATE, cutoff],
+      params,
     );
     const r = (rows as any[])[0];
+    if (r && force) {
+      // Khi bấm "Chạy ngay", reset dry_rounds để net được tiếp tục poll bình thường
+      await pool.query('UPDATE aff_net SET dry_rounds = 0 WHERE net = ?', [r.net]).catch(() => {});
+    }
     return r ? rowToAffNet(r) : null;
   }
 

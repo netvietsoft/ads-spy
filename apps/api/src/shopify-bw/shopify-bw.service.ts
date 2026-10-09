@@ -283,9 +283,9 @@ export class ShopifyBwService {
     return this.db.prefillFromProgramBulk();
   }
 
-  async termsScan(limit = 100): Promise<{ scanned: number; found: number; thin: number; notfound: number; error: number; remaining: number }> {
+  async termsScan(limit = 100, force = false): Promise<{ scanned: number; found: number; thin: number; notfound: number; error: number; remaining: number }> {
     await this.db.ensureTables();
-    const webs = await this.db.nextTermsBatch(limit);
+    const webs = await this.db.nextTermsBatch(limit, force);
     const proxies = (await this.shDb.listProxiesFull(true).catch(() => []))
       .filter((r: any) => (r.type || 'http') === 'http')
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
@@ -305,7 +305,7 @@ export class ShopifyBwService {
         }
       }),
     );
-    stat.remaining = await this.db.termsRemaining();
+    stat.remaining = await this.db.termsRemaining(force);
     return stat;
   }
 
@@ -370,8 +370,8 @@ export class ShopifyBwService {
     }
   }
 
-  termsRemaining(): Promise<number> {
-    return this.db.termsRemaining();
+  termsRemaining(force = false): Promise<number> {
+    return this.db.termsRemaining(force);
   }
 
   detectStart() {
