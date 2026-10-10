@@ -2114,6 +2114,14 @@ export class ShMysql implements OnModuleInit {
     await this.pool!.query('DELETE FROM sh_proxy WHERE id = ?', [id]);
   }
 
+  async deleteProxies(ids: number[]): Promise<number> {
+    await this.ensureReady();
+    const cleanIds = (ids || []).map((x) => Number(x)).filter((x) => Number.isInteger(x) && x > 0);
+    if (!cleanIds.length) return 0;
+    const [res] = await this.pool!.query('DELETE FROM sh_proxy WHERE id IN (?)', [cleanIds]);
+    return (res as any)?.affectedRows || 0;
+  }
+
   async setProxyStatus(id: number, status: string, pingMs: number | null): Promise<void> {
     await this.ensureReady();
     await this.pool!.query('UPDATE sh_proxy SET status = ?, ping_ms = ?, checked_at = ? WHERE id = ?', [status, pingMs, Date.now(), id]);

@@ -1,0 +1,16 @@
+{
+  "task_id": "TASK-062",
+  "title": "Proxy crawler Shopify: thêm checkbox và chức năng xóa hàng loạt proxy chết (die)",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND & Agent 3 - FRONTEND",
+  "created": "2026-10-10T16:45:00+07:00",
+  "completed": "2026-10-10T16:50:00+07:00",
+  "files_changed": [
+    "apps/api/src/shophunter/sh.mysql.ts",
+    "apps/api/src/shophunter/sh.service.ts",
+    "apps/api/src/shophunter/sh.controller.ts",
+    "apps/web/app/api.ts",
+    "apps/web/app/components/ProxyPanel.tsx"
+  ],
+  "summary": "1) Thêm backend endpoint DELETE /api/sh/proxies hỗ trợ xóa hàng loạt theo mảng id; 2) Thêm shDeleteProxies vào api.ts; 3) Thêm cột checkbox chọn từng dòng và checkbox chọn tất cả ở thead trong bảng Proxy (và checkbox trên mobile card); 4) Thêm nút 'Chọn Die (count)' và nút 'Xóa đã chọn (count)' kèm xác nhận an toàn; 5) Thêm nút 1-click 'Xóa toàn bộ Die (count)' để dọn dẹp tức thì toàn bộ proxy chết."
+}

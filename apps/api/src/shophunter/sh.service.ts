@@ -704,6 +704,7 @@ export class ShService {
     return this.mysql.updateProxy(id, fields);
   }
   deleteProxy(id: number) { return this.mysql.deleteProxy(id); }
+  deleteProxies(ids: number[]) { return this.mysql.deleteProxies(ids); }
   async testProxy(id: number) {
     const p = await this.mysql.getProxyById(id);
     if (!p) return { id, live: false, error: 'not_found' };

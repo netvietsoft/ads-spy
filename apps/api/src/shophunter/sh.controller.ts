@@ -135,6 +135,21 @@ export class ShController {
   @Patch('sh/proxies/:id')
   updateProxy(@Param('id') id: string, @Body() body: any) { return this.svc.updateProxy(Number(id), body || {}); }
 
+  @Delete('sh/proxies')
+  async deleteProxies(@Body() body: { ids?: number[] }, @Query('ids') queryIds?: string) {
+    let ids: number[] = [];
+    if (Array.isArray(body?.ids)) {
+      ids = body.ids;
+    } else if (queryIds) {
+      ids = queryIds.split(',').map((x) => Number(x.trim())).filter((x) => Number.isInteger(x) && x > 0);
+    }
+    if (!ids.length) {
+      throw new BadRequestException('Thiếu danh sách id proxy cần xóa.');
+    }
+    const count = await this.svc.deleteProxies(ids);
+    return { ok: true, count };
+  }
+
   @Delete('sh/proxies/:id')
   deleteProxy(@Param('id') id: string) { return this.svc.deleteProxy(Number(id)); }
 

@@ -514,6 +514,13 @@ export async function shUpdateProxy(id: number, fields: Record<string, unknown>)
 export async function shDeleteProxy(id: number): Promise<{ ok?: boolean }> {
   return jsonOrThrow(await fetch(`${API}/api/sh/proxies/${id}`, { method: 'DELETE' }));
 }
+export async function shDeleteProxies(ids: number[]): Promise<{ ok?: boolean; count?: number }> {
+  return jsonOrThrow(await fetch(`${API}/api/sh/proxies`, {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  }));
+}
 export async function shExplore(
   type: 'shops' | 'products',
   params: { sort?: string; q?: string; from?: number; categories?: string; filters?: Record<string, { gte: number | string | null; lte: number | string | null }>; lists?: Record<string, string[]> } = {},
