@@ -1,12 +1,38 @@
 # BẢNG TIẾN ĐỘ NHIỆM VỤ (TODOS.md)
 
-> **Cập nhật lần cuối**: 2026-09-23 21:36:00 (GMT+7)  
+> **Cập nhật lần cuối**: 2026-10-10 17:45:00 (GMT+7)  
 > **Dự án**: Google Ads Spy & SaaS Intelligence Platform  
 > **Nguồn trạng thái**: `.ai/tasks/` & `.ai/state.json`
 
 ---
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
+
+- [x] **TASK-062**: Proxy crawler Shopify: thêm checkbox và chức năng xóa hàng loạt proxy chết (die)
+  - **Mô tả**: 1) Bổ sung endpoint backend `DELETE /api/sh/proxies` hỗ trợ xóa hàng loạt theo mảng id trong 1 câu SQL `DELETE WHERE id IN (?)`. 2) Thêm client API `shDeleteProxies`. 3) Thêm ô checkbox riêng `Chọn xóa` ở tiêu đề bảng và từng dòng proxy; thêm nút `☑️ Tick chọn tất cả`, nút `💀 Chọn tất cả Die`, nút `🗑️ Xóa đã chọn` (màu đỏ) và nút `🗑️ Xóa toàn bộ proxy Die` (1-click dọn sạch proxy chết). Đổi tên cột `Bật` thành `Bật crawler` để tránh nhầm lẫn.
+  - **Branch**: `main`
+  - **Files**: `apps/api/src/shophunter/sh.mysql.ts`, `apps/api/src/shophunter/sh.service.ts`, `apps/api/src/shophunter/sh.controller.ts`, `apps/web/app/api.ts`, `apps/web/app/components/ProxyPanel.tsx`, `Docs/handoff-2026-10-10-proxy-bulk-delete-dead.md`
+  - **Tài liệu**: [`Docs/handoff-2026-10-10-proxy-bulk-delete-dead.md`](Docs/handoff-2026-10-10-proxy-bulk-delete-dead.md)
+
+- [x] **TASK-061**: Fix AITDK batch timeout aborts, reduce batch to 5, and enable single-domain fallback on abort
+  - **Branch**: `main`
+  - **Files**: `apps/api/src/traffic/traffic.service.ts`
+
+- [x] **TASK-060**: Fix invalid URL redirect location in proxy client
+  - **Branch**: `main`
+  - **Files**: `apps/api/src/shophunter/shopify.proxy-get.ts`
+
+- [x] **TASK-059**: Fix AITDK 429 rate limit and pacing
+  - **Branch**: `main`
+  - **Files**: `apps/api/src/traffic/traffic.service.ts`
+
+- [x] **TASK-058**: Fix AITDK poison pills and traffic tried
+  - **Branch**: `main`
+  - **Files**: `apps/api/src/traffic/traffic.service.ts`
+
+- [x] **TASK-057**: Fix Shopify 429 rate limit backoff and AITDK abort
+  - **Branch**: `main`
+  - **Files**: `apps/api/src/traffic/traffic.service.ts`, `apps/api/src/shophunter/shopify.client.ts`
 
 - [x] **TASK-054**: Khắc phục triệt để lỗi 'This operation was aborted' ở job bwtraffic: Direct API first cho AITDK, giảm batch chunk 25 domain, loại bỏ markTrafficTried khi gặp lỗi mạng và phục hồi các domain bị skip oan
   - **Mô tả**: 1) Ưu tiên gọi Direct API trước cho AITDK (API chính thức có SECRET_KEY) với độ trễ siêu nhanh (1.5 - 3s) thay vì bắt buộc đi qua 3 proxy cào web với timeout ngắn 6s gây chu kỳ abort liên tục 24s. Chỉ fallback proxy khi gặp lỗi mạng hoặc rate limit 429. 2) Giảm BATCH_SIZE chunk xuống 25 domain để AITDK phản hồi tức thì và không chạm ngưỡng timeout. 3) Nâng timeout an toàn (DIRECT 25s, PROXY 15s). 4) Loại bỏ markTrafficTried trong catch của fillTrafficFor để tránh mất domain khi gặp lỗi mạng/timeout. 5) Tự động phục hồi các domain bị đánh dấu tried nhầm trước đó qua `resetFailedTrafficTried()`.

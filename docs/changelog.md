@@ -4,6 +4,8 @@
 
 ## Điểm nổi bật gần đây (mới nhất ở trên)
 
+- **2026-10-10 — Proxy Crawler Shopify: Thêm Tick Box & Xóa Hàng Loạt Proxy Chết (TASK-062):**
+  Thêm ô checkbox riêng `Chọn xóa` ở tiêu đề bảng và từng dòng proxy; thêm nút `☑️ Tick chọn tất cả`, nút `💀 Chọn tất cả Die`, nút `🗑️ Xóa đã chọn` (màu đỏ) và nút `🗑️ Xóa toàn bộ proxy Die` (1-click dọn sạch proxy chết). Đổi tên cột `Bật` thành `Bật crawler` để tránh nhầm lẫn. Bổ sung backend endpoint `DELETE /api/sh/proxies` xóa hàng loạt trong 1 câu SQL `DELETE WHERE id IN (?)`. Chi tiết: [`handoff-2026-10-10-proxy-bulk-delete-dead.md`](handoff-2026-10-10-proxy-bulk-delete-dead.md).
 - **2026-10-08 — Menu /shopify-buildwith & Database riêng `shopify_buildwith` (Kho 560k domain BuiltWith):**
   Thêm menu và route `/shopify-buildwith` có đầy đủ tính năng tương tự `/afflibrary`, tách biệt hoàn toàn về cơ sở dữ liệu để tránh làm chậm hoặc ô nhiễm kho affiliate hiện tại. Tạo bảng MySQL `shopify_buildwith` và `shopify_bw_terms` với 8 index tối ưu, backend module `ShopifyBwModule` (`/api/shopify-bw/*`), cơ chế nạp stream siêu tốc trực tiếp từ file CSV trên server `Shopify_-_2026-10-07_verified_shopify.csv` (118.6 MB, 560.200 domain). Chi tiết: [`handoff-2026-10-08-shopify-buildwith-panel.md`](handoff-2026-10-08-shopify-buildwith-panel.md).
 - **2026-09-11 — Track Shopify: Lưu domain vào Local DB `sh_shop` + Bóc tách hiển thị doanh thu Lịch sử quét 10 cột:**

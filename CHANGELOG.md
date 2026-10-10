@@ -4,6 +4,26 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-10-10 — Proxy Crawler Shopify: Thêm Tick Box & Xóa Hàng Loạt Proxy Chết (TASK-062)
+
+- **Backend Bulk Deletion Endpoint (`DELETE /api/sh/proxies`)**:
+  - Bổ sung phương thức `deleteProxies(ids: number[])` trong `ShMysql` và `ShService`, thực thi câu query duy nhất `DELETE FROM sh_proxy WHERE id IN (?)` để dọn sạch hàng loạt proxy theo danh sách ID chỉ trong vài mili-giây.
+  - Mở route `@Delete('sh/proxies')` trong `ShController` hỗ trợ nhận mảng `ids` qua body JSON hoặc query string.
+- **Client API & Giao diện Quản lý Proxy (`ProxyPanel.tsx`)**:
+  - Thêm client helper `shDeleteProxies(ids: number[])` trong `apps/web/app/api.ts`.
+  - Cung cấp ô checkbox kèm nhãn **`Chọn xóa`** ở tiêu đề bảng để tick chọn toàn bộ danh sách (hỗ trợ `indeterminate`).
+  - Checkbox độc lập cho từng dòng proxy và từng thẻ trên mobile card, highlight màu nền cho các dòng đang được chọn.
+  - Đổi tên cột `Bật` thành **`Bật crawler`** để tránh người dùng nhầm lẫn với checkbox chọn để xóa.
+  - Bổ sung các nút hành động hàng loạt trên Toolbar:
+    - `☑️ Tick chọn tất cả ({list.length})` / `☒ Bỏ chọn tất cả`: Bật/tắt chọn nhanh tất cả dòng.
+    - `💀 Chọn tất cả Die ({deadProxies.length})`: 1-click tự động tìm và tick toàn bộ proxy có trạng thái Die.
+    - `🗑️ Xóa đã chọn ({sel.size})`: Nút màu đỏ nổi bật, luôn hiển thị và kích hoạt khi có proxy được chọn kèm popup xác nhận trước khi xóa.
+    - `🗑️ Xóa toàn bộ proxy Die ({deadProxies.length})`: 1-click dọn dẹp sạch toàn bộ proxy chết ngay lập tức mà không cần tick chọn thủ công.
+  - Thêm thanh thống kê trực quan: tổng số lượng, số proxy Live, Die, Chưa test và số lượng đang chọn.
+  - Tài liệu chi tiết: [`Docs/handoff-2026-10-10-proxy-bulk-delete-dead.md`](Docs/handoff-2026-10-10-proxy-bulk-delete-dead.md).
+
+---
+
 ## 2026-10-09 — Khắc Phục Triệt Để Hiệu Suất & Điểm Nghẽn 5 Background Jobs BuiltWith (TASK-053)
 
 - **Giải phóng điểm nghẽn Lọc DNS (`bwdns`) — Nâng cấp c-ares Resolver**:

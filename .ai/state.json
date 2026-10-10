@@ -1,8 +1,44 @@
 {
-  "updated_at": "2026-10-09T10:05:00+07:00",
+  "updated_at": "2026-10-10T17:45:00+07:00",
   "project": "Google Ads Spy & SaaS Intelligence Platform",
   "active_task": null,
   "recent_tasks": [
+    {
+      "id": "TASK-062",
+      "title": "Proxy crawler Shopify: thêm checkbox và chức năng xóa hàng loạt proxy chết (die)",
+      "status": "done",
+      "completed_at": "2026-10-10T17:45:00+07:00"
+    },
+    {
+      "id": "TASK-061",
+      "title": "Fix AITDK batch timeout aborts, reduce batch to 5, and enable single-domain fallback on abort",
+      "status": "done",
+      "completed_at": "2026-10-10T14:30:00+07:00"
+    },
+    {
+      "id": "TASK-060",
+      "title": "Fix invalid URL redirect location in proxy client",
+      "status": "done",
+      "completed_at": "2026-10-10T11:50:00+07:00"
+    },
+    {
+      "id": "TASK-059",
+      "title": "Fix AITDK 429 rate limit and pacing",
+      "status": "done",
+      "completed_at": "2026-10-10T11:20:00+07:00"
+    },
+    {
+      "id": "TASK-058",
+      "title": "Fix AITDK poison pills and traffic tried",
+      "status": "done",
+      "completed_at": "2026-10-09T20:30:00+07:00"
+    },
+    {
+      "id": "TASK-057",
+      "title": "Fix Shopify 429 rate limit backoff and AITDK abort",
+      "status": "done",
+      "completed_at": "2026-10-09T19:50:00+07:00"
+    },
     {
       "id": "TASK-054",
       "title": "Khắc phục triệt để lỗi 'This operation was aborted' ở job bwtraffic: Direct API first cho AITDK, giảm batch chunk 25 domain, loại bỏ markTrafficTried khi gặp lỗi mạng và phục hồi các domain bị skip oan",
