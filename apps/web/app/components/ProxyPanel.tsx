@@ -131,7 +131,8 @@ export function ProxyPanel() {
   const liveProxies = list.filter((p) => p.status === 'live');
   const untestedProxies = list.filter((p) => !p.status);
 
-  const selectDead = () => {
+  // Chọn tất cả proxy chết
+  const selectAllDead = () => {
     if (!deadProxies.length) {
       setMsg('Không có proxy nào có trạng thái Die.');
       return;
@@ -144,7 +145,7 @@ export function ProxyPanel() {
     setSel(new Set());
   };
 
-  // Bulk deletion
+  // Xóa danh sách proxy đã chọn
   const bulkDelete = async () => {
     const ids = Array.from(sel);
     if (!ids.length) return;
@@ -164,6 +165,7 @@ export function ProxyPanel() {
     setBusy(false);
   };
 
+  // 1-click xóa sạch toàn bộ proxy Die
   const deleteDead = async () => {
     if (!deadProxies.length) {
       setMsg('Không có proxy nào có trạng thái Die.');
@@ -206,7 +208,7 @@ export function ProxyPanel() {
   };
 
   return (
-    <div style={{ maxWidth: 960 }}>
+    <div style={{ maxWidth: 980 }}>
       <h3 style={{ margin: '4px 0' }}>Proxy — crawler Shopify</h3>
       <p style={{ fontSize: 13, opacity: 0.7 }}>
         Dán mỗi dòng 1 proxy: <code>host:port:user:pass</code>, <code>host:port</code>, hoặc{' '}
@@ -221,13 +223,13 @@ export function ProxyPanel() {
         style={{ width: '100%', fontFamily: 'monospace', fontSize: 13, boxSizing: 'border-box' }}
       />
 
-      {/* Toolbar */}
+      {/* Toolbar chính */}
       <div
         style={{
           display: 'flex',
           gap: 8,
           alignItems: 'center',
-          margin: '8px 0',
+          margin: '10px 0',
           flexWrap: 'wrap',
         }}
       >
@@ -238,90 +240,102 @@ export function ProxyPanel() {
           Test tất cả ({list.length})
         </button>
 
-        {/* Nút tác vụ hàng loạt */}
-        <div
-          style={{
-            display: 'inline-flex',
-            gap: 6,
-            alignItems: 'center',
-            marginLeft: 'auto',
-            flexWrap: 'wrap',
-          }}
-        >
-          {deadProxies.length > 0 && (
+        {/* Nút Tick chọn tất cả */}
+        {list.length > 0 && (
+          <button
+            type="button"
+            className="srcbtn"
+            disabled={busy}
+            onClick={toggleAll}
+            title={isAllSelected ? 'Bỏ chọn tất cả các dòng' : 'Tích chọn tất cả các dòng proxy'}
+            style={{ fontWeight: 600 }}
+          >
+            {isAllSelected ? '☒ Bỏ chọn tất cả' : `☑️ Tick chọn tất cả (${list.length})`}
+          </button>
+        )}
+
+        {/* Nút Tick chọn tất cả proxy Die */}
+        {deadProxies.length > 0 && (
+          <button
+            type="button"
+            className="srcbtn"
+            disabled={busy}
+            onClick={selectAllDead}
+            title="Tích chọn tất cả các proxy đang có trạng thái Die"
+            style={{
+              fontWeight: 600,
+              color: '#e0384f',
+              borderColor: 'color-mix(in srgb, #e0384f 40%, var(--border))',
+            }}
+          >
+            💀 Chọn tất cả Die ({deadProxies.length})
+          </button>
+        )}
+
+        {/* Nút Xóa các proxy đã chọn */}
+        {sel.size > 0 && (
+          <>
             <button
               type="button"
               className="srcbtn"
               disabled={busy}
-              onClick={selectDead}
-              title="Tích chọn tất cả các dòng proxy Die"
-              style={{ fontSize: 13, padding: '7px 12px' }}
-            >
-              Chọn Die ({deadProxies.length})
-            </button>
-          )}
-
-          {sel.size > 0 && (
-            <>
-              <button
-                type="button"
-                className="srcbtn"
-                disabled={busy}
-                onClick={clearSel}
-                title="Bỏ chọn tất cả"
-                style={{ fontSize: 13, padding: '7px 12px' }}
-              >
-                Bỏ chọn
-              </button>
-              <button
-                type="button"
-                className="srcbtn"
-                disabled={busy}
-                onClick={bulkDelete}
-                style={{
-                  fontSize: 13,
-                  padding: '7px 12px',
-                  color: 'var(--danger)',
-                  borderColor: 'color-mix(in srgb, var(--danger) 50%, var(--border))',
-                  fontWeight: 600,
-                }}
-              >
-                🗑️ Xóa đã chọn ({sel.size})
-              </button>
-            </>
-          )}
-
-          {deadProxies.length > 0 && sel.size === 0 && (
-            <button
-              type="button"
-              className="srcbtn"
-              disabled={busy}
-              onClick={deleteDead}
+              onClick={bulkDelete}
               style={{
-                fontSize: 13,
-                padding: '7px 12px',
-                color: 'var(--danger)',
-                borderColor: 'color-mix(in srgb, var(--danger) 50%, var(--border))',
-                fontWeight: 600,
+                background: '#e0384f',
+                color: '#fff',
+                borderColor: '#e0384f',
+                fontWeight: 700,
+                cursor: 'pointer',
               }}
-              title="Xóa nhanh tất cả proxy Die mà không cần tích chọn thủ công"
+              title="Xóa tất cả các proxy đang được tích chọn"
             >
-              🗑️ Xóa toàn bộ Die ({deadProxies.length})
+              🗑️ Xóa đã chọn ({sel.size})
             </button>
-          )}
-        </div>
+            <button
+              type="button"
+              className="srcbtn"
+              disabled={busy}
+              onClick={clearSel}
+              title="Bỏ chọn các dòng đã tích"
+            >
+              Bỏ chọn ({sel.size})
+            </button>
+          </>
+        )}
+
+        {/* Nút 1-click: Xóa toàn bộ proxy Die nếu chưa tích chọn dòng nào */}
+        {deadProxies.length > 0 && sel.size === 0 && (
+          <button
+            type="button"
+            className="srcbtn"
+            disabled={busy}
+            onClick={deleteDead}
+            style={{
+              color: '#e0384f',
+              borderColor: 'color-mix(in srgb, #e0384f 50%, var(--border))',
+              fontWeight: 600,
+              marginLeft: 'auto',
+            }}
+            title="Bấm để xóa sạch ngay lập tức toàn bộ proxy Die hiện tại"
+          >
+            🗑️ Xóa toàn bộ proxy Die ({deadProxies.length})
+          </button>
+        )}
       </div>
 
-      {/* Thống kê & thông báo */}
+      {/* Dòng tóm tắt thống kê & trạng thái */}
       <div
         style={{
           display: 'flex',
           gap: 12,
           alignItems: 'center',
           fontSize: 13,
-          margin: '8px 0 12px',
+          margin: '8px 0 14px',
+          padding: '6px 10px',
+          background: 'var(--panel-2, rgba(255,255,255,0.04))',
+          borderRadius: 8,
+          border: '1px solid var(--border)',
           flexWrap: 'wrap',
-          opacity: 0.9,
         }}
       >
         <span>
@@ -346,12 +360,12 @@ export function ProxyPanel() {
         {sel.size > 0 && (
           <>
             <span>·</span>
-            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
-              Đã chọn: {sel.size}/{list.length}
+            <span style={{ color: 'var(--accent)', fontWeight: 700 }}>
+              Đang chọn: {sel.size} / {list.length} proxy
             </span>
           </>
         )}
-        {msg && <span style={{ marginLeft: 6, fontStyle: 'italic' }}>— {msg}</span>}
+        {msg && <span style={{ marginLeft: 'auto', fontStyle: 'italic', color: 'var(--accent)' }}>{msg}</span>}
       </div>
 
       {isMobile ? (
@@ -394,14 +408,14 @@ export function ProxyPanel() {
                       type="checkbox"
                       checked={isChecked}
                       onChange={() => toggleSel(p.id)}
-                      style={{ cursor: 'pointer', width: 16, height: 16 }}
+                      style={{ cursor: 'pointer', width: 18, height: 18 }}
                     />
                     <span
                       style={{
                         fontFamily: 'monospace',
                         fontSize: 13,
                         overflowWrap: 'anywhere',
-                        fontWeight: isChecked ? 600 : 400,
+                        fontWeight: isChecked ? 700 : 400,
                       }}
                     >
                       {i + 1}. {p.host}:{p.port}
@@ -456,17 +470,28 @@ export function ProxyPanel() {
         <table className="localtbl">
           <thead>
             <tr>
-              <th style={{ width: 36, textAlign: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={isAllSelected}
-                  ref={(el) => {
-                    if (el) el.indeterminate = hasPartialSelected;
+              <th style={{ width: 110, whiteSpace: 'nowrap' }}>
+                <label
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    cursor: 'pointer',
+                    fontWeight: 600,
                   }}
-                  onChange={toggleAll}
-                  title={isAllSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
-                  style={{ cursor: 'pointer', width: 15, height: 15 }}
-                />
+                  title={isAllSelected ? 'Bỏ chọn tất cả' : 'Tích chọn tất cả'}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = hasPartialSelected;
+                    }}
+                    onChange={toggleAll}
+                    style={{ cursor: 'pointer', width: 16, height: 16 }}
+                  />
+                  <span>Tick all</span>
+                </label>
               </th>
               <th>#</th>
               <th>Server / IP</th>
@@ -488,13 +513,23 @@ export function ProxyPanel() {
                       : undefined
                   }
                 >
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => toggleSel(p.id)}
-                      style={{ cursor: 'pointer', width: 15, height: 15 }}
-                    />
+                  <td>
+                    <label
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '100%',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleSel(p.id)}
+                        style={{ cursor: 'pointer', width: 16, height: 16 }}
+                      />
+                    </label>
                   </td>
                   <td>{i + 1}</td>
                   <td style={{ fontFamily: 'monospace' }}>
