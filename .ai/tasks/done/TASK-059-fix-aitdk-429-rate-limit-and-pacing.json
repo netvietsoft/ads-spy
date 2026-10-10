@@ -1,0 +1,12 @@
+{
+  "task_id": "TASK-059",
+  "title": "Fix AITDK 429 rate limit handling, add backoff retry, eliminate toxic single-domain fallback on 429, and optimize batch size and pacing",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND & Agent 7 - FIXER",
+  "created": "2026-10-10T11:00:00+07:00",
+  "completed": "2026-10-10T11:05:00+07:00",
+  "files_changed": [
+    "apps/api/src/traffic/traffic.service.ts"
+  ],
+  "summary": "1) In fetchBatch, retry on HTTP 429 directly with backoff (up to 2 retries, 3.5s/7s or Retry-After header) instead of dropping the connection; 2) Ensure directError is always assigned with HTTP 429 details so error messages are informative and never swallowed into generic 'Không gọi được AITDK'; 3) In search(), detect 429 Rate Limit and pause 8s without triggering single-domain fallback storms (preventing rate limit amplification); 4) Restore BATCH_SIZE to 10 domains (reducing request count by 50% for 50-domain jobs); 5) Add INTER_BATCH_DELAY_MS of 2500ms to stay comfortably under AITDK rate limits."
+}

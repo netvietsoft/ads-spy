@@ -14,15 +14,16 @@ interface ProxyState {
 
 const BASE_URL = 'https://wapi.aitdk.com';
 const VERSION = '2.7.0';
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 10;
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_PROXY_ATTEMPTS = 3;
 const PROXY_TIMEOUT_MS = 10_000;
-// 30s timeout cho kết nối trực tiếp tới AITDK. Với chunk nhỏ 5 domain, AITDK chỉ mất ~1.5 - 2.5s,
+// 30s timeout cho kết nối trực tiếp tới AITDK. Với chunk 10 domain, AITDK chỉ mất ~1.5 - 2.5s,
 // biên 30s đảm bảo không bao giờ bị abort oan ngay cả khi AITDK bận tải.
 const DIRECT_TIMEOUT_MS = 30_000;
 const SINGLE_TIMEOUT_MS = 8_000;
 const CIRCUIT_TRIP_AFTER = 4;
+const INTER_BATCH_DELAY_MS = 2_500;
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
@@ -75,6 +76,7 @@ export class TrafficService {
 
     for (let offset = 0; offset < normalized.length; offset += BATCH_SIZE) {
       const batch = normalized.slice(offset, offset + BATCH_SIZE);
+      const batchIdx = Math.floor(offset / BATCH_SIZE) + 1;
       try {
         const result = await this.fetchBatch(batch, history);
         Object.assign(merged.traffic, result.traffic);
@@ -82,23 +84,39 @@ export class TrafficService {
         merged.queriedDomains!.push(...batch);
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[TrafficService] AITDK lô ${offset / BATCH_SIZE + 1} (${batch.length} domains) thất bại: ${errMsg}. Thử từng domain lẻ...`
-        );
-        // Fallback: với batch nhỏ 5 domain, thử từng domain lẻ để cứu domain tốt
-        for (const singleDomain of batch) {
-          try {
-            const singleResult = await this.fetchBatch([singleDomain], history, SINGLE_TIMEOUT_MS);
-            Object.assign(merged.traffic, singleResult.traffic);
-            Object.assign(merged.whois, singleResult.whois);
-            merged.queriedDomains!.push(singleDomain);
-          } catch {
-            // Dù domain lẻ này không lấy được dữ liệu, vẫn đưa vào queriedDomains để không bị nghẽn đầu hàng đợi
-            merged.queriedDomains!.push(singleDomain);
+        const isRateLimit = errMsg.includes('429') || errMsg.toLowerCase().includes('tần suất') || errMsg.toLowerCase().includes('rate limit');
+        const isAbort = errMsg.toLowerCase().includes('aborted') || errMsg.toLowerCase().includes('timeout');
+
+        if (isRateLimit) {
+          console.warn(
+            `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) chạm giới hạn tần suất (429): ${errMsg}. Tạm nghỉ 8s, không spam domain lẻ...`
+          );
+          await this.delay(8_000);
+          // Tuyệt đối không fallback thử từng domain lẻ khi bị rate limit để tránh kéo dài án phạt 429 của AITDK
+        } else if (isAbort) {
+          console.warn(
+            `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) timeout/abort: ${errMsg}. Nghỉ 3s...`
+          );
+          await this.delay(3_000);
+        } else {
+          // Lỗi domain cụ thể (400, format...), thử từng domain lẻ để cứu các domain tốt khác
+          console.warn(
+            `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) thất bại: ${errMsg}. Thử từng domain lẻ...`
+          );
+          for (const singleDomain of batch) {
+            try {
+              const singleResult = await this.fetchBatch([singleDomain], history, SINGLE_TIMEOUT_MS);
+              Object.assign(merged.traffic, singleResult.traffic);
+              Object.assign(merged.whois, singleResult.whois);
+              merged.queriedDomains!.push(singleDomain);
+            } catch {
+              // Dù domain lẻ này không lấy được dữ liệu, vẫn đưa vào queriedDomains để không bị nghẽn đầu hàng đợi
+              merged.queriedDomains!.push(singleDomain);
+            }
           }
         }
       }
-      if (offset + BATCH_SIZE < normalized.length) await this.delay(1_500);
+      if (offset + BATCH_SIZE < normalized.length) await this.delay(INTER_BATCH_DELAY_MS);
     }
 
     if (!Object.keys(merged.traffic).length && normalized.length === 1 && !save) {
@@ -152,8 +170,7 @@ export class TrafficService {
     const url = `${BASE_URL}${path}?${query}`;
 
     // DIRECT FIRST: AITDK là API chính thức có SECRET_KEY và HMAC-SHA256, gọi trực tiếp từ VPS
-    // chỉ mất ~1-2s. Tuyệt đối không dùng proxy cào web của cửa hàng vì proxy cào web không mở được
-    // kết nối HTTPS tới wapi.aitdk.com, làm timeout 15s x 3 = 45s và che mất lỗi thật.
+    // chỉ mất ~1-2s. Proxy chỉ dùng nếu người dùng chủ động cấu hình file AITDK_PROXY_FILE.
     const targets: (ProxyState | null)[] = [null];
     const available = this.getAvailableProxies();
     for (let i = 0; i < Math.min(available.length, MAX_PROXY_ATTEMPTS); i++) {
@@ -164,55 +181,77 @@ export class TrafficService {
     let lastError: unknown;
     let clientError: Error | null = null;
 
+    const MAX_429_RETRIES = 2;
+
     for (const proxy of targets) {
-      const controller = new AbortController();
-      const timeoutMs = timeoutOverrideMs ?? (proxy ? PROXY_TIMEOUT_MS : DIRECT_TIMEOUT_MS);
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: HEADERS,
-          signal: controller.signal,
-          ...(proxy ? { dispatcher: new ProxyAgent(proxy.url) } : {}),
-        });
-        const text = await response.text();
-        if (response.status === 429) {
-          await this.delay(5_000);
-          continue;
-        }
-        const detail = text.replace(/\s+/g, ' ').trim().slice(0, 200);
+      for (let retry429 = 0; retry429 <= MAX_429_RETRIES; retry429++) {
+        const controller = new AbortController();
+        const timeoutMs = timeoutOverrideMs ?? (proxy ? PROXY_TIMEOUT_MS : DIRECT_TIMEOUT_MS);
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-        if (response.status >= 400 && response.status < 500) {
-          clientError = new BadRequestException(`AITDK từ chối yêu cầu — HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
-          break;
-        }
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: HEADERS,
+            signal: controller.signal,
+            ...(proxy ? { dispatcher: new ProxyAgent(proxy.url) } : {}),
+          });
+          const text = await response.text();
+          const detail = text.replace(/\s+/g, ' ').trim().slice(0, 200);
 
-        if (!response.ok) {
-          if (proxy) this.markProxyFailed(proxy);
-          const err = new Error(`AITDK HTTP ${response.status}${detail ? ` — ${detail}` : ''} (${proxy ? 'qua proxy' : 'gọi trực tiếp'})`);
-          if (!proxy) directError = err;
-          lastError = err;
-          continue;
+          if (response.status === 429) {
+            const retryAfterHeader = Number(response.headers.get('retry-after')) || 0;
+            const waitMs = retryAfterHeader > 0 ? retryAfterHeader * 1000 : (retry429 + 1) * 3_500;
+            console.warn(
+              `[TrafficService] AITDK phản hồi HTTP 429 (Rate limit) ${proxy ? 'qua proxy' : 'trực tiếp'}${detail ? `: ${detail}` : ''}. Chờ ${waitMs}ms thử lại (${retry429 + 1}/${MAX_429_RETRIES})...`
+            );
+            const err429 = new Error(`AITDK bị giới hạn tần suất HTTP 429 (Too Many Requests)${detail ? `: ${detail}` : ''}`);
+            if (!proxy) directError = err429;
+            else lastError = err429;
+
+            if (retry429 < MAX_429_RETRIES) {
+              await this.delay(waitMs);
+              continue; // Thử lại ngay trên target này sau khi đợi
+            }
+            break; // Hết lượt retry 429 trên target này
+          }
+
+          if (response.status >= 400 && response.status < 500) {
+            clientError = new BadRequestException(`AITDK từ chối yêu cầu — HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
+            break;
+          }
+
+          if (!response.ok) {
+            if (proxy) this.markProxyFailed(proxy);
+            const err = new Error(`AITDK HTTP ${response.status}${detail ? ` — ${detail}` : ''} (${proxy ? 'qua proxy' : 'gọi trực tiếp'})`);
+            if (!proxy) directError = err;
+            lastError = err;
+            break;
+          }
+
+          const result = this.parseSse(text);
+          if (proxy) this.consecutiveProxyFailures = 0;
+          return result;
+        } catch (error) {
+          if (!proxy) {
+            directError = error;
+            console.warn(`[TrafficService] AITDK gọi trực tiếp lỗi: ${error instanceof Error ? error.message : error}`);
+          } else {
+            lastError = error;
+            this.markProxyFailed(proxy);
+          }
+          break; // Lỗi mạng / abort -> không retry 429, thoát target
+        } finally {
+          clearTimeout(timer);
         }
-        const result = this.parseSse(text);
-        if (proxy) this.consecutiveProxyFailures = 0;
-        return result;
-      } catch (error) {
-        if (!proxy) {
-          directError = error;
-          console.warn(`[TrafficService] AITDK gọi trực tiếp lỗi: ${error instanceof Error ? error.message : error}`);
-        } else {
-          lastError = error;
-          this.markProxyFailed(proxy);
-        }
-      } finally {
-        clearTimeout(timer);
       }
+
+      if (clientError) break;
     }
 
     if (clientError) throw clientError;
     const finalErr = directError || lastError;
-    throw new BadGatewayException(finalErr instanceof Error ? finalErr.message : 'Không gọi được AITDK');
+    throw new BadGatewayException(finalErr instanceof Error ? finalErr.message : (finalErr ? String(finalErr) : 'Không gọi được AITDK'));
   }
 
   private parseSse(text: string): TrafficResult {
