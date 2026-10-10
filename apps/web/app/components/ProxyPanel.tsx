@@ -272,39 +272,49 @@ export function ProxyPanel() {
           </button>
         )}
 
-        {/* Nút Xóa các proxy đã chọn */}
+        {/* Nút Xóa các proxy đã chọn - LUÔN HIỂN THỊ */}
+        <button
+          type="button"
+          className="srcbtn"
+          disabled={busy || sel.size === 0}
+          onClick={bulkDelete}
+          style={
+            sel.size > 0
+              ? {
+                  background: '#e0384f',
+                  color: '#fff',
+                  borderColor: '#e0384f',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }
+              : {
+                  opacity: 0.5,
+                  cursor: 'not-allowed',
+                }
+          }
+          title={
+            sel.size > 0
+              ? `Bấm để xóa ${sel.size} proxy đang được tích chọn`
+              : 'Hãy tick chọn các ô ở cột "Chọn xóa" để xóa'
+          }
+        >
+          🗑️ Xóa đã chọn ({sel.size})
+        </button>
+
         {sel.size > 0 && (
-          <>
-            <button
-              type="button"
-              className="srcbtn"
-              disabled={busy}
-              onClick={bulkDelete}
-              style={{
-                background: '#e0384f',
-                color: '#fff',
-                borderColor: '#e0384f',
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-              title="Xóa tất cả các proxy đang được tích chọn"
-            >
-              🗑️ Xóa đã chọn ({sel.size})
-            </button>
-            <button
-              type="button"
-              className="srcbtn"
-              disabled={busy}
-              onClick={clearSel}
-              title="Bỏ chọn các dòng đã tích"
-            >
-              Bỏ chọn ({sel.size})
-            </button>
-          </>
+          <button
+            type="button"
+            className="srcbtn"
+            disabled={busy}
+            onClick={clearSel}
+            title="Bỏ chọn các dòng đã tích"
+          >
+            Bỏ chọn
+          </button>
         )}
 
-        {/* Nút 1-click: Xóa toàn bộ proxy Die nếu chưa tích chọn dòng nào */}
-        {deadProxies.length > 0 && sel.size === 0 && (
+        {/* Nút 1-click: Xóa toàn bộ proxy Die */}
+        {deadProxies.length > 0 && (
           <button
             type="button"
             className="srcbtn"
@@ -490,14 +500,14 @@ export function ProxyPanel() {
                     onChange={toggleAll}
                     style={{ cursor: 'pointer', width: 16, height: 16 }}
                   />
-                  <span>Tick all</span>
+                  <span>Chọn xóa</span>
                 </label>
               </th>
               <th>#</th>
               <th>Server / IP</th>
               <th>Loại</th>
               <th>Trạng thái</th>
-              <th>Bật</th>
+              <th title="Bật/Tắt crawler sử dụng proxy này">Bật crawler</th>
               <th>Sửa / Xóa</th>
             </tr>
           </thead>
