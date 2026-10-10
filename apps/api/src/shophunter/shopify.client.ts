@@ -42,7 +42,14 @@ function httpsGet(url: string, headers: Record<string, string>, ms = 20000, redi
       const loc = res.headers.location;
       if (loc && [301, 302, 307, 308].includes(res.statusCode || 0) && redirectsLeft > 0) {
         res.resume();
-        resolve(httpsGet(new URL(loc, url).toString(), headers, ms, redirectsLeft - 1));
+        let nextUrl: string;
+        try {
+          nextUrl = new URL(loc, url).toString();
+        } catch {
+          resolve({ status: res.statusCode || 0, body: `Invalid redirect Location: ${loc}` });
+          return;
+        }
+        resolve(httpsGet(nextUrl, headers, ms, redirectsLeft - 1));
         return;
       }
       const chunks: Buffer[] = [];

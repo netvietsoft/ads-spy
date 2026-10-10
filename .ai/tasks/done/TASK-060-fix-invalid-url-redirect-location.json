@@ -1,0 +1,16 @@
+{
+  "task_id": "TASK-060",
+  "title": "Fix TypeError: Invalid URL (ERR_INVALID_URL) crash on malformed redirect Location headers",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND & Agent 7 - FIXER",
+  "created": "2026-10-10T11:45:00+07:00",
+  "completed": "2026-10-10T11:50:00+07:00",
+  "files_changed": [
+    "apps/api/src/shophunter/shopify.proxy-get.ts",
+    "apps/api/src/shophunter/shopify.proxy-get.spec.ts",
+    "apps/api/src/shophunter/shopify.client.ts",
+    "apps/api/src/product-sync/product-scraper.service.ts",
+    "apps/api/src/safe-fetch.ts"
+  ],
+  "summary": "1) In shopify.proxy-get.ts, safely wrap initial new URL(url) and redirect Location parsing in try/catch to resolve gracefully instead of crashing on malformed redirects like https:/// from domain linetogeljp.fun; 2) Safely wrap redirect Location parsing in shopify.client.ts, product-scraper.service.ts, and safe-fetch.ts; 3) Add unit tests for EINVAL_URL handling in shopify.proxy-get.spec.ts."
+}

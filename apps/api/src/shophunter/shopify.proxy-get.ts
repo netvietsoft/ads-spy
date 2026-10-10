@@ -15,7 +15,12 @@ function doSingleProxiedGet(
   retryFn: (u: string) => Promise<{ status: number; body: string }>,
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
-    const u = new URL(url);
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch (e: any) {
+      return reject(Object.assign(e || new Error('Invalid URL: ' + url), { code: 'EINVAL_URL' }));
+    }
     const tp = u.port || '443';
     const auth = px.username ? 'Basic ' + Buffer.from(px.username + ':' + (px.password || '')).toString('base64') : undefined;
     const creq = http.request({
@@ -52,8 +57,18 @@ function doSingleProxiedGet(
             if (loc && [301, 302, 307, 308].includes(r.statusCode || 0) && redir > 0) {
               r.resume();
               ts.end();
+              let nextUrl: string;
+              try {
+                nextUrl = new URL(loc, url).toString();
+              } catch {
+                if (!done) {
+                  done = true;
+                  resolve({ status: r.statusCode || 0, body: `Invalid redirect Location: ${loc}` });
+                }
+                return;
+              }
               done = true;
-              resolve(retryFn(new URL(loc, url).toString()));
+              resolve(retryFn(nextUrl));
               return;
             }
             const ch: Buffer[] = [];

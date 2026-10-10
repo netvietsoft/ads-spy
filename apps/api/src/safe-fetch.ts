@@ -51,7 +51,11 @@ export async function fetchAssetSafe(
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get('location');
       if (!loc) throw new SsrfBlockedError('Redirect asset không có Location.');
-      cur = new URL(loc, cur).toString(); // vòng lặp kiểm lại host+IP hop mới
+      try {
+        cur = new URL(loc, cur).toString(); // vòng lặp kiểm lại host+IP hop mới
+      } catch {
+        throw new SsrfBlockedError(`Redirect Location không hợp lệ: ${loc}`);
+      }
       continue;
     }
     return { body: res.body, contentType: res.headers.get('content-type') ?? 'application/octet-stream', status: res.status };
