@@ -14,16 +14,16 @@ interface ProxyState {
 
 const BASE_URL = 'https://wapi.aitdk.com';
 const VERSION = '2.7.0';
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 5;
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_PROXY_ATTEMPTS = 3;
 const PROXY_TIMEOUT_MS = 10_000;
-// 30s timeout cho kết nối trực tiếp tới AITDK. Với chunk 10 domain, AITDK chỉ mất ~1.5 - 2.5s,
-// biên 30s đảm bảo không bao giờ bị abort oan ngay cả khi AITDK bận tải.
-const DIRECT_TIMEOUT_MS = 30_000;
-const SINGLE_TIMEOUT_MS = 8_000;
+// 15s timeout cho kết nối trực tiếp tới AITDK. Với chunk nhỏ 5 domain, AITDK chỉ mất ~1.5 - 2.5s.
+// Nếu quá 15s là AITDK đang bị treo trên 1 domain cụ thể, cần chuyển sang fallback đơn lẻ ngay.
+const DIRECT_TIMEOUT_MS = 15_000;
+const SINGLE_TIMEOUT_MS = 4_000;
 const CIRCUIT_TRIP_AFTER = 4;
-const INTER_BATCH_DELAY_MS = 2_500;
+const INTER_BATCH_DELAY_MS = 2_000;
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
@@ -93,15 +93,11 @@ export class TrafficService {
           );
           await this.delay(8_000);
           // Tuyệt đối không fallback thử từng domain lẻ khi bị rate limit để tránh kéo dài án phạt 429 của AITDK
-        } else if (isAbort) {
-          console.warn(
-            `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) timeout/abort: ${errMsg}. Nghỉ 3s...`
-          );
-          await this.delay(3_000);
         } else {
-          // Lỗi domain cụ thể (400, format...), thử từng domain lẻ để cứu các domain tốt khác
+          // Lô bị timeout/abort hoặc lỗi dữ liệu: Thử nhanh từng domain đơn lẻ (timeout 4s)
+          // để cứu các domain tốt và cô lập domain bị treo, đảm bảo toàn bộ domain được đánh dấu đã tra cứu
           console.warn(
-            `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) thất bại: ${errMsg}. Thử từng domain lẻ...`
+            `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) ${isAbort ? 'bị nghẽn/timeout' : 'thất bại'}: ${errMsg}. Thử nhanh từng domain lẻ...`
           );
           for (const singleDomain of batch) {
             try {
@@ -110,7 +106,7 @@ export class TrafficService {
               Object.assign(merged.whois, singleResult.whois);
               merged.queriedDomains!.push(singleDomain);
             } catch {
-              // Dù domain lẻ này không lấy được dữ liệu, vẫn đưa vào queriedDomains để không bị nghẽn đầu hàng đợi
+              // Domain lẻ bị treo hoặc không có dữ liệu: vẫn đánh dấu đã tra cứu để không bị kẹt lại đầu hàng đợi
               merged.queriedDomains!.push(singleDomain);
             }
           }
@@ -235,7 +231,9 @@ export class TrafficService {
         } catch (error) {
           if (!proxy) {
             directError = error;
-            console.warn(`[TrafficService] AITDK gọi trực tiếp lỗi: ${error instanceof Error ? error.message : error}`);
+            if (!timeoutOverrideMs) {
+              console.warn(`[TrafficService] AITDK gọi trực tiếp lỗi: ${error instanceof Error ? error.message : error}`);
+            }
           } else {
             lastError = error;
             this.markProxyFailed(proxy);

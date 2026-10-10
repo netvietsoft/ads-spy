@@ -1,0 +1,12 @@
+{
+  "task_id": "TASK-061",
+  "title": "Fix AITDK batch timeout aborts, reduce batch to 5, and enable single-domain fallback on abort to prevent queue head lock",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND & Agent 7 - FIXER",
+  "created": "2026-10-10T14:20:00+07:00",
+  "completed": "2026-10-10T14:30:00+07:00",
+  "files_changed": [
+    "apps/api/src/traffic/traffic.service.ts"
+  ],
+  "summary": "1) In search(), when a batch times out/aborts (isAbort), run quick single-domain fallback with 4s timeout (SINGLE_TIMEOUT_MS) so healthy domains have traffic saved and hanging domains are isolated and marked queriedDomains, preventing identical batches from repeating indefinitely in an endless loop; 2) Reduce BATCH_SIZE to 5 domains so AITDK responds in 1.5-2.5s; 3) Set DIRECT_TIMEOUT_MS to 15s so stuck batches fail fast instead of hanging 30s; 4) Suppress repetitive 'gọi trực tiếp lỗi' console logging during single-domain fallback."
+}
