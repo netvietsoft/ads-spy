@@ -389,7 +389,9 @@ export class ShJobsService implements OnModuleInit {
     if (r.error) {
       this.mem.bwtraffic.lastStatus = 'warn';
       await this.mysql.appendJobLog('bwtraffic', 'warn', `Lỗi traffic: ${r.error}`).catch(() => {});
-      return { pace: Math.max(cfg.paceMs || 2000, 8000) };
+      const is429 = r.error.includes('429') || r.error.toLowerCase().includes('rate limit') || r.error.includes('1015') || r.error.toLowerCase().includes('tần suất');
+      // Khi gặp Rate limit 429 / Cloudflare Error 1015: tạm dừng 120s (2 phút) để Cloudflare xả hết hạn ngạch cấm
+      return { pace: is429 ? 120_000 : Math.max(cfg.paceMs || 2000, 15_000) };
     }
     if (!r.filled && r.remaining === 0) { this.mem.bwtraffic.lastStatus = 'idle'; await this.mysql.appendJobLog('bwtraffic', 'info', 'Đã điền hết traffic cho các domain BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
     this.mem.bwtraffic.lastStatus = 'ok';

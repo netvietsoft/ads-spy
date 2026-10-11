@@ -14,16 +14,17 @@ interface ProxyState {
 
 const BASE_URL = 'https://wapi.aitdk.com';
 const VERSION = '2.7.0';
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 10;
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_PROXY_ATTEMPTS = 3;
 const PROXY_TIMEOUT_MS = 10_000;
-// 15s timeout cho kết nối trực tiếp tới AITDK. Với chunk nhỏ 5 domain, AITDK chỉ mất ~1.5 - 2.5s.
-// Nếu quá 15s là AITDK đang bị treo trên 1 domain cụ thể, cần chuyển sang fallback đơn lẻ ngay.
-const DIRECT_TIMEOUT_MS = 15_000;
-const SINGLE_TIMEOUT_MS = 4_000;
+// 25s timeout an toàn cho kết nối trực tiếp tới AITDK. Với chunk 10 domain, AITDK chỉ mất ~1.5 - 2.5s.
+const DIRECT_TIMEOUT_MS = 25_000;
+const SINGLE_TIMEOUT_MS = 6_000;
 const CIRCUIT_TRIP_AFTER = 4;
-const INTER_BATCH_DELAY_MS = 2_000;
+const INTER_BATCH_DELAY_MS = 2_500;
+const RATE_LIMIT_COOLDOWN_MS = 90_000; // 90s cooldown khi gặp 429
+const CLOUDFLARE_1015_COOLDOWN_MS = 120_000; // 120s cooldown khi dính Cloudflare Error 1015 / Challenge
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',
@@ -67,14 +68,41 @@ export class TrafficService {
   private proxyIndex = 0;
   private consecutiveProxyFailures = 0;
   private proxyPoolColdUntil = 0;
+  private rateLimitCooldownUntil = 0;
+  private lastRateLimitReason = '';
 
   constructor(private readonly affnetDb: AffnetMysql, private readonly sh: ShMysql) {}
 
+  private isRateLimited(): boolean {
+    return Date.now() < this.rateLimitCooldownUntil;
+  }
+
+  private tripRateLimit(ms: number, reason: string): void {
+    const until = Date.now() + ms;
+    if (until > this.rateLimitCooldownUntil) {
+      this.rateLimitCooldownUntil = until;
+      this.lastRateLimitReason = reason;
+      console.warn(
+        `[TrafficService] 🛑 TRIP RATE LIMIT CIRCUIT BREAKER: ${reason}. Tạm dừng gọi AITDK trong ${Math.ceil(ms / 1000)}s...`
+      );
+    }
+  }
+
   async search(domains: string[], history = false, save = true): Promise<TrafficResult> {
+    if (this.isRateLimited()) {
+      const waitSec = Math.ceil((this.rateLimitCooldownUntil - Date.now()) / 1000);
+      throw new BadGatewayException(
+        `AITDK đang tạm dừng do bị giới hạn tần suất (429 / Cloudflare Error 1015). Vui lòng đợi ${waitSec}s (${this.lastRateLimitReason || 'Rate limited'})`
+      );
+    }
+
     const normalized = [...new Set(domains.map(normalizeDomain).filter(Boolean))];
     const merged: TrafficResult = { traffic: {}, whois: {}, queriedDomains: [] };
 
     for (let offset = 0; offset < normalized.length; offset += BATCH_SIZE) {
+      if (this.isRateLimited()) {
+        break; // Dừng ngay lập tức các lô còn lại nếu circuit breaker vừa kích hoạt
+      }
       const batch = normalized.slice(offset, offset + BATCH_SIZE);
       const batchIdx = Math.floor(offset / BATCH_SIZE) + 1;
       try {
@@ -84,35 +112,63 @@ export class TrafficService {
         merged.queriedDomains!.push(...batch);
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
-        const isRateLimit = errMsg.includes('429') || errMsg.toLowerCase().includes('tần suất') || errMsg.toLowerCase().includes('rate limit');
+        const isRateLimit = errMsg.includes('429') || errMsg.toLowerCase().includes('tần suất') || errMsg.toLowerCase().includes('rate limit') || errMsg.includes('1015');
         const isAbort = errMsg.toLowerCase().includes('aborted') || errMsg.toLowerCase().includes('timeout');
 
         if (isRateLimit) {
+          const is1015 = errMsg.includes('1015') || errMsg.toLowerCase().includes('just a moment');
+          this.tripRateLimit(is1015 ? CLOUDFLARE_1015_COOLDOWN_MS : RATE_LIMIT_COOLDOWN_MS, errMsg);
           console.warn(
-            `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) chạm giới hạn tần suất (429): ${errMsg}. Tạm nghỉ 8s, không spam domain lẻ...`
+            `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) chạm giới hạn tần suất (429/1015): ${errMsg}. Dừng ngay mẻ này!`
           );
-          await this.delay(8_000);
-          // Tuyệt đối không fallback thử từng domain lẻ khi bị rate limit để tránh kéo dài án phạt 429 của AITDK
+          break; // DỪNG NGAY LẬP TỨC! Tuyệt đối không gọi các lô sau
         } else {
-          // Lô bị timeout/abort hoặc lỗi dữ liệu: Thử nhanh từng domain đơn lẻ (timeout 4s)
-          // để cứu các domain tốt và cô lập domain bị treo, đảm bảo toàn bộ domain được đánh dấu đã tra cứu
+          // Lô bị timeout/abort hoặc lỗi dữ liệu: Thử nhanh từng domain đơn lẻ (timeout 6s)
+          // để cứu các domain tốt và cô lập domain bị treo
           console.warn(
             `[TrafficService] AITDK lô ${batchIdx} (${batch.length} domains) ${isAbort ? 'bị nghẽn/timeout' : 'thất bại'}: ${errMsg}. Thử nhanh từng domain lẻ...`
           );
           for (const singleDomain of batch) {
+            if (this.isRateLimited()) {
+              break; // Dừng nếu circuit breaker bị trip
+            }
             try {
               const singleResult = await this.fetchBatch([singleDomain], history, SINGLE_TIMEOUT_MS);
               Object.assign(merged.traffic, singleResult.traffic);
               Object.assign(merged.whois, singleResult.whois);
               merged.queriedDomains!.push(singleDomain);
-            } catch {
-              // Domain lẻ bị treo hoặc không có dữ liệu: vẫn đánh dấu đã tra cứu để không bị kẹt lại đầu hàng đợi
-              merged.queriedDomains!.push(singleDomain);
+            } catch (singleErr) {
+              const sMsg = singleErr instanceof Error ? singleErr.message : String(singleErr);
+              const singleIs429 = sMsg.includes('429') || sMsg.toLowerCase().includes('tần suất') || sMsg.toLowerCase().includes('rate limit') || sMsg.includes('1015');
+              if (singleIs429) {
+                const is1015 = sMsg.includes('1015') || sMsg.toLowerCase().includes('just a moment');
+                this.tripRateLimit(is1015 ? CLOUDFLARE_1015_COOLDOWN_MS : RATE_LIMIT_COOLDOWN_MS, sMsg);
+                console.warn(
+                  `[TrafficService] Domain lẻ ${singleDomain} chạm 429/1015: ${sMsg}. DỪNG NGAY fallback, không spam các domain còn lại!`
+                );
+                break; // DỪNG NGAY LẬP TỨC! KHÔNG gọi các domain tiếp theo
+              }
+              // Chỉ khi KHÔNG phải lỗi 429 và KHÔNG phải timeout/abort: mới đưa vào queriedDomains (unindexed/404)
+              const singleIsAbort = sMsg.toLowerCase().includes('aborted') || sMsg.toLowerCase().includes('timeout');
+              if (!singleIsAbort) {
+                merged.queriedDomains!.push(singleDomain);
+              }
             }
+          }
+          if (this.isRateLimited()) {
+            break; // Thoát hẳn search() nếu vòng lặp domain lẻ bị trip 429
           }
         }
       }
-      if (offset + BATCH_SIZE < normalized.length) await this.delay(INTER_BATCH_DELAY_MS);
+      if (offset + BATCH_SIZE < normalized.length && !this.isRateLimited()) {
+        await this.delay(INTER_BATCH_DELAY_MS);
+      }
+    }
+
+    if (this.isRateLimited() && !Object.keys(merged.traffic).length) {
+      throw new BadGatewayException(
+        `AITDK bị giới hạn tần suất 429 (Cloudflare Error 1015 / Challenge). Tạm dừng hệ thống trong ${Math.ceil((this.rateLimitCooldownUntil - Date.now()) / 1000)}s`
+      );
     }
 
     if (!Object.keys(merged.traffic).length && normalized.length === 1 && !save) {
@@ -146,6 +202,11 @@ export class TrafficService {
   }
 
   private async fetchBatch(domains: string[], history: boolean, timeoutOverrideMs?: number): Promise<TrafficResult> {
+    if (this.isRateLimited()) {
+      const waitSec = Math.ceil((this.rateLimitCooldownUntil - Date.now()) / 1000);
+      throw new BadGatewayException(`AITDK đang tạm dừng do Rate Limit (còn ${waitSec}s)`);
+    }
+
     const secret = process.env.AITDK_SECRET_KEY?.trim();
     if (!secret) throw new ServiceUnavailableException('Chưa cấu hình SECRET_KEY cho API');
     await this.ensureProxies();
@@ -177,10 +238,13 @@ export class TrafficService {
     let lastError: unknown;
     let clientError: Error | null = null;
 
-    const MAX_429_RETRIES = 2;
+    const MAX_429_RETRIES = 1;
 
     for (const proxy of targets) {
       for (let retry429 = 0; retry429 <= MAX_429_RETRIES; retry429++) {
+        if (this.isRateLimited()) {
+          break;
+        }
         const controller = new AbortController();
         const timeoutMs = timeoutOverrideMs ?? (proxy ? PROXY_TIMEOUT_MS : DIRECT_TIMEOUT_MS);
         const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -197,13 +261,26 @@ export class TrafficService {
 
           if (response.status === 429) {
             const retryAfterHeader = Number(response.headers.get('retry-after')) || 0;
-            const waitMs = retryAfterHeader > 0 ? retryAfterHeader * 1000 : (retry429 + 1) * 3_500;
+            const is1015 = detail.includes('1015') || detail.toLowerCase().includes('just a moment') || detail.includes('rate limited');
+            const waitMs = is1015
+              ? CLOUDFLARE_1015_COOLDOWN_MS
+              : (retryAfterHeader > 0 ? retryAfterHeader * 1000 : 15_000);
+
             console.warn(
-              `[TrafficService] AITDK phản hồi HTTP 429 (Rate limit) ${proxy ? 'qua proxy' : 'trực tiếp'}${detail ? `: ${detail}` : ''}. Chờ ${waitMs}ms thử lại (${retry429 + 1}/${MAX_429_RETRIES})...`
+              `[TrafficService] AITDK phản hồi HTTP 429 (Rate limit) ${proxy ? 'qua proxy' : 'trực tiếp'}${detail ? `: ${detail}` : ''}. ${is1015 ? 'Phát hiện Cloudflare Error 1015 / Challenge, kích hoạt Cooldown toàn cục.' : `Chờ ${waitMs}ms thử lại (${retry429 + 1}/${MAX_429_RETRIES})...`}`
             );
             const err429 = new Error(`AITDK bị giới hạn tần suất HTTP 429 (Too Many Requests)${detail ? `: ${detail}` : ''}`);
-            if (!proxy) directError = err429;
-            else lastError = err429;
+            if (!proxy) {
+              directError = err429;
+              this.tripRateLimit(is1015 ? CLOUDFLARE_1015_COOLDOWN_MS : Math.max(waitMs, RATE_LIMIT_COOLDOWN_MS), `HTTP 429 ${detail.slice(0, 80)}`);
+            } else {
+              lastError = err429;
+            }
+
+            // Nếu dính Cloudflare 1015 hoặc đang chạy fallback singleDomain: DỪNG NGAY, không retry
+            if (is1015 || timeoutOverrideMs) {
+              break;
+            }
 
             if (retry429 < MAX_429_RETRIES) {
               await this.delay(waitMs);

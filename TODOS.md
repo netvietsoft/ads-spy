@@ -8,6 +8,12 @@
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
 
+- [x] **TASK-063**: Bổ sung Circuit Breaker toàn cục cho AITDK khi bị Cloudflare Rate Limit 429/1015, dừng spam domain đơn lẻ và điều chỉnh nhịp job bwtraffic
+  - **Mô tả**: 1) Thêm Circuit Breaker toàn cục (`rateLimitCooldownUntil`) vào `TrafficService`: khi gặp HTTP 429 hoặc Cloudflare Error 1015 / Bot Challenge, tự động kích hoạt cooldown 90s - 120s và dừng ngay lập tức mọi lô/domain còn lại, không tiếp tục spam; 2) Sửa fallback domain đơn lẻ: ngắt ngay khi gặp 429, không thử tiếp các domain sau và không đưa domain lỗi vào `queriedDomains`; 3) Sửa `triedDomains` trong `shopify-bw.service.ts` để chỉ đánh dấu domain thực tế thành công/rỗng; 4) Tăng `DIRECT_TIMEOUT_MS = 25_000`, `BATCH_SIZE = 10`, `INTER_BATCH_DELAY_MS = 2_500`; 5) Job `stepBwTraffic` tự động backoff 120s khi gặp 429/1015; 6) Tự động phục hồi domain bị tried nhầm trong `doEnsureTables` và thêm API `POST /shopify-bw/traffic-reset-failed`; 7) Viết test unit `traffic.service.spec.ts`.
+  - **Branch**: `agent/backend/TASK-063`
+  - **Files**: `apps/api/src/traffic/traffic.service.ts`, `apps/api/src/traffic/traffic.service.spec.ts`, `apps/api/src/shophunter/sh.jobs.service.ts`, `apps/api/src/shopify-bw/shopify-bw.service.ts`, `apps/api/src/shopify-bw/shopify-bw.mysql.ts`, `apps/api/src/shopify-bw/shopify-bw.controller.ts`
+  - **Tài liệu**: [`docs/handoff-2026-10-11-fix-aitdk-cloudflare-rate-limit.md`](docs/handoff-2026-10-11-fix-aitdk-cloudflare-rate-limit.md)
+
 - [x] **TASK-062**: Proxy crawler Shopify: thêm checkbox và chức năng xóa hàng loạt proxy chết (die)
   - **Mô tả**: 1) Bổ sung endpoint backend `DELETE /api/sh/proxies` hỗ trợ xóa hàng loạt theo mảng id trong 1 câu SQL `DELETE WHERE id IN (?)`. 2) Thêm client API `shDeleteProxies`. 3) Thêm ô checkbox riêng `Chọn xóa` ở tiêu đề bảng và từng dòng proxy; thêm nút `☑️ Tick chọn tất cả`, nút `💀 Chọn tất cả Die`, nút `🗑️ Xóa đã chọn` (màu đỏ) và nút `🗑️ Xóa toàn bộ proxy Die` (1-click dọn sạch proxy chết). Đổi tên cột `Bật` thành `Bật crawler` để tránh nhầm lẫn.
   - **Branch**: `main`

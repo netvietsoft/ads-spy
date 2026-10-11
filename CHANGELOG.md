@@ -4,6 +4,26 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-10-11 — Bổ Sung Circuit Breaker Cho AITDK Traffic & Khắc Phục Cloudflare Rate Limit 429/1015 (TASK-063)
+
+- **Circuit Breaker Toàn Cục (`rateLimitCooldownUntil`) Cho AITDK**:
+  - Khi phát hiện HTTP 429 hoặc Cloudflare Error 1015 / Bot Challenge (`Just a moment...`), tự động kích hoạt cooldown toàn cục 90s - 120s.
+  - Dừng ngay lập tức (BREAK) toàn bộ các lô và vòng lặp domain đơn lẻ còn lại, chặn đứng hoàn toàn việc dội request spam vào Cloudflare.
+  - Khi đang trong cooldown, các cuộc gọi `search()` mới bị chặn ngay từ đầu và thông báo rõ thời gian nghỉ còn lại.
+- **Sửa Vòng Lặp Fallback Domain Đơn Lẻ**:
+  - Dừng ngay vòng lặp fallback khi gặp 429 / Error 1015 thay vì tiếp tục bắn các domain tiếp theo.
+  - Chỉ đưa domain thực sự hoàn thành hoặc trả kết quả rỗng (unindexed/404) vào `queriedDomains`. Tuyệt đối không đưa domain bị abort/timeout/429 vào `queriedDomains`.
+- **Khắc Phục False-Positive `traffic_tried`**:
+  - Sửa `triedDomains` trong `shopify-bw.service.ts` để chỉ ghi nhận các domain thực sự đã có kết quả (`queriedDomains`), loại bỏ `...list`.
+  - Tự động gọi `resetFailedTrafficTried()` trong `doEnsureTables()` khi khởi động server và mở endpoint `POST /shopify-bw/traffic-reset-failed` để phục hồi các domain bị dán nhãn nhầm.
+- **Tối Ưu Pacing & Backoff**:
+  - Nâng `BATCH_SIZE = 10` (giảm 50% số request gửi lên Cloudflare), `DIRECT_TIMEOUT_MS = 25_000`, `INTER_BATCH_DELAY_MS = 2_500`.
+  - Job ngầm `bwtraffic` tự động chuyển sang nhịp nghỉ 120s khi gặp 429/1015.
+  - Viết bộ unit test `traffic.service.spec.ts` kiểm thử toàn diện cơ chế Circuit Breaker.
+  - Tài liệu chi tiết: [`docs/handoff-2026-10-11-fix-aitdk-cloudflare-rate-limit.md`](docs/handoff-2026-10-11-fix-aitdk-cloudflare-rate-limit.md).
+
+---
+
 ## 2026-10-10 — Proxy Crawler Shopify: Thêm Tick Box & Xóa Hàng Loạt Proxy Chết (TASK-062)
 
 - **Backend Bulk Deletion Endpoint (`DELETE /api/sh/proxies`)**:

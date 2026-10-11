@@ -89,6 +89,12 @@ export class ShopifyBwController {
     return this.svc.fillTraffic(Number(limit) || 50);
   }
 
+  @Post('traffic-reset-failed')
+  async trafficResetFailed() {
+    const reset = await this.svc.resetFailedTraffic();
+    return { ok: true, reset };
+  }
+
   @Post('rev-scan')
   revScan(@Body('limit') limit: number) {
     return this.svc.revScan(Number(limit) || 20);

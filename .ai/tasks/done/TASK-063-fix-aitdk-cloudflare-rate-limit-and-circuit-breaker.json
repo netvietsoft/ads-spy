@@ -1,0 +1,17 @@
+{
+  "task_id": "TASK-063",
+  "title": "Bổ sung Circuit Breaker toàn cục cho AITDK khi bị Cloudflare Rate Limit 429/1015, dừng spam domain đơn lẻ và điều chỉnh nhịp job bwtraffic",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND & Agent 7 - FIXER",
+  "created": "2026-10-11T22:40:00+07:00",
+  "completed": "2026-10-11T22:45:00+07:00",
+  "files_changed": [
+    "apps/api/src/traffic/traffic.service.ts",
+    "apps/api/src/traffic/traffic.service.spec.ts",
+    "apps/api/src/shophunter/sh.jobs.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.mysql.ts",
+    "apps/api/src/shopify-bw/shopify-bw.controller.ts"
+  ],
+  "summary": "1) Bổ sung Circuit Breaker toàn cục (rateLimitCooldownUntil) cho TrafficService: khi phát hiện HTTP 429 hoặc Cloudflare Error 1015 / Bot Challenge, tự động kích hoạt cooldown 90s - 120s và dừng ngay lập tức mọi lô/domain còn lại; 2) Sửa fallback domain đơn lẻ: break ngay khi gặp 429, không spam domain tiếp theo và không đưa domain lỗi vào queriedDomains; 3) Sửa triedDomains trong shopify-bw.service.ts để chỉ ghi nhận các domain thực sự đã hoàn thành hoặc xác nhận rỗng, loại bỏ việc đưa toàn bộ list vào gây false-positive; 4) Nâng DIRECT_TIMEOUT_MS lên 25s, BATCH_SIZE 10 và INTER_BATCH_DELAY_MS 2500ms; 5) Job stepBwTraffic tự động backoff 120s khi gặp 429/1015; 6) Tự động phục hồi các domain bị tried nhầm trong doEnsureTables và bổ sung endpoint POST /shopify-bw/traffic-reset-failed; 7) Viết bộ test unit traffic.service.spec.ts kiểm tra toàn diện circuit breaker."
+}

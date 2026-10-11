@@ -112,6 +112,9 @@ export class ShopifyBwMysql {
 
     // Dọn dẹp dấu gạch chéo cuối nếu có trong cột web
     await pool.query(`UPDATE IGNORE shopify_buildwith SET web = TRIM(TRAILING '/' FROM web) WHERE web LIKE '%/'`).catch(() => {});
+
+    // Tự động phục hồi các domain chưa có traffic mà bị đánh dấu tried nhầm (do mạng lỗi, 429, Cloudflare)
+    this.resetFailedTrafficTried().catch((e) => console.warn('[ShopifyBwMysql] resetFailedTrafficTried error:', e));
   }
 
   private async ensureIndex(pool: any, table: string, indexName: string, column: string): Promise<void> {

@@ -160,14 +160,12 @@ export class ShopifyBwService {
     if (!list.length) return 0;
     try {
       const r = await this.traffic.search(list, false, true);
-      // Đánh dấu traffic_tried cho toàn bộ các domain đã được xử lý trong lượt này
-      // (bao gồm cả domain có traffic và domain unindexed/rỗng mà AITDK đã tra cứu).
-      // Tránh việc các domain AITDK không có traffic bị kẹt vĩnh viễn ở đầu hàng đợi (poison pill).
+      // Đánh dấu traffic_tried CHỈ cho các domain đã được xử lý thực tế thành công hoặc xác nhận rỗng.
+      // Tuyệt đối không đưa toàn bộ `list` vào tránh đánh dấu nhầm các domain chưa kịp gọi do gặp 429/ngắt sớm.
       const triedDomains = Array.from(new Set([
         ...(r.queriedDomains || []),
         ...Object.keys(r.traffic),
         ...Object.keys(r.whois),
-        ...list,
       ]));
       if (triedDomains.length) {
         await this.db.markTrafficTried(triedDomains);
@@ -176,6 +174,11 @@ export class ShopifyBwService {
     } catch (e) {
       throw e;
     }
+  }
+
+  async resetFailedTraffic(): Promise<number> {
+    await this.db.ensureTables();
+    return this.db.resetFailedTrafficTried();
   }
 
   async fillTraffic(limit = 50): Promise<{ filled: number; remaining: number; error?: string }> {
