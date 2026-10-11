@@ -1,0 +1,22 @@
+{
+  "task_id": "TASK-064",
+  "title": "Bổ sung báo cáo thống kê cho trang /shopify-buildwith: Tổng shop đã cào doanh thu, Tổng shop có link off, Tổng shop đã có traffic",
+  "status": "done",
+  "owner": "Agent 3 - FRONTEND & Agent 2 - BACKEND",
+  "created": "2026-10-11T23:00:00+07:00",
+  "completed_at": "2026-10-11T23:10:00+07:00",
+  "files_allowed": [
+    "apps/api/src/shopify-bw/shopify-bw.mysql.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/shopify-bw/shopify-bw.controller.ts",
+    "apps/web/app/api.ts",
+    "apps/web/app/components/ShopifyBwPanel.tsx"
+  ],
+  "acceptance_criteria": [
+    "1. Backend cung cấp endpoint GET /api/shopify-bw/stats trả về thống kê: total, hasRevenue, hasAffLink, hasAffApp, hasTraffic, dnsLive, dnsDead kèm cache in-memory 15s.",
+    "2. Hỗ trợ lọc danh sách shop theo: hasrev (đã có doanh thu), haslink (có link off), hastraffic (đã có traffic).",
+    "3. Giao diện /shopify-buildwith hiển thị thanh thẻ thống kê (Stats Report Cards) trực quan, đẹp mắt và đồng bộ thẩm mỹ hiện đại.",
+    "4. Bấm vào từng thẻ thống kê cho phép lọc nhanh danh sách tương ứng.",
+    "5. Build API (npm run build:api) và Build Web (npm run build:web) thành công."
+  ]
+}

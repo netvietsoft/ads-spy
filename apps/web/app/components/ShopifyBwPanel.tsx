@@ -8,6 +8,7 @@ import {
   shopifyBwDnsCheck, shopifyBwDetectOne, shopifyBwBulkDelete, shopifyBwBulkRetry,
   shopifyBwTrafficFill, shopifyBwRevScan, shopifyBwPrefillProgram, shopifyBwTermsScan,
   shopifyBwImportFile, shopifyBwBatchInsert, ShopifyBwRow, ShopifyBwDetectStatus, ShopifyBwDir, ShopifyBwFilter,
+  shopifyBwStats, ShopifyBwStats,
   shJobs, shToggleJob, shRunJobOnce, ShJob,
 } from '../api';
 import { toUsd } from '../currency';
@@ -125,9 +126,15 @@ function parseLineForDomain(line: string, isBuiltWith: boolean): { web: string; 
 }
 
 const FILTERS: { v: ShopifyBwFilter; label: string }[] = [
-  { v: 'all', label: 'tất cả' }, { v: 'aff', label: 'chỉ web có aff' },
-  { v: 'unscanned', label: 'chưa quét' }, { v: 'junk', label: 'cần dọn' },
-  { v: 'norev', label: 'thiếu doanh thu' }, { v: 'notshopify', label: 'không phải Shopify' },
+  { v: 'all', label: 'Tất cả' },
+  { v: 'hasrev', label: '💰 Đã cào doanh thu' },
+  { v: 'haslink', label: '🔗 Có link off (aff)' },
+  { v: 'hastraffic', label: '📈 Đã có traffic' },
+  { v: 'aff', label: 'Chỉ web có aff' },
+  { v: 'unscanned', label: 'Chưa quét' },
+  { v: 'junk', label: 'Cần dọn' },
+  { v: 'norev', label: 'Thiếu doanh thu' },
+  { v: 'notshopify', label: 'Không phải Shopify' },
 ];
 
 function junkReason(r: ShopifyBwRow): string {
@@ -256,6 +263,8 @@ export function ShopifyBwPanel() {
 
   const [bgJobs, setBgJobs] = useState<Record<string, ShJob>>({});
   const [jobBusy, setJobBusy] = useState<string>('');
+  const [stats, setStats] = useState<ShopifyBwStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   const reloadBgJobs = () => {
     shJobs()
@@ -399,7 +408,18 @@ export function ShopifyBwPanel() {
     load(1, sort, pageSize, filter, search);
   };
 
-  useEffect(() => { load(1); }, []);
+  const loadStats = (force = false) => {
+    setStatsLoading(true);
+    shopifyBwStats(force)
+      .then(setStats)
+      .catch((e) => console.warn('Lỗi nạp thống kê Shopify BuiltWith:', e))
+      .finally(() => setStatsLoading(false));
+  };
+
+  useEffect(() => {
+    load(1);
+    loadStats();
+  }, []);
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   useEffect(() => {
@@ -417,6 +437,7 @@ export function ShopifyBwPanel() {
       const r = await shopifyBwScan(domains);
       setItems(r.items); setTotal(r.total); setPage(1); setSort(DEFAULT_SORT);
       setScanMsg(`Đã nạp ${r.items.length} domain vừa nhập. Đổi bộ lọc để xem lại toàn kho.`);
+      loadStats(true);
     } catch (e) { setErr((e as Error).message); }
     setLoading(false);
   };
@@ -655,6 +676,7 @@ export function ShopifyBwPanel() {
         prev = r.remaining;
       }
       await load();
+      loadStats(true);
     } catch (e) { setErr((e as Error).message); setDns(null); }
     setBusy(false);
   };
@@ -672,6 +694,7 @@ export function ShopifyBwPanel() {
         prev = r.remaining;
       }
       await load();
+      loadStats(true);
     } catch (e) { setErr((e as Error).message); setRev(null); }
     setBusy(false);
   };
@@ -689,6 +712,7 @@ export function ShopifyBwPanel() {
         prev = r.remaining;
       }
       await load();
+      loadStats(true);
     } catch (e) { setErr((e as Error).message); setTraf(null); }
     setBusy(false);
   };
@@ -701,6 +725,7 @@ export function ShopifyBwPanel() {
         : r.aff_status === 'no' ? 'không có affiliate' : r.aff_status === 'blocked' ? 'site chặn/chết' : r.aff_status;
       setScanMsg(`${web} → ${label}${r.aff_platform ? ` · ${r.aff_platform}` : ''}`);
       await load();
+      loadStats(true);
     } catch (e) { setErr((e as Error).message); setScanMsg(null); }
     setScanning(null);
   };
@@ -713,6 +738,7 @@ export function ShopifyBwPanel() {
     try {
       if (kind === 'del') await shopifyBwBulkDelete(webs); else await shopifyBwBulkRetry(webs);
       setSel(new Set()); await load();
+      loadStats(true);
     } catch (e) { setErr((e as Error).message); }
     setBusy(false);
   };
@@ -836,6 +862,193 @@ export function ShopifyBwPanel() {
           </div>
         </div>
       )}
+
+      {/* Khối Báo cáo Thống kê Kho Shop BuiltWith (3 chỉ số cốt lõi + Tổng kho) */}
+      <div style={{
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 12,
+        padding: '12px 16px',
+        marginBottom: 12,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
+              📊 BÁO CÁO THỐNG KÊ KHO SHOPIFY BUILTWITH
+            </span>
+            <span style={{ fontSize: 11, color: '#475569', background: '#f1f5f9', padding: '2px 8px', borderRadius: 12, fontWeight: 500 }}>
+              Dữ liệu thời gian thực
+            </span>
+            {filter !== 'all' && (
+              <span style={{ fontSize: 11, color: '#2563eb', background: '#dbeafe', padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+                Đang lọc: {FILTERS.find((f) => f.v === filter)?.label || filter}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {stats?.updatedAt ? (
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                Cập nhật: {new Date(stats.updatedAt).toLocaleTimeString('vi-VN')}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="srcbtn"
+              onClick={() => loadStats(true)}
+              disabled={statsLoading}
+              style={{ padding: '3px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              title="Lấy lại thống kê mới nhất từ server"
+            >
+              {statsLoading ? '⏳ Đang tính…' : '🔄 Làm mới số liệu'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 10,
+        }}>
+          {/* Card 1: Shop đã cào được doanh thu */}
+          <div
+            onClick={() => changeFilter('hasrev')}
+            style={{
+              cursor: 'pointer',
+              background: filter === 'hasrev' ? '#ecfdf5' : '#f8fafc',
+              border: `2px solid ${filter === 'hasrev' ? '#10b981' : '#e2e8f0'}`,
+              borderRadius: 10,
+              padding: '10px 14px',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              boxShadow: filter === 'hasrev' ? '0 0 0 1px #10b981' : 'none',
+            }}
+            title="Nhấp để lọc danh sách các shop đã cào được doanh thu"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#047857' }}>
+                💰 ĐÃ CÀO DOANH THU
+              </span>
+              <span style={{ fontSize: 11, color: '#059669', background: '#d1fae5', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                {stats?.total && stats.hasRevenue ? `${((stats.hasRevenue / stats.total) * 100).toFixed(1)}%` : '—'}
+              </span>
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#065f46', margin: '4px 0 2px' }}>
+              {stats ? stats.hasRevenue.toLocaleString('en-US') : '…'}
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#059669', marginLeft: 4 }}>shop</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>
+              Đã có số liệu DT ngày/tuần/tháng/tổng
+            </div>
+          </div>
+
+          {/* Card 2: Shop có link off */}
+          <div
+            onClick={() => changeFilter('haslink')}
+            style={{
+              cursor: 'pointer',
+              background: filter === 'haslink' ? '#eef2ff' : '#f8fafc',
+              border: `2px solid ${filter === 'haslink' ? '#6366f1' : '#e2e8f0'}`,
+              borderRadius: 10,
+              padding: '10px 14px',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              boxShadow: filter === 'haslink' ? '0 0 0 1px #6366f1' : 'none',
+            }}
+            title="Nhấp để lọc danh sách các shop có link affiliate / offer"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#4338ca' }}>
+                🔗 CÓ LINK OFF (AFF)
+              </span>
+              {stats?.hasAffApp ? (
+                <span style={{ fontSize: 11, color: '#d97706', background: '#fef3c7', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                  +{stats.hasAffApp.toLocaleString('en-US')} app
+                </span>
+              ) : null}
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#3730a3', margin: '4px 0 2px' }}>
+              {stats ? stats.hasAffLink.toLocaleString('en-US') : '…'}
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#6366f1', marginLeft: 4 }}>shop</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>
+              Có link đăng ký đối tác affiliate/offer
+            </div>
+          </div>
+
+          {/* Card 3: Shop đã có traffic */}
+          <div
+            onClick={() => changeFilter('hastraffic')}
+            style={{
+              cursor: 'pointer',
+              background: filter === 'hastraffic' ? '#f0f9ff' : '#f8fafc',
+              border: `2px solid ${filter === 'hastraffic' ? '#0284c7' : '#e2e8f0'}`,
+              borderRadius: 10,
+              padding: '10px 14px',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              boxShadow: filter === 'hastraffic' ? '0 0 0 1px #0284c7' : 'none',
+            }}
+            title="Nhấp để lọc danh sách các shop đã có traffic"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0369a1' }}>
+                📈 ĐÃ CÓ TRAFFIC
+              </span>
+              <span style={{ fontSize: 11, color: '#0284c7', background: '#e0f2fe', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                {stats?.total && stats.hasTraffic ? `${((stats.hasTraffic / stats.total) * 100).toFixed(1)}%` : '—'}
+              </span>
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#075985', margin: '4px 0 2px' }}>
+              {stats ? stats.hasTraffic.toLocaleString('en-US') : '…'}
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#0284c7', marginLeft: 4 }}>shop</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>
+              Có visits &gt; 0 theo thống kê AITDK
+            </div>
+          </div>
+
+          {/* Card 4: Tổng số shop trong kho */}
+          <div
+            onClick={() => changeFilter('all')}
+            style={{
+              cursor: 'pointer',
+              background: filter === 'all' ? '#f1f5f9' : '#f8fafc',
+              border: `2px solid ${filter === 'all' ? '#475569' : '#e2e8f0'}`,
+              borderRadius: 10,
+              padding: '10px 14px',
+              transition: 'all 0.15s ease',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              boxShadow: filter === 'all' ? '0 0 0 1px #475569' : 'none',
+            }}
+            title="Nhấp để xem toàn bộ danh sách kho shop"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>
+                🌐 TỔNG SHOP TRONG KHO
+              </span>
+              <span style={{ fontSize: 11, color: '#475569', background: '#e2e8f0', padding: '1px 6px', borderRadius: 4, fontWeight: 600 }}>
+                Toàn kho
+              </span>
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', margin: '4px 0 2px' }}>
+              {stats ? stats.total.toLocaleString('en-US') : '…'}
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginLeft: 4 }}>shop</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>
+              {stats ? `DNS sống: ${(stats.dnsLive ?? 0).toLocaleString()} · Chết: ${(stats.dnsDead ?? 0).toLocaleString()}` : 'Kho BuiltWith'}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Khung Điều khiển & Giám sát Quét Ngầm BuiltWith (Daemon VPS 24/7) */}
       <div style={{

@@ -1,12 +1,18 @@
 # BẢNG TIẾN ĐỘ NHIỆM VỤ (TODOS.md)
 
-> **Cập nhật lần cuối**: 2026-10-10 17:45:00 (GMT+7)  
+> **Cập nhật lần cuối**: 2026-10-11 23:10:00 (GMT+7)  
 > **Dự án**: Google Ads Spy & SaaS Intelligence Platform  
 > **Nguồn trạng thái**: `.ai/tasks/` & `.ai/state.json`
 
 ---
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
+
+- [x] **TASK-064**: Bổ sung báo cáo thống kê cho trang /shopify-buildwith: Tổng shop đã cào doanh thu, Tổng shop có link off, Tổng shop đã có traffic
+  - **Mô tả**: 1) Backend bổ sung endpoint `GET /api/shopify-bw/stats` (hỗ trợ query cache in-memory 15s) tính toán tức thời: tổng số shop trong kho, tổng shop đã cào được doanh thu (`hasRevenue`), tổng shop có link affiliate / offer (`hasAffLink` & `hasAffApp`), tổng shop đã có traffic (`hasTraffic`), số lượng DNS sống/chết. 2) Mở rộng `FILTER_WHERE` và API `listRows` hỗ trợ các bộ lọc mới `hasrev`, `haslink`, `hastraffic` (kèm logic JOIN bảng traffic khi đếm `countJoin`). 3) Frontend thêm khối UI thẻ thống kê (Stats Report Cards) sang trọng, đồng bộ thiết kế, hiển thị nổi bật 3 chỉ số cốt lõi và tổng kho, hỗ trợ click trực tiếp vào từng thẻ để lọc danh sách tương ứng, kèm nút "Làm mới số liệu". 4) Đã vượt qua Quality Gate biên dịch hoàn hảo cả backend và frontend.
+  - **Branch**: `agent/frontend/TASK-064`
+  - **Files**: `apps/api/src/shopify-bw/shopify-bw.mysql.ts`, `apps/api/src/shopify-bw/shopify-bw.service.ts`, `apps/api/src/shopify-bw/shopify-bw.controller.ts`, `apps/web/app/api.ts`, `apps/web/app/components/ShopifyBwPanel.tsx`
+  - **Tài liệu**: [`docs/handoff-2026-10-11-shopify-bw-stats-report.md`](docs/handoff-2026-10-11-shopify-bw-stats-report.md)
 
 - [x] **TASK-063**: Bổ sung Circuit Breaker toàn cục cho AITDK khi bị Cloudflare Rate Limit 429/1015, dừng spam domain đơn lẻ và điều chỉnh nhịp job bwtraffic
   - **Mô tả**: 1) Thêm Circuit Breaker toàn cục (`rateLimitCooldownUntil`) vào `TrafficService`: khi gặp HTTP 429 hoặc Cloudflare Error 1015 / Bot Challenge, tự động kích hoạt cooldown 90s - 120s và dừng ngay lập tức mọi lô/domain còn lại, không tiếp tục spam; 2) Sửa fallback domain đơn lẻ: ngắt ngay khi gặp 429, không thử tiếp các domain sau và không đưa domain lỗi vào `queriedDomains`; 3) Sửa `triedDomains` trong `shopify-bw.service.ts` để chỉ đánh dấu domain thực tế thành công/rỗng; 4) Tăng `DIRECT_TIMEOUT_MS = 25_000`, `BATCH_SIZE = 10`, `INTER_BATCH_DELAY_MS = 2_500`; 5) Job `stepBwTraffic` tự động backoff 120s khi gặp 429/1015; 6) Tự động phục hồi domain bị tried nhầm trong `doEnsureTables` và thêm API `POST /shopify-bw/traffic-reset-failed`; 7) Viết test unit `traffic.service.spec.ts`.

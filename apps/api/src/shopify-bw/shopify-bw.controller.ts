@@ -20,6 +20,11 @@ export class ShopifyBwController {
     return this.svc.batchInsert(body || {});
   }
 
+  @Get('stats')
+  stats(@Query('force') force?: string) {
+    return this.svc.stats(force === 'true' || force === '1');
+  }
+
   @Get('rows')
   rows(
     @Query('page') page: string,

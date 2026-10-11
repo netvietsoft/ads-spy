@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ShopifyBwMysql, ShopifyBwSnapshot } from './shopify-bw.mysql';
+import { ShopifyBwMysql, ShopifyBwSnapshot, ShopifyBwStats } from './shopify-bw.mysql';
 import { ShopifyBwDetect } from './shopify-bw.detect';
 import { TERMS_PATHS, TERMS_HEADERS, analyzeTermsPage, sitemapPageMaps, sitemapAffiliateUrls } from '../afflib/afflib.terms';
 import { shopifyHttp, detectShopifyStorefront } from '../shophunter/shopify.client';
@@ -403,5 +403,9 @@ export class ShopifyBwService {
 
   detectStep(batch = 20, concurrency = 3) {
     return this.detect.detectStep(batch, concurrency);
+  }
+
+  stats(force = false): Promise<ShopifyBwStats> {
+    return this.db.getStats(force);
   }
 }

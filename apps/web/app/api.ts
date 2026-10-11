@@ -1023,8 +1023,24 @@ export async function affLibDetectStop(): Promise<AffLibDetectStatus> {
 export type ShopifyBwRow = AffLibRow;
 export type ShopifyBwPage = AffLibPage;
 export type ShopifyBwDetectStatus = AffLibDetectStatus;
-export type ShopifyBwFilter = AffLibFilter;
+export type ShopifyBwFilter = AffLibFilter | 'hasrev' | 'haslink' | 'hastraffic';
 export type ShopifyBwDir = AffLibDir;
+
+export interface ShopifyBwStats {
+  total: number;
+  hasRevenue: number;
+  hasAffLink: number;
+  hasAffApp: number;
+  hasTraffic: number;
+  dnsLive: number;
+  dnsDead: number;
+  shopifyVerified: number;
+  updatedAt: number;
+}
+
+export async function shopifyBwStats(force = false): Promise<ShopifyBwStats> {
+  return jsonOrThrow(await fetch(`${API}/api/shopify-bw/stats${force ? '?force=true' : ''}`));
+}
 
 export async function shopifyBwScan(domains: string): Promise<ShopifyBwPage> {
   return jsonOrThrow(await fetch(`${API}/api/shopify-bw/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }) }));
@@ -1039,7 +1055,7 @@ export async function shopifyBwBatchInsert(body: { domains?: string[]; items?: {
     body: JSON.stringify(body),
   }));
 }
-export async function shopifyBwRows(page = 1, pageSize = 100, filter: AffLibFilter = 'all', sort?: string, dir?: AffLibDir, search?: string): Promise<ShopifyBwPage> {
+export async function shopifyBwRows(page = 1, pageSize = 100, filter: ShopifyBwFilter = 'all', sort?: string, dir?: AffLibDir, search?: string): Promise<ShopifyBwPage> {
   const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize), filter });
   if (sort) { qs.set('sort', sort); qs.set('dir', dir || 'desc'); }
   if (search) qs.set('search', search);

@@ -39,11 +39,26 @@ const REV_JOB_COND = '(sb.rev_month IS NULL OR sb.shop_id IS NOT NULL) AND (sb.s
 const FILTER_WHERE: Record<string, string> = {
   all: '',
   aff: "WHERE sb.aff_status IN ('yes','app')",
+  hasrev: 'WHERE (sb.rev_month IS NOT NULL OR sb.rev_total IS NOT NULL OR sb.rev_day IS NOT NULL)',
+  haslink: "WHERE (sb.aff_status = 'yes' OR (sb.join_url IS NOT NULL AND TRIM(sb.join_url) != ''))",
+  hastraffic: 'WHERE (t.visits IS NOT NULL AND t.visits > 0)',
   unscanned: `WHERE ${QUEUE_COND}`,
   junk: `WHERE ${JUNK_COND}`,
   norev: `WHERE ${REV_QUEUE_COND}`,
   notshopify: 'WHERE sb.shopify = 0',
 };
+
+export interface ShopifyBwStats {
+  total: number;
+  hasRevenue: number;
+  hasAffLink: number;
+  hasAffApp: number;
+  hasTraffic: number;
+  dnsLive: number;
+  dnsDead: number;
+  shopifyVerified: number;
+  updatedAt: number;
+}
 
 export interface ShopifyBwSnapshot {
   web: string;
@@ -349,7 +364,8 @@ export class ShopifyBwMysql {
     const expr = SORT_EXPR[sort];
     const orderBy = `ORDER BY ${dir === 'ASC' ? `${expr} IS NULL, ` : ''}${expr} ${dir}, sb.created_at DESC, sb.web ASC`;
 
-    const [cnt] = await pool.query(`SELECT COUNT(*) n FROM shopify_buildwith sb ${where}`, params);
+    const countJoin = where && where.includes('t.') ? 'LEFT JOIN aff_domain_traffic t ON t.web = sb.web COLLATE utf8mb4_unicode_ci' : '';
+    const [cnt] = await pool.query(`SELECT COUNT(*) n FROM shopify_buildwith sb ${countJoin} ${where}`, params);
     const total = Number((cnt as any[])[0].n) || 0;
 
     const [rows] = await pool.query(
@@ -363,6 +379,56 @@ export class ShopifyBwMysql {
     );
     const items = await this.attachTerms(await this.attachCategory(rows as any[]));
     return { items, total, page, pageSize, sort, dir: dir.toLowerCase(), filter };
+  }
+
+  private statsCache: { data: ShopifyBwStats; expiresAt: number } | null = null;
+
+  async getStats(force = false): Promise<ShopifyBwStats> {
+    const now = Date.now();
+    if (!force && this.statsCache && this.statsCache.expiresAt > now) {
+      return this.statsCache.data;
+    }
+
+    await this.ensureTables();
+    const pool = await this.sh.getPool();
+
+    // 1. Thống kê tổng số shop, doanh thu, link aff, dns từ bảng shopify_buildwith
+    const [sbRows] = await pool.query(`
+      SELECT
+        COUNT(*) AS total,
+        COUNT(CASE WHEN rev_month IS NOT NULL OR rev_total IS NOT NULL OR rev_day IS NOT NULL THEN 1 END) AS has_revenue,
+        COUNT(CASE WHEN aff_status = 'yes' OR (join_url IS NOT NULL AND TRIM(join_url) != '') THEN 1 END) AS has_aff_link,
+        COUNT(CASE WHEN aff_status = 'app' THEN 1 END) AS has_aff_app,
+        COUNT(CASE WHEN dns_ok = 1 THEN 1 END) AS dns_live,
+        COUNT(CASE WHEN dns_ok = 0 THEN 1 END) AS dns_dead,
+        COUNT(CASE WHEN shopify = 1 THEN 1 END) AS shopify_verified
+      FROM shopify_buildwith
+    `);
+    const s = (sbRows as any[])[0] || {};
+
+    // 2. Thống kê số shop đã có traffic (join qua aff_domain_traffic)
+    const [trafRows] = await pool.query(`
+      SELECT COUNT(*) AS has_traffic
+      FROM aff_domain_traffic t
+      JOIN shopify_buildwith sb ON sb.web = t.web COLLATE utf8mb4_unicode_ci
+      WHERE t.visits IS NOT NULL AND t.visits > 0
+    `);
+    const hasTraffic = Number((trafRows as any[])[0]?.has_traffic) || 0;
+
+    const data: ShopifyBwStats = {
+      total: Number(s.total) || 0,
+      hasRevenue: Number(s.has_revenue) || 0,
+      hasAffLink: Number(s.has_aff_link) || 0,
+      hasAffApp: Number(s.has_aff_app) || 0,
+      hasTraffic,
+      dnsLive: Number(s.dns_live) || 0,
+      dnsDead: Number(s.dns_dead) || 0,
+      shopifyVerified: Number(s.shopify_verified) || 0,
+      updatedAt: now,
+    };
+
+    this.statsCache = { data, expiresAt: now + 15_000 };
+    return data;
   }
 
   private static readonly TERMS_RETRY_COOLDOWN_MS = 6 * 3600_000;
