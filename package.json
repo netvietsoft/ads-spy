@@ -9,6 +9,8 @@
     "dev": "npm run dev --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "build:api": "npm run build -w apps/api",
-    "build:web": "npm run build -w apps/web"
+    "build:web": "npm run build -w apps/web",
+    "reload": "pm2 reload ecosystem.config.js --update-env",
+    "deploy": "bash deploy.sh"
   }
 }
