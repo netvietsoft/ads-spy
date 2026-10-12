@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-10-12T08:57:00+07:00",
+  "reason": "user_restarting_machine",
+  "active_task": null,
+  "completed_task": "TASK-064",
+  "title": "Bổ sung báo cáo thống kê kho shop Shopify BuiltWith (Doanh thu, Link off, Traffic)",
+  "branch": "main",
+  "status": "ready_for_deploy_verification",
+  "vps_directory": "/var/www/ads-spy",
+  "vps_deploy_command": "cd /var/www/ads-spy && git fetch origin && git reset --hard origin/main && npm run build:api && npm run build:web && pm2 restart ads-spy-api ads-spy-web --update-env && pm2 status",
+  "next_steps": [
+    "SSH vào VPS mmo-coin.com",
+    "Chạy lệnh cd /var/www/ads-spy && git fetch origin && git reset --hard origin/main && npm run build:api && npm run build:web && pm2 restart ads-spy-api ads-spy-web --update-env",
+    "Mở https://mmo-coin.com/shopify-buildwith và Ctrl+F5 để kiểm tra khối báo cáo thống kê mới",
+    "Kiểm tra 5 job quét ngầm BuiltWith (bwdns, bwtraffic, bwdetect, bwrev, bwterms) đang chạy"
+  ]
+}
