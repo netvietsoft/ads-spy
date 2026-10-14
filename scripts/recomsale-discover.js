@@ -179,11 +179,16 @@ const BUILTIN_SEEDS = [
 async function main() {
   const args = process.argv.slice(2);
   const isDbMode = args.includes('--db') || args.includes('-d');
-  let limit = 5000;
+  let limit = 10000;
+  let offset = 0;
   if (isDbMode) {
     const idx = args.indexOf('--db') !== -1 ? args.indexOf('--db') : args.indexOf('-d');
     if (args[idx + 1] && !isNaN(Number(args[idx + 1]))) {
       limit = Number(args[idx + 1]);
+    }
+    const offIdx = args.indexOf('--offset') !== -1 ? args.indexOf('--offset') : args.indexOf('-o');
+    if (offIdx !== -1 && args[offIdx + 1] && !isNaN(Number(args[offIdx + 1]))) {
+      offset = Number(args[offIdx + 1]);
     }
   }
 
@@ -199,7 +204,7 @@ async function main() {
     candidateSlugs.add(s.toLowerCase());
   }
 
-  // 2. Tự động lấy thêm từ các nguồn OSINT (subdomain.center, hackertarget, rapiddns)
+  // 2. Tự động lấy thêm từ các nguồn OSINT mở (subdomain.center, hackertarget, rapiddns, duckduckgo)
   console.log(`Đang tự động thu thập subdomain từ các nguồn OSINT mở...`);
   try {
     const sResp = await fetch('https://api.subdomain.center/?domain=recomsale.com', { signal: AbortSignal.timeout(6000) });
@@ -243,6 +248,21 @@ async function main() {
     }
   } catch (e) {}
 
+  try {
+    const ddgResp = await fetch('https://html.duckduckgo.com/html/?q=site:recomsale.com', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://html.duckduckgo.com/' },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (ddgResp.ok) {
+      const ddgText = await ddgResp.text();
+      const matches = ddgText.match(/[a-zA-Z0-9.-]+\.recomsale\.com/g) || [];
+      for (const host of matches) {
+        const slug = host.toLowerCase().replace('.recomsale.com', '').replace(/^2f|^2d/, '');
+        if (slug && slug.length >= 3) candidateSlugs.add(slug);
+      }
+    }
+  } catch (e) {}
+
   console.log(`Đã tích lũy ${candidateSlugs.size} slug khởi đầu từ OSINT & Built-in Seeds.`);
 
   // Cố gắng kết nối MySQL nếu có sẵn (để tự động lưu mọi kết quả HIT vào aff_host & aff_program)
@@ -257,33 +277,33 @@ async function main() {
   }
 
   if (isDbMode) {
-    console.log(`\n=== CHẾ ĐỘ QUÉT THÔNG MINH TỪ DATABASE MYSQL (Giới hạn: ${limit} shops) ===`);
+    console.log(`\n=== CHẾ ĐỘ QUÉT TỰ ĐỘNG TỪ DATABASE MYSQL (Mục tiêu: ${limit} shops, Offset: ${offset}) ===`);
     if (!dbConn) {
       console.error('Không tìm thấy kết nối MySQL. Vui lòng kiểm tra lại cấu hình.');
       process.exit(1);
     }
     try {
-      // A. Lấy slug từ các mạng affiliate khác (UpPromote, GoAffPro, Affiliatly...) — TỈ LỆ TRÚNG CỰC CAO!
+      // A. Lấy slug từ các mạng affiliate khác (UpPromote, GoAffPro, Affiliatly...)
       try {
         const [rowsAff] = await dbConn.query(
-          `SELECT DISTINCT slug FROM aff_host WHERE net IN ('uppromote.com', 'goaffpro.com', 'affiliatly.com') AND slug NOT REGEXP '^[0-9]+$' LIMIT ?`,
-          [Math.min(limit, 5000)]
+          `SELECT DISTINCT slug FROM aff_host WHERE net IN ('uppromote.com', 'goaffpro.com', 'affiliatly.com') AND slug NOT REGEXP '^[0-9]+$' LIMIT ? OFFSET ?`,
+          [limit, offset]
         );
         let affCount = 0;
         for (const r of rowsAff) {
           const list = extractCandidateSlugs(r.slug);
           for (const s of list) { candidateSlugs.add(s); affCount++; }
         }
-        console.log(`-> Nạp thêm ${affCount} slug tiềm năng từ các shop đang chạy affiliate (UpPromote/GoAffPro).`);
+        console.log(`-> Nạp thêm ${affCount} slug tiềm năng từ các shop affiliate khác (UpPromote/GoAffPro).`);
       } catch (e) {
         console.log(`(Bỏ qua aff_host: ${e.message})`);
       }
 
-      // B. Lấy từ sh_shop: Sắp xếp theo doanh thu cao nhất (Top Shopify Brands)
+      // B. Lấy từ sh_shop: Phân trang linh hoạt theo Offset
       try {
         const [rowsSh] = await dbConn.query(
-          `SELECT shop_name, shop_url FROM sh_shop WHERE (shop_url IS NOT NULL AND shop_url != '') OR (shop_name IS NOT NULL AND shop_name != '') ORDER BY revenue DESC LIMIT ?`,
-          [Math.min(limit, 5000)]
+          `SELECT shop_name, shop_url FROM sh_shop WHERE (shop_url IS NOT NULL AND shop_url != '') OR (shop_name IS NOT NULL AND shop_name != '') LIMIT ? OFFSET ?`,
+          [limit, offset]
         );
         let shCount = 0;
         for (const r of rowsSh) {
@@ -294,22 +314,22 @@ async function main() {
             for (const s of extractCandidateSlugs(r.shop_name)) { candidateSlugs.add(s); shCount++; }
           }
         }
-        console.log(`-> Nạp thêm ${shCount} slug tiềm năng từ Top Shop doanh thu cao trong sh_shop.`);
+        console.log(`-> Nạp thêm ${shCount} slug tiềm năng từ sh_shop (Offset: ${offset}).`);
       } catch (e) {
         console.log(`(Bỏ qua sh_shop: ${e.message})`);
       }
 
-      // C. Lấy từ shopify_buildwith: Lọc shopify=1 hoặc có doanh thu, bỏ qua domain rác chỉ có số
+      // C. Lấy từ shopify_buildwith: Quét kho 560.000 website với offset
       try {
         const [rowsBw] = await dbConn.query(
-          `SELECT web FROM shopify_buildwith WHERE (shopify = 1 OR dns_ok = 1 OR rev_month > 0) AND web NOT REGEXP '^[0-9]' ORDER BY rev_month DESC, updated_at DESC LIMIT ?`,
-          [Math.min(limit, 5000)]
+          `SELECT web FROM shopify_buildwith WHERE (shopify = 1 OR dns_ok = 1) AND web NOT REGEXP '^[0-9]' LIMIT ? OFFSET ?`,
+          [limit, offset]
         );
         let bwCount = 0;
         for (const r of rowsBw) {
           for (const s of extractCandidateSlugs(r.web)) { candidateSlugs.add(s); bwCount++; }
         }
-        console.log(`-> Nạp thêm ${bwCount} slug tiềm năng từ shopify_buildwith.`);
+        console.log(`-> Nạp thêm ${bwCount} slug tiềm năng từ shopify_buildwith (Offset: ${offset}).`);
       } catch (e) {
         console.log(`(Bỏ qua shopify_buildwith: ${e.message})`);
       }
