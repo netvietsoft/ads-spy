@@ -199,13 +199,10 @@ async function main() {
     candidateSlugs.add(s.toLowerCase());
   }
 
-  // 2. Tự động lấy thêm từ api.subdomain.center
-  console.log(`Đang lấy danh sách subdomain trực tiếp từ api.subdomain.center...`);
+  // 2. Tự động lấy thêm từ các nguồn OSINT (subdomain.center, hackertarget, rapiddns)
+  console.log(`Đang tự động thu thập subdomain từ các nguồn OSINT mở...`);
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000);
-    const sResp = await fetch('https://api.subdomain.center/?domain=recomsale.com', { signal: ctrl.signal });
-    clearTimeout(t);
+    const sResp = await fetch('https://api.subdomain.center/?domain=recomsale.com', { signal: AbortSignal.timeout(6000) });
     if (sResp.ok) {
       const sJson = await sResp.json();
       if (Array.isArray(sJson)) {
@@ -218,23 +215,54 @@ async function main() {
         }
       }
     }
-    console.log(`Đã tích lũy ${candidateSlugs.size} slug từ OSINT & Seed list.`);
-  } catch (e) {
-    console.log(`(Tạm bỏ qua api.subdomain.center: ${e.message})`);
+  } catch (e) {}
+
+  try {
+    const htResp = await fetch('https://api.hackertarget.com/hostsearch/?q=recomsale.com', { signal: AbortSignal.timeout(6000) });
+    if (htResp.ok) {
+      const htText = await htResp.text();
+      for (const line of htText.split('\n')) {
+        const host = line.split(',')[0].trim().toLowerCase();
+        if (host.endsWith('.recomsale.com')) {
+          const slug = host.replace('.recomsale.com', '');
+          if (slug && slug.length >= 3) candidateSlugs.add(slug);
+        }
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const rResp = await fetch('https://rapiddns.io/subdomain/recomsale.com?full=1', { signal: AbortSignal.timeout(6000) });
+    if (rResp.ok) {
+      const rText = await rResp.text();
+      const matches = rText.match(/[a-zA-Z0-9.-]+\.recomsale\.com/g) || [];
+      for (const host of matches) {
+        const slug = host.toLowerCase().replace('.recomsale.com', '');
+        if (slug && slug.length >= 3) candidateSlugs.add(slug);
+      }
+    }
+  } catch (e) {}
+
+  console.log(`Đã tích lũy ${candidateSlugs.size} slug khởi đầu từ OSINT & Built-in Seeds.`);
+
+  // Cố gắng kết nối MySQL nếu có sẵn (để tự động lưu mọi kết quả HIT vào aff_host & aff_program)
+  if (mysql) {
+    try {
+      const dbUrl = getMysqlUrl();
+      dbConn = await mysql.createConnection(dbUrl);
+      console.log(`Đã kết nối MySQL: Mọi shop phát hiện được sẽ tự động lưu vào aff_host & aff_program.`);
+    } catch (e) {
+      console.log(`(Không kết nối được MySQL: ${e.message}. Kết quả sẽ chỉ lưu ra file JSON/CSV).`);
+    }
   }
 
   if (isDbMode) {
     console.log(`\n=== CHẾ ĐỘ QUÉT THÔNG MINH TỪ DATABASE MYSQL (Giới hạn: ${limit} shops) ===`);
-    if (!mysql) {
-      console.error('Không tìm thấy thư viện mysql2. Vui lòng chạy npm install.');
+    if (!dbConn) {
+      console.error('Không tìm thấy kết nối MySQL. Vui lòng kiểm tra lại cấu hình.');
       process.exit(1);
     }
-    const dbUrl = getMysqlUrl();
-    console.log(`Đang kết nối MySQL: ${dbUrl.replace(/:[^:@]+@/, ':***@')}...`);
     try {
-      dbConn = await mysql.createConnection(dbUrl);
-      console.log('Kết nối MySQL thành công!');
-
       // A. Lấy slug từ các mạng affiliate khác (UpPromote, GoAffPro, Affiliatly...) — TỈ LỆ TRÚNG CỰC CAO!
       try {
         const [rowsAff] = await dbConn.query(
