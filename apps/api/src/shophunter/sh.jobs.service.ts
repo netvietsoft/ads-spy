@@ -420,18 +420,30 @@ export class ShJobsService implements OnModuleInit {
 
   // [Shopify BuiltWith] Cào Điều khoản/Nội quy affiliate từ chính shop (/pages/affiliate*, sitemap.xml)
   private async stepBwTerms(force = false): Promise<{ pace: number }> {
-    if (!this.bwSvc) return { pace: IDLE_MS };
+    if (!this.bwSvc) {
+      this.mem.bwterms.lastStatus = 'lỗi service';
+      await this.mysql.appendJobLog('bwterms', 'error', 'Không tìm thấy ShopifyBwService.').catch(() => {});
+      return { pace: IDLE_MS };
+    }
     const cfg = await this.getJobCfg('bwterms');
     if (!force && !this.withinActiveHours(cfg)) { this.mem.bwterms.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
     const dk = this.dayKey('bwterms');
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwterms.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
+    
+    this.mem.bwterms.lastRunAt = Date.now();
+    this.mem.bwterms.lastStatus = 'đang quét';
+
     let r: Awaited<ReturnType<ShopifyBwService['termsScan']>>;
-    try { r = await this.bwSvc.termsScan(cfg.batch, force); }
+    try { r = await this.bwSvc.termsScan(cfg.batch); }
     catch (e) { this.mem.bwterms.lastStatus = 'error'; await this.mysql.appendJobLog('bwterms', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
     await this.mysql.addDailyCount(dk, r.scanned).catch(() => {});
     this.mem.bwterms.lastRunAt = Date.now();
     this.mem.bwterms.stats = { quet: r.scanned, ra_noi_quy: r.found, trang_mong: r.thin, khong_co: r.notfound, loi: r.error, con_lai: r.remaining };
-    if (!r.scanned) { this.mem.bwterms.lastStatus = 'idle'; await this.mysql.appendJobLog('bwterms', 'info', 'Hết domain cần cào điều khoản trong BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    if (!r.scanned) {
+      this.mem.bwterms.lastStatus = 'idle';
+      await this.mysql.appendJobLog('bwterms', 'info', `Chưa có shop affiliate mới nào để cào điều khoản (đang chờ job Quét Affiliate phát hiện thêm); còn ${r.remaining}.`).catch(() => {});
+      return { pace: IDLE_MS };
+    }
     this.mem.bwterms.lastStatus = 'ok';
     await this.mysql.appendJobLog('bwterms', 'info', `Quét ${r.scanned}: +${r.found} ra nội quy, ${r.thin} trang mỏng, ${r.notfound} không có trang; còn ${r.remaining}`).catch(() => {});
     return { pace: cfg.paceMs };

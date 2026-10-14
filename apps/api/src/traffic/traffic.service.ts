@@ -22,7 +22,7 @@ const PROXY_TIMEOUT_MS = 10_000;
 const DIRECT_TIMEOUT_MS = 25_000;
 const SINGLE_TIMEOUT_MS = 6_000;
 const CIRCUIT_TRIP_AFTER = 4;
-const INTER_BATCH_DELAY_MS = 2_500;
+const INTER_BATCH_DELAY_MS = 4_500;
 const RATE_LIMIT_COOLDOWN_MS = 90_000; // 90s cooldown khi gặp 429
 const CLOUDFLARE_1015_COOLDOWN_MS = 120_000; // 120s cooldown khi dính Cloudflare Error 1015 / Challenge
 

@@ -306,7 +306,12 @@ export class ShopifyBwService {
         for (;;) {
           const web = queue.shift();
           if (!web) return;
-          const r = await this.termsScanOne(web, get).catch((e) => ({ status: 'error' as const, err: String((e as Error)?.message).slice(0, 200) }));
+          const r = await Promise.race([
+            this.termsScanOne(web, get),
+            new Promise<{ status: 'error'; err: string }>((resolve) =>
+              setTimeout(() => resolve({ status: 'error', err: 'timeout 25s' }), 25000)
+            )
+          ]).catch((e) => ({ status: 'error' as const, err: String((e as Error)?.message).slice(0, 200) }));
           stat.scanned++;
           if (r.status === 'ok') stat.found++;
           else stat[r.status]++;
