@@ -4,14 +4,16 @@
  *
  * Tool dò tìm & mở rộng kho merchant của RecomSale (Shopify Affiliate App).
  * 
- * Tính năng:
- * 1. Chế độ --db [limit]: Tự động lấy danh sách brand/domain từ MySQL (shopify_buildwith & sh_shop)
- *    và tự động nạp thẳng các shop phát hiện được vào bảng aff_host + aff_program trên database!
- * 2. Chế độ file [file.txt] [output.json]: Đọc danh sách từ file txt.
- * 3. Chế độ mặc định: Quét bộ từ khoá / brand mẫu phổ biến.
- * 4. Tự động xuất cả file JSON và CSV để mở trực tiếp trong Excel.
+ * Pipeline thông minh:
+ * 1. Nạp toàn bộ hạt giống & OSINT từ api.subdomain.center, urlscan, seed list.
+ * 2. Nạp slug từ các mạng affiliate có sẵn (aff_host: UpPromote, GoAffPro, Affiliatly...) - nguồn shop đã chạy aff!
+ * 3. Nạp top shop doanh thu cao từ sh_shop (shop_name, shop_url) và shopify_buildwith (rev_month cao).
+ * 4. Tự động chuẩn hóa slug thông minh (tách SLD, gộp tên thương hiệu).
+ * 5. Quét song song với RecomSale API (outGet) kiểm tra shopId > 0.
+ * 6. Tự động INSERT kết quả trúng (HIT) vào aff_host và aff_program trên MySQL để xem ngay trên Web!
+ * 7. Xuất file kết quả JSON và CSV để mở trực tiếp trong Excel.
  *
- * Sử dụng trên VPS:
+ * Sử dụng:
  *   node scripts/recomsale-discover.js --db 10000
  *   node scripts/recomsale-discover.js brands.txt ket-qua.json
  */
@@ -42,16 +44,32 @@ function getRecomsaleSign(domain) {
   return crypto.createHash('md5').update(sha1).digest('hex');
 }
 
-function normalizeSlug(raw) {
-  if (!raw) return null;
-  let s = String(raw).trim().toLowerCase();
-  s = s.replace(/^https?:\/\//i, '');
-  s = s.replace(/\.recomsale\.com$/i, '');
-  s = s.replace(/\.myshopify\.com$/i, '');
-  s = s.replace(/\.[a-z]{2,10}(\.[a-z]{2,5})?$/i, ''); // cắt TLD .com, .co.uk...
-  s = s.replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-  if (!s || s.length < 3 || s.length > 50) return null;
-  return s;
+function extractCandidateSlugs(text) {
+  if (!text) return [];
+  const candidates = new Set();
+  let s = String(text).trim().toLowerCase();
+  s = s.replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  s = s.replace(/\.recomsale\.com$/i, '').replace(/\.myshopify\.com$/i, '');
+  
+  // Xử lý domain nhiều cấp (vd: store.akkoniq.com -> akkoniq)
+  const parts = s.split('.');
+  if (parts.length >= 2) {
+    const cleanParts = parts.filter(p => !['www', 'store', 'shop', 'us', 'eu', 'uk', 'app', 'm', 'en', 'ca'].includes(p));
+    if (cleanParts.length >= 2) {
+      const sld = cleanParts[0].replace(/[^a-z0-9-]/g, '');
+      if (sld.length >= 3 && sld.length <= 40) candidates.add(sld);
+    }
+  }
+
+  // Tên liền không dấu cách (vd: "The Thread Shop" -> "thethreadshop")
+  const noSpace = s.replace(/\.[a-z]{2,10}(\.[a-z]{2,5})?$/i, '').replace(/[^a-z0-9]/g, '');
+  if (noSpace.length >= 3 && noSpace.length <= 40) candidates.add(noSpace);
+
+  // Tên có dấu gạch ngang (vd: "the-thread-shop")
+  const withHyphen = s.replace(/\.[a-z]{2,10}(\.[a-z]{2,5})?$/i, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '');
+  if (withHyphen.length >= 3 && withHyphen.length <= 40) candidates.add(withHyphen);
+
+  return Array.from(candidates);
 }
 
 function getMysqlUrl() {
@@ -132,6 +150,32 @@ async function runPool(items, concurrency, fn) {
   return results;
 }
 
+// 144 seed đã xác thực từ codebase
+const BUILTIN_SEEDS = [
+  '1irontrendy', '45bd8d-2', '4a7b7a', '999tee', 'abimbola', 'affiliate', 'allamericancanine', 'allwear',
+  'animelodic', 'apiba', 'app-test', 'app-test1', 'app-test2', 'arborfill', 'audioki', 'avenila',
+  'azorahwines', 'barkpotty', 'bawdee', 'bestbookstore', 'biohackinglabs', 'bkoutlooks', 'bluerivercarp',
+  'bossciglam', 'boxlinestore', 'buhairllc', 'cajosenatural', 'cbathleticwear', 'cdn-r2', 'cdnb',
+  'chameleonsandcandle', 'collectparis', 'comeherebuddy', 'comenii', 'cotodama-speaker',
+  'creationsbyizzy-affiliateportal', 'cypherproject', 'demonracing', 'design-kontrol', 'deviousdrawing',
+  'dezilix', 'diamond-faction', 'dipacci', 'discountedsarms', 'disinishop', 'doggielawn',
+  'doublethesprinkles', 'dstreet', 'easeeasecurtains', 'edmnova', 'elsystyle', 'elysianparfum',
+  'epicdesignpads', 'execuluxe', 'faithandflame', 'fakeittan', 'fashionaftermath', 'flipndip',
+  'frankiesfabdesigns', 'garucosmetics', 'garucosmeticsparis', 'giantex', 'goingallin', 'gtrsimulator',
+  'hairloss', 'happygetfit', 'haritea', 'herselfjewelry', 'honorskinbody', 'hudmon', 'humblematcha',
+  'iamastrobrand', 'instantlyunique', 'invictauk', 'iphoneplug', 'jbaumgardt', 'jirano', 'joycat',
+  'kartelian', 'kikitextiles', 'leafbrandsco', 'link-shoes', 'litgels', 'littlenbrave', 'longrunco',
+  'longruncoffee', 'lumarasystems', 'lumicandlesph', 'lyricalhair', 'matchasunday', 'mcderardparisstore',
+  'meikomichele', 'meolaleatherdogs', 'miaoustyle', 'midnightromanceshop', 'molecule53', 'momcozy',
+  'msgigisbeauty', 'mymenowell', 'namastecita', 'nayabjewellery', 'nerdlabs', 'nikikay', 'omniblueminerals',
+  'onotone', 'origoshoes', 'outlookbunch', 'oyatsuclub', 'palaam', 'partners', 'phaedraskin', 'policies',
+  'poppinsperiod', 'poseidonracks', 'rarawbotanicals', 'recoverasia', 'revivaldiamond', 'rizwardsleather',
+  'sakuraheadspa', 'scentimental', 'shop', 'shop-test', 'shopblackbirdboutique', 'store',
+  'stylefitnessapparel', 'syrebocare', 'theedwardsedge', 'theheelsluxxx', 'theluxenude', 'theroadrush',
+  'thethreadshop', 'threegirls', 'thrive-nutra', 'topuniquehair', 'treselite', 'trulygrounded', 'ventour',
+  'vlandus', 'whisperz', 'wildcard', 'wisteriasnow', 'xd21', 'xoshowpony', 'yeshansarees'
+];
+
 async function main() {
   const args = process.argv.slice(2);
   const isDbMode = args.includes('--db') || args.includes('-d');
@@ -147,11 +191,40 @@ async function main() {
   const outputFile = !isDbMode && args[1] ? args[1] : 'recomsale-discovered.json';
   const csvFile = outputFile.replace(/\.json$/i, '') + '.csv';
 
-  let rawSlugs = [];
+  const candidateSlugs = new Set();
   let dbConn = null;
 
+  // 1. Luôn nạp bộ hạt giống cơ sở
+  for (const s of BUILTIN_SEEDS) {
+    candidateSlugs.add(s.toLowerCase());
+  }
+
+  // 2. Tự động lấy thêm từ api.subdomain.center
+  console.log(`Đang lấy danh sách subdomain trực tiếp từ api.subdomain.center...`);
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const sResp = await fetch('https://api.subdomain.center/?domain=recomsale.com', { signal: ctrl.signal });
+    clearTimeout(t);
+    if (sResp.ok) {
+      const sJson = await sResp.json();
+      if (Array.isArray(sJson)) {
+        for (const item of sJson) {
+          const s = String(item).trim().toLowerCase();
+          if (s.endsWith('.recomsale.com')) {
+            const slug = s.replace('.recomsale.com', '');
+            if (slug && slug.length >= 3) candidateSlugs.add(slug);
+          }
+        }
+      }
+    }
+    console.log(`Đã tích lũy ${candidateSlugs.size} slug từ OSINT & Seed list.`);
+  } catch (e) {
+    console.log(`(Tạm bỏ qua api.subdomain.center: ${e.message})`);
+  }
+
   if (isDbMode) {
-    console.log(`=== CHẾ ĐỘ QUÉT TỰ ĐỘNG TỪ DATABASE MYSQL (Giới hạn: ${limit} shops) ===`);
+    console.log(`\n=== CHẾ ĐỘ QUÉT THÔNG MINH TỪ DATABASE MYSQL (Giới hạn: ${limit} shops) ===`);
     if (!mysql) {
       console.error('Không tìm thấy thư viện mysql2. Vui lòng chạy npm install.');
       process.exit(1);
@@ -162,37 +235,57 @@ async function main() {
       dbConn = await mysql.createConnection(dbUrl);
       console.log('Kết nối MySQL thành công!');
 
-      const slugSet = new Set();
-      // 1. Lấy từ shopify_buildwith
+      // A. Lấy slug từ các mạng affiliate khác (UpPromote, GoAffPro, Affiliatly...) — TỈ LỆ TRÚNG CỰC CAO!
       try {
-        const [rowsBw] = await dbConn.query('SELECT web FROM shopify_buildwith WHERE web IS NOT NULL AND web != "" LIMIT ?', [limit]);
-        for (const r of rowsBw) {
-          const s = normalizeSlug(r.web);
-          if (s) slugSet.add(s);
+        const [rowsAff] = await dbConn.query(
+          `SELECT DISTINCT slug FROM aff_host WHERE net IN ('uppromote.com', 'goaffpro.com', 'affiliatly.com') AND slug NOT REGEXP '^[0-9]+$' LIMIT ?`,
+          [Math.min(limit, 5000)]
+        );
+        let affCount = 0;
+        for (const r of rowsAff) {
+          const list = extractCandidateSlugs(r.slug);
+          for (const s of list) { candidateSlugs.add(s); affCount++; }
         }
-        console.log(`Đã trích xuất ${slugSet.size} slug tiềm năng từ bảng shopify_buildwith`);
+        console.log(`-> Nạp thêm ${affCount} slug tiềm năng từ các shop đang chạy affiliate (UpPromote/GoAffPro).`);
+      } catch (e) {
+        console.log(`(Bỏ qua aff_host: ${e.message})`);
+      }
+
+      // B. Lấy từ sh_shop: Sắp xếp theo doanh thu cao nhất (Top Shopify Brands)
+      try {
+        const [rowsSh] = await dbConn.query(
+          `SELECT shop_name, shop_url FROM sh_shop WHERE (shop_url IS NOT NULL AND shop_url != '') OR (shop_name IS NOT NULL AND shop_name != '') ORDER BY revenue DESC LIMIT ?`,
+          [Math.min(limit, 5000)]
+        );
+        let shCount = 0;
+        for (const r of rowsSh) {
+          if (r.shop_url) {
+            for (const s of extractCandidateSlugs(r.shop_url)) { candidateSlugs.add(s); shCount++; }
+          }
+          if (r.shop_name) {
+            for (const s of extractCandidateSlugs(r.shop_name)) { candidateSlugs.add(s); shCount++; }
+          }
+        }
+        console.log(`-> Nạp thêm ${shCount} slug tiềm năng từ Top Shop doanh thu cao trong sh_shop.`);
+      } catch (e) {
+        console.log(`(Bỏ qua sh_shop: ${e.message})`);
+      }
+
+      // C. Lấy từ shopify_buildwith: Lọc shopify=1 hoặc có doanh thu, bỏ qua domain rác chỉ có số
+      try {
+        const [rowsBw] = await dbConn.query(
+          `SELECT web FROM shopify_buildwith WHERE (shopify = 1 OR dns_ok = 1 OR rev_month > 0) AND web NOT REGEXP '^[0-9]' ORDER BY rev_month DESC, updated_at DESC LIMIT ?`,
+          [Math.min(limit, 5000)]
+        );
+        let bwCount = 0;
+        for (const r of rowsBw) {
+          for (const s of extractCandidateSlugs(r.web)) { candidateSlugs.add(s); bwCount++; }
+        }
+        console.log(`-> Nạp thêm ${bwCount} slug tiềm năng từ shopify_buildwith.`);
       } catch (e) {
         console.log(`(Bỏ qua shopify_buildwith: ${e.message})`);
       }
 
-      // 2. Lấy từ sh_shop nếu chưa đủ
-      if (slugSet.size < limit) {
-        try {
-          const remain = limit - slugSet.size;
-          const [rowsSh] = await dbConn.query('SELECT name, url FROM sh_shop WHERE (name IS NOT NULL AND name != "") OR (url IS NOT NULL AND url != "") LIMIT ?', [remain]);
-          for (const r of rowsSh) {
-            const s1 = normalizeSlug(r.url);
-            const s2 = normalizeSlug(r.name);
-            if (s1) slugSet.add(s1);
-            if (s2) slugSet.add(s2);
-          }
-          console.log(`Tổng cộng sau khi gộp sh_shop: ${slugSet.size} slug`);
-        } catch (e) {
-          console.log(`(Bỏ qua sh_shop: ${e.message})`);
-        }
-      }
-
-      rawSlugs = Array.from(slugSet);
     } catch (e) {
       console.error('Lỗi kết nối MySQL:', e.message);
       process.exit(1);
@@ -200,45 +293,34 @@ async function main() {
   } else if (inputFile) {
     if (fs.existsSync(inputFile)) {
       const content = fs.readFileSync(inputFile, 'utf-8');
-      rawSlugs = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      console.log(`Đã nạp ${rawSlugs.length} mục từ file ${inputFile}`);
+      const lines = content.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        for (const s of extractCandidateSlugs(line)) candidateSlugs.add(s);
+      }
+      console.log(`Đã nạp file ${inputFile}, tổng hợp thành ${candidateSlugs.size} slug.`);
     } else {
       console.error(`Lỗi: Không tìm thấy file đầu vào: ${inputFile}`);
-      console.log(`Gợi ý:`);
-      console.log(`  - Quét tự động từ DB MySQL: node scripts/recomsale-discover.js --db 10000`);
-      console.log(`  - Hoặc tạo file ${inputFile} chứa danh sách brand/domain.`);
       process.exit(1);
     }
-  } else {
-    console.log(`Không truyền file đầu vào. Chạy với bộ từ khoá mẫu mở rộng (60+ brands & niches)...`);
-    console.log(`Mẹo: Để quét tự động hàng vạn shop từ DB, hãy gõ: node scripts/recomsale-discover.js --db 10000`);
-    rawSlugs = [
-      'momcozy', 'vlandus', 'whisperz', 'comeherebuddy', 'allwear', 'avenila', 'yeshansarees', 'xoshowpony',
-      'cajosenatural', 'barkpotty', 'thethreadshop', 'theroadrush', 'stylefitnessapparel', 'store', 'shop',
-      'affiliate', 'partner', 'brand', 'clothing', 'shoes', 'boutique', 'wellness', 'beauty', 'jewelry',
-      'coffee', 'tea', 'fitness', 'gear', 'tech', 'outdoor', 'pets', 'homedecor', 'natural', 'organic',
-      'activewear', 'apparel', 'baby', 'candles', 'cosmetics', 'crafts', 'denim', 'eco', 'eyewear',
-      'fashion', 'gifts', 'glow', 'hair', 'handmade', 'health', 'home', 'kids', 'leather', 'lighting',
-      'lounge', 'luxury', 'organics', 'pure', 'skincare', 'snacks', 'sport', 'streetwear', 'supplements',
-      'swimwear', 'tees', 'vintage', 'watches', 'yoga'
-    ];
   }
 
-  const slugs = [...new Set(rawSlugs.map(normalizeSlug).filter(Boolean))];
-  console.log(`Tổng số slug duy nhất cần quét: ${slugs.length}`);
-  console.log(`Đang chạy kiểm tra song song (concurrency: 10)...`);
+  const slugs = Array.from(candidateSlugs);
+  console.log(`\n==================================================`);
+  console.log(`TỔNG SỐ SLUG TIỀM NĂNG SẼ QUÉT: ${slugs.length}`);
+  console.log(`Đang quét song song (concurrency: 12 luồng)...`);
+  console.log(`==================================================\n`);
 
   let checkedCount = 0;
   let hitCount = 0;
 
-  const hits = await runPool(slugs, 10, async (slug) => {
+  const hits = await runPool(slugs, 12, async (slug) => {
     const hit = await checkSlug(slug);
     checkedCount++;
     if (hit) {
       hitCount++;
-      console.log(`\n[HIT #${hitCount}] ${hit.slug} (Shop ID: ${hit.shopId}) -> ${hit.brand || 'No Name'} | Web: ${hit.web || hit.signUrl}`);
+      console.log(`[HIT #${hitCount}] ${hit.slug} (ID: ${hit.shopId}) -> ${hit.brand || 'No Brand'} | Web: ${hit.web || hit.signUrl}`);
 
-      // Nếu có kết nối DB, tự động lưu ngay vào aff_host và aff_program
+      // Tự động lưu ngay vào DB MySQL nếu đang kết nối
       if (dbConn) {
         try {
           const now = Date.now();
@@ -261,11 +343,12 @@ async function main() {
             );
           }
         } catch (dbErr) {
-          // bỏ qua lỗi trùng lặp
+          // ignore
         }
       }
     }
-    if (checkedCount % 25 === 0 || checkedCount === slugs.length) {
+
+    if (checkedCount % 20 === 0 || checkedCount === slugs.length) {
       process.stdout.write(`\rTiến độ: ${checkedCount}/${slugs.length} (${((checkedCount/slugs.length)*100).toFixed(1)}%) - Phát hiện: ${hitCount} shop RecomSale`);
     }
     return hit;
@@ -275,14 +358,16 @@ async function main() {
     await dbConn.end();
   }
 
-  console.log(`\n\n=== HOÀN THÀNH QUÉT ===`);
+  console.log(`\n\n==================================================`);
+  console.log(`HOÀN THÀNH QUÉT!`);
   console.log(`Tổng đã kiểm tra: ${slugs.length}`);
-  console.log(`Phát hiện shop hợp lệ: ${hits.length}`);
+  console.log(`Số shop RecomSale hoạt động phát hiện được: ${hits.length}`);
+  console.log(`==================================================`);
 
   fs.writeFileSync(outputFile, JSON.stringify(hits, null, 2), 'utf-8');
-  console.log(`Đã xuất JSON: ${outputFile}`);
+  console.log(`Đã xuất file JSON: ${outputFile}`);
 
-  // Xuất file CSV để Tony có thể mở trực tiếp bằng Excel
+  // Xuất CSV mở bằng Excel
   const csvHeaders = ['Slug', 'ShopId', 'Brand', 'Web', 'SignUrl', 'Subdomain'];
   const csvRows = hits.map(h => [
     `"${h.slug}"`,
@@ -293,11 +378,11 @@ async function main() {
     `"${h.subdomain}"`
   ].join(','));
   fs.writeFileSync(csvFile, [csvHeaders.join(','), ...csvRows].join('\n'), 'utf-8');
-  console.log(`Đã xuất CSV (mở bằng Excel): ${csvFile}`);
+  console.log(`Đã xuất file CSV (Excel): ${csvFile}`);
 
   if (isDbMode && hitCount > 0) {
-    console.log(`\nĐã tự động nạp ${hitCount} shop vào bảng aff_host & aff_program trong MySQL!`);
-    console.log(`Boss có thể mở ngay https://mmo-coin.com/affnet để xem kết quả trực tiếp trên Web.`);
+    console.log(`\nĐã tự động lưu ${hitCount} shop vào MySQL (bảng aff_host & aff_program)!`);
+    console.log(`Boss mở https://mmo-coin.com/affnet để xem trực tiếp danh sách.`);
   }
 }
 
