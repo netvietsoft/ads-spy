@@ -24,6 +24,7 @@ const APP_INSTALLED: { sign: RegExp; via: string }[] = [
   { sign: /partnerstack|growsumo/i, via: 'PartnerStack' },
   { sign: /firstpromoter|\$FPROM|cdn\.firstpromoter/i, via: 'FirstPromoter' },
   { sign: /impact-cdn|impactradius|utt\.impactcdn/i, via: 'Impact' },
+  { sign: /store\.recomsale\.com|cdn\.recomsale\.com|\/a\/recomsale/i, via: 'RecomSale' },
 ];
 
 // Cổng đăng ký affiliate HOST NGOÀI (link trong trang chủ trỏ tới đây = có chương trình affiliate CÔNG KHAI, vào được thật).
@@ -41,6 +42,7 @@ const PORTAL_HOSTS: { host: RegExp; via: string }[] = [
   { host: /getrewardful\.com|\.rewardful\.com/i, via: 'Rewardful' },
   { host: /app\.partnerstack\.com|partnerstack\.com\/(?:login|signup|join)/i, via: 'PartnerStack' }, // neo app. — tránh khớp SDK js.partnerstack.com (→ để rơi xuống 'app')
   { host: /firstpromoter\.com|\.fprom\.io/i, via: 'FirstPromoter' },
+  { host: /[a-z0-9-]+\.recomsale\.com|store\.recomsale\.com/i, via: 'RecomSale' },
   { host: /impact\.com\/campaign|app\.impact\.com/i, via: 'Impact' }, // chỉ cổng merchant; KHÔNG bắt pxf.io (link outbound = shop đi làm publisher)
   { host: /shareasale\.com|impact\.com|cj\.com|awin1?\.com|partnerize/i, via: 'Network' },
 ];
@@ -56,7 +58,7 @@ export function platformOfLink(link: string): string | null {
 const LINK_KEYWORDS = /affiliate|ambassador|referral|refer-a-friend|refer_a_friend|partner-program|partnership|collab(?!s\.shopify)|cong-tac-vien|cộng tác viên/i;
 
 // Path chuẩn Shopify probe khi trang chủ không có tín hiệu.
-const PROBE_PATHS = ['/pages/affiliate', '/pages/affiliate-program', '/pages/ambassador']; // 3 path phổ biến nhất (giảm tải/tránh throttle)
+const PROBE_PATHS = ['/pages/affiliate', '/pages/affiliate-program', '/pages/ambassador', '/a/recomsale/signup', '/community/affiliate/signup']; // 3 path phổ biến nhất (giảm tải/tránh throttle)
 
 // Trang BOT-CHALLENGE (Cloudflare/WAF): status có thể 200/403/503 NHƯNG body KHÔNG phải HTML thật của shop.
 // Nếu coi nó như trang chủ bình thường → không thấy link affiliate → kết luận 'no' OAN (false-negative).

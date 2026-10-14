@@ -1,0 +1,23 @@
+{
+  "task_id": "TASK-065",
+  "title": "Bổ sung nhận diện RecomSale vào Affiliate Client & Tool quét mở rộng kho shop RecomSale",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND",
+  "created": "2026-10-14T11:23:00+07:00",
+  "completed_at": "2026-10-14T11:26:00+07:00",
+  "files_allowed": [
+    "apps/api/src/shophunter/affiliate.client.ts",
+    "apps/api/src/shophunter/affiliate.client.spec.ts",
+    "apps/api/src/affnet/affnet.types.ts",
+    "scripts/recomsale-discover.js",
+    "docs/handoff-2026-10-14-recomsale-expansion.md"
+  ],
+  "acceptance_criteria": [
+    "1. affiliate.client.ts nhận diện đầy đủ footprint RecomSale trong APP_INSTALLED (store.recomsale.com, cdn.recomsale.com, /a/recomsale) và PORTAL_HOSTS (recomsale.com, store.recomsale.com).",
+    "2. affiliate.client.ts bổ sung PROBE_PATHS cho RecomSale: /a/recomsale/signup, /community/affiliate/signup, /community/partner/signup.",
+    "3. NET_PLATFORM_NAME trong affnet.types.ts bổ sung mapping 'recomsale.com': 'RecomSale'.",
+    "4. Viết unit test cho RecomSale detection trong affiliate.client.spec.ts đạt 100% PASS (19/19 tests).",
+    "5. Cung cấp script scripts/recomsale-discover.js để kiểm tra và mở rộng hàng loạt shop RecomSale từ danh sách brand/domain.",
+    "6. Build API (npm run build:api) thành công và test PASS."
+  ]
+}

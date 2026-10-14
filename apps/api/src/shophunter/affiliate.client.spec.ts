@@ -105,7 +105,7 @@ describe('checkShopAffiliate (flow, mock http)', () => {
   });
 });
 
-describe('signal mở rộng — Rewardful/PartnerStack/FirstPromoter + platformOfLink', () => {
+describe('signal mở rộng — Rewardful/PartnerStack/FirstPromoter/RecomSale + platformOfLink', () => {
   it('findAffiliateHits bắt cổng Rewardful', () => {
     const hits = findAffiliateHits('<a href="https://mybrand.getrewardful.com/signup">Affiliate</a>', 'mybrand.com');
     expect(hits.some((h) => h.via === 'Rewardful')).toBe(true);
@@ -114,10 +114,19 @@ describe('signal mở rộng — Rewardful/PartnerStack/FirstPromoter + platform
     const hits = findAffiliateHits('<a href="https://app.partnerstack.com/join/acme">Partner</a>', 'acme.com');
     expect(hits.some((h) => h.via === 'PartnerStack')).toBe(true);
   });
+  it('findAffiliateHits bắt cổng RecomSale (subdomain hoặc iframe store.recomsale.com)', () => {
+    const hits = findAffiliateHits('<a href="https://whisperz.recomsale.com">Affiliate</a>', 'whisperz.co.uk');
+    expect(hits.some((h) => h.via === 'RecomSale')).toBe(true);
+
+    const hitsIframe = findAffiliateHits('<iframe src="https://store.recomsale.com/signup?shop=test.myshopify.com"></iframe>', 'test.com');
+    expect(hitsIframe.some((h) => h.via === 'RecomSale')).toBe(true);
+  });
   it('platformOfLink map link → tên platform', () => {
     expect(platformOfLink('https://x.getrewardful.com/join')).toBe('Rewardful');
     expect(platformOfLink('https://app.partnerstack.com/xyz')).toBe('PartnerStack');
     expect(platformOfLink('https://acme.firstpromoter.com')).toBe('FirstPromoter');
+    expect(platformOfLink('https://whisperz.recomsale.com')).toBe('RecomSale');
+    expect(platformOfLink('https://store.recomsale.com/signup?shop=test.myshopify.com')).toBe('RecomSale');
     expect(platformOfLink('https://nike.com/about')).toBeNull();
     expect(platformOfLink('')).toBeNull();
   });

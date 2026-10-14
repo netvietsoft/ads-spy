@@ -1,12 +1,18 @@
 # BẢNG TIẾN ĐỘ NHIỆM VỤ (TODOS.md)
 
-> **Cập nhật lần cuối**: 2026-10-11 23:10:00 (GMT+7)  
+> **Cập nhật lần cuối**: 2026-10-14 11:26:00 (GMT+7)  
 > **Dự án**: Google Ads Spy & SaaS Intelligence Platform  
 > **Nguồn trạng thái**: `.ai/tasks/` & `.ai/state.json`
 
 ---
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
+
+- [x] **TASK-065**: Bổ sung nhận diện RecomSale vào Affiliate Client & Tool quét mở rộng kho shop RecomSale
+  - **Mô tả**: 1) Bổ sung nhận diện RecomSale vào `APP_INSTALLED` (`store.recomsale.com`, `cdn.recomsale.com`, `/a/recomsale`) và `PORTAL_HOSTS` trong `apps/api/src/shophunter/affiliate.client.ts`; 2) Mở rộng `PROBE_PATHS` thêm `/a/recomsale/signup`, `/community/affiliate/signup`; 3) Bổ sung ánh xạ `'recomsale.com': 'RecomSale'` vào `NET_PLATFORM_NAME` trong `apps/api/src/affnet/affnet.types.ts`; 4) Viết unit test mở rộng cho RecomSale trong `affiliate.client.spec.ts` (19/19 tests PASS); 5) Xây dựng công cụ CLI `scripts/recomsale-discover.js` dò quét tự động đa luồng hỗ trợ mở rộng hàng loạt brand/domain; 6) Biên dịch API thành công và viết tài liệu bàn giao `docs/handoff-2026-10-14-recomsale-expansion.md`.
+  - **Branch**: `agent/backend/TASK-065`
+  - **Files**: `apps/api/src/shophunter/affiliate.client.ts`, `apps/api/src/shophunter/affiliate.client.spec.ts`, `apps/api/src/affnet/affnet.types.ts`, `scripts/recomsale-discover.js`
+  - **Tài liệu**: [`docs/handoff-2026-10-14-recomsale-expansion.md`](docs/handoff-2026-10-14-recomsale-expansion.md)
 
 - [x] **TASK-064**: Bổ sung báo cáo thống kê cho trang /shopify-buildwith: Tổng shop đã cào doanh thu, Tổng shop có link off, Tổng shop đã có traffic
   - **Mô tả**: 1) Backend bổ sung endpoint `GET /api/shopify-bw/stats` (hỗ trợ query cache in-memory 15s) tính toán tức thời: tổng số shop trong kho, tổng shop đã cào được doanh thu (`hasRevenue`), tổng shop có link affiliate / offer (`hasAffLink` & `hasAffApp`), tổng shop đã có traffic (`hasTraffic`), số lượng DNS sống/chết. 2) Mở rộng `FILTER_WHERE` và API `listRows` hỗ trợ các bộ lọc mới `hasrev`, `haslink`, `hastraffic` (kèm logic JOIN bảng traffic khi đếm `countJoin`). 3) Frontend thêm khối UI thẻ thống kê (Stats Report Cards) sang trọng, đồng bộ thiết kế, hiển thị nổi bật 3 chỉ số cốt lõi và tổng kho, hỗ trợ click trực tiếp vào từng thẻ để lọc danh sách tương ứng, kèm nút "Làm mới số liệu". 4) Đã vượt qua Quality Gate biên dịch hoàn hảo cả backend và frontend.

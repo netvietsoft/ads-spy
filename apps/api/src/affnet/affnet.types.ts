@@ -9,6 +9,7 @@ export const NET_PLATFORM_NAME: Record<string, string> = {
   'uppromote.com': 'UpPromote',
   'affiliatly.com': 'Affiliatly',
   'getrewardful.com': 'Rewardful',
+  'recomsale.com': 'RecomSale',
 };
 
 export interface ParsedProgram {
