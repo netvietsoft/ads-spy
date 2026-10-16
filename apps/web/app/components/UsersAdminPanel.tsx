@@ -37,6 +37,24 @@ function parseDevice(ua?: string) {
   return browser ? `${os} · ${browser}` : os;
 }
 
+function splitUserAgent2Lines(ua?: string): [string, string] {
+  if (!ua || !ua.trim()) return ['Không rõ thiết bị / trình duyệt', ''];
+  const text = ua.trim();
+  const parenIdx = text.indexOf(')');
+  if (parenIdx !== -1 && parenIdx < text.length - 1) {
+    const l1 = text.slice(0, parenIdx + 1).trim();
+    const l2 = text.slice(parenIdx + 1).trim();
+    if (l1 && l2) return [l1, l2];
+  }
+  if (text.length > 50) {
+    const spaceIdx = text.indexOf(' ', 40);
+    if (spaceIdx !== -1) {
+      return [text.slice(0, spaceIdx).trim(), text.slice(spaceIdx + 1).trim()];
+    }
+  }
+  return [text, ''];
+}
+
 function generateRandomPassword() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
   let res = '';
@@ -605,6 +623,7 @@ export function UsersAdminPanel() {
               maxWidth: '96vw',
               maxHeight: '92vh',
               overflowY: 'auto',
+              overflowX: 'hidden',
               display: 'flex',
               flexDirection: 'column',
               gap: 18,
@@ -734,79 +753,89 @@ export function UsersAdminPanel() {
                     </button>
                   </div>
 
-                  <div style={{ maxHeight: 460, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-                    <table className="localtbl" style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                  <div style={{ maxHeight: 460, overflowY: 'auto', overflowX: 'hidden', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+                    <table className="localtbl" style={{ width: '100%', tableLayout: 'fixed', fontSize: 13, borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 2, borderBottom: '2px solid #e2e8f0' }}>
-                          <th style={{ width: 170, textAlign: 'left', padding: '10px 14px' }}>Địa chỉ IP</th>
-                          <th style={{ width: 140, textAlign: 'left', padding: '10px 14px' }}>Trạng thái</th>
-                          <th style={{ textAlign: 'left', padding: '10px 14px' }}>Thiết bị & Trình duyệt</th>
-                          <th style={{ width: 180, textAlign: 'left', padding: '10px 14px' }}>Thời gian kết nối</th>
-                          <th style={{ width: 180, textAlign: 'left', padding: '10px 14px' }}>Hết hạn</th>
+                          <th style={{ width: '17%', textAlign: 'left', padding: '10px 12px' }}>Địa chỉ IP</th>
+                          <th style={{ width: '13%', textAlign: 'left', padding: '10px 12px' }}>Trạng thái</th>
+                          <th style={{ width: '42%', textAlign: 'left', padding: '10px 12px' }}>Thiết bị & Trình duyệt</th>
+                          <th style={{ width: '14%', textAlign: 'left', padding: '10px 12px' }}>Thời gian kết nối</th>
+                          <th style={{ width: '14%', textAlign: 'left', padding: '10px 12px' }}>Hết hạn</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sessionsModal.data.sessions.map((s: any) => (
-                          <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '10px 14px' }}>
-                              {s.ip && s.ip !== 'Không rõ IP' ? (
-                                <code style={{
-                                  fontFamily: 'monospace',
-                                  fontWeight: 700,
-                                  color: '#0369a1',
-                                  background: '#f0f9ff',
-                                  border: '1px solid #bae6fd',
-                                  padding: '2px 8px',
-                                  borderRadius: 5,
-                                  fontSize: 13,
-                                }}>
-                                  {s.ip}
-                                </code>
-                              ) : (
-                                <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 12 }}>Chưa lưu IP</span>
-                              )}
-                            </td>
-                            <td style={{ padding: '10px 14px' }}>
-                              {s.isActive ? (
-                                <span style={{
-                                  background: '#dcfce7',
-                                  color: '#15803d',
-                                  padding: '3px 8px',
-                                  borderRadius: 5,
-                                  fontWeight: 600,
-                                  fontSize: 12,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 5,
-                                }}>
-                                  <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }}></span>
-                                  Đang online
-                                </span>
-                              ) : (
-                                <span style={{ color: '#94a3b8', fontSize: 12 }}>
-                                  {s.revokedAt ? 'Đã thu hồi' : 'Đã hết hạn'}
-                                </span>
-                              )}
-                            </td>
-                            <td style={{ padding: '10px 14px' }}>
-                              <div style={{ fontWeight: 600, color: '#334155' }}>{parseDevice(s.userAgent)}</div>
-                              <div
-                                style={{
-                                  fontSize: 11,
-                                  color: '#94a3b8',
-                                  marginTop: 2,
-                                  wordBreak: 'break-all',
-                                  lineHeight: 1.3
-                                }}
-                                title={s.userAgent}
-                              >
-                                {s.userAgent}
-                              </div>
-                            </td>
-                            <td style={{ padding: '10px 14px', color: '#475569', fontSize: 12 }}>{fmtTime(s.createdAt)}</td>
-                            <td style={{ padding: '10px 14px', color: '#475569', fontSize: 12 }}>{fmtTime(s.expiresAt)}</td>
-                          </tr>
-                        ))}
+                        {sessionsModal.data.sessions.map((s: any) => {
+                          const [uaLine1, uaLine2] = splitUserAgent2Lines(s.userAgent);
+                          return (
+                            <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '10px 12px', whiteSpace: 'normal', wordBreak: 'break-all' }}>
+                                {s.ip && s.ip !== 'Không rõ IP' ? (
+                                  <code style={{
+                                    fontFamily: 'monospace',
+                                    fontWeight: 700,
+                                    color: '#0369a1',
+                                    background: '#f0f9ff',
+                                    border: '1px solid #bae6fd',
+                                    padding: '2px 8px',
+                                    borderRadius: 5,
+                                    fontSize: 12,
+                                    display: 'inline-block',
+                                    wordBreak: 'break-all',
+                                  }}>
+                                    {s.ip}
+                                  </code>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 12 }}>Chưa lưu IP</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '10px 12px', whiteSpace: 'normal' }}>
+                                {s.isActive ? (
+                                  <span style={{
+                                    background: '#dcfce7',
+                                    color: '#15803d',
+                                    padding: '3px 8px',
+                                    borderRadius: 5,
+                                    fontWeight: 600,
+                                    fontSize: 12,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                  }}>
+                                    <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }}></span>
+                                    Đang online
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                                    {s.revokedAt ? 'Đã thu hồi' : 'Đã hết hạn'}
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ padding: '10px 12px', whiteSpace: 'normal' }}>
+                                <div style={{ fontWeight: 600, color: '#334155', marginBottom: 2 }}>
+                                  {parseDevice(s.userAgent)}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                    lineHeight: 1.35,
+                                    color: '#64748b',
+                                    wordBreak: 'break-word',
+                                  }}
+                                  title={s.userAgent}
+                                >
+                                  <div style={{ color: '#475569' }}>{uaLine1}</div>
+                                  {uaLine2 && (
+                                    <div style={{ color: '#94a3b8', marginTop: 1 }}>{uaLine2}</div>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ padding: '10px 12px', color: '#475569', fontSize: 12, whiteSpace: 'normal' }}>{fmtTime(s.createdAt)}</td>
+                              <td style={{ padding: '10px 12px', color: '#475569', fontSize: 12, whiteSpace: 'normal' }}>{fmtTime(s.expiresAt)}</td>
+                            </tr>
+                          );
+                        })}
                         {!sessionsModal.data.sessions.length && (
                           <tr>
                             <td colSpan={5} style={{ textAlign: 'center', padding: '24px 0', color: '#64748b' }}>
