@@ -11,12 +11,26 @@ export function hashToken(token: string): string {
 export class SessionService {
   constructor(private prisma: PrismaService) {}
 
-  async create(userId: number, userAgent?: string): Promise<string> {
+  async create(userId: number, userAgent?: string, ip?: string): Promise<string> {
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + authConfig.sessionTtlDays * 86_400_000);
     await this.prisma.session.create({
-      data: { userId, tokenHash: hashToken(token), expiresAt, userAgent: userAgent || null },
+      data: {
+        userId,
+        tokenHash: hashToken(token),
+        expiresAt,
+        userAgent: userAgent || null,
+        ip: ip || null,
+      },
     });
+    // Cập nhật mốc đăng nhập gần nhất của user
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        lastLoginIp: ip || undefined,
+        lastLoginAt: new Date(),
+      },
+    }).catch(() => {});
     return token;
   }
 

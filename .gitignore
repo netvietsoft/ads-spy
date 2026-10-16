@@ -51,3 +51,8 @@ old/
 # .claude/settings.json: hook PreToolUse tự chạy `graphify hook-guard` mỗi lần Bash/Read.
 # Repo PUBLIC → commit lên là ép mọi người clone về cũng bị chạy lệnh đó. Cấu hình máy cá nhân.
 .claude/settings.json
+scratch/
+__pycache__/
+*.pyc
+
+

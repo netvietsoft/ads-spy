@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { RateLimit } from './rate-limit.guard';
+import { RateLimit, clientIp } from './rate-limit.guard';
 import { randomBytes } from 'crypto';
 import { AuthService } from './auth.service';
 import { GoogleOAuthService } from './google-oauth.service';
@@ -23,7 +23,8 @@ export class AuthController {
   @RateLimit({ limit: 5, windowMs: 60 * 60_000, by: 'ip' })
   @Post('register')
   async register(@Body() body: any, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const { user, token } = await this.auth.register(body || {}, req.headers['user-agent']);
+    const ip = clientIp(req);
+    const { user, token } = await this.auth.register(body || {}, req.headers['user-agent'], ip);
     this.setSession(res, token, req);
     return { user, token };
   }
@@ -32,7 +33,8 @@ export class AuthController {
   @RateLimit({ limit: 10, windowMs: 5 * 60_000, by: 'ip', bodyKey: 'email' }) // chống dò mật khẩu: cap theo CẢ IP lẫn email (email không giả mạo được)
   @Post('login')
   async login(@Body() body: any, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const { user, token } = await this.auth.login(body || {}, req.headers['user-agent']);
+    const ip = clientIp(req);
+    const { user, token } = await this.auth.login(body || {}, req.headers['user-agent'], ip);
     this.setSession(res, token, req);
     return { user, token };
   }
@@ -93,7 +95,8 @@ export class AuthController {
     const next = decodeURIComponent(state.split('|')[1] || '/home');
     try {
       const profile = await this.googleAuth.exchangeCode(code);
-      const token = await this.auth.loginWithGoogle(profile, req.headers['user-agent']);
+      const ip = clientIp(req);
+      const token = await this.auth.loginWithGoogle(profile, req.headers['user-agent'], ip);
       this.setSession(res, token, req);
       res.clearCookie('g_state', { path: '/' });
       res.redirect(`${authConfig.appBaseUrl}${next.startsWith('/') ? next : '/home'}`);

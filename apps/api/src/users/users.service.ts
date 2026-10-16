@@ -16,14 +16,16 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { googleId } });
   }
 
-  async create(data: { email: string; password?: string; name?: string; role?: string; googleId?: string; avatarUrl?: string }) {
+  async create(data: { email: string; password?: string | null; name?: string | null; phone?: string | null; role?: string; status?: string; googleId?: string | null; avatarUrl?: string | null }) {
     const passwordHash = data.password ? await this.pw.hash(data.password) : null;
     return this.prisma.user.create({
       data: {
         email: data.email.toLowerCase(),
         passwordHash,
         name: data.name || null,
+        phone: data.phone || null,
         role: data.role || 'user',
+        status: data.status || 'active',
         googleId: data.googleId || null,
         avatarUrl: data.avatarUrl || null,
       },

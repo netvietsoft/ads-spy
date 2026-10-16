@@ -1,0 +1,25 @@
+{
+  "task_id": "TASK-066",
+  "title": "Chạy nền quét và xác minh toàn diện hàng loạt dự án Affiliate sống (Mass Affiliate Scanner)",
+  "status": "done",
+  "owner": "Agent 2 - BACKEND",
+  "created": "2026-10-15T11:32:00+07:00",
+  "files_allowed": [
+    "scripts/mass_scanner_core.py",
+    "scripts/run_mass_scan.py"
+  ],
+  "acceptance_criteria": [
+    "1. Quét đa luồng 100 workers trên toàn bộ kho 852,822 domains (Shopify có doanh thu, BuiltWith 18 nets, Shopify verified).",
+    "2. Kiểm tra chặt chẽ link đăng ký affiliate (join_url): HTTP 200, loại trừ 410 Gone, password page, cart/product page.",
+    "3. Checkpoint tự động định kỳ vào E:\\Shopify\\MASS_VERIFIED_PROJECTS\\checkpoint.json để không mất tiến trình khi dừng/chạy lại.",
+    "4. Tự động xuất dữ liệu hợp lệ ra CSV và SQL (E:\\Shopify\\MASS_VERIFIED_PROJECTS\\truly_live_affiliate_projects.csv và import_truly_live_projects.sql).",
+    "5. Chạy ngầm trong background và tự động báo cáo kết quả khi hoàn thành hoặc cập nhật mốc."
+  ],
+  "completed_at": "2026-10-15T19:52:00+07:00",
+  "result_summary": {
+    "total_scanned": 852822,
+    "total_live_found": 68061,
+    "csv_path": "E:\\Shopify\\MASS_VERIFIED_PROJECTS\\truly_live_affiliate_projects.csv",
+    "sql_path": "E:\\Shopify\\MASS_VERIFIED_PROJECTS\\import_truly_live_projects.sql"
+  }
+}

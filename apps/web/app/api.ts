@@ -1169,9 +1169,24 @@ export async function adminSetUserPassword(id: number, password: string) {
   if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi đổi mật khẩu');
   return r.json();
 }
-export async function adminCreateUser(body: { email: string; password: string; name?: string; role?: string }) {
+export async function adminCreateUser(body: { email: string; password: string; name?: string; phone?: string; role?: string; status?: string }) {
   const r = await fetch('/api/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi tạo user');
+  return r.json();
+}
+export async function adminDeleteUser(id: number) {
+  const r = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi xóa người dùng');
+  return r.json();
+}
+export async function adminUserSessions(id: number) {
+  const r = await fetch(`/api/admin/users/${id}/sessions`);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Không tải được danh sách phiên của người dùng');
+  return r.json();
+}
+export async function adminRevokeUserSessions(id: number) {
+  const r = await fetch(`/api/admin/users/${id}/revoke-sessions`, { method: 'POST' });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.message || 'Lỗi thu hồi phiên đăng nhập');
   return r.json();
 }
 

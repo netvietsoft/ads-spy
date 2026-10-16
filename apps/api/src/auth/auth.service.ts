@@ -27,22 +27,22 @@ export class AuthService {
     private prisma: PrismaService,
   ) {}
 
-  async register(body: { email: string; password: string; name?: string }, userAgent?: string) {
+  async register(body: { email: string; password: string; name?: string }, userAgent?: string, ip?: string) {
     assertEmail(body.email);
     assertPassword(body.password);
     if (await this.users.findByEmail(body.email)) throw new BadRequestException('Email đã tồn tại');
     const user = await this.users.create({ email: body.email, password: body.password, name: body.name, role: 'user' });
-    const token = await this.sessions.create(user.id, userAgent);
+    const token = await this.sessions.create(user.id, userAgent, ip);
     return { user: sanitizeUser(user), token };
   }
 
-  async login(body: { email: string; password: string }, userAgent?: string) {
+  async login(body: { email: string; password: string }, userAgent?: string, ip?: string) {
     assertEmail(body.email);
     const user = await this.users.findByEmail(body.email);
     if (!user || !user.passwordHash) throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     if (!(await this.pw.verify(body.password, user.passwordHash))) throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     if (user.status !== 'active') throw new ForbiddenException('Tài khoản bị khóa');
-    const token = await this.sessions.create(user.id, userAgent);
+    const token = await this.sessions.create(user.id, userAgent, ip);
     return { user: sanitizeUser(user), token };
   }
 
@@ -78,7 +78,7 @@ export class AuthService {
     return this.sessions.refresh(token);
   }
 
-  async loginWithGoogle(profile: { googleId: string; email: string; emailVerified?: boolean; name?: string; picture?: string }, userAgent?: string): Promise<string> {
+  async loginWithGoogle(profile: { googleId: string; email: string; emailVerified?: boolean; name?: string; picture?: string }, userAgent?: string, ip?: string): Promise<string> {
     let user = await this.users.findByGoogleId(profile.googleId);
     if (!user) {
       // Email CHƯA xác minh → KHÔNG được liên kết vào account trùng email lẫn tạo account mới. Thiếu chốt
@@ -91,6 +91,6 @@ export class AuthService {
         : await this.users.create({ email: profile.email, name: profile.name, googleId: profile.googleId, avatarUrl: profile.picture, role: 'user' });
     }
     if (user.status !== 'active') throw new ForbiddenException('Tài khoản bị khóa');
-    return this.sessions.create(user.id, userAgent);
+    return this.sessions.create(user.id, userAgent, ip);
   }
 }

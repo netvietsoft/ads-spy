@@ -26,7 +26,7 @@ export const RateLimit = (opts: RateLimitOpts) => SetMetadata(RATE_LIMIT_KEY, op
 function isLoopback(ip: string): boolean {
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip.startsWith('127.');
 }
-function clientIp(req: Request): string {
+export function clientIp(req: Request): string {
   const peer = req.socket?.remoteAddress || '';
   // Chỉ tin header chuyển tiếp khi request đi qua proxy nội bộ (peer là loopback). Ưu tiên cf-connecting-ip
   // (Cloudflare đặt authoritative, xoá bản client gửi ở edge) rồi x-forwarded-for entry ĐẦU.

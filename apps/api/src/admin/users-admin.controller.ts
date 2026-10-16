@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { UsersAdminService } from './users-admin.service';
@@ -35,4 +35,22 @@ export class UsersAdminController {
   disable(@Param('id') id: string, @CurrentUser() u: any) { return this.users.setStatus(Number(id), 'disabled', u.id); }
   @Post(':id/activate')
   activate(@Param('id') id: string, @CurrentUser() u: any) { return this.users.setStatus(Number(id), 'active', u.id); }
+
+  // Xem chi tiết các phiên đăng nhập & các địa chỉ IP của người dùng
+  @Get(':id/sessions')
+  getUserSessions(@Param('id') id: string) {
+    return this.users.getUserSessions(Number(id));
+  }
+
+  // Thu hồi tất cả phiên đăng nhập của người dùng (buộc đăng xuất trên mọi IP/thiết bị)
+  @Post(':id/revoke-sessions')
+  revokeSessions(@Param('id') id: string) {
+    return this.users.revokeUserSessions(Number(id));
+  }
+
+  // Xóa hẳn luôn người dùng khỏi hệ thống (Hard delete vĩnh viễn)
+  @Delete(':id')
+  deleteUser(@Param('id') id: string, @CurrentUser() u: any) {
+    return this.users.deleteUser(Number(id), u.id);
+  }
 }
