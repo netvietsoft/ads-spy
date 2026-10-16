@@ -6,7 +6,7 @@ import time
 sys.stdout.reconfigure(encoding='utf-8')
 
 CSV_PATH = r"E:\Shopify\MASS_VERIFIED_PROJECTS\truly_live_affiliate_projects.csv"
-OUT_SQL = r"E:\Shopify\MASS_VERIFIED_PROJECTS\safe_sync_affiliates_to_dpboss.sql"
+OUT_SQL = r"E:\Shopify\MASS_VERIFIED_PROJECTS\safe_sync_affiliates_to_mmo_coin.sql"
 
 def esc(val):
     if val is None:
@@ -33,13 +33,15 @@ def generate():
     host_vals = []
     prog_vals = []
     lib_vals = []
-    sbw_vals = []
 
     total_rows = 0
 
     with open(OUT_SQL, 'w', encoding='utf-8') as f_out:
-        f_out.write("-- SAFE SYNC 68,061 VERIFIED AFFILIATE PROJECTS\n")
-        f_out.write("-- ĐẢM BẢO 100% BẢO TOÀN DOANH THU VÀ TRAFFIC CŨ, CHỈ CẬP NHẬT LINK AFFILIATE\n\n")
+        f_out.write("-- ================================================================\n")
+        f_out.write("-- SAFE SYNC 68,061 VERIFIED AFFILIATE PROJECTS TO MMO-COIN / DPBOSS\n")
+        f_out.write("-- AN TOÀN TUYỆT ĐỐI: BẢO TOÀN 100% DOANH THU & TRAFFIC ĐÃ CÀO TRÊN VPS\n")
+        f_out.write("-- CHỈ THÊM DOMAIN MỚI HOẶC CẬP NHẬT LINK AFFILIATE (KHÔNG GHI ĐÈ REVENUE)\n")
+        f_out.write("-- ================================================================\n\n")
         f_out.write("USE shophunter;\n\n")
         f_out.write("""CREATE TABLE IF NOT EXISTS aff_host (
   net VARCHAR(255) NOT NULL,
@@ -62,7 +64,8 @@ CREATE TABLE IF NOT EXISTS aff_program (
   web VARCHAR(255),
   status VARCHAR(32),
   fetched_at BIGINT,
-  PRIMARY KEY (net, slug)
+  PRIMARY KEY (net, slug),
+  KEY idx_prog_web (web)
 ) CHARACTER SET utf8mb4;
 
 CREATE TABLE IF NOT EXISTS aff_library (
@@ -72,21 +75,9 @@ CREATE TABLE IF NOT EXISTS aff_library (
   found TINYINT DEFAULT 0, synced_at BIGINT,
   join_url VARCHAR(1024), commission_pct DOUBLE, payout DOUBLE, cookie_days INT, note VARCHAR(512),
   aff_status VARCHAR(16), aff_platform VARCHAR(40), aff_checked_at BIGINT,
-  dns_ok TINYINT, aff_try_count INT DEFAULT 0, shopify TINYINT DEFAULT 1,
-  created_at BIGINT, updated_at BIGINT
-) CHARACTER SET utf8mb4;
-
-CREATE TABLE IF NOT EXISTS shopify_buildwith (
-  web VARCHAR(255) PRIMARY KEY,
-  shop_name VARCHAR(255), shop_id VARCHAR(32), currency VARCHAR(8),
-  rev_day DOUBLE, rev_week DOUBLE, rev_month DOUBLE, rev_total DOUBLE, sku INT,
-  found TINYINT DEFAULT 0, synced_at BIGINT,
-  join_url VARCHAR(1024), commission_pct DOUBLE, payout DOUBLE, cookie_days INT, note VARCHAR(512),
-  aff_status VARCHAR(16), aff_platform VARCHAR(40), aff_checked_at BIGINT,
   dns_ok TINYINT, aff_try_count INT DEFAULT 0, aff_last_error VARCHAR(255), aff_last_try_at BIGINT,
-  traffic_tried_at BIGINT,
-  shopify TINYINT DEFAULT 1, shopify_checked_at BIGINT, rev_scan_at BIGINT, rev_scan_err VARCHAR(255),
-  created_at BIGINT, updated_at BIGINT
+  traffic_tried_at BIGINT, shopify TINYINT DEFAULT 1, shopify_checked_at BIGINT,
+  rev_scan_at BIGINT, rev_scan_err VARCHAR(255), created_at BIGINT, updated_at BIGINT
 ) CHARACTER SET utf8mb4;
 
 """)
@@ -112,9 +103,6 @@ CREATE TABLE IF NOT EXISTS shopify_buildwith (
                 # 3. aff_library
                 lib_vals.append(f"({esc(dom)}, {esc(comp)}, {esc(join_url)}, {esc(net)}, 'yes', {v_time}, 1, 1)")
 
-                # 4. shopify_buildwith
-                sbw_vals.append(f"({esc(dom)}, {esc(comp)}, {esc(join_url)}, {esc(net)}, 'yes', {v_time}, 1, 1)")
-
                 total_rows += 1
 
                 if len(host_vals) >= BATCH_SIZE:
@@ -134,15 +122,9 @@ CREATE TABLE IF NOT EXISTS shopify_buildwith (
                         ",\n".join(lib_vals) +
                         "\nON DUPLICATE KEY UPDATE join_url=VALUES(join_url), aff_platform=VALUES(aff_platform), aff_status='yes', aff_checked_at=VALUES(aff_checked_at), dns_ok=1, shopify=1;\n\n"
                     )
-                    f_out.write(
-                        "INSERT INTO shopify_buildwith (web, shop_name, join_url, aff_platform, aff_status, aff_checked_at, dns_ok, shopify) VALUES\n" +
-                        ",\n".join(sbw_vals) +
-                        "\nON DUPLICATE KEY UPDATE join_url=VALUES(join_url), aff_platform=VALUES(aff_platform), aff_status='yes', aff_checked_at=VALUES(aff_checked_at), dns_ok=1, shopify=1;\n\n"
-                    )
                     host_vals.clear()
                     prog_vals.clear()
                     lib_vals.clear()
-                    sbw_vals.clear()
 
             if host_vals:
                 f_out.write(
@@ -158,11 +140,6 @@ CREATE TABLE IF NOT EXISTS shopify_buildwith (
                 f_out.write(
                     "INSERT INTO aff_library (web, shop_name, join_url, aff_platform, aff_status, aff_checked_at, dns_ok, shopify) VALUES\n" +
                     ",\n".join(lib_vals) +
-                    "\nON DUPLICATE KEY UPDATE join_url=VALUES(join_url), aff_platform=VALUES(aff_platform), aff_status='yes', aff_checked_at=VALUES(aff_checked_at), dns_ok=1, shopify=1;\n\n"
-                )
-                f_out.write(
-                    "INSERT INTO shopify_buildwith (web, shop_name, join_url, aff_platform, aff_status, aff_checked_at, dns_ok, shopify) VALUES\n" +
-                    ",\n".join(sbw_vals) +
                     "\nON DUPLICATE KEY UPDATE join_url=VALUES(join_url), aff_platform=VALUES(aff_platform), aff_status='yes', aff_checked_at=VALUES(aff_checked_at), dns_ok=1, shopify=1;\n\n"
                 )
 
