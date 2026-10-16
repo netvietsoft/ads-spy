@@ -586,85 +586,103 @@ export function UsersAdminPanel() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,.5)',
+            background: 'rgba(0,0,0,.6)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 100,
-            backdropFilter: 'blur(2px)',
+            backdropFilter: 'blur(3px)',
+            padding: 16,
           }}
           onClick={() => setSessionsModal(null)}
         >
           <div
             style={{
               background: '#fff',
-              padding: 24,
-              borderRadius: 14,
-              width: 680,
-              maxWidth: '94vw',
-              maxHeight: '90vh',
+              padding: '24px 28px',
+              borderRadius: 16,
+              width: 1080,
+              maxWidth: '96vw',
+              maxHeight: '92vh',
               overflowY: 'auto',
               display: 'flex',
               flexDirection: 'column',
-              gap: 16,
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)',
+              gap: 18,
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 18, color: '#0f172a' }}>
-                  Kiểm tra IP & Thiết bị đang dùng
+                <h3 style={{ margin: 0, fontSize: 20, color: '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>🌐</span> Kiểm tra IP & Thiết bị đang dùng
                 </h3>
-                <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
-                  Tài khoản: <b>{sessionsModal.user.email}</b> {sessionsModal.user.name ? `(${sessionsModal.user.name})` : ''}
+                <div style={{ fontSize: 14, color: '#64748b', marginTop: 4 }}>
+                  Tài khoản: <b style={{ color: '#0f172a' }}>{sessionsModal.user.email}</b> {sessionsModal.user.name ? `(${sessionsModal.user.name})` : ''} · ID #{sessionsModal.user.id}
                 </div>
               </div>
-              <button className="ghost" onClick={() => setSessionsModal(null)} style={{ border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+              <button
+                className="ghost"
+                onClick={() => setSessionsModal(null)}
+                style={{
+                  border: 'none',
+                  fontSize: 20,
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: 6,
+                  color: '#64748b'
+                }}
+              >
+                ✕
+              </button>
             </div>
 
             {sessionsModal.loading ? (
-              <div style={{ textAlign: 'center', padding: '30px 0', color: '#64748b' }}>Đang tải lịch sử phiên và IP…</div>
+              <div style={{ textAlign: 'center', padding: '50px 0', color: '#64748b', fontSize: 15 }}>
+                Đang tải dữ liệu phiên đăng nhập và định danh IP…
+              </div>
             ) : sessionsModal.data ? (
               <>
-                {/* Khối tổng quan IP */}
+                {/* Khối tổng quan IP & Trạng thái */}
                 <div style={{
                   background: '#f8fafc',
                   border: '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: 14,
+                  borderRadius: 12,
+                  padding: '16px 20px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 8,
+                  gap: 12,
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                    <div>
-                      <span style={{ fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>IP gần nhất:</span>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#0284c7', marginTop: 2 }}>
-                        {sessionsModal.data.user.lastLoginIp || 'Chưa ghi nhận IP'}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, alignItems: 'center' }}>
+                    <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>IP đăng nhập gần nhất</span>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0284c7', marginTop: 4, fontFamily: 'monospace' }}>
+                        {sessionsModal.data.user.lastLoginIp || (sessionsModal.data.activeIps?.[0] ? sessionsModal.data.activeIps[0] : 'Chưa ghi nhận IP')}
                       </div>
                     </div>
 
-                    <div>
-                      <span style={{ fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Thời gian gần nhất:</span>
-                      <div style={{ fontSize: 13, color: '#334155', marginTop: 2 }}>
+                    <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Thời gian đăng nhập gần nhất</span>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#334155', marginTop: 4 }}>
                         {fmtTime(sessionsModal.data.user.lastLoginAt)}
                       </div>
                     </div>
 
-                    <div>
-                      <span style={{ fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Số IP đang online:</span>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: sessionsModal.data.activeIps?.length ? '#16a34a' : '#94a3b8', marginTop: 2 }}>
-                        {sessionsModal.data.activeIps?.length || 0} IP
+                    <div style={{ background: '#fff', padding: '10px 14px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Phiên đang kết nối (Online)</span>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: sessionsModal.data.activeIps?.length > 0 || sessionsModal.data.sessions?.some((s: any) => s.isActive) ? '#16a34a' : '#94a3b8', marginTop: 4 }}>
+                        ● {sessionsModal.data.sessions?.filter((s: any) => s.isActive).length || 0} phiên ({sessionsModal.data.activeIps?.length || 0} IP phân biệt)
                       </div>
                     </div>
                   </div>
 
-                  {/* Danh sách các IP đang online */}
+                  {/* Danh sách các IP đang online nếu có */}
                   {sessionsModal.data.activeIps && sessionsModal.data.activeIps.length > 0 && (
-                    <div style={{ marginTop: 6, paddingTop: 8, borderTop: '1px dashed #cbd5e1' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Các địa chỉ IP đang hoạt động:</span>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                    <div style={{ marginTop: 2, paddingTop: 10, borderTop: '1px dashed #cbd5e1' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>
+                        Các địa chỉ IP đang hoạt động đồng thời:
+                      </span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
                         {sessionsModal.data.activeIps.map((ip: string) => (
                           <span
                             key={ip}
@@ -672,14 +690,18 @@ export function UsersAdminPanel() {
                               background: '#dcfce7',
                               color: '#15803d',
                               border: '1px solid #bbf7d0',
-                              padding: '2px 8px',
+                              padding: '3px 10px',
                               borderRadius: 6,
-                              fontSize: 12,
+                              fontSize: 13,
                               fontFamily: 'monospace',
-                              fontWeight: 600,
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
                             }}
                           >
-                            ● {ip}
+                            <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }}></span>
+                            {ip}
                           </span>
                         ))}
                       </div>
@@ -689,70 +711,105 @@ export function UsersAdminPanel() {
 
                 {/* Bảng chi tiết phiên */}
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: '#1e293b' }}>
-                      Lịch sử phiên đăng nhập ({sessionsModal.data.sessions?.length || 0})
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: 15, color: '#1e293b' }}>
+                      Lịch sử toàn bộ phiên đăng nhập ({sessionsModal.data.sessions?.length || 0})
                     </span>
                     <button
                       className="ghost"
                       onClick={() => doRevokeAll(sessionsModal.user.id, sessionsModal.user.email)}
-                      style={{ color: '#ef4444', borderColor: '#fca5a5', fontSize: 12, padding: '4px 10px' }}
-                      title="Thu hồi tất cả phiên để đăng xuất tài khoản này khỏi toàn bộ IP"
+                      style={{
+                        color: '#ef4444',
+                        borderColor: '#fca5a5',
+                        background: '#fef2f2',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        padding: '6px 14px',
+                        cursor: 'pointer',
+                        borderRadius: 6,
+                      }}
+                      title="Thu hồi tất cả phiên để đăng xuất tài khoản này khỏi toàn bộ IP và thiết bị"
                     >
                       🚫 Đăng xuất khỏi tất cả IP & thiết bị
                     </button>
                   </div>
 
-                  <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-                    <table className="localtbl" style={{ width: '100%', fontSize: 12 }}>
+                  <div style={{ maxHeight: 460, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+                    <table className="localtbl" style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                       <thead>
-                        <tr style={{ background: '#f8fafc' }}>
-                          <th>Địa chỉ IP</th>
-                          <th>Trạng thái</th>
-                          <th>Thiết bị & Trình duyệt</th>
-                          <th>Thời gian kết nối</th>
-                          <th>Hết hạn</th>
+                        <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 2, borderBottom: '2px solid #e2e8f0' }}>
+                          <th style={{ width: 170, textAlign: 'left', padding: '10px 14px' }}>Địa chỉ IP</th>
+                          <th style={{ width: 140, textAlign: 'left', padding: '10px 14px' }}>Trạng thái</th>
+                          <th style={{ textAlign: 'left', padding: '10px 14px' }}>Thiết bị & Trình duyệt</th>
+                          <th style={{ width: 180, textAlign: 'left', padding: '10px 14px' }}>Thời gian kết nối</th>
+                          <th style={{ width: 180, textAlign: 'left', padding: '10px 14px' }}>Hết hạn</th>
                         </tr>
                       </thead>
                       <tbody>
                         {sessionsModal.data.sessions.map((s: any) => (
-                          <tr key={s.id}>
-                            <td>
-                              <code style={{ fontFamily: 'monospace', fontWeight: 600, color: '#0369a1' }}>
-                                {s.ip}
-                              </code>
+                          <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '10px 14px' }}>
+                              {s.ip && s.ip !== 'Không rõ IP' ? (
+                                <code style={{
+                                  fontFamily: 'monospace',
+                                  fontWeight: 700,
+                                  color: '#0369a1',
+                                  background: '#f0f9ff',
+                                  border: '1px solid #bae6fd',
+                                  padding: '2px 8px',
+                                  borderRadius: 5,
+                                  fontSize: 13,
+                                }}>
+                                  {s.ip}
+                                </code>
+                              ) : (
+                                <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: 12 }}>Chưa lưu IP</span>
+                              )}
                             </td>
-                            <td>
+                            <td style={{ padding: '10px 14px' }}>
                               {s.isActive ? (
                                 <span style={{
                                   background: '#dcfce7',
                                   color: '#15803d',
-                                  padding: '2px 6px',
-                                  borderRadius: 4,
+                                  padding: '3px 8px',
+                                  borderRadius: 5,
                                   fontWeight: 600,
-                                  fontSize: 11
+                                  fontSize: 12,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 5,
                                 }}>
-                                  ● Đang online
+                                  <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }}></span>
+                                  Đang online
                                 </span>
                               ) : (
-                                <span style={{ color: '#94a3b8', fontSize: 11 }}>
-                                  {s.revokedAt ? 'Đã thu hồi' : 'Hết hạn'}
+                                <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                                  {s.revokedAt ? 'Đã thu hồi' : 'Đã hết hạn'}
                                 </span>
                               )}
                             </td>
-                            <td>
-                              <div style={{ fontWeight: 500 }}>{parseDevice(s.userAgent)}</div>
-                              <div style={{ fontSize: 10, color: '#94a3b8', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.userAgent}>
+                            <td style={{ padding: '10px 14px' }}>
+                              <div style={{ fontWeight: 600, color: '#334155' }}>{parseDevice(s.userAgent)}</div>
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: '#94a3b8',
+                                  marginTop: 2,
+                                  wordBreak: 'break-all',
+                                  lineHeight: 1.3
+                                }}
+                                title={s.userAgent}
+                              >
                                 {s.userAgent}
                               </div>
                             </td>
-                            <td>{fmtTime(s.createdAt)}</td>
-                            <td>{fmtTime(s.expiresAt)}</td>
+                            <td style={{ padding: '10px 14px', color: '#475569', fontSize: 12 }}>{fmtTime(s.createdAt)}</td>
+                            <td style={{ padding: '10px 14px', color: '#475569', fontSize: 12 }}>{fmtTime(s.expiresAt)}</td>
                           </tr>
                         ))}
                         {!sessionsModal.data.sessions.length && (
                           <tr>
-                            <td colSpan={5} style={{ textAlign: 'center', padding: '16px 0', color: '#64748b' }}>
+                            <td colSpan={5} style={{ textAlign: 'center', padding: '24px 0', color: '#64748b' }}>
                               Chưa có phiên đăng nhập nào được ghi nhận.
                             </td>
                           </tr>
@@ -763,7 +820,13 @@ export function UsersAdminPanel() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                  <button className="ghost" onClick={() => setSessionsModal(null)}>Đóng</button>
+                  <button
+                    className="primary"
+                    onClick={() => setSessionsModal(null)}
+                    style={{ padding: '8px 22px', fontWeight: 600 }}
+                  >
+                    Đóng
+                  </button>
                 </div>
               </>
             ) : null}

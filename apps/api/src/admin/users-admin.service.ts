@@ -148,7 +148,7 @@ export class UsersAdminService {
       const isActive = !s.revokedAt && s.expiresAt.getTime() > now.getTime();
       return {
         id: s.id,
-        ip: s.ip || 'Không rõ IP',
+        ip: s.ip || null,
         userAgent: s.userAgent || 'Không rõ trình duyệt/thiết bị',
         createdAt: s.createdAt,
         expiresAt: s.expiresAt,
@@ -156,7 +156,7 @@ export class UsersAdminService {
         isActive,
       };
     });
-    const activeIps = Array.from(new Set(items.filter((s) => s.isActive && s.ip !== 'Không rõ IP').map((s) => s.ip)));
+    const activeIps = Array.from(new Set(items.filter((s) => s.isActive && s.ip).map((s) => s.ip as string)));
     return {
       user: safe(user),
       sessions: items,
