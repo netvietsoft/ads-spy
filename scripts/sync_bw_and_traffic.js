@@ -106,7 +106,7 @@ JOIN (
   FROM aff_program
   WHERE join_url IS NOT NULL AND join_url != ''
   GROUP BY web
-) p ON p.web = sb.web
+) p ON p.web COLLATE utf8mb4_unicode_ci = sb.web COLLATE utf8mb4_unicode_ci
 SET
   sb.join_url = COALESCE(p.join_url, sb.join_url),
   sb.aff_platform = COALESCE(p.net, sb.aff_platform),
@@ -115,7 +115,7 @@ SET
 WHERE sb.aff_status IS NULL OR sb.aff_status != 'yes' OR sb.join_url IS NULL;
 
 UPDATE shopify_buildwith sb
-JOIN aff_library al ON al.web = sb.web
+JOIN aff_library al ON al.web COLLATE utf8mb4_unicode_ci = sb.web COLLATE utf8mb4_unicode_ci
 SET
   sb.join_url = COALESCE(al.join_url, sb.join_url),
   sb.aff_platform = COALESCE(al.aff_platform, sb.aff_platform),
