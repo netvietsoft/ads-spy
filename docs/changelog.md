@@ -4,6 +4,8 @@
 
 ## Điểm nổi bật gần đây (mới nhất ở trên)
 
+- **2026-10-26 — Nâng cấp tính năng Xuất toàn bộ dữ liệu Excel & CSV cho /afflibrary (TASK-067):**
+  Khắc phục triệt để lỗi người dùng phản ánh chỉ xuất được 50–100 dòng (dữ liệu trang hiện tại). Backend `apps/api/src/afflib/afflib.mysql.ts` nâng trần `pageSize` từ 500 lên 5000. Frontend `apps/web/app/components/AffLibraryPanel.tsx` xây dựng cơ chế xuất dữ liệu phân trang lũy tiến gom toàn bộ các trang (batch 2000 dòng, trần an toàn 100.000 dòng), lọc trùng bằng Set, hỗ trợ 2 nút riêng "⬇ Xuất toàn bộ Excel" (.xlsx) và "⬇ Xuất toàn bộ CSV" (.csv UTF-8 kèm BOM, mở ngay bằng Excel không lỗi font), hiển thị đếm số dòng real-time và bổ sung cột Ngành hàng (`up_category`). Chi tiết: [`handoff-2026-10-26-afflib-export-all.md`](handoff-2026-10-26-afflib-export-all.md).
 - **2026-10-10 — Proxy Crawler Shopify: Thêm Tick Box & Xóa Hàng Loạt Proxy Chết (TASK-062):**
   Thêm ô checkbox riêng `Chọn xóa` ở tiêu đề bảng và từng dòng proxy; thêm nút `☑️ Tick chọn tất cả`, nút `💀 Chọn tất cả Die`, nút `🗑️ Xóa đã chọn` (màu đỏ) và nút `🗑️ Xóa toàn bộ proxy Die` (1-click dọn sạch proxy chết). Đổi tên cột `Bật` thành `Bật crawler` để tránh nhầm lẫn. Bổ sung backend endpoint `DELETE /api/sh/proxies` xóa hàng loạt trong 1 câu SQL `DELETE WHERE id IN (?)`. Chi tiết: [`handoff-2026-10-10-proxy-bulk-delete-dead.md`](handoff-2026-10-10-proxy-bulk-delete-dead.md).
 - **2026-10-08 — Menu /shopify-buildwith & Database riêng `shopify_buildwith` (Kho 560k domain BuiltWith):**

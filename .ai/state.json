@@ -1,8 +1,20 @@
 {
-  "updated_at": "2026-10-14T11:26:00+07:00",
+  "updated_at": "2026-10-26T09:54:00+07:00",
   "project": "Google Ads Spy & SaaS Intelligence Platform",
   "active_task": null,
   "recent_tasks": [
+    {
+      "id": "TASK-067",
+      "title": "Nâng cấp tính năng Xuất Excel và CSV trọn vẹn dữ liệu cho trang /afflibrary",
+      "status": "done",
+      "completed_at": "2026-10-26T09:54:00+07:00"
+    },
+    {
+      "id": "TASK-066",
+      "title": "Chạy nền quét và xác minh toàn diện hàng loạt dự án Affiliate sống (Mass Affiliate Scanner)",
+      "status": "done",
+      "completed_at": "2026-10-15T19:52:00+07:00"
+    },
     {
       "id": "TASK-065",
       "title": "Bổ sung nhận diện RecomSale vào Affiliate Client & Tool quét mở rộng kho shop RecomSale",

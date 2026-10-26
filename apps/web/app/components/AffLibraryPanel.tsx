@@ -199,6 +199,8 @@ export function AffLibraryPanel() {
   const [busy, setBusy] = useState(false);
   const [detect, setDetect] = useState<AffLibDetectStatus | null>(null);
   const [starting, setStarting] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
   const pollRef = useRef<any>(null);
 
   // Sort + phân trang + lọc đều ở SERVER (LIMIT/OFFSET) → tác dụng trên toàn bộ kho, không chỉ trang đang xem.
@@ -409,17 +411,109 @@ export function AffLibraryPanel() {
   const toggleSel = (web: string) => setSel((s) => { const n = new Set(s); if (n.has(web)) n.delete(web); else n.add(web); return n; });
   const toggleAll = () => setSel((s) => (s.size === items.length ? new Set<string>() : new Set(items.map((x) => x.web))));
 
-  const exportXlsx = () => {
-    const data = items.map((r) => ({
-      'Shop/Web': r.shop_name || r.web, Web: r.web, Affiliate: r.aff_status || '', Platform: r.aff_platform || '',
-      'DT tháng (USD)': usdNum(r.rev_month, r.currency) == null ? '' : Math.round(usdNum(r.rev_month, r.currency) as number), SKU: r.sku ?? '',
-      'DT ngày': usdNum(r.rev_day, r.currency) == null ? '' : Math.round(usdNum(r.rev_day, r.currency) as number),
-      'DT tuần': usdNum(r.rev_week, r.currency) == null ? '' : Math.round(usdNum(r.rev_week, r.currency) as number),
-      'DT tổng': usdNum(r.rev_total, r.currency) == null ? '' : Math.round(usdNum(r.rev_total, r.currency) as number),
-      'Link đăng ký': r.join_url || '', '%commit': r.commission_pct ?? '', 'Traffic/tháng': r.traffic_visits ?? '', Bounce: r.traffic_bounce ?? '', 'Time-onsite': r.traffic_duration_sec ?? '', 'Global rank': r.traffic_rank ?? '', Payout: r.payout ?? '', Cookie: r.cookie_days ?? '', Note: r.note || '',
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'AffLibrary'); XLSX.writeFile(wb, 'aff-library.xlsx');
+  const XLS_PAGE = 2000;
+  const XLS_MAX_PAGES = 50; // Gom tối đa 100.000 dòng an toàn trên trình duyệt
+
+  const exportData = async (format: 'xlsx' | 'csv' = 'xlsx') => {
+    if (exportBusy || !total) return;
+    setExportBusy(true);
+    setExportMsg('Đang khởi tạo…');
+    setErr(null);
+    try {
+      const seen = new Set<string>();
+      const all: AffLibRow[] = [];
+      let currentTotal = total;
+
+      for (let p = 1; p <= XLS_MAX_PAGES; p++) {
+        setExportMsg(`Đang lấy ${all.length.toLocaleString()} / ${currentTotal.toLocaleString()} dòng…`);
+        const r = await affLibRows(p, XLS_PAGE, filter, sort.key, sort.dir);
+        currentTotal = r.total;
+        for (const row of r.items) {
+          if (!seen.has(row.web)) {
+            seen.add(row.web);
+            all.push(row);
+          }
+        }
+        setExportMsg(`Đang lấy ${all.length.toLocaleString()} / ${currentTotal.toLocaleString()} dòng…`);
+        if (r.items.length < XLS_PAGE || all.length >= currentTotal) break;
+      }
+
+      if (!all.length) {
+        setErr('Không có dữ liệu để xuất.');
+        setExportBusy(false);
+        setExportMsg(null);
+        return;
+      }
+
+      if (all.length < currentTotal) {
+        setErr(`Chỉ lấy được ${all.length.toLocaleString()} / ${currentTotal.toLocaleString()} dòng — file có thể chưa đủ 100% dữ liệu.`);
+      }
+
+      setExportMsg(`Đang đóng gói ${all.length.toLocaleString()} dòng…`);
+
+      const mapped = all.map((r) => ({
+        'Shop/Web': r.shop_name || r.web,
+        Web: r.web,
+        Affiliate: r.aff_status || '',
+        Platform: r.aff_platform || '',
+        'Ngành hàng': r.up_category || '',
+        'DT tháng (USD)': usdNum(r.rev_month, r.currency) == null ? '' : Math.round(usdNum(r.rev_month, r.currency) as number),
+        SKU: r.sku ?? '',
+        'DT ngày': usdNum(r.rev_day, r.currency) == null ? '' : Math.round(usdNum(r.rev_day, r.currency) as number),
+        'DT tuần': usdNum(r.rev_week, r.currency) == null ? '' : Math.round(usdNum(r.rev_week, r.currency) as number),
+        'DT tổng': usdNum(r.rev_total, r.currency) == null ? '' : Math.round(usdNum(r.rev_total, r.currency) as number),
+        'Link đăng ký': r.join_url || '',
+        '%commit': r.commission_pct ?? '',
+        'Traffic/tháng': r.traffic_visits ?? '',
+        Bounce: r.traffic_bounce ?? '',
+        'Time-onsite': r.traffic_duration_sec ?? '',
+        'Global rank': r.traffic_rank ?? '',
+        Payout: r.payout ?? '',
+        Cookie: r.cookie_days ?? '',
+        Note: r.note || '',
+      }));
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `aff-library-${filter}-${all.length}dong-${dateStr}`;
+
+      if (format === 'csv') {
+        const headers = Object.keys(mapped[0] || {});
+        const escapeCsv = (val: any) => {
+          if (val == null) return '';
+          const s = String(val);
+          if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
+            return `"${s.replace(/"/g, '""')}"`;
+          }
+          return s;
+        };
+        const csvContent = '\uFEFF' + [
+          headers.map(escapeCsv).join(','),
+          ...mapped.map((row: any) => headers.map((h) => escapeCsv(row[h])).join(',')),
+        ].join('\r\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${filename}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        const ws = XLSX.utils.json_to_sheet(mapped);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'AffLibrary');
+        XLSX.writeFile(wb, `${filename}.xlsx`);
+      }
+
+      setExportMsg(`Đã xuất ${all.length.toLocaleString()} dòng`);
+      setTimeout(() => setExportMsg(null), 5000);
+    } catch (e) {
+      setErr(`Xuất dữ liệu thất bại: ${(e as Error).message}`);
+      setExportMsg(null);
+    } finally {
+      setExportBusy(false);
+    }
   };
 
   // Header bảng dính ở cấp TRANG, ngay dưới thanh công cụ (thanh công cụ lại dính dưới top menu).
@@ -620,7 +714,29 @@ export function AffLibraryPanel() {
             <button className="srcbtn" disabled={page >= totalPages || loading} onClick={() => load(page + 1)}>Sau ›</button>
           </>
         )}
-        <button className="srcbtn" onClick={exportXlsx} disabled={!items.length}>⬇ Xuất Excel</button>
+        <button
+          className="srcbtn"
+          onClick={() => exportData('xlsx')}
+          disabled={exportBusy || !total}
+          title="Tải toàn bộ dữ liệu theo bộ lọc hiện tại về file Excel (.xlsx)"
+          style={{ fontWeight: 600, background: exportBusy ? '#f3f4f6' : undefined }}
+        >
+          {exportBusy ? (exportMsg || 'Đang xuất…') : '⬇ Xuất toàn bộ Excel'}
+        </button>
+        <button
+          className="srcbtn"
+          onClick={() => exportData('csv')}
+          disabled={exportBusy || !total}
+          title="Tải toàn bộ dữ liệu theo bộ lọc dạng file CSV (.csv chuẩn UTF-8 mở ngay bằng Excel) — tốc độ siêu nhanh"
+          style={{ fontWeight: 600, background: exportBusy ? '#f3f4f6' : undefined }}
+        >
+          ⬇ Xuất toàn bộ CSV
+        </button>
+        {exportMsg && (
+          <span style={{ fontSize: 13, color: exportBusy ? '#2563eb' : '#16a34a', fontWeight: 500 }}>
+            {exportBusy ? `⏳ ${exportMsg}` : `✓ ${exportMsg}`}
+          </span>
+        )}
       </div>
 
       {edit && (

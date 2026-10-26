@@ -504,7 +504,7 @@ export class AffLibMysql {
     await this.ensureTables(); // DB mới (vd prod chưa sync bao giờ) → bảng aff_library/aff_domain_traffic chưa tồn tại → tạo trước, tránh 500
     const pool = await this.sh.getPool();
     const page = Math.max(1, Number(o?.page) || 1);
-    const pageSize = Math.min(500, Math.max(1, Number(o?.pageSize) || 100));
+    const pageSize = Math.min(5000, Math.max(1, Number(o?.pageSize) || 100));
     // affOnly là tham số cũ (checkbox trước đây) — vẫn nhận để không phá caller/bookmark cũ.
     const filter = FILTER_WHERE[String(o?.filter || '')] !== undefined ? String(o?.filter) : o?.affOnly ? 'aff' : 'all';
     const where = FILTER_WHERE[filter];

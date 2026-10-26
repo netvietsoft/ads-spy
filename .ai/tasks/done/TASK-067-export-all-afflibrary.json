@@ -1,0 +1,35 @@
+{
+  "task_id": "TASK-067",
+  "title": "Nâng cấp tính năng Xuất Excel và CSV trọn vẹn dữ liệu cho trang /afflibrary",
+  "status": "done",
+  "owner": "Agent 3 - FRONTEND",
+  "created": "2026-10-26T09:50:00+07:00",
+  "completed_at": "2026-10-26T09:54:00+07:00",
+  "branch": "agent/frontend/TASK-067",
+  "files_allowed": [
+    "apps/api/src/afflib/afflib.mysql.ts",
+    "apps/web/app/components/AffLibraryPanel.tsx",
+    "docs/handoff-2026-10-26-afflib-export-all.md"
+  ],
+  "acceptance_criteria": [
+    "1. Backend apps/api/src/afflib/afflib.mysql.ts nâng pageSize trần lên 5000 (tương tự affHosts bên affnet) để hỗ trợ batching nhanh khi xuất kho dữ liệu lớn.",
+    "2. Frontend apps/web/app/components/AffLibraryPanel.tsx nâng cấp cơ chế xuất dữ liệu: tự động lặp phân trang gom đủ 100% bản ghi theo đúng bộ lọc và thứ tự sắp xếp đang chọn.",
+    "3. Bổ sung hỗ trợ xuất cả 2 định dạng: Excel (.xlsx) và CSV (.csv) chuẩn UTF-8 kèm BOM, tải tức thì.",
+    "4. Hiển thị thông tin tiến độ thời gian thực trên nút bấm và thông báo (ví dụ: 'Đang tải 5,000 / 36,241 dòng...').",
+    "5. Đảm bảo Quality Gate: build:api PASS, build:web PASS, không làm vỡ các luồng chức năng khác của /afflibrary.",
+    "6. Tạo tài liệu bàn giao handoff đầy đủ."
+  ],
+  "result_summary": {
+    "quality_gate": {
+      "build_api": "PASS",
+      "build_web": "PASS",
+      "unit_tests": "PASS 3/3 afflib suites (36/36 tests)"
+    },
+    "features_added": [
+      "Xuất toàn bộ dữ liệu qua phân trang lũy tiến 2000 dòng/batch",
+      "Hỗ trợ cả định dạng Excel (.xlsx) và CSV (.csv) UTF-8 BOM",
+      "Hiển thị tiến độ real-time trên nút bấm và thông báo",
+      "Bổ sung cột Ngành hàng (up_category) vào file xuất"
+    ]
+  }
+}

@@ -1,12 +1,24 @@
 # BẢNG TIẾN ĐỘ NHIỆM VỤ (TODOS.md)
 
-> **Cập nhật lần cuối**: 2026-10-14 11:26:00 (GMT+7)  
+> **Cập nhật lần cuối**: 2026-10-26 09:54:00 (GMT+7)  
 > **Dự án**: Google Ads Spy & SaaS Intelligence Platform  
 > **Nguồn trạng thái**: `.ai/tasks/` & `.ai/state.json`
 
 ---
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
+
+- [x] **TASK-067**: Nâng cấp tính năng Xuất Excel và CSV trọn vẹn dữ liệu cho trang /afflibrary
+  - **Mô tả**: 1) Backend nâng `pageSize` tối đa trong `apps/api/src/afflib/afflib.mysql.ts` từ 500 lên 5000 (đồng bộ chuẩn `affHosts`). 2) Frontend `AffLibraryPanel.tsx` thay thế hàm xuất cũ bằng cơ chế lũy tiến `exportData(format)`: tự động gom toàn bộ trang dữ liệu (batch 2000 dòng, trần an toàn 100.000 dòng), lọc trùng bằng Set, xuất theo đúng bộ lọc và thứ tự sort đang chọn. 3) Cung cấp 2 nút riêng: "⬇ Xuất toàn bộ Excel" (.xlsx) và "⬇ Xuất toàn bộ CSV" (.csv chuẩn UTF-8 kèm BOM, tải tức thì). 4) Trực quan hóa tiến độ lấy dữ liệu thời gian thực trên nút bấm. 5) Vượt qua Quality Gate: build:api PASS, build:web PASS, test afflib 3/3 PASS.
+  - **Branch**: `agent/frontend/TASK-067`
+  - **Files**: `apps/api/src/afflib/afflib.mysql.ts`, `apps/web/app/components/AffLibraryPanel.tsx`, `docs/handoff-2026-10-26-afflib-export-all.md`
+  - **Tài liệu**: [`docs/handoff-2026-10-26-afflib-export-all.md`](docs/handoff-2026-10-26-afflib-export-all.md)
+
+- [x] **TASK-066**: Chạy nền quét và xác minh toàn diện hàng loạt dự án Affiliate sống (Mass Affiliate Scanner)
+  - **Mô tả**: Quét đa luồng 100 workers trên toàn bộ kho 852,822 domains (Shopify có doanh thu, BuiltWith 18 nets, Shopify verified). Kiểm tra chặt chẽ link đăng ký affiliate (join_url): HTTP 200, loại trừ 410 Gone, password page, cart/product page. Checkpoint tự động định kỳ vào `checkpoint.json`. Kết quả tìm được 68,061 dự án affiliate sống và xuất dữ liệu ra CSV/SQL.
+  - **Branch**: `main`
+  - **Files**: `scripts/mass_scanner_core.py`, `scripts/run_mass_scan.py`
+  - **Tài liệu**: [`.ai/tasks/done/TASK-066-mass-affiliate-scanner.json`](.ai/tasks/done/TASK-066-mass-affiliate-scanner.json)
 
 - [x] **TASK-065**: Bổ sung nhận diện RecomSale vào Affiliate Client & Tool quét mở rộng kho shop RecomSale
   - **Mô tả**: 1) Bổ sung nhận diện RecomSale vào `APP_INSTALLED` (`store.recomsale.com`, `cdn.recomsale.com`, `/a/recomsale`) và `PORTAL_HOSTS` trong `apps/api/src/shophunter/affiliate.client.ts`; 2) Mở rộng `PROBE_PATHS` thêm `/a/recomsale/signup`, `/community/affiliate/signup`; 3) Bổ sung ánh xạ `'recomsale.com': 'RecomSale'` vào `NET_PLATFORM_NAME` trong `apps/api/src/affnet/affnet.types.ts`; 4) Viết unit test mở rộng cho RecomSale trong `affiliate.client.spec.ts` (19/19 tests PASS); 5) Xây dựng công cụ CLI `scripts/recomsale-discover.js` dò quét tự động đa luồng hỗ trợ mở rộng hàng loạt brand/domain; 6) Biên dịch API thành công và viết tài liệu bàn giao `docs/handoff-2026-10-14-recomsale-expansion.md`.
