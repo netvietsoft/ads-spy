@@ -1,0 +1,38 @@
+{
+  "task_id": "TASK-068",
+  "title": "Bổ sung ô tìm kiếm trên trang Chi tiết net (/affnet/{net}) và trang Thư viện affiliate (/afflibrary)",
+  "status": "done",
+  "owner": "Agent 3 - FRONTEND",
+  "created": "2026-10-27T11:48:00+07:00",
+  "completed_at": "2026-10-27T11:56:00+07:00",
+  "branch": "agent/frontend/TASK-068",
+  "files_allowed": [
+    "apps/api/src/afflib/afflib.controller.ts",
+    "apps/api/src/afflib/afflib.service.ts",
+    "apps/api/src/afflib/afflib.mysql.ts",
+    "apps/api/src/affnet/affnet.mysql.ts",
+    "apps/web/app/api.ts",
+    "apps/web/app/components/AffLibraryPanel.tsx",
+    "apps/web/app/components/AffnetPanel.tsx"
+  ],
+  "acceptance_criteria": [
+    "1. Trang /afflibrary bổ sung ô tìm kiếm (tìm kiếm domain, tên shop, note, join_url) hỗ trợ gõ từ khoá, nút Tìm, nút Xoá và phím Enter.",
+    "2. API aff-lib/rows hỗ trợ tham số q, tìm kiếm chính xác và phân trang chuẩn trong database MySQL.",
+    "3. Xuất file Excel / CSV ở /afflibrary giữ đúng kết quả tìm kiếm theo từ khoá q.",
+    "4. Trang /affnet/{net} (chi tiết net) nâng cấp ô tìm kiếm: thiết kế rõ ràng, có nút 'Tìm' cạnh ô nhập, nút '✕' xoá nhanh, hỗ trợ phím Enter và tự động reset trang 1.",
+    "5. Quality Gate: test backend pass, build pass, không ảnh hưởng các chức năng hiện tại."
+  ],
+  "result_summary": {
+    "quality_gate": {
+      "build_api": "PASS",
+      "build_web": "PASS",
+      "unit_tests": "PASS afflib (36/36), PASS affnet (300/300)"
+    },
+    "features_added": [
+      "Ô tìm kiếm đa trường cho /afflibrary (domain, shop_name, note, join_url) có nút Tìm & Xoá",
+      "Hỗ trợ xuất Excel/CSV theo đúng từ khoá tìm kiếm q",
+      "Nâng cấp ô tìm kiếm trên trang chi tiết net /affnet/{net} với nút Tìm, nút Xoá và mở rộng tìm kiếm theo brand, shop_name",
+      "Hiển thị số lượng kết quả kèm từ khoá tìm kiếm và thông báo rỗng chi tiết"
+    ]
+  }
+}

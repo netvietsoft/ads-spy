@@ -751,8 +751,8 @@ export class AffnetMysql {
       const qTrim = q.q.trim().toLowerCase();
       const netBase = q.net.toLowerCase().replace(/\.[^.]+$/, '');
       if (qTrim !== q.net.toLowerCase() && qTrim !== netBase) {
-        where.push('(h.slug LIKE ? OR p.program_name LIKE ? OR p.web LIKE ? OR p.join_url LIKE ?)');
-        params.push('%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%');
+        where.push('(h.slug LIKE ? OR p.program_name LIKE ? OR p.brand LIKE ? OR p.web LIKE ? OR p.join_url LIKE ? OR al.shop_name LIKE ?)');
+        params.push('%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%', '%' + q.q + '%');
       }
     }
     const whereSql = 'WHERE ' + where.join(' AND ');

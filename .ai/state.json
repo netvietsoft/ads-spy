@@ -4,6 +4,12 @@
   "active_task": null,
   "recent_tasks": [
     {
+      "id": "TASK-068",
+      "title": "Bổ sung ô tìm kiếm trên trang Chi tiết net (/affnet/{net}) và trang Thư viện affiliate (/afflibrary)",
+      "status": "done",
+      "completed_at": "2026-10-27T11:56:00+07:00"
+    },
+    {
       "id": "TASK-067",
       "title": "Nâng cấp tính năng Xuất Excel và CSV trọn vẹn dữ liệu cho trang /afflibrary",
       "status": "done",

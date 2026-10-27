@@ -191,6 +191,8 @@ export function AffLibraryPanel() {
   const [scanMsg, setScanMsg] = useState<string | null>(null); // kết quả quét 1 domain gần nhất
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [pageSize, setPageSize] = useState(20);
+  const [q, setQ] = useState('');
+  const [qInput, setQInput] = useState('');
   const barRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -203,27 +205,39 @@ export function AffLibraryPanel() {
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const pollRef = useRef<any>(null);
 
-  // Sort + phân trang + lọc đều ở SERVER (LIMIT/OFFSET) → tác dụng trên toàn bộ kho, không chỉ trang đang xem.
-  const load = (p = page, s = sort, ps = pageSize, f = filter) => {
+  // Sort + phân trang + lọc + tìm kiếm đều ở SERVER (LIMIT/OFFSET) → tác dụng trên toàn bộ kho, không chỉ trang đang xem.
+  const load = (p = page, s = sort, ps = pageSize, f = filter, query = q) => {
     setLoading(true);
-    return affLibRows(p, ps, f, s.key, s.dir)
+    return affLibRows(p, ps, f, s.key, s.dir, query || undefined)
       .then((r) => { setItems(r.items); setTotal(r.total); setPage(r.page); })
       .catch((e) => setErr((e as Error).message))
       .finally(() => setLoading(false));
   };
-  const changePageSize = (n: number) => { setPageSize(n); load(1, sort, n); }; // state async → truyền thẳng n
-  const changeFilter = (f: AffLibFilter) => { setFilter(f); setSel(new Set()); load(1, sort, pageSize, f); };
+  const changePageSize = (n: number) => { setPageSize(n); load(1, sort, n, filter, q); }; // state async → truyền thẳng n
+  const changeFilter = (f: AffLibFilter) => { setFilter(f); setSel(new Set()); load(1, sort, pageSize, f, q); };
   // Bấm header: cột mới → giảm dần (lớn→bé, nhu cầu chính); bấm lại cột đang sort → đảo chiều. Về trang 1 vì thứ tự đổi.
   const clickSort = (key: string) => {
     if (loading) return;
     const s: { key: string; dir: AffLibDir } = { key, dir: sort.key === key && sort.dir === 'desc' ? 'asc' : 'desc' };
-    setSort(s); load(1, s);
+    setSort(s); load(1, s, pageSize, filter, q);
   };
   // Chọn cột từ menu (mobile): đổi cột thì lấy chiều mặc định của cột đó, KHÔNG đảo chiều như clickSort.
   const sortBy = (key: string) => {
     if (loading) return;
     const s: { key: string; dir: AffLibDir } = { key, dir: TEXT_SORTS.has(key) ? 'asc' : 'desc' };
-    setSort(s); load(1, s);
+    setSort(s); load(1, s, pageSize, filter, q);
+  };
+  const applyQ = () => {
+    const val = qInput.trim();
+    setQ(val);
+    setPage(1);
+    load(1, sort, pageSize, filter, val);
+  };
+  const clearQ = () => {
+    setQInput('');
+    setQ('');
+    setPage(1);
+    load(1, sort, pageSize, filter, '');
   };
   useEffect(() => { load(1); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
@@ -426,7 +440,7 @@ export function AffLibraryPanel() {
 
       for (let p = 1; p <= XLS_MAX_PAGES; p++) {
         setExportMsg(`Đang lấy ${all.length.toLocaleString()} / ${currentTotal.toLocaleString()} dòng…`);
-        const r = await affLibRows(p, XLS_PAGE, filter, sort.key, sort.dir);
+        const r = await affLibRows(p, XLS_PAGE, filter, sort.key, sort.dir, q || undefined);
         currentTotal = r.total;
         for (const row of r.items) {
           if (!seen.has(row.web)) {
@@ -572,6 +586,18 @@ export function AffLibraryPanel() {
         <select value={filter} onChange={(e) => changeFilter(e.target.value as AffLibFilter)} disabled={loading} title="Lọc danh sách" style={selStyle}>
           {FILTERS.map((f) => <option key={f.v} value={f.v}>{f.label}</option>)}
         </select>
+        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+          <input
+            className="fbselect"
+            placeholder="Tìm domain / shop / note…"
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') applyQ(); }}
+            style={{ ...selStyle, minWidth: isMobile ? 140 : 200, padding: '5px 8px' }}
+          />
+          <button className="srcbtn" onClick={applyQ} disabled={loading} title="Tìm kiếm">Tìm</button>
+          {(q || qInput) && <button className="srcbtn" onClick={clearQ} disabled={loading} title="Xoá tìm kiếm">✕</button>}
+        </span>
         {/* Sort CHỈ trên mobile — desktop sort bằng cách bấm header bảng (mũi tên ▲▼). 2 ô: chọn cột +
             đảo chiều, vì cả 2 chiều đều cần dùng thật (không nhét 32 lựa chọn "cột × chiều" vào 1 select). */}
         {isMobile && (
@@ -587,7 +613,7 @@ export function AffLibraryPanel() {
         <select value={pageSize} onChange={(e) => changePageSize(Number(e.target.value))} disabled={loading} title="Số bản ghi mỗi trang" style={selStyle}>
           {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n} bản ghi</option>)}
         </select>
-        <span style={{ opacity: 0.7 }}>{total.toLocaleString()} web · trang {page}/{totalPages}</span>
+        <span style={{ opacity: 0.7 }}>{total.toLocaleString()} web{q ? ` (tìm: "${q}")` : ''} · trang {page}/{totalPages}</span>
         {junkMode && sel.size > 0 && (
           <>
             <button className="srcbtn" onClick={() => bulk('del')} disabled={busy} style={{ color: '#e0384f' }}>🗑 Xoá {sel.size} domain</button>
@@ -604,7 +630,7 @@ export function AffLibraryPanel() {
                         onDetect={() => detectRow(r.web)} onEdit={() => openEdit(r)}
                         onTraffic={() => setHistWeb(r.web)} onDel={() => del(r.web)} />
           ))}
-          {!items.length && !loading && <div style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>Không có dữ liệu.</div>}
+          {!items.length && !loading && <div style={{ textAlign: 'center', color: '#9ca3af', padding: 20 }}>{q ? `Không tìm thấy kết quả nào cho "${q}".` : 'Không có dữ liệu.'}</div>}
         </div>
       ) : (
       <div className="afflib-tablewrap">
@@ -695,7 +721,7 @@ export function AffLibraryPanel() {
               </tr>
             ))}
             {!items.length && !loading && <tr><td colSpan={COLS.length + (junkMode ? 2 : 0)} style={{ ...td, textAlign: 'center', color: '#9ca3af', padding: 20 }}>
-              {filter === 'junk' ? 'Không có domain nào cần dọn.' : filter === 'unscanned' ? 'Không còn domain nào trong hàng đợi quét.' : 'Chưa có dữ liệu — Đồng bộ từ Local DB, hoặc dán domain mới rồi Thêm.'}
+              {q ? `Không tìm thấy kết quả nào phù hợp với từ khóa "${q}".` : filter === 'junk' ? 'Không có domain nào cần dọn.' : filter === 'unscanned' ? 'Không còn domain nào trong hàng đợi quét.' : 'Chưa có dữ liệu — Đồng bộ từ Local DB, hoặc dán domain mới rồi Thêm.'}
             </td></tr>}
           </tbody>
         </table>
