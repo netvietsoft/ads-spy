@@ -515,8 +515,8 @@ export class AffLibMysql {
     }
     const qTrim = String(o?.q || '').trim();
     if (qTrim) {
-      conds.push('(al.web LIKE ? OR al.shop_name LIKE ? OR al.note LIKE ? OR al.join_url LIKE ?)');
-      params.push(`%${qTrim}%`, `%${qTrim}%`, `%${qTrim}%`, `%${qTrim}%`);
+      conds.push('(al.web LIKE ? OR al.shop_name LIKE ? OR al.shop_id LIKE ? OR al.aff_platform LIKE ? OR al.note LIKE ? OR al.join_url LIKE ?)');
+      params.push(`%${qTrim}%`, `%${qTrim}%`, `%${qTrim}%`, `%${qTrim}%`, `%${qTrim}%`, `%${qTrim}%`);
     }
     const whereSql = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const sort = SORT_EXPR[String(o?.sort || '')] ? String(o?.sort) : 'rev_month';

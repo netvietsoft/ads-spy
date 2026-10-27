@@ -553,6 +553,46 @@ export function AffLibraryPanel() {
         </div>
       </div>
 
+      {/* Ô tìm kiếm CHÍNH — nổi bật, chuẩn kiểu Google Ads Spy / Facebook, hỗ trợ tìm kiếm toàn bộ kho */}
+      <form
+        className="searchbar"
+        style={{ margin: '8px 0 10px', alignItems: 'center' }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          applyQ();
+        }}
+      >
+        <span style={{ fontSize: 18, opacity: 0.6, paddingLeft: 4 }}>🔍</span>
+        <input
+          value={qInput}
+          onChange={(e) => setQInput(e.target.value)}
+          placeholder={`Tìm kiếm theo domain (vd: nike.com), tên shop, shop ID, nền tảng (Shopify, Uppromote...), ghi chú trong ${total ? total.toLocaleString() : '97.414'} web…`}
+          style={{ fontSize: 15 }}
+        />
+        <button type="submit" className="primary" disabled={loading}>
+          {loading ? <span className="spinner" /> : 'Tìm kiếm'}
+        </button>
+        {(q || qInput) && (
+          <button
+            type="button"
+            className="ghost"
+            onClick={clearQ}
+            disabled={loading}
+            title="Xoá tìm kiếm để xem toàn bộ kho"
+            style={{ height: 44, padding: '0 16px', fontSize: 14 }}
+          >
+            ✕ Xoá
+          </button>
+        )}
+      </form>
+
+      {q && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'color-mix(in srgb, var(--accent) 12%, var(--panel))', border: '1px solid var(--accent)', borderRadius: 8, padding: '8px 14px', margin: '0 0 10px', fontSize: 13 }}>
+          <span>Đang lọc theo từ khóa: <b>&quot;{q}&quot;</b> — tìm thấy <b>{total.toLocaleString()}</b> web</span>
+          <button className="srcbtn" onClick={clearQ} style={{ marginLeft: 'auto', padding: '3px 10px' }}>✕ Xem tất cả kho</button>
+        </div>
+      )}
+
       {/* Thanh công cụ dính dưới top menu khi cuộn. `--topbar-h` do TopNav tự đo theo bề rộng màn hình
           (fallback 135px = chiều cao desktop tính bằng px layout, trước khi zoom 1.2 của body nhân vào);
           dùng padding thay margin-bottom để nền che kín, không cho dòng bảng lộ qua khe. z-index dưới topbar (30). */}
