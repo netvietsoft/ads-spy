@@ -237,7 +237,7 @@ export class AffLibService {
     return { items, total: items.length, page: 1, pageSize: items.length || 1, scanned: domains.length };
   }
 
-  async rows(o?: { page?: number; pageSize?: number; affOnly?: boolean; filter?: string; sort?: string; dir?: string }): Promise<any> {
+  async rows(o?: { page?: number; pageSize?: number; affOnly?: boolean; filter?: string; sort?: string; dir?: string; q?: string }): Promise<any> {
     await this.db.ensureTables();
     return this.db.listRows(o);
   }

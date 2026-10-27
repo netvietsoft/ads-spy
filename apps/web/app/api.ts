@@ -912,9 +912,10 @@ export interface AffLibDetectStatus { running: boolean; total: number; done: num
 export async function affLibScan(domains: string): Promise<AffLibPage> {
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ domains }) }));
 }
-export async function affLibRows(page = 1, pageSize = 100, filter: AffLibFilter = 'all', sort?: string, dir?: AffLibDir): Promise<AffLibPage> {
+export async function affLibRows(page = 1, pageSize = 100, filter: AffLibFilter = 'all', sort?: string, dir?: AffLibDir, q?: string): Promise<AffLibPage> {
   const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize), filter });
   if (sort) { qs.set('sort', sort); qs.set('dir', dir || 'desc'); }
+  if (q && q.trim()) { qs.set('q', q.trim()); }
   return jsonOrThrow(await fetch(`${API}/api/aff-lib/rows?${qs.toString()}`));
 }
 // Lọc domain chết bằng DNS (~ms/domain, không cần proxy). remaining > 0 → gọi tiếp cho kho lớn.

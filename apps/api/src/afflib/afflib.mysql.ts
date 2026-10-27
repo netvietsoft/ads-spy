@@ -500,14 +500,25 @@ export class AffLibMysql {
     await pool.query(`UPDATE aff_library SET ${cols.join(', ')} WHERE web=?`, [...vals, web]);
   }
 
-  async listRows(o?: { page?: number; pageSize?: number; affOnly?: boolean; filter?: string; sort?: string; dir?: string }): Promise<{ items: any[]; total: number; page: number; pageSize: number; sort: string; dir: string; filter: string }> {
+  async listRows(o?: { page?: number; pageSize?: number; affOnly?: boolean; filter?: string; sort?: string; dir?: string; q?: string }): Promise<{ items: any[]; total: number; page: number; pageSize: number; sort: string; dir: string; filter: string; q?: string }> {
     await this.ensureTables(); // DB mới (vd prod chưa sync bao giờ) → bảng aff_library/aff_domain_traffic chưa tồn tại → tạo trước, tránh 500
     const pool = await this.sh.getPool();
     const page = Math.max(1, Number(o?.page) || 1);
     const pageSize = Math.min(5000, Math.max(1, Number(o?.pageSize) || 100));
     // affOnly là tham số cũ (checkbox trước đây) — vẫn nhận để không phá caller/bookmark cũ.
     const filter = FILTER_WHERE[String(o?.filter || '')] !== undefined ? String(o?.filter) : o?.affOnly ? 'aff' : 'all';
-    const where = FILTER_WHERE[filter];
+    const filterWhere = FILTER_WHERE[filter] || '';
+    const conds: string[] = [];
+    const params: any[] = [];
+    if (filterWhere) {
+      conds.push(filterWhere.replace(/^\s*WHERE\s+/i, ''));
+    }
+    const qTrim = String(o?.q || '').trim();
+    if (qTrim) {
+      conds.push('(al.web LIKE ? OR al.shop_name LIKE ? OR al.note LIKE ? OR al.join_url LIKE ?)');
+      params.push(`%${qTrim}%`, `%${qTrim}%`, `%${qTrim}%`, `%${qTrim}%`);
+    }
+    const whereSql = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
     const sort = SORT_EXPR[String(o?.sort || '')] ? String(o?.sort) : 'rev_month';
     const dir = String(o?.dir || '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     const expr = SORT_EXPR[sort];
@@ -515,19 +526,19 @@ export class AffLibMysql {
     // `al.web` (unique) chốt cuối: thiếu nó, hàng nghìn dòng đồng giá trị (sku trùng, cột toàn NULL, created_at giống
     // nhau do sync hàng loạt) sẽ được MySQL xếp khác nhau mỗi query → LIMIT/OFFSET lặp dòng + bỏ sót dòng khi lật trang.
     const orderBy = `ORDER BY ${dir === 'ASC' ? `${expr} IS NULL, ` : ''}${expr} ${dir}, al.created_at DESC, al.web ASC`;
-    const [cnt] = await pool.query(`SELECT COUNT(*) n FROM aff_library al ${where}`);
+    const [cnt] = await pool.query(`SELECT COUNT(*) n FROM aff_library al ${whereSql}`, params);
     const total = Number((cnt as any[])[0].n) || 0;
     const [rows] = await pool.query(
       `SELECT al.*, t.visits AS traffic_visits, t.bounce_rate AS traffic_bounce,
               t.visit_duration_sec AS traffic_duration_sec, t.global_rank AS traffic_rank, t.updated_at AS traffic_updated_at
        FROM aff_library al LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
-       ${where}
+       ${whereSql}
        ${orderBy}
        LIMIT ? OFFSET ?`,
-      [pageSize, (page - 1) * pageSize],
+      [...params, pageSize, (page - 1) * pageSize],
     );
     const items = await this.attachTerms(await this.attachCategory(rows as any[]));
-    return { items, total, page, pageSize, sort, dir: dir.toLowerCase(), filter };
+    return { items, total, page, pageSize, sort, dir: dir.toLowerCase(), filter, q: qTrim || undefined };
   }
 
   // Domain đã quét trong vòng ngần này thì KHÔNG lấy lại. Đây là cơ chế chặn lặp vô hạn, không phải tối ưu:

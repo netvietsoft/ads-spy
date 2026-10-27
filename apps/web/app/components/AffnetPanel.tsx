@@ -815,7 +815,7 @@ export function AffnetPanel() {
             </div>
           )}
           <p className="hint" style={{ marginTop: 0 }}>
-            Mặc định chỉ hiện domain <b>có chương trình affiliate</b> ({data.total.toLocaleString()} domain). Đổi ô lọc sang “Tất cả domain” để xem
+            Mặc định chỉ hiện domain <b>có chương trình affiliate</b> ({data.total.toLocaleString()} domain{q ? ` · khớp "${q}"` : ''}). Đổi ô lọc sang “Tất cả domain” để xem
             <b> toàn bộ domain đã phát hiện</b>, kể cả domain quét rồi không có affiliate và domain chưa quét.
           </p>
 
@@ -846,11 +846,24 @@ export function AffnetPanel() {
                 defaultValue={maxPct ?? ''} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                 onBlur={(e) => { const v = e.target.value.trim(); const n = v === '' ? null : Number(v); if (n !== maxPct) { setMaxPct(Number.isFinite(n as number) ? n : null); setPage(1); } }} />
             </label>
-            <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-              <input className="fbselect" placeholder="Tìm domain / tên dự án…" value={qInput}
+            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+              <input
+                className="fbselect"
+                placeholder="Tìm domain / web / tên dự án…"
+                value={qInput}
                 onChange={(e) => setQInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyQ(); }} />
-              {(q || qInput) && <button className="srcbtn" onClick={() => { setQInput(''); setQ(''); setPage(1); }}>✕</button>}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyQ(); }}
+                style={{ minWidth: isMobile ? 140 : 200, padding: '5px 8px' }}
+              />
+              <button className="srcbtn" onClick={applyQ} disabled={loading} title="Tìm kiếm">Tìm</button>
+              {(q || qInput) && (
+                <button
+                  className="srcbtn"
+                  onClick={() => { setQInput(''); setQ(''); setPage(1); }}
+                  disabled={loading}
+                  title="Xoá tìm kiếm"
+                >✕</button>
+              )}
             </span>
             {loading && <span className="spinner" />}
             {/* Xuất Excel CHỈ desktop: trên mobile nút này chiếm cả 1 dòng, mà tải file .xlsx trên điện
@@ -871,7 +884,7 @@ export function AffnetPanel() {
 
           {isMobile ? (
             <div className="localcards">
-              {data.rows.length === 0 && !loading ? <p className="hint">Không có domain khớp bộ lọc.</p>
+              {data.rows.length === 0 && !loading ? <p className="hint">{q ? `Không tìm thấy domain nào khớp từ khóa "${q}".` : 'Không có domain khớp bộ lọc.'}</p>
                 : data.rows.map((p) => (
                   <HostRowCard key={p.slug} p={p} onHistory={setHistWeb}
                     sel={selCard === p.slug} onSelect={() => setSelCard(p.slug)}
@@ -964,7 +977,7 @@ export function AffnetPanel() {
                     );
                   })}
                   {data.rows.length === 0 && !loading && (
-                    <tr><td colSpan={18} className="hint">Không có domain khớp bộ lọc.</td></tr>
+                    <tr><td colSpan={18} className="hint">{q ? `Không tìm thấy domain nào khớp từ khóa "${q}".` : 'Không có domain khớp bộ lọc.'}</td></tr>
                   )}
                 </tbody>
               </table>
