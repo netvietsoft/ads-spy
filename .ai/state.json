@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-10-26T09:54:00+07:00",
+  "updated_at": "2026-10-29T16:21:44+07:00",
   "project": "Google Ads Spy & SaaS Intelligence Platform",
   "active_task": null,
   "recent_tasks": [
@@ -37,79 +37,85 @@
       "id": "TASK-063",
       "title": "Bổ sung Circuit Breaker toàn cục cho AITDK khi bị Cloudflare Rate Limit 429/1015, dừng spam domain đơn lẻ và điều chỉnh nhịp job bwtraffic",
       "status": "done",
-      "completed_at": "2026-10-11T22:45:00+07:00"
+      "completed_at": "2026-10-11T22:40:00+07:00"
     },
     {
       "id": "TASK-062",
       "title": "Proxy crawler Shopify: thêm checkbox và chức năng xóa hàng loạt proxy chết (die)",
       "status": "done",
-      "completed_at": "2026-10-10T17:45:00+07:00"
+      "completed_at": "2026-10-10T16:45:00+07:00"
     },
     {
       "id": "TASK-061",
-      "title": "Fix AITDK batch timeout aborts, reduce batch to 5, and enable single-domain fallback on abort",
+      "title": "Fix AITDK batch timeout aborts, reduce batch to 5, and enable single-domain fallback on abort to prevent queue head lock",
       "status": "done",
-      "completed_at": "2026-10-10T14:30:00+07:00"
+      "completed_at": "2026-10-10T14:20:00+07:00"
     },
     {
       "id": "TASK-060",
-      "title": "Fix invalid URL redirect location in proxy client",
+      "title": "Fix TypeError: Invalid URL (ERR_INVALID_URL) crash on malformed redirect Location headers",
       "status": "done",
-      "completed_at": "2026-10-10T11:50:00+07:00"
+      "completed_at": "2026-10-10T11:45:00+07:00"
     },
     {
       "id": "TASK-059",
-      "title": "Fix AITDK 429 rate limit and pacing",
+      "title": "Fix AITDK 429 rate limit handling, add backoff retry, eliminate toxic single-domain fallback on 429, and optimize batch size and pacing",
       "status": "done",
-      "completed_at": "2026-10-10T11:20:00+07:00"
+      "completed_at": "2026-10-10T11:00:00+07:00"
     },
     {
       "id": "TASK-058",
-      "title": "Fix AITDK poison pills and traffic tried",
+      "title": "Fix AITDK poison-pill infinite loop, reduce batch size to 5, and mark unindexed domains as tried",
       "status": "done",
-      "completed_at": "2026-10-09T20:30:00+07:00"
+      "completed_at": "2026-10-09T21:40:00+07:00"
     },
     {
       "id": "TASK-057",
-      "title": "Fix Shopify 429 rate limit backoff and AITDK abort",
+      "title": "Fix Shopify 429 rate limit proxy rotation and AITDK abort cascading timeouts",
       "status": "done",
-      "completed_at": "2026-10-09T19:50:00+07:00"
+      "completed_at": "2026-10-09T20:05:00+07:00"
     },
     {
       "id": "TASK-054",
       "title": "Khắc phục triệt để lỗi 'This operation was aborted' ở job bwtraffic: Direct API first cho AITDK, giảm batch chunk 25 domain, loại bỏ markTrafficTried khi gặp lỗi mạng và phục hồi các domain bị skip oan",
       "status": "done",
-      "completed_at": "2026-10-09T10:05:00+07:00"
+      "completed_at": "2026-10-09T10:00:00+07:00"
     },
     {
       "id": "TASK-053",
       "title": "Khắc phục triệt để hiệu suất quét và giải phóng các điểm nghẽn của 5 background jobs BuiltWith (bwdns, bwtraffic, bwdetect, bwrev, bwterms)",
       "status": "done",
-      "completed_at": "2026-10-09T08:58:00+07:00"
+      "completed_at": "2026-10-09T08:50:00+07:00"
     },
     {
       "id": "TASK-052",
       "title": "Tích hợp bể proxy dùng chung từ Cài đặt, tự động xoay & thử lại chống chặn (429/Cloudflare) và tăng tốc độ scan BuiltWith 560k domain",
       "status": "done",
-      "completed_at": "2026-10-08T18:20:00+07:00"
+      "completed_at": "2026-10-08T18:10:00+07:00"
     },
     {
       "id": "TASK-051",
       "title": "Bổ sung cơ chế chạy ngầm (Background Jobs) cho các mục scan của Shopify BuiltWith vào Settings",
       "status": "done",
-      "completed_at": "2026-10-08T15:26:00+07:00"
+      "completed_at": "2026-10-08T15:16:00+07:00"
     },
     {
       "id": "TASK-050",
-      "title": "Cải tiến bộ quét nhận diện Shopify — Mở rộng Regex HTML & Tự động dò Subdomain E-commerce (shop/store/myshopify)",
+      "title": "Cải tiến bộ quét nhận diện Shopify: Mở rộng Regex HTML & Tự động dò Subdomain E-commerce (shop/store/myshopify)",
       "status": "done",
-      "completed_at": "2026-10-08T15:05:00+07:00"
+      "completed_at": "2026-10-08T14:50:00+07:00"
     },
     {
       "id": "TASK-049",
-      "title": "Menu /shopify-buildwith & Database riêng shopify_buildwith (Kho 560k domain BuiltWith)",
+      "title": "Thêm menu /shopify-buildwith có tính năng như /afflibrary dành riêng cho dữ liệu BuiltWith",
       "status": "done",
-      "completed_at": "2026-10-08T01:01:00+07:00"
+      "completed_at": "2026-10-08T00:47:00+07:00"
+    },
+    {
+      "id": "TASK-045-COMBO-ONE-CLICK-FULL-STORE-CLONER",
+      "title": "TASK-045-COMBO-ONE-CLICK-FULL-STORE-CLONER",
+      "status": "done",
+      "completed_at": ""
     },
     {
       "id": "TASK-045",
@@ -119,11 +125,23 @@
       "completed_at": "2026-09-22T14:38:00+07:00"
     },
     {
+      "id": "TASK-044-SHOPIFY-THEME-STOREFRONT-CLONER",
+      "title": "TASK-044-SHOPIFY-THEME-STOREFRONT-CLONER",
+      "status": "done",
+      "completed_at": ""
+    },
+    {
       "id": "TASK-044",
       "title": "Shopify Theme & Storefront Cloner — Đóng gói Theme Zip & Tự động Deploy qua API",
       "status": "done",
       "branch": "agent/backend/TASK-044",
       "completed_at": "2026-09-22T14:22:00+07:00"
+    },
+    {
+      "id": "TASK-043-SHOPIFY-PRODUCT-SYNC-HUB",
+      "title": "TASK-043-SHOPIFY-PRODUCT-SYNC-HUB",
+      "status": "done",
+      "completed_at": ""
     },
     {
       "id": "TASK-043",
@@ -133,10 +151,20 @@
       "completed_at": "2026-09-22T11:55:00+07:00"
     },
     {
+      "id": "TASK-042-TRACK-SHOPIFY-REVENUE",
+      "title": "TASK-042-TRACK-SHOPIFY-REVENUE",
+      "status": "done",
+      "completed_at": ""
+    },
+    {
       "id": "TASK-042",
       "title": "Track Shopify — Lưu domain vào Local DB sh_shop và Hiển thị doanh thu Lịch sử quét",
       "status": "done",
-      "commits": ["2d2d099", "4d6356c", "067b59a"],
+      "commits": [
+        "2d2d099",
+        "4d6356c",
+        "067b59a"
+      ],
       "completed_at": "2026-09-11T17:54:00+07:00"
     }
   ],

@@ -4,6 +4,33 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-10-27 — Bổ Sung Ô Tìm Kiếm Đa Trường Cho /afflibrary, /affnet/{net} & Nạp Dữ Liệu Growi, Superfiliate (TASK-068)
+
+- **Ô Tìm Kiếm Đa Trường Cho Thư Viện Affiliate (`/afflibrary`)**:
+  - Bổ sung thanh tìm kiếm chuyên dụng lớn (`.searchbar`) với kính lúp 🔍, nút Tìm kiếm, nút ✕ Xoá, hỗ trợ phím Enter, hiển thị banner đếm kết quả thời gian thực.
+  - Tích hợp thêm ô tìm kiếm nhanh trên thanh công cụ ghim (Sticky Toolbar) giúp người dùng tìm kiếm thuận tiện kể cả khi cuộn bảng.
+  - Backend API (`apps/api/src/afflib/afflib.mysql.ts`) hỗ trợ tham số `q` tìm kiếm đồng thời trên 6 trường: domain (`web`), tên shop (`shop_name`), ID shop (`shop_id`), nền tảng (`aff_platform`), ghi chú (`note`), link đăng ký (`join_url`) trong toàn bộ kho 97.414 web.
+  - Xuất dữ liệu Excel (`.xlsx`) và CSV (`.csv`) tự động lọc theo đúng từ khoá tìm kiếm `q` đang kích hoạt.
+- **Nâng Cấp Ô Tìm Kiếm Trang Chi Tiết Net (`/affnet/{net}`)**:
+  - Giao diện trực quan với nút Tìm riêng, nút ✕ Xoá, placeholder rõ ràng và reset trang 1 khi tìm kiếm.
+  - Mở rộng phạm vi tìm kiếm backend trên cả `p.brand` và `al.shop_name`.
+- **Nạp Dữ Liệu Mạng Affiliate Growi & Superfiliate**:
+  - Phân tích và làm sạch file `Growi.csv` (1,234 dòng), đối chiếu cơ sở dữ liệu `shophunter`, sinh `growi_import.sql` nạp vào net `growi.io`.
+  - Phân tích file `All_Live_Superfiliate_Sites_-_2026-09-17.csv` (1,677 dòng), ánh xạ tên miền và sinh `superfiliate_import.sql` nạp vào net `superfiliate.com`.
+- **Triển Khai Production**:
+  - Xác thực và hướng dẫn quy trình deploy chuẩn cho máy chủ `mmo-coin.com` tại `root@srv1257781:/var/www/ads-spy#` (phân biệt rạch ròi với máy chủ `dpboss.pet` tại `netviet@netviettest:~/projects-deploy/ads-spy`).
+  - Tài liệu chi tiết: [`docs/handoff-2026-10-27-search-box-affnet-afflibrary.md`](docs/handoff-2026-10-27-search-box-affnet-afflibrary.md).
+
+---
+
+## 2026-10-26 — Nâng Cấp Tính Năng Xuất Toàn Bộ Dữ Liệu Excel & CSV Cho /afflibrary (TASK-067)
+
+- **Backend Nâng Trần Phân Trang**: Nâng trần `pageSize` từ 500 lên 5000 trong `apps/api/src/afflib/afflib.mysql.ts` để gom lô dữ liệu lớn nhanh chóng.
+- **Frontend Xuất Lũy Tiến Toàn Bộ Kho**: `apps/web/app/components/AffLibraryPanel.tsx` xuất dữ liệu qua các trang (batch 2000 dòng, trần 100.000 dòng), lọc trùng bằng Set, hỗ trợ 2 nút riêng biệt cho Excel (.xlsx) và CSV (.csv UTF-8 có BOM), trực quan hóa tiến độ lấy dữ liệu thời gian thực trên nút bấm.
+- Tài liệu chi tiết: [`docs/handoff-2026-10-26-afflib-export-all.md`](docs/handoff-2026-10-26-afflib-export-all.md).
+
+---
+
 ## 2026-10-11 — Bổ Sung Circuit Breaker Cho AITDK Traffic & Khắc Phục Cloudflare Rate Limit 429/1015 (TASK-063)
 
 - **Circuit Breaker Toàn Cục (`rateLimitCooldownUntil`) Cho AITDK**:

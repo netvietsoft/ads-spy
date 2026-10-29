@@ -1,12 +1,18 @@
 # BẢNG TIẾN ĐỘ NHIỆM VỤ (TODOS.md)
 
-> **Cập nhật lần cuối**: 2026-10-26 09:54:00 (GMT+7)  
+> **Cập nhật lần cuối**: 2026-10-29 16:21:44 (GMT+7)  
 > **Dự án**: Google Ads Spy & SaaS Intelligence Platform  
 > **Nguồn trạng thái**: `.ai/tasks/` & `.ai/state.json`
 
 ---
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
+
+- [x] **TASK-068**: Bổ sung Ô tìm kiếm đa trường trên trang Chi tiết net (/affnet/{net}) và Thư viện affiliate (/afflibrary)
+  - **Mô tả**: 1) Backend API `apps/api/src/afflib/afflib.mysql.ts` và `afflib.controller.ts` thêm tham số `q`, tìm kiếm không phân biệt chữ hoa/thường trên 6 trường: `al.web`, `al.shop_name`, `al.shop_id`, `al.aff_platform`, `al.note`, `al.join_url` trong kho 97.414 web, đồng bộ phân trang `page`/`pageSize` và đếm tổng `total`. 2) Backend `affnet.mysql.ts` mở rộng tìm kiếm trong danh sách host theo cả `p.brand` và `al.shop_name`. 3) Frontend `AffLibraryPanel.tsx` thêm thanh tìm kiếm lớn chuyên dụng (`.searchbar`) với biểu tượng 🔍, nút Tìm kiếm, nút ✕ Xoá, gõ Enter để tìm, hiển thị banner đếm kết quả theo từ khoá `q`. Giữ ô tìm kiếm nhanh trên thanh công cụ ghim (Sticky Toolbar). 4) Xuất dữ liệu Excel (`.xlsx`) và CSV (`.csv`) tự động lọc đúng theo từ khóa `q` đang tra cứu. 5) Nâng cấp ô tìm kiếm trên trang `/affnet/{net}` với nút Tìm, nút Xoá và xử lý phím Enter. 6) Tích hợp dữ liệu nạp cho mạng `growi.io` (`growi_import.sql`) và `superfiliate.com` (`superfiliate_import.sql`). 7) Đã vượt qua Quality Gate (unit tests afflib 36/36 PASS, affnet 300/300 PASS, build API & Web PASS) và deploy lên VPS `srv1257781` (`/var/www/ads-spy`).
+  - **Branch**: `agent/frontend/TASK-068` (đã merge `main`)
+  - **Files**: `apps/api/src/afflib/afflib.controller.ts`, `apps/api/src/afflib/afflib.service.ts`, `apps/api/src/afflib/afflib.mysql.ts`, `apps/api/src/affnet/affnet.mysql.ts`, `apps/web/app/api.ts`, `apps/web/app/components/AffLibraryPanel.tsx`, `apps/web/app/components/AffnetPanel.tsx`
+  - **Tài liệu**: [`docs/handoff-2026-10-27-search-box-affnet-afflibrary.md`](docs/handoff-2026-10-27-search-box-affnet-afflibrary.md)
 
 - [x] **TASK-067**: Nâng cấp tính năng Xuất Excel và CSV trọn vẹn dữ liệu cho trang /afflibrary
   - **Mô tả**: 1) Backend nâng `pageSize` tối đa trong `apps/api/src/afflib/afflib.mysql.ts` từ 500 lên 5000 (đồng bộ chuẩn `affHosts`). 2) Frontend `AffLibraryPanel.tsx` thay thế hàm xuất cũ bằng cơ chế lũy tiến `exportData(format)`: tự động gom toàn bộ trang dữ liệu (batch 2000 dòng, trần an toàn 100.000 dòng), lọc trùng bằng Set, xuất theo đúng bộ lọc và thứ tự sort đang chọn. 3) Cung cấp 2 nút riêng: "⬇ Xuất toàn bộ Excel" (.xlsx) và "⬇ Xuất toàn bộ CSV" (.csv chuẩn UTF-8 kèm BOM, tải tức thì). 4) Trực quan hóa tiến độ lấy dữ liệu thời gian thực trên nút bấm. 5) Vượt qua Quality Gate: build:api PASS, build:web PASS, test afflib 3/3 PASS.
