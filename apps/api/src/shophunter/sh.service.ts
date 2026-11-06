@@ -652,10 +652,10 @@ export class ShService {
       const res = await this.client.search('products', { sort: 'week_current_period_revenue', q: '', categoryIds: [], from, lists: { must_include_shop_ids: [shopId] } });
       const items = parseSearch<any>(res).items;
       if (!items.length) break;
-      for (const it of items) {
-        if (!it.product_id) continue;
-        await this.mysql.upsertItem('sh_product', String(it.product_id), it); // dual-write raw+list, fill revenue theo product_id
-        upserted++;
+      const valid = items.filter((it: any) => it?.product_id);
+      if (valid.length) {
+        await Promise.all(valid.map((it: any) => this.mysql.upsertItem('sh_product', String(it.product_id), it)));
+        upserted += valid.length;
       }
       fetched += items.length;
       if (items.length < 24) break; // hết trang
@@ -665,22 +665,32 @@ export class ShService {
 
   // Batch: duyệt shop đã cào catalog nhưng CHƯA fill doanh thu sp → enrich từng shop + đánh mốc prod_rev_synced_at.
   // Block toàn cục (hết token) → DỪNG ngay (shop chưa mốc vẫn chờ) → chạy lại khi có token là tiếp đúng chỗ.
-  async enrichProductRevenueRun(limitShops = 50, staleMs = 7 * 86400000): Promise<{ shops: number; upserted: number; stopped?: string }> {
+  async enrichProductRevenueRun(limitShops = 50, staleMs = 7 * 86400000, concurrency = 4): Promise<{ shops: number; upserted: number; stopped?: string }> {
     const shops = await this.mysql.getShopsNeedingProductRevenue(limitShops, staleMs);
-    let done = 0; let upserted = 0;
-    for (const s of shops) {
-      try {
-        const r = await this.enrichShopProductsRevenue(s.shopId);
-        upserted += r.upserted;
-        await this.mysql.setShopProductRevenueSynced(s.shopId);
-        done++;
-      } catch (e) {
-        if (isGlobalBlock(e)) return { shops: done, upserted, stopped: 'blocked' }; // hết token/429 → dừng
-        await this.mysql.setShopProductRevenueSynced(s.shopId); // lỗi riêng shop → đánh mốc, sang shop kế
-        done++;
+    if (!shops.length) return { shops: 0, upserted: 0 };
+    let done = 0, upserted = 0, idx = 0;
+    let stopped: string | undefined;
+    const conc = Math.max(1, Math.min(16, Number(concurrency) || 4));
+    const worker = async () => {
+      while (idx < shops.length && !stopped) {
+        const s = shops[idx++];
+        try {
+          const r = await this.enrichShopProductsRevenue(s.shopId);
+          upserted += r.upserted;
+          await this.mysql.setShopProductRevenueSynced(s.shopId);
+          done++;
+        } catch (e) {
+          if (isGlobalBlock(e)) {
+            stopped = 'blocked';
+            break;
+          }
+          await this.mysql.setShopProductRevenueSynced(s.shopId).catch(() => {}); // lỗi riêng shop → đánh mốc, sang shop kế
+          done++;
+        }
       }
-    }
-    return { shops: done, upserted };
+    };
+    await Promise.all(Array.from({ length: Math.min(conc, shops.length) }, () => worker()));
+    return stopped ? { shops: done, upserted, stopped } : { shops: done, upserted };
   }
 
   setToken(token: string) {
@@ -770,41 +780,82 @@ export class ShService {
     return chart.length ? 'ok' : 'skip';
   }
 
+  // Cache tiền tệ storefront theo shopId trong RAM (kể cả negative cache fallback sang shop_currency trong 30 phút)
+  // để tránh gọi lại /meta.json qua proxy cho mọi sản phẩm cùng shop khi /meta.json bị chặn hoặc không trả currency.
+  private storefrontCurCache = new Map<string, { cur: string | null; exp: number }>();
+
   // "Format chuẩn" đồng bộ GIÁ + DOANH THU từ nguồn ĐÁNG TIN (storefront), tránh dữ liệu ShopHunter gắn sai tiền tệ.
-  // 1) tiền tệ THẬT từ storefront /meta.json (cache vào sh_shop.storefront_currency)
-  // 2) giá MIN variant từ /products/{handle}.json (tiền tệ store) → giá USD = min × tỉ giá
+  // 1) tiền tệ THẬT từ storefront /meta.json (cache vào sh_shop.storefront_currency + RAM cache, fallback shop_currency)
+  // 2) giá MIN variant từ /products/{handle}.json (fallback sang giá sẵn có trong sh_product_list / sh_product nếu 404/ẩn)
   // 3) doanh thu ngày = giá USD × SỐ ĐƠN (sale_count của ShopHunter — chỉ số đếm, đáng tin) → ghi đè sh_product_revenue_daily
-  // Δ tăng/giảm về sau tính TỪ chuỗi ngày này trong DB (không lấy Δ của ShopHunter).
+  // 4) luôn đánh dấu mốc sh_product_revsync (kèm status) cho cả no_storefront / no_price / skip / ok để tránh kẹt đầu hàng đợi.
   async syncProductPriceRevenue(shopId: string, productId: string): Promise<{ status: 'ok' | 'no_storefront' | 'no_price' | 'skip'; priceLocal?: number; priceUsd?: number; currency?: string | null; days?: number }> {
-    const info = await this.mysql.getProductStorefront(productId);
-    if (!info?.shopUrl || !info.handle) return { status: 'no_storefront' };
-    let currency = await this.mysql.getStorefrontCurrency(shopId);
-    if (!currency) {
-      currency = await fetchStorefrontCurrency(info.shopUrl);
-      if (currency) await this.mysql.setStorefrontCurrency(shopId, currency).catch(() => {});
+    const info = await this.mysql.getProductStorefront(productId, shopId);
+    if (!info || (!info.shopUrl && info.fallbackPrice == null)) {
+      await this.mysql.setProductRevDailySynced(productId, 'no_storefront').catch(() => {});
+      return { status: 'no_storefront' };
     }
-    const priceLocal = await fetchProductMinPrice(info.shopUrl, info.handle);
-    if (priceLocal == null) return { status: 'no_price', currency };
+
+    const resolveCurrency = async (): Promise<string | null> => {
+      if (info.storefrontCurrency) return info.storefrontCurrency;
+      const now = Date.now();
+      const cached = this.storefrontCurCache.get(shopId);
+      if (cached && cached.exp > now) return cached.cur;
+      let cur = await this.mysql.getStorefrontCurrency(shopId).catch(() => null);
+      if (!cur && info.shopUrl) {
+        cur = await fetchStorefrontCurrency(info.shopUrl).catch(() => null);
+        if (cur) {
+          await this.mysql.setStorefrontCurrency(shopId, cur).catch(() => {});
+        }
+      }
+      const resolved = cur || info.shopCurrency || null;
+      this.storefrontCurCache.set(shopId, { cur: resolved, exp: now + (cur ? 6 * 3600_000 : 30 * 60_000) });
+      return resolved;
+    };
+
+    const resolvePriceLocal = async (): Promise<number | null> => {
+      if (info.shopUrl && info.handle) {
+        const p = await fetchProductMinPrice(info.shopUrl, info.handle).catch(() => null);
+        if (p != null && p > 0) return p;
+      }
+      return info.fallbackPrice ?? null;
+    };
+
+    const [currency, priceLocal, revR] = await Promise.all([
+      resolveCurrency(),
+      resolvePriceLocal(),
+      this.client.productChartRevenue(shopId, productId),
+    ]);
+
+    if (priceLocal == null) {
+      await this.mysql.setProductRevDailySynced(productId, 'no_price').catch(() => {});
+      return { status: 'no_price', currency };
+    }
+
     const priceUsd = toUsd(priceLocal, currency) ?? 0;
-    const revR = await this.client.productChartRevenue(shopId, productId);
     const src = (Array.isArray((revR as any)?.items) ? (revR as any).items : [])
       .filter((x: any) => x && x.date_str)
       .sort((a: any, b: any) => String(a.date_str).localeCompare(String(b.date_str))); // tăng dần theo ngày
     const items = src.map((x: any) => ({ date_str: x.date_str, sale_count: x.sale_count ?? null, revenue: Math.round(priceUsd * (Number(x.sale_count) || 0) * 100) / 100 }));
-    await this.mysql.appendProductRevenueDaily(productId, items); // ON DUPLICATE → ghi đè (không cộng dồn)
-    // Cột lean revenue_day/week/month (USD) = giá(USD) × số đơn kỳ tương ứng → list/sort/report sản phẩm chuẩn hoá USD dần.
-    if (items.length) {
-      const cnt = src.map((x: any) => Number(x.sale_count) || 0);
-      const n = cnt.length;
-      const sumLast = (k: number) => cnt.slice(Math.max(0, n - k)).reduce((a: number, b: number) => a + b, 0);
-      const r2 = (v: number) => Math.round(v * 100) / 100;
-      const dC = cnt[n - 1] || 0, wC = sumLast(7), mC = sumLast(30);
-      const dR = r2(priceUsd * dC), wR = r2(priceUsd * wC), mR = r2(priceUsd * mC);
-      await this.mysql.setProductListRevenueUsd(productId, dR, wR, mR).catch(() => {});
-      await this.mysql.setProductSales(productId, dC, wC, mC, dR, wR, mR).catch(() => {}); // xếp hạng số đơn sản phẩm
-      await this.mysql.setProductRevDailySynced(productId).catch(() => {}); // đánh dấu đã chuẩn hoá USD → list KHÔNG quy đổi lại (đồng bộ tay cũng vào bảng revsync)
+    if (!items.length) {
+      await this.mysql.setProductRevDailySynced(productId, 'skip').catch(() => {});
+      return { status: 'skip', priceLocal, priceUsd, currency, days: 0 };
     }
-    return { status: items.length ? 'ok' : 'skip', priceLocal, priceUsd, currency, days: items.length };
+
+    // Cột lean revenue_day/week/month (USD) = giá(USD) × số đơn kỳ tương ứng → list/sort/report sản phẩm chuẩn hoá USD dần.
+    const cnt = src.map((x: any) => Number(x.sale_count) || 0);
+    const n = cnt.length;
+    const sumLast = (k: number) => cnt.slice(Math.max(0, n - k)).reduce((a: number, b: number) => a + b, 0);
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    const dC = cnt[n - 1] || 0, wC = sumLast(7), mC = sumLast(30);
+    const dR = r2(priceUsd * dC), wR = r2(priceUsd * wC), mR = r2(priceUsd * mC);
+    await Promise.all([
+      this.mysql.appendProductRevenueDaily(productId, items), // ON DUPLICATE → ghi đè (không cộng dồn)
+      this.mysql.setProductListRevenueUsd(productId, dR, wR, mR).catch(() => {}),
+      this.mysql.setProductSales(productId, dC, wC, mC, dR, wR, mR).catch(() => {}), // xếp hạng số đơn sản phẩm
+      this.mysql.setProductRevDailySynced(productId, 'ok').catch(() => {}), // đánh dấu đã chuẩn hoá USD → list KHÔNG quy đổi lại
+    ]);
+    return { status: 'ok', priceLocal, priceUsd, currency, days: items.length };
   }
 
   // --- Catalog Shopify (products.json, miễn phí) ---

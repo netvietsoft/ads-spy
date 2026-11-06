@@ -4,6 +4,24 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-11-06 — Khắc Phục Kẹt Đầu Hàng Đợi & Tối Ưu Tốc Độ Job `productrev` + `enrich` (TASK-070)
+
+- **Chống Kẹt Đầu Hàng Đợi Vĩnh Viễn (Poison Pill) Trong `productrev` (`sh.mysql.ts`, `sh.service.ts`, `sh.jobs.service.ts`)**:
+  - Bổ sung cột `status VARCHAR(16) DEFAULT 'ok'` vào bảng phụ `sh_product_revsync` và ghi mốc `setProductRevDailySynced(productId, status)` cho tất cả trạng thái `ok`, `no_storefront`, `no_price`, `skip`, và `err` để các sản phẩm lỗi/đã xoá ở top `revenue_month` không bao giờ lặp lại vô tận làm nghẽn hàng đợi.
+  - Cập nhật `queryLocalProducts()` kiểm tra `status IS NULL OR status = 'ok'` trên `sh_product_revsync` để cờ `_normalized` chỉ bật cho sản phẩm đã thực sự chuẩn hoá doanh thu USD.
+- **Tăng Tốc `syncProductPriceRevenue()` (`sh.mysql.ts`, `sh.service.ts`)**:
+  - Gộp `getProductStorefront(productId, shopId)` lấy thêm `shop_url` dự phòng từ `sh_shop`, `fallbackPrice` từ `sh_product_list.price` / `sh_product.raw.price`, `storefront_currency` và `shop_currency` chỉ trong 1 truy vấn PK.
+  - Bổ sung RAM cache `storefrontCurCache` (kèm negative cache fallback sang `shop_currency` trong 30 phút) để không gọi lại `/meta.json` qua proxy cho mọi sản phẩm cùng shop.
+  - Chạy song song (`Promise.all`) việc lấy tiền tệ, giá sản phẩm (fallback sang `fallbackPrice` khi `/products/{handle}.json` trả 404/bị chặn) và `productChartRevenue(shopId, productId)`, đồng thời chạy song song 4 lệnh ghi DB cuối hàm.
+- **Mở Khoá Concurrency, Nâng Cấu Hình Mặc Định & Con Trỏ Trượt Cho `getProductsNeedingRevDaily()` (`sh.jobs.service.ts`, `sh.mysql.ts`)**:
+  - Bỏ giới hạn cứng `Math.min(8, cfg.concurrency)` trong `stepProductrev()` (hỗ trợ tối đa 50 luồng), nâng `DEFAULT_CFG.productrev` lên `batch: 100, daily: 50000, paceMs: 1000, concurrency: 10, activeStart: 0, activeEnd: 24`.
+  - Thêm con trỏ trượt `revDailyCursor` trong `getProductsNeedingRevDaily()` giúp các lô liên tiếp nhảy thẳng trên index `idx_pl_rev_month` thay vì quét lại từ đỉnh bảng 18M dòng.
+- **Tối Ưu Job `enrich` (`getShopsNeedingProductRevenue`, `enrichShopProductsRevenue`, `enrichProductRevenueRun`)**:
+  - Bỏ qua các shop có `catalog_status` là `'blocked'` hoặc `'empty'`, ưu tiên shop chưa từng enrich và có doanh thu `revenue DESC` cao trước.
+  - Ghi song song (`Promise.all`) các sản phẩm trong mỗi trang `enrichShopProductsRevenue` và hỗ trợ đa luồng (`concurrency`) trong `enrichProductRevenueRun`.
+
+---
+
 ## 2026-11-06 — Khắc Phục Triệt Để Lỗi Job `bwdetect` (Quét Affiliate BuiltWith): Lọc Proxy Chết, Thêm Index & Cache Count, Hard Timeout TLS & Chống Lỗi `EPROXY_EMPTY` (TASK-069)
 
 - **Bổ Sung Cooldown 1 Giờ & Thứ Tự Ưu Tiên Trong `rowsToDetect()` (`shopify-bw.mysql.ts`)**:

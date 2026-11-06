@@ -4,6 +4,8 @@
 
 ## Điểm nổi bật gần đây (mới nhất ở trên)
 
+- **2026-11-06 — Khắc phục kẹt đầu hàng đợi & tối ưu tốc độ job `productrev` + `enrich` (TASK-070):**
+  Bổ sung cột `status` vào `sh_product_revsync` và luôn đánh dấu `setProductRevDailySynced(productId, status)` cho cả `ok`, `no_storefront`, `no_price`, `skip`, `err` để triệt tiêu lỗi kẹt đầu hàng đợi (Head-of-Line Blocking) khi sản phẩm top doanh thu bị 404/ẩn hoặc rỗng chart, đồng thời giữ nguyên độ chính xác của cờ `_normalized` (`status IS NULL OR status = 'ok'`). Gộp `getProductStorefront()` lấy luôn `shop_url` dự phòng từ `sh_shop` và `fallbackPrice` từ `sh_product_list`; thêm `storefrontCurCache` (kèm negative cache 30 phút); chạy song song (`Promise.all`) lấy giá storefront và `productChartRevenue`; mở giới hạn luồng `stepProductrev` tới 50, thêm con trỏ trượt `revDailyCursor` trên `sh_product_list` 18M dòng, và tối ưu `getShopsNeedingProductRevenue` / `enrichShopProductsRevenue`.
 - **2026-11-06 — Khắc phục triệt để lỗi job `bwdetect` (Quét Affiliate BuiltWith): lọc proxy chết, thêm index & cache count, hard timeout TLS, chống lỗi `EPROXY_EMPTY` (TASK-069):**
   Bổ sung cooldown 1 giờ và thứ tự ưu tiên (`aff_last_try_at IS NULL`, `dns_ok = 1`) trong `rowsToDetect()`; thêm index `idx_sbw_aff_checked (aff_checked_at)` và cache 60s tự giảm dần cho `countToDetect()`; lọc bỏ proxy `status = 'die'` trong `listProxiesFull(true)` và fallback an toàn về `origShopifyGet` trong `wireProxy()` khi bể proxy rỗng; thêm `hardTimer` ở bước bắt tay TLS (`shopify.proxy-get.ts`) và timeout 25s/domain trong `ShopifyBwDetect.detectStep()` chống kẹt `stepInFlight['bwdetect']`.
 - **2026-10-27 — Bổ sung Ô tìm kiếm đa trường cho /afflibrary và /affnet/{net} & Nạp dữ liệu Growi, Superfiliate (TASK-068):**

@@ -1,4 +1,6 @@
 import { ShJobsService } from './sh.jobs.service';
+import { ShService } from './sh.service';
+import { ShBlockedError } from './sh.client';
 
 function make() {
   // getDailyCount/addDailyCount: mọi step có trần quota ngày đều gọi (afflibrev, refresh, affdiscover…).
@@ -6,6 +8,8 @@ function make() {
   const mysql: any = {
     getSetting: jest.fn(async () => null), appendJobLog: jest.fn(async () => {}), listProxiesFull: jest.fn(async () => []),
     getDailyCount: jest.fn(async () => 0), addDailyCount: jest.fn(async () => {}),
+    getProductsNeedingRevDaily: jest.fn(async () => []),
+    setProductRevDailySynced: jest.fn(async () => {}),
   };
   const svc: any = {};
   const harvest: any = {};
@@ -70,5 +74,97 @@ describe('ShJobsService step backoff', () => {
     expect((await (s as any).stepCatalog()).pace).toBe(BLOCK);
     svc.catalogSyncStep = jest.fn(async () => ({ shops: 4, newProducts: 12, blocked: 1 }));
     expect((await (s as any).stepCatalog()).pace).toBe(PACE);
+  });
+
+  it('productrev: xử lý đủ trạng thái ok/skip/no_price/no_storefront/err và đánh mốc err để không kẹt hàng đợi', async () => {
+    const { s, svc, mysql } = make();
+    mysql.getProductsNeedingRevDaily.mockResolvedValue([
+      { productId: 'p_ok', shopId: 's1' },
+      { productId: 'p_skip', shopId: 's1' },
+      { productId: 'p_noprice', shopId: 's2' },
+      { productId: 'p_nostore', shopId: 's3' },
+      { productId: 'p_err', shopId: 's4' },
+    ]);
+    svc.syncProductPriceRevenue = jest.fn(async (_shopId: string, pid: string) => {
+      if (pid === 'p_ok') return { status: 'ok' };
+      if (pid === 'p_skip') return { status: 'skip' };
+      if (pid === 'p_noprice') return { status: 'no_price' };
+      if (pid === 'p_nostore') return { status: 'no_storefront' };
+      throw new ShBlockedError('Product not found', 404);
+    });
+
+    const res = await (s as any).stepProductrev(true);
+    expect(res.pace).toBe(1000);
+    expect((s as any).mem.productrev.stats).toEqual({
+      sp: 5,
+      ok: 1,
+      skip: 1,
+      noPrice: 1,
+      noStorefront: 1,
+      err: 1,
+    });
+    // Lỗi riêng sản phẩm (không phải global block) phải được đánh mốc 'err' để không kẹt đầu hàng đợi
+    expect(mysql.setProductRevDailySynced).toHaveBeenCalledTimes(1);
+    expect(mysql.setProductRevDailySynced).toHaveBeenCalledWith('p_err', 'err');
+  });
+});
+
+describe('ShService.syncProductPriceRevenue — chống kẹt hàng đợi & fallback giá', () => {
+  it('đánh dấu setProductRevDailySynced cho cả no_storefront, skip, ok và dùng fallbackPrice khi thiếu handle', async () => {
+    const mysql: any = {
+      getProductStorefront: jest.fn(),
+      getStorefrontCurrency: jest.fn(async () => 'USD'),
+      setStorefrontCurrency: jest.fn(async () => {}),
+      appendProductRevenueDaily: jest.fn(async () => {}),
+      setProductListRevenueUsd: jest.fn(async () => {}),
+      setProductSales: jest.fn(async () => {}),
+      setProductRevDailySynced: jest.fn(async () => {}),
+    };
+    const client: any = {
+      productChartRevenue: jest.fn(),
+    };
+    const svc = new ShService(client, mysql, {} as any);
+
+    // 1) no_storefront (không có shopUrl lẫn fallbackPrice)
+    mysql.getProductStorefront.mockResolvedValueOnce({
+      shopUrl: null,
+      handle: null,
+      fallbackPrice: null,
+      storefrontCurrency: null,
+      shopCurrency: null,
+    });
+    const r1 = await svc.syncProductPriceRevenue('s1', 'p_none');
+    expect(r1.status).toBe('no_storefront');
+    expect(mysql.setProductRevDailySynced).toHaveBeenLastCalledWith('p_none', 'no_storefront');
+
+    // 2) thiếu handle nhưng có fallbackPrice + chart rỗng -> skip và vẫn ghi mốc 'skip'
+    mysql.getProductStorefront.mockResolvedValueOnce({
+      shopUrl: 'https://demo.myshopify.com',
+      handle: null,
+      fallbackPrice: 25,
+      storefrontCurrency: 'USD',
+      shopCurrency: 'USD',
+    });
+    client.productChartRevenue.mockResolvedValueOnce({ items: [] });
+    const r2 = await svc.syncProductPriceRevenue('s1', 'p_skip');
+    expect(r2.status).toBe('skip');
+    expect(mysql.setProductRevDailySynced).toHaveBeenLastCalledWith('p_skip', 'skip');
+
+    // 3) có fallbackPrice + chart có dữ liệu -> ok và ghi mốc 'ok'
+    mysql.getProductStorefront.mockResolvedValueOnce({
+      shopUrl: 'https://demo.myshopify.com',
+      handle: null,
+      fallbackPrice: 20,
+      storefrontCurrency: 'USD',
+      shopCurrency: 'USD',
+    });
+    client.productChartRevenue.mockResolvedValueOnce({
+      items: [{ date_str: '2026-07-10', sale_count: 3 }],
+    });
+    const r3 = await svc.syncProductPriceRevenue('s1', 'p_ok');
+    expect(r3.status).toBe('ok');
+    expect(r3.priceUsd).toBe(20);
+    expect(mysql.setProductListRevenueUsd).toHaveBeenCalledWith('p_ok', 60, 60, 60);
+    expect(mysql.setProductRevDailySynced).toHaveBeenLastCalledWith('p_ok', 'ok');
   });
 });

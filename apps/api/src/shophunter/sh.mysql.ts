@@ -462,7 +462,8 @@ export class ShMysql implements OnModuleInit {
   private async ensureRevsyncTable(pool: mysql.Pool): Promise<void> {
     const listColl = (await this.columnCollation(pool, 'sh_product_list', 'product_id')) || 'utf8mb4_0900_ai_ci';
     await pool.query(`CREATE TABLE IF NOT EXISTS sh_product_revsync (
-      product_id VARCHAR(32) COLLATE ${listColl} NOT NULL PRIMARY KEY, synced_at BIGINT)`);
+      product_id VARCHAR(32) COLLATE ${listColl} NOT NULL PRIMARY KEY, synced_at BIGINT, status VARCHAR(16) DEFAULT 'ok')`);
+    await this.ensureColumn(pool, 'sh_product_revsync', 'status', "status VARCHAR(16) DEFAULT 'ok'");
     // Bảng tạo trước đó (collation DB-default) có thể lệch → sửa cho khớp (bảng phụ nhỏ, ALTER tức thì).
     const curColl = await this.columnCollation(pool, 'sh_product_revsync', 'product_id');
     if (curColl && curColl !== listColl) {
@@ -773,16 +774,46 @@ export class ShMysql implements OnModuleInit {
   }
 
   // Dồn chuỗi doanh thu ngày sản phẩm vào kho append-only (copy y appendRevenueDaily của shop, đổi bảng/khoá → product_id).
-  // Storefront của 1 sản phẩm (để crào giá thật): shop_url + product_handle từ raw.
-  async getProductStorefront(productId: string): Promise<{ shopUrl: string | null; handle: string | null } | null> {
+  // Storefront của 1 sản phẩm (để cào giá thật + fallback): gộp 1 query lấy thêm shop_url từ sh_shop, price dự phòng từ sh_product_list, và tiền tệ shop.
+  async getProductStorefront(
+    productId: string,
+    shopId?: string,
+  ): Promise<{ shopUrl: string | null; handle: string | null; fallbackPrice: number | null; storefrontCurrency: string | null; shopCurrency: string | null } | null> {
     await this.ensureReady();
     const [rows] = await this.pool!.query(
-      "SELECT JSON_UNQUOTE(JSON_EXTRACT(raw,'$.shop_url')) shop_url, JSON_UNQUOTE(JSON_EXTRACT(raw,'$.product_handle')) handle FROM sh_product WHERE product_id = ?",
-      [productId],
+      `SELECT
+        COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.raw,'$.shop_url')), ''), s.shop_url) AS shop_url,
+        JSON_UNQUOTE(JSON_EXTRACT(p.raw,'$.product_handle')) AS handle,
+        COALESCE(pl.price, CAST(JSON_UNQUOTE(JSON_EXTRACT(p.raw,'$.price')) AS DOUBLE)) AS fallback_price,
+        s.storefront_currency,
+        s.shop_currency
+      FROM sh_product_list pl
+      LEFT JOIN sh_product p ON p.product_id = pl.product_id
+      LEFT JOIN sh_shop s ON s.shop_id = COALESCE(?, pl.shop_id, p.shop_id)
+      WHERE pl.product_id = ?
+      UNION ALL
+      SELECT
+        COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(p.raw,'$.shop_url')), ''), s.shop_url) AS shop_url,
+        JSON_UNQUOTE(JSON_EXTRACT(p.raw,'$.product_handle')) AS handle,
+        CAST(JSON_UNQUOTE(JSON_EXTRACT(p.raw,'$.price')) AS DOUBLE) AS fallback_price,
+        s.storefront_currency,
+        s.shop_currency
+      FROM sh_product p
+      LEFT JOIN sh_shop s ON s.shop_id = COALESCE(?, p.shop_id)
+      WHERE p.product_id = ?
+      LIMIT 1`,
+      [shopId || null, productId, shopId || null, productId],
     );
     const r = (rows as any[])[0];
     if (!r) return null;
-    return { shopUrl: r.shop_url || null, handle: r.handle || null };
+    const fp = Number(r.fallback_price);
+    return {
+      shopUrl: r.shop_url || null,
+      handle: r.handle || null,
+      fallbackPrice: Number.isFinite(fp) && fp > 0 ? fp : null,
+      storefrontCurrency: r.storefront_currency || null,
+      shopCurrency: r.shop_currency || null,
+    };
   }
   async getStorefrontCurrency(shopId: string): Promise<string | null> {
     await this.ensureReady();
@@ -1433,7 +1464,10 @@ export class ShMysql implements OnModuleInit {
     // SP đã chuẩn hoá (revenue_* trong lean ĐÃ là USD, do job productrev ghi) → FE KHÔNG quy đổi lại (tránh nhân đôi).
     const pids = items.map((it) => String(it.product_id)).filter(Boolean);
     if (pids.length) {
-      const [nRows] = await this.pool!.query('SELECT product_id FROM sh_product_revsync WHERE product_id IN (?)', [pids]);
+      const [nRows] = await this.pool!.query(
+        "SELECT product_id FROM sh_product_revsync WHERE product_id IN (?) AND (status IS NULL OR status = 'ok')",
+        [pids],
+      );
       const nset = new Set((nRows as any[]).map((r: any) => String(r.product_id)));
       for (const it of items) it._normalized = nset.has(String(it.product_id));
     }
@@ -1501,24 +1535,53 @@ export class ShMysql implements OnModuleInit {
     return rows as any[];
   }
 
+  // Con trỏ trượt theo revenue_month cho job productrev để tránh quét lại từ đỉnh index 18M dòng ở mỗi lô.
+  private revDailyCursor: { rev: number; at: number } | null = null;
+
   // Job revsync-sp: sản phẩm cần đồng bộ doanh thu ngày — ưu tiên DOANH THU THÁNG cao→thấp (top trước),
   // trong sp đã có ở sh_product_list (đã cào), chưa sync hoặc quá hạn staleMs. Mốc sync ở bảng phụ sh_product_revsync.
   async getProductsNeedingRevDaily(limit: number, staleMs: number): Promise<{ productId: string; shopId: string }[]> {
     await this.ensureReady();
-    const cutoff = Date.now() - staleMs;
-    const [rows] = await this.pool!.query(
-      // MAX_EXECUTION_TIME: câu này là nửa còn lại của đám zombie 2026-08-07 — 7 bản cùng chạy
-      // 1,6-2,4 GIỜ trên sh_product_list 18,17M dòng. Job `productrev` gọi nó mỗi vòng, mà kill
-      // client không huỷ truy vấn trong MySQL nên cứ restart là chồng thêm một bản. 60s là quá đủ cho
-      // một lô; quá thì MySQL tự huỷ, job bỏ lượt đó và thử lại — thà mất một lượt hơn treo cả DB.
-      `SELECT /*+ MAX_EXECUTION_TIME(60000) */ p.product_id, p.shop_id FROM sh_product_list p
-        LEFT JOIN sh_product_revsync r ON r.product_id = p.product_id
-        WHERE p.revenue_month IS NOT NULL AND p.shop_id IS NOT NULL
-          AND (r.synced_at IS NULL OR r.synced_at < ?)
-        ORDER BY p.revenue_month DESC, p.product_id LIMIT ?`,
-      [cutoff, limit],
-    );
-    return (rows as any[]).map((r) => ({ productId: r.product_id, shopId: r.shop_id }));
+    const now = Date.now();
+    const cutoff = now - staleMs;
+    if (this.revDailyCursor && now - this.revDailyCursor.at > 10 * 60_000) {
+      this.revDailyCursor = null;
+    }
+    const fetchPage = async (maxRev: number | null) => {
+      const revCond = maxRev != null ? 'AND p.revenue_month <= ?' : '';
+      const params = maxRev != null ? [maxRev, cutoff, limit] : [cutoff, limit];
+      const [rows] = await this.pool!.query(
+        // MAX_EXECUTION_TIME: giới hạn 60s để bảo vệ DB trên sh_product_list ~18M dòng.
+        `SELECT /*+ MAX_EXECUTION_TIME(60000) */ p.product_id, p.shop_id, p.revenue_month FROM sh_product_list p
+          LEFT JOIN sh_product_revsync r ON r.product_id = p.product_id
+          WHERE p.revenue_month IS NOT NULL AND p.shop_id IS NOT NULL
+            ${revCond}
+            AND (r.synced_at IS NULL OR r.synced_at < ?)
+          ORDER BY p.revenue_month DESC, p.product_id LIMIT ?`,
+        params,
+      );
+      return rows as any[];
+    };
+    const rows = await fetchPage(this.revDailyCursor?.rev ?? null);
+    if (rows.length < limit && this.revDailyCursor != null) {
+      this.revDailyCursor = null;
+      const more = await fetchPage(null);
+      const seen = new Set(rows.map((r) => String(r.product_id)));
+      for (const r of more) {
+        if (rows.length >= limit) break;
+        if (!seen.has(String(r.product_id))) {
+          rows.push(r);
+          seen.add(String(r.product_id));
+        }
+      }
+    }
+    if (rows.length >= limit) {
+      const lastRev = Number(rows[rows.length - 1]?.revenue_month);
+      if (Number.isFinite(lastRev)) this.revDailyCursor = { rev: lastRev, at: now };
+    } else {
+      this.revDailyCursor = null;
+    }
+    return rows.map((r) => ({ productId: r.product_id, shopId: r.shop_id }));
   }
   // Ghi doanh thu day/week/month (ĐÃ quy đổi USD) vào bảng lean → list/sort/report sản phẩm chuẩn hoá dần theo USD.
   async setProductListRevenueUsd(productId: string, day: number, week: number, month: number): Promise<void> {
@@ -1540,11 +1603,11 @@ export class ShMysql implements OnModuleInit {
       [productId, dayCnt, weekCnt, monthCnt, dayRev, weekRev, monthRev, Date.now()],
     );
   }
-  async setProductRevDailySynced(productId: string): Promise<void> {
+  async setProductRevDailySynced(productId: string, status = 'ok'): Promise<void> {
     await this.ensureReady();
     await this.pool!.query(
-      'INSERT INTO sh_product_revsync (product_id, synced_at) VALUES (?, ?) ON DUPLICATE KEY UPDATE synced_at = VALUES(synced_at)',
-      [productId, Date.now()],
+      'INSERT INTO sh_product_revsync (product_id, synced_at, status) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE synced_at = VALUES(synced_at), status = VALUES(status)',
+      [productId, Date.now(), status],
     );
   }
 
@@ -2051,16 +2114,17 @@ export class ShMysql implements OnModuleInit {
     await this.pool!.query('UPDATE sh_shop SET catalog_synced_at = ?, catalog_status = ? WHERE shop_id = ?', [Date.now(), status, shopId]);
   }
 
-  // Shop cần FILL doanh thu từng sản phẩm từ ShopHunter: đã cào catalog (có sp shopify) nhưng chưa enrich doanh thu.
-  // NULL (chưa từng enrich) xếp đầu; quá hạn staleMs cho thử lại. Chạy khi có token ShopHunter (enrichShopProductsRevenue).
+  // Shop cần FILL doanh thu từng sản phẩm từ ShopHunter: đã cào catalog (có sp shopify, không bị blocked/empty) nhưng chưa enrich doanh thu.
+  // NULL (chưa từng enrich) xếp đầu, ưu tiên shop có doanh thu cao trước; quá hạn staleMs cho thử lại.
   async getShopsNeedingProductRevenue(limit: number, staleMs: number): Promise<{ shopId: string }[]> {
     await this.ensureReady();
     const cutoff = Date.now() - staleMs;
     const [rows] = await this.pool!.query(
       `SELECT shop_id FROM sh_shop
         WHERE catalog_synced_at IS NOT NULL
+          AND (catalog_status IS NULL OR catalog_status = 'ok')
           AND (prod_rev_synced_at IS NULL OR prod_rev_synced_at < ?)
-        ORDER BY prod_rev_synced_at ASC LIMIT ?`,
+        ORDER BY (prod_rev_synced_at IS NULL) DESC, revenue DESC, prod_rev_synced_at ASC LIMIT ?`,
       [cutoff, limit],
     );
     return (rows as any[]).map((r) => ({ shopId: r.shop_id }));
