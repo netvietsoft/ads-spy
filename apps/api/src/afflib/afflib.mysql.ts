@@ -819,14 +819,33 @@ export class AffLibMysql {
   }
 
   // Domain chưa có traffic và chưa thử điền. Bỏ domain DNS chết (sắp bị xoá → không tốn quota AITDK).
+  // Ưu tiên domain có affiliate (yes/app) và có doanh thu tháng trước.
   private static MISSING_TRAFFIC = `FROM aff_library al
      LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
      WHERE t.web IS NULL AND al.traffic_tried_at IS NULL AND (al.dns_ok IS NULL OR al.dns_ok = 1)`;
 
   async rowsMissingTraffic(limit = 50): Promise<string[]> {
     const pool = await this.sh.getPool();
-    const [rows] = await pool.query(`SELECT al.web ${AffLibMysql.MISSING_TRAFFIC} LIMIT ?`, [Math.min(200, Math.max(1, limit))]);
-    return (rows as any[]).map((r) => r.web);
+    const cap = Math.min(200, Math.max(1, limit));
+    const [prioRows] = await pool.query(
+      `SELECT al.web ${AffLibMysql.MISSING_TRAFFIC}
+         AND (al.aff_status IN ('yes', 'app') OR al.rev_month > 0)
+       ORDER BY (al.aff_status IN ('yes', 'app')) DESC, COALESCE(al.rev_month, 0) DESC
+       LIMIT ?`,
+      [cap],
+    );
+    const out = (prioRows as any[]).map((r) => r.web);
+    if (out.length >= cap) return out;
+    const seen = new Set(out);
+    const [restRows] = await pool.query(`SELECT al.web ${AffLibMysql.MISSING_TRAFFIC} LIMIT ?`, [cap]);
+    for (const r of restRows as any[]) {
+      if (out.length >= cap) break;
+      if (!seen.has(r.web)) {
+        seen.add(r.web);
+        out.push(r.web);
+      }
+    }
+    return out;
   }
 
   async countMissingTraffic(): Promise<number> {

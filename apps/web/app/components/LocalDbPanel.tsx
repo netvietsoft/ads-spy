@@ -6,12 +6,38 @@ import { toUsd } from '../currency';
 import { useIsMobile } from '../useIsMobile';
 import { ShLogo } from './ShLogo';
 import { CategoryPicker } from './CategoryPicker';
+import { TrafficHistoryModal } from './TrafficHistoryModal';
 
 const money = (n: any) => (typeof n === 'number' ? '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—');
 // Chặn số rác: doanh thu 1 sản phẩm ≥ 100 triệu USD/kỳ là phi lý (dữ liệu ShopHunter thô chưa đồng bộ) → hiện "—".
 const REV_GARBAGE = 1e8;
 const moneyCap = (n: any) => (typeof n === 'number' && Math.abs(n) >= REV_GARBAGE ? '—' : money(n));
 const pct = (n: any) => (typeof n === 'number' ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : '—');
+const numfmt = (n: any) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '—');
+const durFmt = (s: any) => {
+  if (typeof s !== 'number' || !Number.isFinite(s)) return null;
+  const m = Math.floor(s / 60);
+  return `${m}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+};
+const trafficTip = (s: any) => {
+  if (s._traffic_visits == null && s._traffic_bounce == null && s._traffic_duration_sec == null) {
+    return 'Bấm để xem / lấy lịch sử Traffic 12 tháng (AITDK)';
+  }
+  return [
+    s._traffic_visits != null ? `Traffic/tháng: ${numfmt(s._traffic_visits)}` : '',
+    s._traffic_bounce != null ? `Bounce: ${Math.round(Number(s._traffic_bounce) * 10) / 10}%` : '',
+    s._traffic_duration_sec != null ? `Time on site: ${durFmt(s._traffic_duration_sec)}` : '',
+    s._traffic_rank != null ? `Global rank: #${numfmt(s._traffic_rank)}` : '',
+    'Bấm để xem biểu đồ Traffic 12 tháng',
+  ].filter(Boolean).join('\n');
+};
+const cleanDomain = (u: any) =>
+  String(u || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .split('/')[0];
 // Rút gọn đường dẫn danh mục sâu: chỉ hiện "gốc › lá" (giữ full ở tooltip).
 // Chương trình affiliate của shop, BE gắn từ aff_program (xem attachAffProgram ở sh.mysql.ts).
 // Hiện %hoa hồng ngay cạnh dấu ✓ vì đó là con số người dùng cần nhất; nền tảng/cookie/link để trong tooltip
@@ -73,6 +99,7 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
   { key: 'revenue_week', label: 'DT Tuần', sortable: true },
   { key: 'revenue_month', label: 'DT Tháng', sortable: true },
   { key: 'growth_month', label: 'Tăng trưởng (Tháng)', sortable: true },
+  { key: '_traffic', label: 'Traffic/th' },
   { key: 'followers', label: 'FB', sortable: true },
   { key: 'ads', label: 'Ads', sortable: true },
   { key: 'sku', label: 'SKU', sortable: true },
@@ -83,9 +110,10 @@ const SHOP_COLS: { key: string; label: string; sortable?: boolean }[] = [
 
 // useIsMobile chuyển sang ../useIsMobile để Aff Library / Affiliate Nets dùng chung (cùng nhu cầu thẻ mobile).
 
-// Thẻ 1 shop (mobile) — mirror hàng bảng: logo/tên/url + DT ngày/tuần/tháng + FB/Ads/SKU/nước + badge + update.
-function ShopRowCard({ s, fav, catNames }: { s: any; fav: boolean; catNames: Record<string, string> }) {
+// Thẻ 1 shop (mobile) — mirror hàng bảng: logo/tên/url + DT ngày/tuần/tháng + Traffic/FB/Ads/SKU/nước + badge + update.
+function ShopRowCard({ s, fav, catNames, onTraffic }: { s: any; fav: boolean; catNames: Record<string, string>; onTraffic: (web: string) => void }) {
   const cur = s._storefront_currency || s.currency;
+  const dom = cleanDomain(s.url);
   return (
     <div className="fbcard localcard localdbcard" onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer', position: 'relative' }}>
       <div className="fbpage" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -99,6 +127,13 @@ function ShopRowCard({ s, fav, catNames }: { s: any; fav: boolean; catNames: Rec
         <span><b>Month</b> <b className="rev">{money(toUsd(s.month_current_period_revenue, cur))}</b> <b className={(s.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.month_revenue_percent_change)}</b></span>
       </div>
       <div className="fbplat" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <span
+          title={trafficTip(s)}
+          onClick={(e) => { if (dom) { e.stopPropagation(); onTraffic(dom); } }}
+          style={{ cursor: dom ? 'pointer' : 'default' }}
+        >
+          Traffic <b className="rev">{numfmt(s._traffic_visits)}</b>
+        </span>
         <span>FB {s.fb_followers ?? '—'}</span><span>Ads {s.active_ad_count ?? 0}</span><span>SKU {s.sku_count ?? '—'}</span>
         {/^[A-Za-z]{2,3}$/.test(s.country || '') ? <span>{s.country}</span> : null}
         {s._up_category_path || s._up_category ? <span style={{ opacity: 0.8 }}>🏷 {s._up_category_path ? shortCat(s._up_category_path) : (catNames[s._up_category] || s._up_category)}</span> : null}
@@ -178,6 +213,8 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
   const [revMax, setRevMax] = useState<number | null>(null);
   const [skuMin, setSkuMin] = useState<number | null>(null); // lọc theo số lượng SKU của shop (X→Y)
   const [skuMax, setSkuMax] = useState<number | null>(null);
+  const [histWeb, setHistWeb] = useState<string | null>(null); // mở modal lịch sử Traffic 12 tháng (AITDK)
+  const [reloadTick, setReloadTick] = useState(0);
   const [paramsReady, setParamsReady] = useState(false); // chờ đọc xong ?pshop/?revMin trước khi fetch (tránh fetch "tất cả" thừa)
   const reqRef = useRef(0); // bỏ qua kết quả fetch cũ về trễ (đua) → luôn hiển thị đúng lần lọc mới nhất
   const isMobile = useIsMobile(); // ≤760px → hiện thẻ thay bảng
@@ -205,7 +242,7 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
     req.then((r) => { if (myReq === reqRef.current) setData(r); })
       .catch((e) => { if (myReq === reqRef.current) setErr((e as Error).message); })
       .finally(() => { if (myReq === reqRef.current) setLoading(false); });
-  }, [paramsReady, tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly, revMin, revMax, skuMin, skuMax]);
+  }, [paramsReady, tab, sort, dir, page, pageSize, country, category, q, shopFilter, affOnly, favOnly, revMin, revMax, skuMin, skuMax, reloadTick]);
 
   // Gợi ý tên (debounce 250ms, tối thiểu 2 ký tự).
   useEffect(() => {
@@ -386,7 +423,7 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
         <div className="localcards">
           {data.items.length === 0 && !loading ? <p className="hint">Không có dữ liệu.</p>
             : tab === 'shops'
-              ? data.items.map((s) => <ShopRowCard key={s.shop_id} s={s} fav={favIds.has(String(s.shop_id))} catNames={catNames} />)
+              ? data.items.map((s) => <ShopRowCard key={s.shop_id} s={s} fav={favIds.has(String(s.shop_id))} catNames={catNames} onTraffic={(w) => setHistWeb(w)} />)
               : data.items.map((p) => <ProductRowCard key={p.product_id} p={p} />)}
         </div>
       ) : (
@@ -397,7 +434,9 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
               <th key={c.key} onClick={c.sortable ? () => clickSort(c.key) : undefined} style={{ cursor: c.sortable ? 'pointer' : 'default' }}>{c.label}{c.sortable ? arrow(c.key) : ''}</th>
             ))}</tr></thead>
             <tbody>
-              {data.items.map((s) => (
+              {data.items.map((s) => {
+                const dom = cleanDomain(s.url);
+                return (
                 <tr key={s.shop_id} onClick={() => window.open(`/shop/${s.shop_id}`, '_blank')} style={{ cursor: 'pointer' }}>
                   <td><ShLogo internal={s.shop_favicon_internal} external={s.shop_favicon_external} title={s.shop_title} size={22} /></td>
                   <td className="wrap" style={{ maxWidth: '30ch' }}>{favIds.has(String(s.shop_id)) && <span style={{ color: '#e0384f', marginRight: 4 }} title="Shop yêu thích">♥</span>}{s.shop_title || s.url}<div style={{ opacity: 0.6, fontSize: 11 }}>{s.url ? <a href={`https://${String(s.url).replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer" title="Mở shop" onClick={(e) => e.stopPropagation()}>{s.url}</a> : ''}</div></td>
@@ -412,6 +451,24 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
                   <td>{money(toUsd(s.week_current_period_revenue, s._storefront_currency || s.currency))}</td>
                   <td>{money(toUsd(s.month_current_period_revenue, s._storefront_currency || s.currency))}</td>
                   <td className={(s.month_revenue_percent_change ?? 0) >= 0 ? 'g-up' : 'g-down'}>{pct(s.month_revenue_percent_change)}</td>
+                  <td
+                    title={trafficTip(s)}
+                    onClick={(e) => {
+                      if (dom) {
+                        e.stopPropagation();
+                        setHistWeb(dom);
+                      }
+                    }}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    {s._traffic_visits != null ? (
+                      <span className="rev">{numfmt(s._traffic_visits)}</span>
+                    ) : dom ? (
+                      <span style={{ opacity: 0.45, fontSize: 12 }}>📊</span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td>{s.fb_followers ?? '—'}</td>
                   <td>{s.active_ad_count ?? 0}</td>
                   <td>{s.sku_count ?? '—'}</td>
@@ -419,7 +476,8 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
                   <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}><Upd ms={s._fetched_at ?? s._harvested_at} /></td>
                   <td>{s._harvested ? <span className="badge-harvest">✓ harvest</span> : null}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         ) : (
@@ -470,6 +528,15 @@ export function LocalDbPanel({ subTab }: { subTab?: 'shops' | 'products' } = {})
           </div>
         )
       ) : pager}
+
+      {histWeb && (
+        <TrafficHistoryModal
+          domain={histWeb}
+          save
+          onClose={() => setHistWeb(null)}
+          onSaved={() => setReloadTick((t) => t + 1)}
+        />
+      )}
 
     </div>
   );
