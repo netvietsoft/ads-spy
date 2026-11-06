@@ -78,7 +78,7 @@ export interface AffLibSnapshot {
 // Bảng riêng cho Aff Library (thư viện shop affiliate). Dùng chung pool MySQL `shophunter` với ShopHunter/affnet.
 @Injectable()
 export class AffLibMysql {
-  constructor(private readonly sh: ShMysql, private readonly affnet: AffnetMysql) {}
+  constructor(private readonly sh: ShMysql, private readonly affnet: AffnetMysql) { }
 
   // Đảm bảo schema — CHỈ CHẠY MỘT LẦN cho mỗi tiến trình.
   //
@@ -100,7 +100,7 @@ export class AffLibMysql {
   private async doEnsureTables(): Promise<void> {
     // Tạo bảng affnet (aff_domain_traffic + aff_program) trước — vì listRows JOIN + prefill dùng chúng,
     // mà affnet chỉ tạo bảng lazy khi có thao tác affnet (DB mới chưa dùng affnet → thiếu bảng → JOIN lỗi 1146).
-    await this.affnet.ensureTables().catch(() => {});
+    await this.affnet.ensureTables().catch(() => { });
     const pool = await this.sh.getPool();
     await pool.query(`CREATE TABLE IF NOT EXISTS aff_library (
       web VARCHAR(255) PRIMARY KEY,
