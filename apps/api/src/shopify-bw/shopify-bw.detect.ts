@@ -15,6 +15,21 @@ interface DetectState {
   startedAt: number | null;
 }
 
+const DOMAIN_DETECT_TIMEOUT_MS = 25_000;
+
+function withDomainTimeout<T>(promise: Promise<T>, ms = DOMAIN_DETECT_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(Object.assign(new Error(`detect_timeout_${ms}ms`), { code: 'ETIMEDOUT' }));
+    }, ms);
+    if (typeof (timer as any).unref === 'function') (timer as any).unref();
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 @Injectable()
 export class ShopifyBwDetect {
   private state: DetectState = { running: false, total: 0, done: 0, found: 0, current: null, noProxy: false, startedAt: null };
@@ -29,12 +44,16 @@ export class ShopifyBwDetect {
     this.stopFlag = true;
   }
 
+  private async getLiveHttpProxies(): Promise<{ host: string; port: number; username?: string; password?: string }[]> {
+    return (await this.sh.listProxiesFull(true).catch(() => []))
+      .filter((r: any) => (r.type || 'http') === 'http' && (!r.status || r.status !== 'die'))
+      .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+  }
+
   async detectOne(web: string, getOverride?: (url: string, headers?: any) => Promise<{ status: number; body: string }>): Promise<{ web: string; aff_status: string; aff_platform: string | null; join_url: string | null }> {
     await this.db.ensureTables();
     await this.db.resetTry(web);
-    const proxies = (await this.sh.listProxiesFull(true).catch(() => []))
-      .filter((r: any) => (r.type || 'http') === 'http')
-      .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+    const proxies = await this.getLiveHttpProxies();
 
     const shuffled = proxies.map((p) => p).sort(() => Math.random() - 0.5);
     const attempts = getOverride ? 2 : Math.max(2, Math.min(10, shuffled.length || 2));
@@ -45,7 +64,7 @@ export class ShopifyBwDetect {
       const one = shuffled.length ? shuffled[(attempt - 1) % shuffled.length] : null;
       const get = getOverride || (one ? makeProxiedGet(() => [one]) : shopifyHttp.get);
       try {
-        const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
+        const r = await withDomainTimeout(checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get }));
         if (r.status !== 'ratelimited') {
           await this.db.setDetect(web, r.status, r.via, r.link);
           return { web, aff_status: r.status, aff_platform: r.via ?? null, join_url: r.link ?? null };
@@ -61,7 +80,7 @@ export class ShopifyBwDetect {
     }
 
     try {
-      const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get: shopifyHttp.get });
+      const r = await withDomainTimeout(checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get: shopifyHttp.get }));
       if (r.status !== 'ratelimited') {
         await this.db.setDetect(web, r.status, r.via, r.link);
         return { web, aff_status: r.status, aff_platform: r.via ?? null, join_url: r.link ?? null };
@@ -82,9 +101,7 @@ export class ShopifyBwDetect {
     const unscanned = await this.db.countToDetect();
     if (unscanned === 0) return this.status();
 
-    const proxies = (await this.sh.listProxiesFull(true).catch(() => []))
-      .filter((r: any) => (r.type || 'http') === 'http')
-      .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+    const proxies = await this.getLiveHttpProxies();
 
     const noProxy = proxies.length === 0;
     this.stopFlag = false;
@@ -120,7 +137,7 @@ export class ShopifyBwDetect {
           const web = batch[idx++];
           this.state.current = web;
           try {
-            const r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
+            const r = await withDomainTimeout(checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get }));
             if (r.status === 'ratelimited') {
               await this.db.markTryFailed(web, r.error || 'ratelimited');
             } else {
@@ -146,9 +163,7 @@ export class ShopifyBwDetect {
     if (!batch.length) {
       return { checked: 0, yes: 0, app: 0, no: 0, blocked: 0, remaining: 0 };
     }
-    const proxies = (await this.sh.listProxiesFull(true).catch(() => []))
-      .filter((r: any) => (r.type || 'http') === 'http')
-      .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
+    const proxies = await this.getLiveHttpProxies();
     const get = proxies.length > 0 ? makeProxiedGet(() => proxies) : shopifyHttp.get;
     const nThreads = Math.max(1, Math.min(concurrency, batch.length));
 
@@ -158,13 +173,7 @@ export class ShopifyBwDetect {
       while (idx < batch.length) {
         const web = batch[idx++];
         try {
-          let r: any = null;
-          const attempts = proxies.length > 1 ? 2 : 1;
-          for (let att = 0; att < attempts; att++) {
-            r = await checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get });
-            if (r.status !== 'ratelimited') break;
-            if (att < attempts - 1) await new Promise((r2) => setTimeout(r2, 200));
-          }
+          const r = await withDomainTimeout(checkShopAffiliate(`https://${web}/`, { requestDelayMs: 0, get }));
           checked++;
           if (r.status === 'ratelimited') {
             await this.db.markTryFailed(web, r.error || 'ratelimited');

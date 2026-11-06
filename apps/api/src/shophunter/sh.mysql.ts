@@ -186,7 +186,7 @@ export class ShMysql implements OnModuleInit {
   private countCache = new Map<string, { n: number; t: number }>();
   private countLoading = new Map<string, Promise<number>>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async onModuleInit() {
     // KHÔNG `await` — CỐ Ý. Nest chỉ gọi app.listen() SAU khi mọi onModuleInit xong, nên await ở đây
@@ -527,7 +527,7 @@ export class ShMysql implements OnModuleInit {
       // CHỈ báo động, KHÔNG tự dựng lại: đây là việc của người vận hành (chạy migration), vì nó dựng lại index.
       console.error(
         `[ShMysql] sh_shop: bảng tỉ giá trong code đã đổi nhưng cột ${staleRates.join(', ')} còn tính theo tỉ giá CŨ ` +
-          '→ sắp xếp theo doanh thu USD đang SAI. Chạy: npm run migrate:sh-shop --workspace @gas/api',
+        '→ sắp xếp theo doanh thu USD đang SAI. Chạy: npm run migrate:sh-shop --workspace @gas/api',
       );
     }
     const sql = buildShopDerivedAlter(missingCols, missingIdx);
@@ -544,9 +544,9 @@ export class ShMysql implements OnModuleInit {
     if (mb > SHOP_DERIVED_AUTO_ALTER_MAX_MB) {
       console.error(
         `[ShMysql] sh_shop (${mb} MB) thiếu ${missingCols.length} cột dẫn xuất + ${missingIdx.length} index ` +
-          `nhưng KHÔNG tự ALTER: bảng lớn hơn ${SHOP_DERIVED_AUTO_ALTER_MAX_MB} MB, chép lại sẽ mất rất lâu. ` +
-          'CHẠY TAY: npm run migrate:sh-shop --workspace @gas/api (xem docs/deployment.md §6.1). ' +
-          'Tới lúc đó Local DB shop sẽ báo "Unknown column"; phần còn lại của API vẫn chạy bình thường.',
+        `nhưng KHÔNG tự ALTER: bảng lớn hơn ${SHOP_DERIVED_AUTO_ALTER_MAX_MB} MB, chép lại sẽ mất rất lâu. ` +
+        'CHẠY TAY: npm run migrate:sh-shop --workspace @gas/api (xem docs/deployment.md §6.1). ' +
+        'Tới lúc đó Local DB shop sẽ báo "Unknown column"; phần còn lại của API vẫn chạy bình thường.',
       );
       return;
     }
@@ -1370,7 +1370,7 @@ export class ShMysql implements OnModuleInit {
       const e = err as { code?: string; message?: string };
       console.warn(
         `[ShMysql] COUNT trên ${table} không xong trong ${Math.round(maxMs / 1000)}s (${e?.code || e?.message || 'lỗi'}) ` +
-          '→ dùng số ƯỚC LƯỢNG của InnoDB. Số này có thể lệch RẤT nhiều (đo sh_shop: 24.983 so với 49.186 thật).',
+        '→ dùng số ƯỚC LƯỢNG của InnoDB. Số này có thể lệch RẤT nhiều (đo sh_shop: 24.983 so với 49.186 thật).',
       );
       return this.estimateRows(table);
     }
@@ -1652,7 +1652,7 @@ export class ShMysql implements OnModuleInit {
       if (raw) { try { const o = JSON.parse(raw); if (o && Date.now() - o.t < ttlMs) return o.data as T; } catch { /* hỏng → tính lại */ } }
     }
     const data = await compute();
-    await this.setSetting(key, JSON.stringify({ t: Date.now(), data })).catch(() => {});
+    await this.setSetting(key, JSON.stringify({ t: Date.now(), data })).catch(() => { });
     return data;
   }
 
@@ -1684,8 +1684,8 @@ export class ShMysql implements OnModuleInit {
 
   // Worker "Phân tích shop" 24h: tính lại (force) các báo cáo nặng của shop → ghi đè DB. Gọi từ @Cron hằng ngày + "chạy ngay".
   async refreshAnalysis(): Promise<void> {
-    await this.reportRevenueBuckets(true).catch(() => {});
-    for (const p of ['day', 'week', 'month'] as const) await this.reportOrderBuckets('shops', p, true).catch(() => {});
+    await this.reportRevenueBuckets(true).catch(() => { });
+    for (const p of ['day', 'week', 'month'] as const) await this.reportOrderBuckets('shops', p, true).catch(() => { });
   }
 
   // Tìm shop theo SỐ ĐƠN trong KHOẢNG NGÀY [from,to] (cộng sale_count từ sh_shop_revenue_daily) + lọc khoảng đơn.
@@ -1792,7 +1792,7 @@ export class ShMysql implements OnModuleInit {
       // Đọc từ cột dẫn xuất revenue_month (MySQL tự tính từ raw) thay vì tự bóc JSON lần nữa.
       'UPDATE sh_shop SET revenue = revenue_month WHERE revenue_month IS NOT NULL',
     );
-    await this.refreshAnalysis().catch(() => {}); // revenue shop đổi → tính lại + ghi đè cache báo cáo
+    await this.refreshAnalysis().catch(() => { }); // revenue shop đổi → tính lại + ghi đè cache báo cáo
     return Number((r as any).affectedRows) || 0;
   }
 
@@ -2133,11 +2133,12 @@ export class ShMysql implements OnModuleInit {
     return (rows as any[])[0] || null;
   }
 
-  // Full (kèm password) cho test + scanner. onlyEnabled=true → chỉ proxy đang bật.
+  // Full (kèm password) cho test + scanner. onlyEnabled=true → chỉ proxy đang bật và còn sống (status IS NULL OR status <> 'die').
   async listProxiesFull(onlyEnabled = false): Promise<any[]> {
     await this.ensureReady();
+    const where = onlyEnabled ? " WHERE enabled = 1 AND (status IS NULL OR status <> 'die')" : '';
     const [rows] = await this.pool!.query(
-      'SELECT id, raw, type, host, port, username, password FROM sh_proxy' + (onlyEnabled ? ' WHERE enabled = 1' : '') + ' ORDER BY id',
+      'SELECT id, raw, type, host, port, username, password, status FROM sh_proxy' + where + ' ORDER BY id',
     );
     return rows as any[];
   }

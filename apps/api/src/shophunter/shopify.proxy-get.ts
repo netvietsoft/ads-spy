@@ -32,9 +32,26 @@ function doSingleProxiedGet(
       timeout: timeoutMs,
     });
     let done = false;
+    let tsRef: tls.TLSSocket | null = null;
+    let gRef: http.ClientRequest | null = null;
+    const hardTimer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        try { gRef?.destroy(); } catch {}
+        try { tsRef?.destroy(); } catch {}
+        try { creq.destroy(); } catch {}
+        reject(Object.assign(new Error('proxy hard timeout'), { code: 'ETIMEDOUT' }));
+      }
+    }, timeoutMs);
+    if (typeof (hardTimer as any).unref === 'function') (hardTimer as any).unref();
+
     const fail = (e: any) => {
       if (!done) {
         done = true;
+        clearTimeout(hardTimer);
+        try { gRef?.destroy(); } catch {}
+        try { tsRef?.destroy(); } catch {}
+        try { creq.destroy(); } catch {}
         reject(Object.assign(e || new Error('proxy'), { code: e?.code || 'EPROXY' }));
       }
     };
@@ -43,7 +60,7 @@ function doSingleProxiedGet(
         socket.destroy();
         return fail(new Error('proxy ' + res.statusCode));
       }
-      const ts = tls.connect({ socket, servername: u.hostname }, () => {
+      const ts = tls.connect({ socket, servername: u.hostname, timeout: timeoutMs }, () => {
         const g = https.request(
           {
             method: 'GET',
@@ -63,29 +80,37 @@ function doSingleProxiedGet(
               } catch {
                 if (!done) {
                   done = true;
+                  clearTimeout(hardTimer);
                   resolve({ status: r.statusCode || 0, body: `Invalid redirect Location: ${loc}` });
                 }
                 return;
               }
               done = true;
+              clearTimeout(hardTimer);
               resolve(retryFn(nextUrl));
               return;
             }
             const ch: Buffer[] = [];
             r.on('data', (c) => ch.push(c));
+            r.on('error', fail);
+            r.on('aborted', () => fail(Object.assign(new Error('response aborted'), { code: 'ECONNRESET' })));
             r.on('end', () => {
               if (!done) {
                 done = true;
+                clearTimeout(hardTimer);
                 ts.end();
                 resolve({ status: r.statusCode || 0, body: Buffer.concat(ch).toString('utf8') });
               }
             });
           },
         );
+        gRef = g;
         g.on('timeout', () => g.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })));
         g.on('error', fail);
         g.end();
       });
+      tsRef = ts;
+      ts.on('timeout', () => ts.destroy(Object.assign(new Error('tls timeout'), { code: 'ETIMEDOUT' })));
       ts.on('error', fail);
     });
     creq.on('timeout', () => creq.destroy(Object.assign(new Error('proxy timeout'), { code: 'ETIMEDOUT' })));

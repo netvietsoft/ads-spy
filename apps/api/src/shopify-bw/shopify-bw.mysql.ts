@@ -124,6 +124,7 @@ export class ShopifyBwMysql {
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_aff_last_try', 'aff_last_try_at');
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_shopify', 'shopify');
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_traffic_tried', 'traffic_tried_at');
+    await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_aff_checked', 'aff_checked_at');
 
     // Dọn dẹp dấu gạch chéo cuối nếu có trong cột web
     await pool.query(`UPDATE IGNORE shopify_buildwith SET web = TRIM(TRAILING '/' FROM web) WHERE web LIKE '%/'`).catch(() => {});
@@ -597,9 +598,20 @@ export class ShopifyBwMysql {
     return n;
   }
 
+  private static readonly DETECT_RETRY_COOLDOWN_MS = 3600_000; // Cooldown 1 giờ cho domain thử lỗi
+  private detectCountCache: { count: number; expiresAt: number } | null = null;
+
   async rowsToDetect(limit = 500): Promise<string[]> {
     const pool = await this.sh.getPool();
-    const [rows] = await pool.query(`SELECT sb.web FROM shopify_buildwith sb WHERE ${QUEUE_COND} LIMIT ?`, [Math.min(2000, Math.max(1, limit))]);
+    const cap = Math.min(2000, Math.max(1, limit));
+    const cutoff = Date.now() - ShopifyBwMysql.DETECT_RETRY_COOLDOWN_MS;
+    const [rows] = await pool.query(
+      `SELECT sb.web FROM shopify_buildwith sb
+       WHERE ${QUEUE_COND} AND (sb.aff_last_try_at IS NULL OR sb.aff_last_try_at < ?)
+       ORDER BY (sb.aff_last_try_at IS NULL) DESC, (sb.dns_ok = 1) DESC, sb.aff_last_try_at ASC
+       LIMIT ?`,
+      [cutoff, cap],
+    );
     return (rows as any[]).map((r) => r.web);
   }
 
@@ -613,13 +625,15 @@ export class ShopifyBwMysql {
 
   async resetTry(web: string): Promise<void> {
     const pool = await this.sh.getPool();
-    await pool.query('UPDATE shopify_buildwith SET aff_try_count = 0, aff_last_error = NULL, dns_ok = NULL WHERE web = ?', [web]);
+    this.detectCountCache = null;
+    await pool.query('UPDATE shopify_buildwith SET aff_try_count = 0, aff_last_error = NULL, aff_last_try_at = NULL, dns_ok = NULL WHERE web = ?', [web]);
   }
 
   async resetTryBulk(webs: string[]): Promise<number> {
     if (!webs.length) return 0;
     const pool = await this.sh.getPool();
-    const [r] = await pool.query('UPDATE shopify_buildwith SET aff_try_count = 0, aff_last_error = NULL, dns_ok = NULL WHERE web IN (?)', [webs]);
+    this.detectCountCache = null;
+    const [r] = await pool.query('UPDATE shopify_buildwith SET aff_try_count = 0, aff_last_error = NULL, aff_last_try_at = NULL, dns_ok = NULL WHERE web IN (?)', [webs]);
     return Number((r as any).affectedRows) || 0;
   }
 
@@ -637,10 +651,16 @@ export class ShopifyBwMysql {
     return (rows as any[]).map((r) => r.web);
   }
 
-  async countToDetect(): Promise<number> {
+  async countToDetect(force = false): Promise<number> {
+    const now = Date.now();
+    if (!force && this.detectCountCache && this.detectCountCache.expiresAt > now && this.detectCountCache.count > 0) {
+      return this.detectCountCache.count;
+    }
     const pool = await this.sh.getPool();
     const [r] = await pool.query(`SELECT COUNT(*) n FROM shopify_buildwith sb WHERE ${QUEUE_COND}`);
-    return Number((r as any[])[0].n) || 0;
+    const count = Number((r as any[])[0].n) || 0;
+    this.detectCountCache = { count, expiresAt: now + 60_000 };
+    return count;
   }
 
   async countDnsPending(): Promise<number> {
@@ -729,6 +749,9 @@ export class ShopifyBwMysql {
       `UPDATE shopify_buildwith SET aff_status=?, aff_platform=COALESCE(aff_platform, ?), join_url=COALESCE(join_url, ?), aff_checked_at=?, updated_at=? WHERE web=?`,
       [status, platform, link, now, now, web],
     );
+    if (this.detectCountCache && this.detectCountCache.count > 0) {
+      this.detectCountCache.count = Math.max(0, this.detectCountCache.count - 1);
+    }
   }
 
   async deleteRow(web: string): Promise<void> {

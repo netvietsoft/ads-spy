@@ -4,6 +4,22 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-11-06 — Khắc Phục Triệt Để Lỗi Job `bwdetect` (Quét Affiliate BuiltWith): Lọc Proxy Chết, Thêm Index & Cache Count, Hard Timeout TLS & Chống Lỗi `EPROXY_EMPTY` (TASK-069)
+
+- **Bổ Sung Cooldown 1 Giờ & Thứ Tự Ưu Tiên Trong `rowsToDetect()` (`shopify-bw.mysql.ts`)**:
+  - Chỉ thử lại domain lỗi sau 1 giờ (`aff_last_try_at IS NULL OR aff_last_try_at < cutoff`), ưu tiên domain mới (`aff_last_try_at IS NULL`) và đã xác nhận DNS sống (`dns_ok = 1`) lên trước, tránh lặp lại 1 domain lỗi 3 lần liên tiếp trong vài giây.
+- **Thêm Index `idx_sbw_aff_checked` & Tối Ưu `countToDetect()` (`shopify-bw.mysql.ts`)**:
+  - Tạo index `idx_sbw_aff_checked (aff_checked_at)` trên bảng `shopify_buildwith` (560k+ dòng).
+  - Bổ sung cache in-memory 60s cho `countToDetect()` tự động giảm dần mỗi khi `setDetect()` hoàn tất 1 domain, loại bỏ truy vấn `SELECT COUNT(*)` quét toàn bảng sau mỗi lô 50 domain.
+- **Loại Bỏ Proxy Chết (`status = 'die'`) & Chống Lỗi `EPROXY_EMPTY` (`sh.mysql.ts`, `sh.jobs.service.ts`, `shopify-bw.detect.ts`)**:
+  - `listProxiesFull(true)` chỉ lấy các proxy đang bật và còn sống (`enabled = 1 AND (status IS NULL OR status <> 'die')`).
+  - `wireProxy()` tự động fallback về `origShopifyGet` khi danh sách proxy sống rỗng thay vì văng lỗi `EPROXY_EMPTY`.
+- **Hard Timeout Cho Proxy TLS Handshake & Timeout Bảo Vệ Mỗi Domain (`shopify.proxy-get.ts`, `shopify-bw.detect.ts`)**:
+  - Bổ sung `hardTimer` và timeout cho `tls.connect` trong `doSingleProxiedGet()`, hủy socket ngay khi treo ở bước bắt tay TLS hoặc ngắt quãng body.
+  - Bọc `withDomainTimeout` (25s/domain) trong `detectStep()` / `loop()` và bỏ vòng lặp retry chồng bên ngoài `detectStep()`, đảm bảo không bao giờ treo kẹt cờ `stepInFlight['bwdetect']`.
+
+---
+
 ## 2026-10-27 — Bổ Sung Ô Tìm Kiếm Đa Trường Cho /afflibrary, /affnet/{net} & Nạp Dữ Liệu Growi, Superfiliate (TASK-068)
 
 - **Ô Tìm Kiếm Đa Trường Cho Thư Viện Affiliate (`/afflibrary`)**:

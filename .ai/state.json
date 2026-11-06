@@ -1,8 +1,14 @@
 {
-  "updated_at": "2026-10-29T16:21:44+07:00",
+  "updated_at": "2026-11-06T11:36:38+07:00",
   "project": "Google Ads Spy & SaaS Intelligence Platform",
   "active_task": null,
   "recent_tasks": [
+    {
+      "id": "TASK-069",
+      "title": "Khắc phục triệt để lỗi bwdetect: lọc proxy chết, thêm index & tối ưu countToDetect/rowsToDetect, hard timeout TLS/domain, xử lý EPROXY_EMPTY",
+      "status": "done",
+      "completed_at": "2026-11-06T11:36:20+07:00"
+    },
     {
       "id": "TASK-068",
       "title": "Bổ sung ô tìm kiếm trên trang Chi tiết net (/affnet/{net}) và trang Thư viện affiliate (/afflibrary)",
