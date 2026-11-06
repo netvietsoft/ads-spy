@@ -21,7 +21,11 @@ Mọi quy chuẩn phát triển, quy định an toàn và nguyên tắc phân va
   - **KHÔNG BAO GIỜ `pm2 restart all`** — VPS chạy chung nhiều ứng dụng khác. Luôn restart riêng: `pm2 restart ads-spy-api` / `pm2 restart ads-spy-web`.
   - **FE (`apps/web`)**: KHÔNG xoá `.next` trước khi build. Build ra `NEXT_DIST_DIR=.next-new`, kiểm tra `BUILD_ID` tồn tại rồi mới swap (`deploy.sh` đã thiết lập chuẩn).
   - **Tunnel**: Lưu lượng prod qua Cloudflare TUNNEL trỏ `http://localhost:80` (nginx), VPS không mở cổng 443.
-  - **Bảng `sh_shop` MySQL**: Bảng lớn (>2GB trên prod), luôn dùng `ALGORITHM=` khi ALTER và chạy migration trước khi khởi động lại app.
+  - **Bảng `sh_shop` MySQL**: Bảng lớn (>2GB trên prod), luôn dùng `ALGORITHM=` khi ALTER và chạy migration trước khi khởi động lại app. Khi cần đánh dấu trạng thái job nền cho `sh_shop` (như `bwtraffic`), ưu tiên tạo bảng phụ nhẹ (ví dụ `sh_shop_traffic_tried`) và khi hiển thị danh sách `/localdb/shops` dùng truy vấn phụ `WHERE domain IN (?)` trên trang hiện tại (`attachShopTraffic`, `attachAffProgram`) thay vì `ALTER TABLE sh_shop` hoặc `LEFT JOIN` trực tiếp trên toàn bảng.
+- **Quy tắc chống nghẽn hàng đợi (Poison Pill) cho các Job nền (`ShJobsService`)**:
+  - **`bwdetect`**: `rowsToDetect()` luôn phải có cooldown (`aff_last_try_at IS NULL OR aff_last_try_at < cutoff`) và `listProxiesFull(true)` phải lọc `status <> 'die'`. Kết nối proxy (`shopify.proxy-get.ts`) luôn có `hardTimer` bao phủ cả bước TLS handshake.
+  - **`productrev`**: Bảng `sh_product_revsync` dùng cột `status` (`ok`, `no_storefront`, `no_price`, `skip`, `err`) để đánh dấu `synced_at` cho mọi kết quả nhằm tránh kẹt đầu hàng đợi, đồng thời chỉ coi `status IS NULL OR status = 'ok'` là `_normalized = true` trên `/localdb/products`.
+  - **`bwtraffic`**: Quét xuyên suốt 3 kho theo thứ tự ưu tiên: `sh_shop` (`revenue_month DESC`) → `aff_library` (`id DESC`) → `shopify_buildwith` (ưu tiên shop có Affiliate & Doanh thu trước).
 
 ---
 
