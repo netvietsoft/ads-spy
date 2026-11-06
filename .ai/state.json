@@ -1,8 +1,14 @@
 {
-  "updated_at": "2026-11-06T11:36:38+07:00",
+  "updated_at": "2026-11-06T12:04:50+07:00",
   "project": "Google Ads Spy & SaaS Intelligence Platform",
   "active_task": null,
   "recent_tasks": [
+    {
+      "id": "TASK-070",
+      "title": "Fix productrev queue head-of-line blocking, optimize syncProductPriceRevenue, getProductsNeedingRevDaily & enrich",
+      "status": "done",
+      "completed_at": "2026-04-20T05:05:00Z"
+    },
     {
       "id": "TASK-069",
       "title": "Khắc phục triệt để lỗi bwdetect: lọc proxy chết, thêm index & tối ưu countToDetect/rowsToDetect, hard timeout TLS/domain, xử lý EPROXY_EMPTY",

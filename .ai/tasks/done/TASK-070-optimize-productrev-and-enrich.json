@@ -1,0 +1,25 @@
+{
+  "id": "TASK-070",
+  "title": "Fix productrev queue head-of-line blocking, optimize syncProductPriceRevenue, getProductsNeedingRevDaily & enrich",
+  "status": "done",
+  "owner": "Agent 7 - FIXER",
+  "priority": "high",
+  "created_at": "2026-04-20T05:00:00Z",
+  "completed_at": "2026-04-20T05:05:00Z",
+  "files_allowed": [
+    "apps/api/src/shophunter/sh.mysql.ts",
+    "apps/api/src/shophunter/sh.service.ts",
+    "apps/api/src/shophunter/sh.jobs.service.ts",
+    "apps/api/src/shophunter/sh.mysql.prodrev.spec.ts",
+    "apps/api/src/shophunter/sh.jobs.step.spec.ts",
+    "CHANGELOG.md",
+    "docs/changelog.md"
+  ],
+  "acceptance_criteria": [
+    "Record synced_at and status in sh_product_revsync for ok, no_storefront, no_price, skip, and err so failed top-revenue products never block the productrev queue",
+    "Keep queryLocalProducts _normalized flag accurate by checking status IS NULL OR status = 'ok' in sh_product_revsync",
+    "Run storefront price/currency lookup and productChartRevenue in parallel, cache storefront currency (with negative/fallback cache), fallback to existing DB price when /products/{handle}.json fails, and parallelize final DB writes",
+    "Remove Math.min(8, cfg.concurrency) cap in stepProductrev, increase default productrev config, and optimize getProductsNeedingRevDaily with a sliding revenue_month cursor",
+    "Optimize getShopsNeedingProductRevenue and enrichShopProductsRevenue / enrichProductRevenueRun"
+  ]
+}

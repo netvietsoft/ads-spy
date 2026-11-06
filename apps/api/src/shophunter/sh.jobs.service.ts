@@ -52,9 +52,9 @@ const PRODUCTREV_STALE_MS = 20 * 3600000; // sp đồng bộ lại sau ~20h (xoa
 // Tham số tốc độ chỉnh từ web (lưu DB job:<name>:cfg) — đọc lúc chạy → sửa sống, không cần restart.
 const DEFAULT_CFG: Record<JobName, Record<string, number>> = {
   harvest: { daily: 500, perTick: 25, skipPct: 30, delayMs: 2000, concurrency: 1, activeStart: 8, activeEnd: 23 },
-  enrich: { batch: 50, paceMs: 1500 },
+  enrich: { batch: 50, paceMs: 1500, concurrency: 4 },
   catalog: { batch: 25, paceMs: 1500, delayMs: 2000, concurrency: 1 },
-  productrev: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
+  productrev: { batch: 100, daily: 50000, paceMs: 1000, concurrency: 10, activeStart: 0, activeEnd: 24 },
   affiliate: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 2, activeStart: 8, activeEnd: 23 },
   importenrich: { batch: 100, daily: 10000, paceMs: 1500, concurrency: 1, activeStart: 8, activeEnd: 23 },
   refresh: { batch: 20, daily: 2000, paceMs: 1500, concurrency: 1, staleDays: 7, activeStart: 8, activeEnd: 23 },
@@ -590,7 +590,7 @@ export class ShJobsService implements OnModuleInit {
 
   private async stepEnrich(): Promise<{ pace: number }> {
     const cfg = await this.getJobCfg('enrich');
-    const r = await this.svc.enrichProductRevenueRun(cfg.batch);
+    const r = await this.svc.enrichProductRevenueRun(cfg.batch, undefined, cfg.concurrency);
     this.mem.enrich.lastRunAt = Date.now();
     this.mem.enrich.stats = { shops: r.shops, upserted: r.upserted };
     if (r.stopped) {
@@ -643,21 +643,31 @@ export class ShJobsService implements OnModuleInit {
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.productrev.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
     const list = await this.mysql.getProductsNeedingRevDaily(cfg.batch, PRODUCTREV_STALE_MS);
     if (!list.length) { this.mem.productrev.lastStatus = 'idle'; await this.mysql.appendJobLog('productrev', 'info', 'Hết sp cần đồng bộ; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
-    let ok = 0, idx = 0, blocked = false;
+    let ok = 0, skip = 0, noPrice = 0, noStorefront = 0, err = 0, idx = 0, blocked = false;
     const worker = async () => {
       while (idx < list.length && !blocked) {
         const it = list[idx++];
-        try { const r = await this.svc.syncProductPriceRevenue(it.shopId, it.productId); if (r.status === 'ok') { await this.mysql.setProductRevDailySynced(it.productId); ok++; } }
-        catch (e) { if (isGlobalBlock(e)) { blocked = true; break; } /* lỗi riêng 1 sp (429 storefront/no price) → bỏ qua, KHÔNG mark → thử lại vòng sau */ }
+        try {
+          const r = await this.svc.syncProductPriceRevenue(it.shopId, it.productId);
+          if (r.status === 'ok') ok++;
+          else if (r.status === 'skip') skip++;
+          else if (r.status === 'no_price') noPrice++;
+          else if (r.status === 'no_storefront') noStorefront++;
+        } catch (e) {
+          if (isGlobalBlock(e)) { blocked = true; break; }
+          err++;
+          await this.mysql.setProductRevDailySynced(it.productId, 'err').catch(() => {});
+        }
       }
     };
-    await Promise.all(Array.from({ length: Math.max(1, Math.min(8, cfg.concurrency)) }, () => worker()));
+    const conc = Math.max(1, Math.min(50, Number(cfg.concurrency) || 10));
+    await Promise.all(Array.from({ length: Math.min(conc, list.length) }, () => worker()));
     await this.mysql.addDailyCount(dk, ok).catch(() => {});
     this.mem.productrev.lastRunAt = Date.now();
-    this.mem.productrev.stats = { sp: list.length, ok };
+    this.mem.productrev.stats = { sp: list.length, ok, skip, noPrice, noStorefront, err };
     if (blocked) { this.mem.productrev.lastStatus = 'blocked'; await this.mysql.appendJobLog('productrev', 'warn', `Bị chặn; nghỉ. đã đồng bộ ${ok}/${list.length}`).catch(() => {}); return { pace: BLOCK_MS }; }
     this.mem.productrev.lastStatus = 'ok';
-    await this.mysql.appendJobLog('productrev', 'info', `+${ok}/${list.length} sp đồng bộ doanh thu ngày`).catch(() => {});
+    await this.mysql.appendJobLog('productrev', 'info', `+${ok}/${list.length} sp đồng bộ doanh thu ngày (skip=${skip}, no_price=${noPrice}, no_storefront=${noStorefront}, err=${err})`).catch(() => {});
     return { pace: cfg.paceMs };
   }
 
