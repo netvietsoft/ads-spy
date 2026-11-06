@@ -1,4 +1,7 @@
 import { ShJobsService, JOB_NAMES } from './sh.jobs.service';
+import { shopifyHttp } from './shopify.client';
+import { ShopifyBwMysql } from '../shopify-bw/shopify-bw.mysql';
+import { ShopifyBwDetect } from '../shopify-bw/shopify-bw.detect';
 
 const mkMysql = () => ({
   getSetting: jest.fn().mockResolvedValue(null),
@@ -121,5 +124,59 @@ describe('5 background jobs cho Shopify BuiltWith', () => {
     const rRev = await (svc as any).step('bwrev', true);
     expect((svc as any).mem.bwrev.lastStatus).toBe('idle');
     expect(rRev.pace).toBe(120000);
+  });
+
+  it('rowsToDetect áp dụng cooldown 1h và ưu tiên aff_last_try_at IS NULL + dns_ok = 1; countToDetect dùng cache và giảm dần khi setDetect', async () => {
+    const query = jest.fn()
+      .mockResolvedValueOnce([[{ web: 'fresh.myshopify.com' }]])
+      .mockResolvedValueOnce([[{ n: 500 }]])
+      .mockResolvedValueOnce([{ affectedRows: 1 }]);
+    const db = new ShopifyBwMysql({ getPool: async () => ({ query }) } as any, { ensureTables: async () => {} } as any);
+
+    const rows = await db.rowsToDetect(50);
+    expect(rows).toEqual(['fresh.myshopify.com']);
+    expect(query.mock.calls[0][0]).toContain('aff_last_try_at IS NULL OR sb.aff_last_try_at < ?');
+    expect(query.mock.calls[0][0]).toContain('ORDER BY (sb.aff_last_try_at IS NULL) DESC, (sb.dns_ok = 1) DESC');
+
+    const c1 = await db.countToDetect();
+    expect(c1).toBe(500);
+    expect(query).toHaveBeenCalledTimes(2);
+
+    await db.setDetect('fresh.myshopify.com', 'yes', 'UpPromote', 'https://af.uppromote.com/x');
+    const c2 = await db.countToDetect();
+    expect(c2).toBe(499);
+    // Không gọi thêm SELECT COUNT(*) vào MySQL khi cache còn hạn
+    expect(query).toHaveBeenCalledTimes(3);
+  });
+
+  it('wireProxy khi không có proxy sống (catalogProxies rỗng) tự động gọi origShopifyGet thay vì văng EPROXY_EMPTY', async () => {
+    const orig = shopifyHttp.get;
+    const mockOrig = jest.fn().mockResolvedValue({ status: 200, body: 'ok' });
+    shopifyHttp.get = mockOrig;
+    try {
+      const svc = new ShJobsService({} as any, mkMysql() as any, {} as any, {} as any, {} as any);
+      (svc as any).catalogProxies = [];
+      (svc as any).wireProxy();
+      const res = await shopifyHttp.get('https://example.com/', {});
+      expect(res.status).toBe(200);
+      expect(mockOrig).toHaveBeenCalledWith('https://example.com/', {}, undefined, undefined);
+      (svc as any).unwireProxy();
+    } finally {
+      shopifyHttp.get = orig;
+    }
+  });
+
+  it('ShopifyBwDetect.getLiveHttpProxies loại bỏ các proxy có status = die', async () => {
+    const sh = {
+      listProxiesFull: jest.fn().mockResolvedValue([
+        { host: '1.1.1.1', port: 8080, type: 'http', status: 'live' },
+        { host: '2.2.2.2', port: 8080, type: 'http', status: 'die' },
+        { host: '3.3.3.3', port: 8080, type: 'http', status: null },
+      ]),
+    };
+    const detect = new ShopifyBwDetect(sh as any, {} as any);
+    const live = await (detect as any).getLiveHttpProxies();
+    expect(live).toHaveLength(2);
+    expect(live.map((p: any) => p.host)).toEqual(['1.1.1.1', '3.3.3.3']);
   });
 });

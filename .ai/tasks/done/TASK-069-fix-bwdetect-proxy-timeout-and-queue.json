@@ -1,0 +1,38 @@
+{
+  "task_id": "TASK-069",
+  "title": "Khắc phục triệt để lỗi bwdetect: lọc proxy chết, thêm index & tối ưu countToDetect/rowsToDetect, hard timeout TLS/domain, xử lý EPROXY_EMPTY",
+  "status": "done",
+  "owner": "Agent 7 - FIXER",
+  "created": "2026-11-06T11:30:00+07:00",
+  "completed_at": "2026-11-06T11:36:20+07:00",
+  "branch": "agent/fixer/TASK-069",
+  "files_allowed": [
+    "apps/api/src/shopify-bw/shopify-bw.mysql.ts",
+    "apps/api/src/shopify-bw/shopify-bw.detect.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/shophunter/sh.mysql.ts",
+    "apps/api/src/shophunter/sh.jobs.service.ts",
+    "apps/api/src/shophunter/shopify.proxy-get.ts",
+    "apps/api/src/shophunter/shopify.proxy-get.spec.ts",
+    "apps/api/src/shophunter/sh.jobs.shopify-bw.spec.ts"
+  ],
+  "acceptance_criteria": [
+    "1. Bổ sung cooldown 1 giờ (aff_last_try_at IS NULL OR aff_last_try_at < cutoff) và thứ tự ưu tiên trong rowsToDetect() (ưu tiên aff_last_try_at IS NULL và dns_ok = 1).",
+    "2. Thêm Index idx_sbw_aff_checked (aff_checked_at) và tối ưu countToDetect() (cache in-memory ngắn hạn / giảm dần khi quét) để tránh quét toàn bảng 560k+ dòng sau mỗi lô.",
+    "3. Chỉ lấy Proxy sống (status IS NULL OR status <> 'die') trong listProxiesFull(true) và xử lý an toàn khi chưa có proxy sống (tránh văng EPROXY_EMPTY do wireProxy ghi đè shopifyHttp.get).",
+    "4. Thêm Hard Timeout cho từng request proxy trong doSingleProxiedGet (shopify.proxy-get.ts) và Timeout bảo vệ mỗi domain trong detectStep()/loop() (shopify-bw.detect.ts), bỏ vòng lặp retry thừa bên ngoài detectStep.",
+    "5. Quality Gate: Unit Tests PASS (15/15)."
+  ],
+  "result_summary": {
+    "quality_gate": {
+      "unit_tests": "PASS (15/15 in shopify.proxy-get.spec.ts & sh.jobs.shopify-bw.spec.ts)"
+    },
+    "fixes_applied": [
+      "rowsToDetect() bổ sung cooldown 1h cho domain lỗi và ORDER BY ưu tiên domain mới (aff_last_try_at IS NULL) + DNS sống (dns_ok = 1)",
+      "Thêm index idx_sbw_aff_checked(aff_checked_at) và cache countToDetect() 60s tự giảm dần khi setDetect()",
+      "listProxiesFull(true) lọc bỏ proxy có status = 'die' và wireProxy() tự fallback về origShopifyGet khi không có proxy sống, triệt tiêu lỗi EPROXY_EMPTY",
+      "doSingleProxiedGet() bổ sung hardTimer + TLS timeout; detectStep()/loop() bọc withDomainTimeout (25s) và bỏ vòng lặp retry thừa bên ngoài"
+    ]
+  }
+}
+

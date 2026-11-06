@@ -125,7 +125,7 @@ export class ShopifyBwService {
     let lastError: string | undefined;
 
     const proxies = (await this.shDb.listProxiesFull(true).catch(() => []))
-      .filter((r: any) => (r.type || 'http') === 'http')
+      .filter((r: any) => (r.type || 'http') === 'http' && (!r.status || r.status !== 'die'))
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
     const get = proxies.length > 0 ? makeProxiedGet(() => proxies) : shopifyHttp.get;
 
@@ -295,7 +295,7 @@ export class ShopifyBwService {
     await this.db.ensureTables();
     const webs = await this.db.nextTermsBatch(limit, force);
     const proxies = (await this.shDb.listProxiesFull(true).catch(() => []))
-      .filter((r: any) => (r.type || 'http') === 'http')
+      .filter((r: any) => (r.type || 'http') === 'http' && (!r.status || r.status !== 'die'))
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
     const get = proxies.length === 0 ? shopifyHttp.get : makeProxiedGet(() => proxies);
     const stat = { scanned: 0, found: 0, thin: 0, notfound: 0, error: 0, remaining: 0 };

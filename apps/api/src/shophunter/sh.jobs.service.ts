@@ -192,6 +192,7 @@ export class ShJobsService implements OnModuleInit {
         const r: any = await this.harvest.runHarvest({ daily: hc.perTick });
         await this.mysql.appendJobLog('harvest', 'info', `Chạy ngay xong: processed=${r?.processed ?? 0} status=${r?.status ?? '-'}`).catch(() => {});
       } else if (this.needsProxy(name)) {
+        await this.refreshProxies().catch(() => {});
         this.wireProxy();
         try { await this.runStepGuarded(name, true); } // force=true: bỏ qua giới hạn giờ + trần ngày khi bấm tay
         finally { if (!this.anyProxyJobRunning()) this.unwireProxy(); }
@@ -284,7 +285,7 @@ export class ShJobsService implements OnModuleInit {
   }
   private async refreshProxies(): Promise<void> {
     this.catalogProxies = (await this.mysql.listProxiesFull(true).catch(() => []))
-      .filter((r: any) => (r.type || 'http') === 'http')
+      .filter((r: any) => (r.type || 'http') === 'http' && (!r.status || r.status !== 'die'))
       .map((r: any) => ({ host: r.host, port: Number(r.port), username: r.username, password: r.password }));
   }
 
@@ -303,7 +304,10 @@ export class ShJobsService implements OnModuleInit {
   private wireProxy(): void {
     if (this.origShopifyGet) return;            // already wired for this run
     this.origShopifyGet = shopifyHttp.get;
-    shopifyHttp.get = makeProxiedGet(() => this.catalogProxies);
+    const orig = this.origShopifyGet;
+    const proxied = makeProxiedGet(() => this.catalogProxies);
+    shopifyHttp.get = (url, headers, ms, redirectsLeft) =>
+      this.catalogProxies.length > 0 ? proxied(url, headers, ms, redirectsLeft) : orig(url, headers, ms, redirectsLeft);
   }
 
   private unwireProxy(): void {
