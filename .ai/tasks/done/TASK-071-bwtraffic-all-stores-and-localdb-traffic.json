@@ -1,0 +1,26 @@
+{
+  "id": "TASK-071",
+  "title": "Unify bwtraffic across sh_shop, aff_library & shopify_buildwith (prioritizing affiliate & revenue) and display Traffic column on /localdb/shops",
+  "status": "done",
+  "owner": "Agent 7 - FIXER",
+  "priority": "high",
+  "created_at": "2026-04-20T10:45:00Z",
+  "completed_at": "2026-04-20T10:53:00Z",
+  "files_allowed": [
+    "apps/api/src/shopify-bw/shopify-bw.mysql.ts",
+    "apps/api/src/shopify-bw/shopify-bw.service.ts",
+    "apps/api/src/afflib/afflib.mysql.ts",
+    "apps/api/src/shophunter/sh.mysql.ts",
+    "apps/api/src/shophunter/sh.jobs.service.ts",
+    "apps/api/src/shophunter/sh.jobs.shopify-bw.spec.ts",
+    "apps/web/app/components/LocalDbPanel.tsx",
+    "CHANGELOG.md",
+    "docs/changelog.md"
+  ],
+  "acceptance_criteria": [
+    "Update ShopifyBwMysql.rowsMissingTraffic, countMissingTraffic, markTrafficTried, and resetFailedTrafficTried to scan across sh_shop -> aff_library -> shopify_buildwith, prioritizing shops with affiliate and revenue first",
+    "Prioritize rowsMissingTraffic in AffLibMysql by affiliate status and revenue",
+    "Auto-enable bwtraffic if not explicitly running or update ShJobsService.stepBwTraffic to log and drain all 3 stores cleanly",
+    "Attach traffic data from aff_domain_traffic in ShMysql.queryLocalShops (attachShopTraffic) and display Traffic/tháng column + interactive TrafficHistoryModal in LocalDbPanel.tsx (/localdb/shops)"
+  ]
+}

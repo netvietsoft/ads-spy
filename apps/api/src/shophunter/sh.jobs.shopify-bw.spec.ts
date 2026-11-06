@@ -2,6 +2,7 @@ import { ShJobsService, JOB_NAMES } from './sh.jobs.service';
 import { shopifyHttp } from './shopify.client';
 import { ShopifyBwMysql } from '../shopify-bw/shopify-bw.mysql';
 import { ShopifyBwDetect } from '../shopify-bw/shopify-bw.detect';
+import { ShMysql } from './sh.mysql';
 
 const mkMysql = () => ({
   getSetting: jest.fn().mockResolvedValue(null),
@@ -178,5 +179,53 @@ describe('5 background jobs cho Shopify BuiltWith', () => {
     const live = await (detect as any).getLiveHttpProxies();
     expect(live).toHaveLength(2);
     expect(live.map((p: any) => p.host)).toEqual(['1.1.1.1', '3.3.3.3']);
+  });
+
+  it('rowsMissingTraffic quét xuyên suốt 3 kho (sh_shop -> aff_library -> shopify_buildwith) ưu tiên Affiliate & Doanh thu và markTrafficTried đánh dấu cả 3 kho', async () => {
+    const query = jest.fn()
+      // 1. sh_shop
+      .mockResolvedValueOnce([[{ web: 'https://www.TopShop.com/collections' }]])
+      // 2. aff_library priority
+      .mockResolvedValueOnce([[{ web: 'aff-prio.com' }, { web: 'topshop.com' }]])
+      // 3. aff_library rest
+      .mockResolvedValueOnce([[{ web: 'aff-rest.com' }]])
+      // 4. shopify_buildwith priority
+      .mockResolvedValueOnce([[{ web: 'bw-prio.com' }]])
+      // 5. shopify_buildwith rest
+      .mockResolvedValueOnce([[{ web: 'bw-rest.com' }]])
+      // markTrafficTried: 3 câu lệnh (shopify_buildwith, aff_library, sh_shop_traffic_tried)
+      .mockResolvedValue([{ affectedRows: 1 }]);
+
+    const db = new ShopifyBwMysql({ getPool: async () => ({ query }) } as any, { ensureTables: async () => {} } as any);
+    const list = await db.rowsMissingTraffic(5);
+    expect(list).toEqual(['topshop.com', 'aff-prio.com', 'aff-rest.com', 'bw-prio.com', 'bw-rest.com']);
+    expect(query.mock.calls[0][0]).toContain('FROM sh_shop s');
+    expect(query.mock.calls[1][0]).toContain('FROM aff_library al');
+    expect(query.mock.calls[3][0]).toContain('FROM shopify_buildwith sb');
+    expect(query.mock.calls[3][0]).toContain("ORDER BY (sb.aff_status IN ('yes', 'app')) DESC, COALESCE(sb.rev_month, 0) DESC");
+
+    await db.markTrafficTried(['topshop.com']);
+    const sqlCalls = query.mock.calls.slice(5).map((c) => String(c[0]));
+    expect(sqlCalls.some((s) => s.includes('UPDATE shopify_buildwith SET traffic_tried_at'))).toBe(true);
+    expect(sqlCalls.some((s) => s.includes('UPDATE aff_library SET traffic_tried_at'))).toBe(true);
+    expect(sqlCalls.some((s) => s.includes('INSERT INTO sh_shop_traffic_tried'))).toBe(true);
+  });
+
+  it('ShMysql.attachShopTraffic gắn _traffic_visits, _traffic_bounce, _traffic_duration_sec, _traffic_rank vào danh sách shop', async () => {
+    const sh = new ShMysql({} as any);
+    const query = jest.fn().mockResolvedValueOnce([[
+      { web: 'gymshark.com', visits: 1250000, bounce_rate: 41.2, visit_duration_sec: 185, global_rank: 4512, updated_at: 1700000000000 },
+    ]]);
+    (sh as any).pool = { query };
+
+    const rows = [{ shop_url: 'https://www.GymShark.com/' }, { shop_url: 'unknown-shop.com' }];
+    const items: any[] = [{ url: 'https://www.GymShark.com/' }, { url: 'unknown-shop.com' }];
+    await (sh as any).attachShopTraffic(rows, items);
+
+    expect(items[0]._traffic_visits).toBe(1250000);
+    expect(items[0]._traffic_bounce).toBe(41.2);
+    expect(items[0]._traffic_duration_sec).toBe(185);
+    expect(items[0]._traffic_rank).toBe(4512);
+    expect(items[1]._traffic_visits).toBeUndefined();
   });
 });

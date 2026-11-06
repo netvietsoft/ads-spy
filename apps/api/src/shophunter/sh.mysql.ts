@@ -1199,7 +1199,10 @@ export class ShMysql implements OnModuleInit {
     // cachedCount: không lọc → số ƯỚC LƯỢNG tức thì; có lọc → COUNT thật + cache 5' + stale-while-revalidate.
     const total = await this.cachedCount('sh_shop', whereSql, params, 300000);
     const items = (rows as any[]).map((r) => ({ ...JSON.parse(r.raw), _local: true, _harvested: !!r.harvested, _harvested_at: r.harvested_at == null ? null : Number(r.harvested_at), _fetched_at: r.fetched_at == null ? null : Number(r.fetched_at), _up_category: r.up_category ?? null, _up_category_path: r.up_category_path ?? null, _affiliate: r.affiliate_status ?? null, _affiliate_link: r.affiliate_link ?? null, _storefront_currency: r.storefront_currency ?? null })); // eslint-disable-line
-    await this.attachAffProgram(rows as any[], items);
+    await Promise.all([
+      this.attachAffProgram(rows as any[], items),
+      this.attachShopTraffic(rows as any[], items),
+    ]);
     return { items, total };
   }
 
@@ -1310,6 +1313,42 @@ export class ShMysql implements OnModuleInit {
       items[i]._aff_commission_pct = p.commission_pct == null ? null : Number(p.commission_pct);
       items[i]._aff_cookie_days = p.cookie_days == null ? null : Number(p.cookie_days);
       items[i]._aff_payout = p.payout == null ? null : Number(p.payout);
+    });
+  }
+
+  // Gắn dữ liệu TRAFFIC (visits/tháng, bounce_rate, visit_duration_sec, global_rank) từ aff_domain_traffic
+  // vào các shop của TRANG hiện tại (≤200 dòng) bằng truy vấn phụ IN (?) theo PK để không làm chậm câu SELECT chính trên sh_shop.
+  private async attachShopTraffic(rows: any[], items: any[]): Promise<void> {
+    const norm = (u: unknown) =>
+      String(u || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^https?:\/\//, '')
+        .replace(/^www\./, '')
+        .split('/')[0];
+    const keys = [...new Set(rows.map((r, i) => norm(r.shop_url || items[i]?.url)).filter(Boolean))];
+    if (!keys.length) return;
+    const candidates = [...keys, ...keys.map((k) => `www.${k}`)];
+    let byWeb = new Map<string, any>();
+    try {
+      const [tRows] = await this.pool!.query(
+        `SELECT web, visits, bounce_rate, visit_duration_sec, global_rank, updated_at
+           FROM aff_domain_traffic WHERE web IN (?)`,
+        [candidates],
+      );
+      byWeb = new Map((tRows as any[]).map((t) => [norm(t.web), t]));
+    } catch {
+      return;
+    }
+    if (!byWeb.size) return;
+    rows.forEach((r, i) => {
+      const t = byWeb.get(norm(r.shop_url || items[i]?.url));
+      if (!t) return;
+      items[i]._traffic_visits = t.visits == null ? null : Number(t.visits);
+      items[i]._traffic_bounce = t.bounce_rate == null ? null : Number(t.bounce_rate);
+      items[i]._traffic_duration_sec = t.visit_duration_sec == null ? null : Number(t.visit_duration_sec);
+      items[i]._traffic_rank = t.global_rank == null ? null : Number(t.global_rank);
+      items[i]._traffic_updated_at = t.updated_at == null ? null : Number(t.updated_at);
     });
   }
 

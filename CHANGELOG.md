@@ -4,6 +4,17 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-11-06 — Mở Rộng Job `bwtraffic` Quét Xuyên Suốt 3 Kho (Ưu Tiên Affiliate & Doanh Thu) & Hiển Thị Cột Traffic Trên `/localdb/shops` (TASK-071)
+
+- **Quét Traffic Xuyên Suốt 3 Kho `sh_shop` → `aff_library` → `shopify_buildwith` (`shopify-bw.mysql.ts`, `afflib.mysql.ts`, `sh.jobs.service.ts`)**:
+  - Cập nhật `ShopifyBwMysql.rowsMissingTraffic()` tự động lấy domain thiếu traffic xuyên suốt cả 3 kho theo thứ tự ưu tiên: `sh_shop` (ưu tiên shop có Affiliate & Doanh thu cao trước) → `aff_library` (ưu tiên shop có Affiliate & Doanh thu tháng) → `shopify_buildwith` (ưu tiên shop có Affiliate & Doanh thu tháng trước khi quét phần còn lại).
+  - Bổ sung bảng phụ nhẹ `sh_shop_traffic_tried` (không `ALTER` bảng lớn `sh_shop`) và cập nhật `markTrafficTried()` / `resetFailedTrafficTried()` đồng bộ trạng thái đã thử trên cả 3 kho, kèm cache 60s cho `countMissingTraffic()`.
+- **Hiển Thị Cột `Traffic/th` & Biểu Đồ 12 Tháng Trên `/localdb/shops` (`sh.mysql.ts`, `LocalDbPanel.tsx`)**:
+  - Bổ sung `attachShopTraffic()` trong `ShMysql.queryLocalShops()` gắn `_traffic_visits`, `_traffic_bounce`, `_traffic_duration_sec`, `_traffic_rank` từ `aff_domain_traffic` bằng truy vấn phụ `IN (?)` trên tập dòng của trang hiện tại (≤200 dòng), giữ nguyên tốc độ tải bảng.
+  - Thêm cột `Traffic/th` trên bảng `/localdb/shops` (cả giao diện bảng Desktop lẫn thẻ Mobile `ShopRowCard`) kèm tooltip chi tiết (Bounce, Time on site, Global Rank) và tích hợp `TrafficHistoryModal` khi bấm vào ô Traffic.
+
+---
+
 ## 2026-11-06 — Khắc Phục Kẹt Đầu Hàng Đợi & Tối Ưu Tốc Độ Job `productrev` + `enrich` (TASK-070)
 
 - **Chống Kẹt Đầu Hàng Đợi Vĩnh Viễn (Poison Pill) Trong `productrev` (`sh.mysql.ts`, `sh.service.ts`, `sh.jobs.service.ts`)**:

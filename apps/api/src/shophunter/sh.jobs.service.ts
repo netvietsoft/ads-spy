@@ -27,7 +27,7 @@ const DESC: Record<JobName, string> = {
   afffetch: 'Mở từng trang campaign bằng Chromium (chờ Cloudflare) → lấy %hoa hồng/web/điều khoản. Xoay proxy dùng chung (Cài đặt → Proxy): mỗi proxy 1 làn IP, giãn 10s/làn. Không proxy → 1 làn trực tiếp (chậm hơn).',
   bwrev: '[Shopify BuiltWith] Scan Doanh thu: nhận diện Shopify → lấy shop_id → cào doanh thu ngày/tuần/tháng/tổng. Domain không phải Shopify bị loại trừ. Cào lại sau staleDays ngày.',
   bwdns: '[Shopify BuiltWith] Lọc DNS: phân giải domain sống/chết (DNS A record) cho 560k domain. Domain chết (NXDOMAIN/SERVFAIL) được đánh dấu loại trừ.',
-  bwtraffic: '[Shopify BuiltWith] Điền Traffic AITDK: lấy lượt truy cập 12 tháng, tỷ lệ thoát (bounce), thời gian trên site (time-onsite).',
+  bwtraffic: '[Traffic AITDK] Điền Traffic tự động xuyên suốt 3 kho (sh_shop → aff_library → shopify_buildwith, ưu tiên shop có Affiliate & Doanh thu): lấy lượt truy cập 12 tháng, tỷ lệ thoát (bounce), thời gian trên site (time-onsite).',
   bwdetect: '[Shopify BuiltWith] Quét Affiliate: phát hiện shop có chương trình affiliate (link đăng ký, app affiliate) qua proxy xoay.',
   bwterms: '[Shopify BuiltWith] Cào Điều khoản/Nội quy: đọc trang /pages/affiliate* hoặc sitemap của shop → bóc tách %hoa hồng, cookie, payout, nội quy.',
 };
@@ -377,16 +377,28 @@ export class ShJobsService implements OnModuleInit {
     return { pace: cfg.paceMs };
   }
 
-  // [Shopify BuiltWith] Điền Traffic AITDK: lấy lượt truy cập 12 tháng, bounce, time-onsite
+  // [Traffic AITDK] Điền Traffic xuyên suốt 3 kho (sh_shop → aff_library → shopify_buildwith, ưu tiên Affiliate & Doanh thu)
   private async stepBwTraffic(force = false): Promise<{ pace: number }> {
-    if (!this.bwSvc) return { pace: IDLE_MS };
+    if (!this.bwSvc && !this.afflib) return { pace: IDLE_MS };
     const cfg = await this.getJobCfg('bwtraffic');
     if (!force && !this.withinActiveHours(cfg)) { this.mem.bwtraffic.lastStatus = 'ngoài giờ'; return { pace: IDLE_MS }; }
     const dk = this.dayKey('bwtraffic');
     if (!force && (await this.mysql.getDailyCount(dk).catch(() => 0)) >= cfg.daily) { this.mem.bwtraffic.lastStatus = 'đủ quota ngày'; return { pace: IDLE_MS }; }
-    let r: Awaited<ReturnType<ShopifyBwService['fillTraffic']>>;
-    try { r = await this.bwSvc.fillTraffic(cfg.batch); }
-    catch (e) { this.mem.bwtraffic.lastStatus = 'error'; await this.mysql.appendJobLog('bwtraffic', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {}); return { pace: BLOCK_MS }; }
+    let r: { filled: number; remaining: number; error?: string };
+    try {
+      if (this.bwSvc) {
+        r = await this.bwSvc.fillTraffic(cfg.batch);
+        if (!r.filled && r.remaining === 0 && !r.error && this.afflib?.fillTraffic) {
+          r = await this.afflib.fillTraffic(cfg.batch);
+        }
+      } else {
+        r = await this.afflib.fillTraffic(cfg.batch);
+      }
+    } catch (e) {
+      this.mem.bwtraffic.lastStatus = 'error';
+      await this.mysql.appendJobLog('bwtraffic', 'error', 'Lỗi: ' + (e as Error).message).catch(() => {});
+      return { pace: BLOCK_MS };
+    }
     await this.mysql.addDailyCount(dk, r.filled).catch(() => {});
     this.mem.bwtraffic.lastRunAt = Date.now();
     this.mem.bwtraffic.stats = { da_dien: r.filled, con_lai: r.remaining };
@@ -397,7 +409,11 @@ export class ShJobsService implements OnModuleInit {
       // Khi gặp Rate limit 429 / Cloudflare Error 1015: tạm dừng 120s (2 phút) để Cloudflare xả hết hạn ngạch cấm
       return { pace: is429 ? 120_000 : Math.max(cfg.paceMs || 2000, 15_000) };
     }
-    if (!r.filled && r.remaining === 0) { this.mem.bwtraffic.lastStatus = 'idle'; await this.mysql.appendJobLog('bwtraffic', 'info', 'Đã điền hết traffic cho các domain BuiltWith; chờ.').catch(() => {}); return { pace: IDLE_MS }; }
+    if (!r.filled && r.remaining === 0) {
+      this.mem.bwtraffic.lastStatus = 'idle';
+      await this.mysql.appendJobLog('bwtraffic', 'info', 'Đã điền hết traffic cho cả 3 kho (sh_shop, aff_library, BuiltWith); chờ.').catch(() => {});
+      return { pace: IDLE_MS };
+    }
     this.mem.bwtraffic.lastStatus = 'ok';
     await this.mysql.appendJobLog('bwtraffic', 'info', `Điền traffic +${r.filled} domain; còn ${r.remaining}`).catch(() => {});
     return { pace: cfg.paceMs };

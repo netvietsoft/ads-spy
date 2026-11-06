@@ -75,7 +75,7 @@ export interface ShopifyBwSnapshot {
 
 @Injectable()
 export class ShopifyBwMysql {
-  constructor(private readonly sh: ShMysql, private readonly affnet: AffnetMysql) {}
+  constructor(private readonly sh: ShMysql, private readonly affnet: AffnetMysql) { }
 
   private tablesReady: Promise<void> | null = null;
   ensureTables(): Promise<void> {
@@ -86,7 +86,7 @@ export class ShopifyBwMysql {
   }
 
   private async doEnsureTables(): Promise<void> {
-    await this.affnet.ensureTables().catch(() => {});
+    await this.affnet.ensureTables().catch(() => { });
     const pool = await this.sh.getPool();
     await pool.query(`CREATE TABLE IF NOT EXISTS shopify_buildwith (
       web VARCHAR(255) PRIMARY KEY,
@@ -125,9 +125,16 @@ export class ShopifyBwMysql {
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_shopify', 'shopify');
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_traffic_tried', 'traffic_tried_at');
     await this.ensureIndex(pool, 'shopify_buildwith', 'idx_sbw_aff_checked', 'aff_checked_at');
+    await this.ensureIndex(pool, 'aff_library', 'idx_al_traffic_tried', 'traffic_tried_at').catch(() => {});
+
+    // Bảng phụ nhẹ theo dõi domain của sh_shop đã thử lấy traffic (tránh ALTER bảng lớn sh_shop 2.4GB).
+    await pool.query(`CREATE TABLE IF NOT EXISTS sh_shop_traffic_tried (
+      web VARCHAR(255) NOT NULL PRIMARY KEY,
+      tried_at BIGINT NOT NULL
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`).catch(() => {});
 
     // Dọn dẹp dấu gạch chéo cuối nếu có trong cột web
-    await pool.query(`UPDATE IGNORE shopify_buildwith SET web = TRIM(TRAILING '/' FROM web) WHERE web LIKE '%/'`).catch(() => {});
+    await pool.query(`UPDATE IGNORE shopify_buildwith SET web = TRIM(TRAILING '/' FROM web) WHERE web LIKE '%/'`).catch(() => { });
 
     // Tự động phục hồi các domain chưa có traffic mà bị đánh dấu tried nhầm (do mạng lỗi, 429, Cloudflare)
     this.resetFailedTrafficTried().catch((e) => console.warn('[ShopifyBwMysql] resetFailedTrafficTried error:', e));
@@ -140,7 +147,7 @@ export class ShopifyBwMysql {
       [table, indexName],
     );
     if (!(c as any[])[0].n) {
-      await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (\`${column}\`)`).catch(() => {});
+      await pool.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (\`${column}\`)`).catch(() => { });
     }
   }
 
@@ -703,36 +710,187 @@ export class ShopifyBwMysql {
      LEFT JOIN aff_domain_traffic t ON t.web = sb.web COLLATE utf8mb4_unicode_ci
      WHERE t.web IS NULL AND sb.traffic_tried_at IS NULL AND (sb.dns_ok IS NULL OR sb.dns_ok = 1)`;
 
+  private trafficCountCache: { count: number; ts: number } | null = null;
+
+  // Quét xuyên suốt 3 kho (sh_shop -> aff_library -> shopify_buildwith), ưu tiên các shop có Affiliate & Doanh thu trước.
   async rowsMissingTraffic(limit = 50): Promise<string[]> {
     const pool = await this.sh.getPool();
-    const [rows] = await pool.query(`SELECT sb.web ${ShopifyBwMysql.MISSING_TRAFFIC} LIMIT ?`, [Math.min(200, Math.max(1, limit))]);
-    return (rows as any[]).map((r) => r.web);
+    const cap = Math.min(200, Math.max(1, limit));
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const pushRows = (rows: any[]) => {
+      for (const r of rows || []) {
+        const w = String(r?.web || '')
+          .trim()
+          .toLowerCase()
+          .replace(/^https?:\/\//, '')
+          .replace(/^www\./, '')
+          .split('/')[0];
+        if (w && w.includes('.') && !seen.has(w)) {
+          seen.add(w);
+          out.push(w);
+          if (out.length >= cap) break;
+        }
+      }
+    };
+
+    // 1. Ưu tiên kho sh_shop (shop có affiliate & doanh thu cao trước)
+    try {
+      const [shopRows] = await pool.query(
+        `SELECT w.web
+         FROM (
+           SELECT SUBSTRING_INDEX(TRIM(LEADING 'www.' FROM REPLACE(REPLACE(LOWER(TRIM(s.shop_url)), 'https://', ''), 'http://', '')), '/', 1) COLLATE utf8mb4_unicode_ci AS web,
+                  (s.affiliate_status IN ('yes', 'app')) AS has_aff,
+                  COALESCE(s.revenue, 0) AS rev
+           FROM sh_shop s
+           WHERE s.shop_url IS NOT NULL AND s.shop_url <> ''
+         ) w
+         LEFT JOIN aff_domain_traffic t ON t.web = w.web
+         LEFT JOIN sh_shop_traffic_tried st ON st.web = w.web
+         WHERE w.web LIKE '%.%' AND t.web IS NULL AND st.web IS NULL
+         ORDER BY w.has_aff DESC, w.rev DESC
+         LIMIT ?`,
+        [cap],
+      );
+      pushRows(shopRows as any[]);
+    } catch {
+      /* bỏ qua nếu sh_shop chưa khởi tạo trong môi trường test độc lập */
+    }
+    if (out.length >= cap) return out;
+
+    // 2. Tiếp theo: kho aff_library (ưu tiên shop có affiliate / doanh thu trước, sau đó đến phần còn lại)
+    try {
+      const [alPrio] = await pool.query(
+        `SELECT al.web FROM aff_library al
+         LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
+         WHERE t.web IS NULL AND al.traffic_tried_at IS NULL AND (al.dns_ok IS NULL OR al.dns_ok = 1)
+           AND (al.aff_status IN ('yes', 'app') OR al.rev_month > 0)
+         ORDER BY (al.aff_status IN ('yes', 'app')) DESC, COALESCE(al.rev_month, 0) DESC
+         LIMIT ?`,
+        [cap - out.length],
+      );
+      pushRows(alPrio as any[]);
+      if (out.length < cap) {
+        const [alRest] = await pool.query(
+          `SELECT al.web FROM aff_library al
+           LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
+           WHERE t.web IS NULL AND al.traffic_tried_at IS NULL AND (al.dns_ok IS NULL OR al.dns_ok = 1)
+           LIMIT ?`,
+          [cap - out.length],
+        );
+        pushRows(alRest as any[]);
+      }
+    } catch {
+      /* bỏ qua nếu aff_library chưa tạo */
+    }
+    if (out.length >= cap) return out;
+
+    // 3. Tiếp theo: kho shopify_buildwith (ưu tiên shop có affiliate / doanh thu trước, sau đó đến phần còn lại)
+    const [sbPrio] = await pool.query(
+      `SELECT sb.web ${ShopifyBwMysql.MISSING_TRAFFIC}
+         AND (sb.aff_status IN ('yes', 'app') OR sb.rev_month > 0)
+       ORDER BY (sb.aff_status IN ('yes', 'app')) DESC, COALESCE(sb.rev_month, 0) DESC
+       LIMIT ?`,
+      [cap - out.length],
+    );
+    pushRows(sbPrio as any[]);
+    if (out.length < cap) {
+      const [sbRest] = await pool.query(
+        `SELECT sb.web ${ShopifyBwMysql.MISSING_TRAFFIC} LIMIT ?`,
+        [cap - out.length],
+      );
+      pushRows(sbRest as any[]);
+    }
+    return out;
   }
 
   async countMissingTraffic(): Promise<number> {
+    const now = Date.now();
+    if (this.trafficCountCache && now - this.trafficCountCache.ts < 60_000) {
+      return this.trafficCountCache.count;
+    }
     const pool = await this.sh.getPool();
-    const [r] = await pool.query(`SELECT COUNT(*) n ${ShopifyBwMysql.MISSING_TRAFFIC}`);
-    return Number((r as any[])[0].n) || 0;
+    let total = 0;
+    try {
+      const [rSb] = await pool.query(`SELECT COUNT(*) n ${ShopifyBwMysql.MISSING_TRAFFIC}`);
+      total += Number((rSb as any[])[0]?.n) || 0;
+    } catch { /* ignore */ }
+    try {
+      const [rAl] = await pool.query(
+        `SELECT COUNT(*) n FROM aff_library al
+         LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
+         WHERE t.web IS NULL AND al.traffic_tried_at IS NULL AND (al.dns_ok IS NULL OR al.dns_ok = 1)`,
+      );
+      total += Number((rAl as any[])[0]?.n) || 0;
+    } catch { /* ignore */ }
+    try {
+      const [rSh] = await pool.query(
+        `SELECT COUNT(*) n FROM (
+           SELECT DISTINCT SUBSTRING_INDEX(TRIM(LEADING 'www.' FROM REPLACE(REPLACE(LOWER(TRIM(s.shop_url)), 'https://', ''), 'http://', '')), '/', 1) COLLATE utf8mb4_unicode_ci AS web
+           FROM sh_shop s WHERE s.shop_url IS NOT NULL AND s.shop_url <> ''
+         ) w
+         LEFT JOIN aff_domain_traffic t ON t.web = w.web
+         LEFT JOIN sh_shop_traffic_tried st ON st.web = w.web
+         WHERE w.web LIKE '%.%' AND t.web IS NULL AND st.web IS NULL`,
+      );
+      total += Number((rSh as any[])[0]?.n) || 0;
+    } catch { /* ignore */ }
+    this.trafficCountCache = { count: total, ts: now };
+    return total;
   }
 
   async markTrafficTried(webs: string[]): Promise<void> {
     if (!webs.length) return;
     const pool = await this.sh.getPool();
-    const withSlash = webs.map((w) => (w.endsWith('/') ? w : w + '/'));
-    const withoutSlash = webs.map((w) => w.replace(/\/+$/, ''));
+    const now = Date.now();
+    const withoutSlash = webs.map((w) => String(w || '').trim().toLowerCase().replace(/\/+$/, '')).filter(Boolean);
+    const withSlash = withoutSlash.map((w) => w + '/');
     const all = Array.from(new Set([...webs, ...withSlash, ...withoutSlash]));
-    await pool.query('UPDATE shopify_buildwith SET traffic_tried_at = ? WHERE web IN (?)', [Date.now(), all]);
+    await pool.query('UPDATE shopify_buildwith SET traffic_tried_at = ? WHERE web IN (?)', [now, all]);
+    await pool.query('UPDATE aff_library SET traffic_tried_at = ? WHERE web IN (?)', [now, all]).catch(() => {});
+    if (withoutSlash.length) {
+      const ph = withoutSlash.map(() => '(?,?)').join(',');
+      await pool
+        .query(
+          `INSERT INTO sh_shop_traffic_tried (web, tried_at) VALUES ${ph} ON DUPLICATE KEY UPDATE tried_at = VALUES(tried_at)`,
+          withoutSlash.flatMap((w) => [w, now]),
+        )
+        .catch(() => {});
+    }
+    if (this.trafficCountCache && this.trafficCountCache.count > 0) {
+      this.trafficCountCache.count = Math.max(0, this.trafficCountCache.count - withoutSlash.length);
+    }
   }
 
   async resetFailedTrafficTried(): Promise<number> {
     const pool = await this.sh.getPool();
-    const [r] = await pool.query(`
+    let affected = 0;
+    const [rSb] = await pool.query(`
       UPDATE shopify_buildwith sb
       LEFT JOIN aff_domain_traffic t ON t.web = sb.web COLLATE utf8mb4_unicode_ci
       SET sb.traffic_tried_at = NULL
       WHERE t.web IS NULL AND sb.traffic_tried_at IS NOT NULL
     `);
-    return Number((r as any).affectedRows) || 0;
+    affected += Number((rSb as any).affectedRows) || 0;
+    try {
+      const [rAl] = await pool.query(`
+        UPDATE aff_library al
+        LEFT JOIN aff_domain_traffic t ON t.web = al.web COLLATE utf8mb4_unicode_ci
+        SET al.traffic_tried_at = NULL
+        WHERE t.web IS NULL AND al.traffic_tried_at IS NOT NULL
+      `);
+      affected += Number((rAl as any).affectedRows) || 0;
+    } catch { /* ignore */ }
+    try {
+      const [rSh] = await pool.query(`
+        DELETE st FROM sh_shop_traffic_tried st
+        LEFT JOIN aff_domain_traffic t ON t.web = st.web
+        WHERE t.web IS NULL
+      `);
+      affected += Number((rSh as any).affectedRows) || 0;
+    } catch { /* ignore */ }
+    this.trafficCountCache = null;
+    return affected;
   }
 
   async deleteRows(webs: string[]): Promise<number> {

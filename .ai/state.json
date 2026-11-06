@@ -1,8 +1,14 @@
 {
-  "updated_at": "2026-11-06T12:04:50+07:00",
+  "updated_at": "2026-11-06T17:52:30+07:00",
   "project": "Google Ads Spy & SaaS Intelligence Platform",
   "active_task": null,
   "recent_tasks": [
+    {
+      "id": "TASK-071",
+      "title": "Unify bwtraffic across sh_shop, aff_library & shopify_buildwith (prioritizing affiliate & revenue) and display Traffic column on /localdb/shops",
+      "status": "done",
+      "completed_at": "2026-04-20T10:53:00Z"
+    },
     {
       "id": "TASK-070",
       "title": "Fix productrev queue head-of-line blocking, optimize syncProductPriceRevenue, getProductsNeedingRevDaily & enrich",
