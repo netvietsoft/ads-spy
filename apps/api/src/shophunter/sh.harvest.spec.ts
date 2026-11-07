@@ -1,5 +1,6 @@
-import { ShHarvestService, SH_HARVEST_SLICES } from './sh.harvest.service';
-import { ShBlockedError } from './sh.client';
+import { ShHarvestService, SH_HARVEST_SLICES, SH_HARVEST_SORT_SLICES, SH_HARVEST_ALL_SLICES } from './sh.harvest.service';
+import { ShBlockedError, SH_SORTS_SHOPS } from './sh.client';
+import { ShService } from './sh.service';
 import type { HarvestState } from './sh.mysql';
 import { loadCatTree, catRoots } from './sh.categories';
 
@@ -228,6 +229,94 @@ describe('SH_HARVEST_SLICES', () => {
     expect(ctry).toHaveLength(28);
     expect(ctry[0]).toEqual({ sliceKey: 'country:US', dimension: 'country', filterValue: 'US', seq: 25 });
     expect(new Set(SH_HARVEST_SLICES.map((s) => s.seq)).size).toBe(53); // seq duy nhất
+  });
+
+  it('SH_HARVEST_ALL_SLICES gồm 8 lát sort (seq -8..-1) + 53 lát category/country = 61 lát', () => {
+    expect(SH_HARVEST_SORT_SLICES).toHaveLength(SH_SORTS_SHOPS.length);
+    expect(SH_HARVEST_SORT_SLICES[0]).toEqual({
+      sliceKey: `sort:${SH_SORTS_SHOPS[0].value}`,
+      dimension: 'sort',
+      filterValue: SH_SORTS_SHOPS[0].value,
+      seq: -8,
+    });
+    expect(SH_HARVEST_ALL_SLICES).toHaveLength(61);
+  });
+});
+
+describe('ShHarvestService.runHarvestSlices — 8 sort slices & daily auto-reset', () => {
+  it('slice dimension=sort gọi search đúng theo filterValue của sort đó; qua ngày mới tự động resetSlices khi hết vòng', async () => {
+    const { h, client, svc, mysql } = deps();
+    mysql.ensureSlices = jest.fn().mockResolvedValue(undefined);
+    mysql.getSetting = jest.fn().mockImplementation(async (k: string) => (k === 'sh_harvest_slices_day' ? '2026-11-01' : null));
+    mysql.setSetting = jest.fn().mockResolvedValue(undefined);
+    mysql.resetSlices = jest.fn().mockResolvedValue(undefined);
+    mysql.getNextSlice = jest.fn()
+      .mockResolvedValueOnce(null) // đầu lượt đã hết lát từ hôm trước → kích hoạt resetSlices
+      .mockResolvedValueOnce({
+        sliceKey: 'sort:day_revenue_percent_change',
+        dimension: 'sort',
+        filterValue: 'day_revenue_percent_change',
+        seq: -7,
+        cursorFrom: 0,
+        totalHits: 1,
+        done: false,
+        lastRunAt: null,
+      })
+      .mockResolvedValueOnce(null);
+    mysql.setSlice = jest.fn().mockResolvedValue(undefined);
+    mysql.isShopFresh = jest.fn().mockResolvedValue(false);
+    client.search.mockResolvedValueOnce({ items: [{ shop_id: 'S_NEW', day_current_period_revenue: 120 }], next_from_value: 1, total_hits: 1 });
+
+    const r = await h.runHarvestSlices({ daily: 5 });
+
+    expect(mysql.resetSlices).toHaveBeenCalledTimes(1);
+    expect(client.search).toHaveBeenCalledWith('shops', {
+      sort: 'day_revenue_percent_change',
+      q: '',
+      categoryIds: [],
+      from: 0,
+      lists: {},
+    });
+    expect(svc.shopDetail).toHaveBeenCalledWith('S_NEW');
+    expect(mysql.upsertShop).toHaveBeenCalledTimes(1);
+    expect(r.processed).toBe(1);
+    expect(r.ok).toBe(1);
+  });
+});
+
+describe('ShService.syncShopsBatch & explore background sync', () => {
+  it('syncShopsBatch bỏ qua shop đã green, đồng bộ shop red/gray kèm revenueChart lên chấm Xanh', async () => {
+    const client = {
+      shopDetail: jest.fn().mockResolvedValue({ item: { item: { shop_id: 's_gray', shop_title: 'Gray Shop', url: 'gray.com' } } }),
+      shopChartRevenue: jest.fn().mockResolvedValue({ items: [{ date_str: '2026-11-06', revenue: 300, sale_count: 5 }] }),
+      shopChartAds: jest.fn().mockResolvedValue({ history: [] }),
+      shopsSimilar: jest.fn().mockResolvedValue({ items: [{ shop_id: 'sim1' }] }),
+    } as any;
+    const mysql = {
+      getIdsDbStatus: jest.fn().mockResolvedValue({ s_green: 'green', s_gray: 'gray' }),
+      getShopUpCategory: jest.fn().mockResolvedValue({ upCategory: null, upCategoryPath: null }),
+      countProductsByShop: jest.fn().mockResolvedValue(10),
+      getDetail: jest.fn().mockResolvedValue(null),
+      setDetail: jest.fn().mockResolvedValue(undefined),
+      getShopLocalDetail: jest.fn().mockResolvedValue(null),
+      queryLocalProducts: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      appendRevenueDaily: jest.fn().mockResolvedValue(undefined),
+      setRevenueSynced: jest.fn().mockResolvedValue(undefined),
+      upsertShop: jest.fn().mockResolvedValue(undefined),
+    } as any;
+    const svc = new ShService(client, mysql, {} as any);
+
+    const res = await svc.syncShopsBatch([
+      { shop_id: 's_green', shop_title: 'Green Shop' },
+      { shop_id: 's_gray', shop_title: 'Gray Shop' },
+      { shop_id: 's_red', shop_title: 'Red Shop' },
+    ]);
+
+    expect(res.blocked).toBe(false);
+    expect(res.syncedIds.sort()).toEqual(['s_gray', 's_green', 's_red']);
+    expect(client.shopDetail).toHaveBeenCalledTimes(2); // chỉ gọi cho s_gray và s_red
+    expect(mysql.appendRevenueDaily).toHaveBeenCalled();
+    expect(mysql.upsertShop).toHaveBeenCalledTimes(2);
   });
 });
 

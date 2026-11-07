@@ -534,6 +534,17 @@ export async function shExplore(
   if (params.lists && Object.keys(params.lists).length) qs.set('lists', JSON.stringify(params.lists));
   return jsonOrThrow(await fetch(`${API}/api/sh/${type}?${qs.toString()}`));
 }
+export async function shSyncShopsBatch(
+  shops: any[],
+): Promise<{ syncedIds: string[]; failedIds: string[]; blocked: boolean }> {
+  return jsonOrThrow(
+    await fetch(`${API}/api/sh/shops/sync-batch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ shops }),
+    }),
+  );
+}
 export interface ShShopTrafficData {
   domain?: string;
   traffic_visits: number | null;

@@ -91,3 +91,4 @@
 ```bash
 cd /var/www/ads-spy && git pull origin main && npm --prefix apps/api run build && NEXT_DIST_DIR=.next-new NEXT_PUBLIC_API_ORIGIN=https://mmo-coin.com/backend-api npm --prefix apps/web run build && test -f apps/web/.next-new/BUILD_ID && rm -rf apps/web/.next-old && mv apps/web/.next apps/web/.next-old && mv apps/web/.next-new apps/web/.next && pm2 reload ecosystem.config.cjs --only ads-spy-api,ads-spy-web --update-env
 ```
+

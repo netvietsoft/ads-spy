@@ -1,12 +1,18 @@
 # BẢNG TIẾN ĐỘ NHIỆM VỤ (TODOS.md)
 
-> **Cập nhật lần cuối**: 2026-11-06 18:21:46 (GMT+7)  
+> **Cập nhật lần cuối**: 2026-11-07 12:40:51 (GMT+7)  
 > **Dự án**: Google Ads Spy & SaaS Intelligence Platform  
 > **Nguồn trạng thái**: `.ai/tasks/` & `.ai/state.json`
 
 ---
 
 ## 🟢 ĐÃ HOÀN THÀNH (DONE)
+
+- [x] **TASK-072**: Tự động quét & đồng bộ hàng ngày 8 Sort + 53 lát cắt trên ShopHunter, tự động lên chấm Xanh 90 ngày khi xem /shophuntershopify và thêm nút Quét & Đồng bộ tự động
+  - **Mô tả**: 1) Mở rộng `ShHarvestService.runHarvestSlices` quét qua cả 8 tiêu chí Sort (`SH_SORTS_SHOPS`, `seq: -8..-1`, từ `from = 0 → 1000`) + 53 lát cắt Danh mục/Quốc gia (`seq: 0..52`), tự động reset con trỏ về `0` khi sang ngày mới (`sh_harvest_slices_day !== today`) sau khi hoàn tất 1 vòng (`all_done`), và cập nhật `isShopFresh()` + `enrichAndUpsertShop()` để mọi shop chưa có trong DB (`🔴`) hoặc chưa có doanh thu ngày trong `sh_shop_revenue_daily` (`⚪`) đều tự động kéo `shopDetail` + chuỗi doanh thu 90 ngày lên thẳng chấm Xanh (`🟢`). 2) Trong `ShService.explore()`, tự động xếp hàng đồng bộ ngầm (`enqueueBgShopSync`, fire-and-forget) kéo `shopDetail` + `sh_shop_revenue_daily` cho các shop chấm Đỏ/Xám trên trang `/shophuntershopify`, kèm API `POST /api/sh/shops/sync-batch`. 3) Trên `ShopHunterPanel.tsx`, tự động đồng bộ chấm Đỏ/Xám lên Xanh khi lướt và bổ sung nút `"⚡ Quét & Đồng bộ tự động"` để tự động lật trang (`0 → 1000`) và đồng bộ toàn bộ shop theo bộ lọc hiện tại mà không cần cuộn tay.
+  - **Branch**: `fix/TASK-072-shophunter-auto-harvest-and-sync` (đã merge `main`)
+  - **Files**: `apps/api/src/shophunter/sh.harvest.service.ts`, `apps/api/src/shophunter/sh.service.ts`, `apps/api/src/shophunter/sh.mysql.ts`, `apps/api/src/shophunter/sh.controller.ts`, `apps/api/src/shophunter/sh.harvest.spec.ts`, `apps/web/app/api.ts`, `apps/web/app/components/ShopHunterPanel.tsx`
+  - **Tài liệu**: [`docs/handoff-2026-11-06-bwdetect-productrev-bwtraffic-optimization.md`](docs/handoff-2026-11-06-bwdetect-productrev-bwtraffic-optimization.md)
 
 - [x] **TASK-071**: Mở rộng job bwtraffic quét xuyên suốt 3 kho (sh_shop, aff_library, shopify_buildwith) & bổ sung cột Traffic/tháng cho /localdb/shops
   - **Mô tả**: 1) Cập nhật `ShopifyBwMysql.rowsMissingTraffic`, `markTrafficTried`, `resetFailedTrafficTries`, `countMissingTraffic` và `ShopifyBwService.fillTraffic` để job `bwtraffic` tự động lấy hàng đợi xuyên suốt 3 kho theo thứ tự ưu tiên: `sh_shop` (ưu tiên `revenue_month DESC`, dùng bảng phụ `sh_shop_traffic_tried` để không cần `ALTER TABLE sh_shop`) → `aff_library` (`id DESC`) → `shopify_buildwith` (ưu tiên shop có Affiliate `aff_apps`/`aff_links` và có doanh thu `revenue_month > 0` trước). 2) Trong `sh.mysql.ts`, thêm `attachShopTraffic` (truy vấn phụ theo `IN (?)` trên `aff_domain_traffic` cho các dòng trên trang hiện tại, tránh `LEFT JOIN` trực tiếp bảng lớn `sh_shop`) và hỗ trợ `sortBy: 'traffic'` / `sort: 'traffic_desc'` trong `queryLocalShops`. 3) Trong `LocalDbPanel.tsx`, hiển thị cột `Traffic/th`, tuỳ chọn sắp xếp `Traffic ↓`, và tích hợp `TrafficHistoryModal` khi bấm vào ô traffic trên `/localdb/shops`.

@@ -4,6 +4,8 @@
 
 ## Điểm nổi bật gần đây (mới nhất ở trên)
 
+- **2026-11-07 — Tự động quét & đồng bộ hàng ngày 8 tiêu chí Sort + 53 lát cắt trên ShopHunter, tự động lên chấm Xanh 90 ngày khi xem `/shophuntershopify` & thêm nút `"⚡ Quét & Đồng bộ tự động"` (TASK-072):**
+  Mở rộng `ShHarvestService.runHarvestSlices` quét vòng qua cả 8 tiêu chí Sort (`SH_SORTS_SHOPS` từ `0 → 1000`) + 53 lát cắt Danh mục/Quốc gia, tự động reset con trỏ về `0` khi sang ngày mới (`sh_harvest_slices_day`), và tự động kéo `shopDetail` + chuỗi doanh thu 90 ngày (`sh_shop_revenue_daily`) cho mọi shop chấm Đỏ (`🔴`) hoặc Xám (`⚪`) lên thẳng chấm Xanh (`🟢`). Trong `ShService.explore()`, tự động xếp hàng ngầm (`enqueueBgShopSync`) đồng bộ các shop chấm Đỏ/Xám và bổ sung `POST /api/sh/shops/sync-batch` + nút `"⚡ Quét & Đồng bộ tự động"` trên `ShopHunterPanel.tsx` để tự động lật trang `0 → 1000` và đồng bộ toàn bộ shop mà không cần cuộn tay.
 - **2026-11-06 — Mở rộng job `bwtraffic` quét xuyên suốt 3 kho (`sh_shop` → `aff_library` → `shopify_buildwith`, ưu tiên Affiliate & Doanh thu) & gắn cột Traffic/tháng cho `/localdb/shops` (TASK-071):**
   Cập nhật `ShopifyBwMysql.rowsMissingTraffic()` và `markTrafficTried()` để job `bwtraffic` tự động điền traffic xuyên suốt cả 3 kho (`sh_shop`, `aff_library`, `shopify_buildwith`), ưu tiên các shop có chương trình Affiliate (`yes`/`app`) và có doanh thu (`revenue` / `rev_month > 0`) lên đầu hàng đợi thay vì quét tuần tự theo bảng chữ cái. Bổ sung `attachShopTraffic()` trong `sh.mysql.ts` và cột `Traffic/th` (kèm popup biểu đồ 12 tháng `TrafficHistoryModal`) trên trang `/localdb/shops` (`LocalDbPanel.tsx`).
 - **2026-11-06 — Khắc phục kẹt đầu hàng đợi & tối ưu tốc độ job `productrev` + `enrich` (TASK-070):**
