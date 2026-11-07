@@ -26,6 +26,10 @@ Mọi quy chuẩn phát triển, quy định an toàn và nguyên tắc phân va
   - **`bwdetect`**: `rowsToDetect()` luôn phải có cooldown (`aff_last_try_at IS NULL OR aff_last_try_at < cutoff`) và `listProxiesFull(true)` phải lọc `status <> 'die'`. Kết nối proxy (`shopify.proxy-get.ts`) luôn có `hardTimer` bao phủ cả bước TLS handshake.
   - **`productrev`**: Bảng `sh_product_revsync` dùng cột `status` (`ok`, `no_storefront`, `no_price`, `skip`, `err`) để đánh dấu `synced_at` cho mọi kết quả nhằm tránh kẹt đầu hàng đợi, đồng thời chỉ coi `status IS NULL OR status = 'ok'` là `_normalized = true` trên `/localdb/products`.
   - **`bwtraffic`**: Quét xuyên suốt 3 kho theo thứ tự ưu tiên: `sh_shop` (`revenue_month DESC`) → `aff_library` (`id DESC`) → `shopify_buildwith` (ưu tiên shop có Affiliate & Doanh thu trước).
+  - **`shophunter` Harvest & Sync (`ShHarvestService` & `ShService`)**:
+    - Trạng thái chấm màu shop trên `/shophuntershopify` (`getIdsDbStatus`): `🔴` (chưa có trong `sh_shop`), `⚪` (có trong `sh_shop` nhưng chưa có dòng trong `sh_shop_revenue_daily`), `🟢` (đã có chuỗi doanh thu ngày trong `sh_shop_revenue_daily`).
+    - `SH_HARVEST_ALL_SLICES` (61 lát cắt: 8 tiêu chí Sort `SH_SORTS_SHOPS` + 53 lát cắt Danh mục/Quốc gia) tự động reset con trỏ về `0` khi sang ngày UTC mới (`sh_harvest_slices_day !== today`) và luôn nạp `sh_shop_revenue_daily` (`enrichAndUpsertShop`).
+    - `ShService.explore('shops')` tự động xếp hàng nền (`enqueueBgShopSync`) cho các shop `🔴`/`⚪`, và giao diện `ShopHunterPanel.tsx` hỗ trợ đồng bộ ngầm qua `POST /api/sh/shops/sync-batch` + nút `"⚡ Quét & Đồng bộ tự động"`.
 
 ---
 
