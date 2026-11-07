@@ -60,6 +60,8 @@ export function summarizeShopChart(chart: any[]): { dRev: number; wRev: number; 
 @Injectable()
 export class ShService {
   private readonly logger = new Logger('ShService');
+  private bgShopQueue = new Map<string, any>();
+  private bgShopSyncRunning = false;
 
   constructor(
     private readonly client: ShClient,
@@ -79,7 +81,11 @@ export class ShService {
     if (cached) {
       const items = await this.mysql.getItemsByIds(table, cached.itemIds);
       const status = await this.mysql.getIdsDbStatus(searchType, items.map((it: any) => String(it[pk])));
-      return { items: this.annotateDb(items, pk, status), nextFromValue: cached.nextFromValue, totalHits: cached.totalHits, cached: true };
+      const annotated = this.annotateDb(items, pk, status);
+      if (searchType === 'shops') {
+        this.enqueueBgShopSync(annotated.filter((it: any) => it._db !== 'green'));
+      }
+      return { items: annotated, nextFromValue: cached.nextFromValue, totalHits: cached.totalHits, cached: true };
     }
 
     const raw = await this.client.search(searchType, opts);
@@ -101,7 +107,142 @@ export class ShService {
       searchType, sortBy: opts.sort, searchString: opts.q || '', filters: { categoryIds: opts.categoryIds || [] },
       fromCount: opts.from || 0, itemIds, nextFromValue: parsed.nextFromValue, totalHits: parsed.totalHits,
     });
-    return { items: this.annotateDb(parsed.items, pk, prior), nextFromValue: parsed.nextFromValue, totalHits: parsed.totalHits, cached: false };
+    const annotated = this.annotateDb(parsed.items, pk, prior);
+    if (searchType === 'shops') {
+      this.enqueueBgShopSync(annotated.filter((it: any) => it._db !== 'green'));
+    }
+    return { items: annotated, nextFromValue: parsed.nextFromValue, totalHits: parsed.totalHits, cached: false };
+  }
+
+  // Xếp hàng đồng bộ ngầm (fire-and-forget) cho các shop chấm Đỏ (🔴) hoặc Xám (⚪) vừa xuất hiện trên /shophuntershopify
+  // để tự động kéo shopDetail + chuỗi doanh thu 90 ngày (sh_shop_revenue_daily) lên thẳng chấm Xanh (🟢).
+  enqueueBgShopSync(items: any[]): void {
+    if (!Array.isArray(items) || !items.length) return;
+    if (typeof this.client?.shopDetail !== 'function' || typeof this.mysql?.upsertShop !== 'function') return;
+    for (const it of items) {
+      const shopId = String(it?.shop_id || '');
+      if (!shopId || shopId === 'undefined') continue;
+      if (this.bgShopQueue.size >= 500 && !this.bgShopQueue.has(shopId)) continue;
+      this.bgShopQueue.set(shopId, it);
+    }
+    if (!this.bgShopSyncRunning && this.bgShopQueue.size > 0) {
+      void this.drainBgShopQueue();
+    }
+  }
+
+  private async drainBgShopQueue(): Promise<void> {
+    if (this.bgShopSyncRunning) return;
+    this.bgShopSyncRunning = true;
+    const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
+    try {
+      while (this.bgShopQueue.size > 0) {
+        const first = this.bgShopQueue.entries().next().value as [string, any] | undefined;
+        if (!first) break;
+        const [shopId, listingItem] = first;
+        this.bgShopQueue.delete(shopId);
+        try {
+          if (typeof this.mysql.isShopFresh === 'function' && (await this.mysql.isShopFresh(shopId, freshMs))) {
+            continue;
+          }
+          await this.syncShopFull(shopId, listingItem);
+        } catch (e) {
+          if (isGlobalBlock(e)) {
+            this.logger.warn(`BgShopSync tạm dừng do bị chặn: ${(e as Error).message}`);
+            break;
+          }
+        }
+        await this.sleep(600);
+      }
+    } finally {
+      this.bgShopSyncRunning = false;
+    }
+  }
+
+  // Đồng bộ trọn vẹn 1 shop từ danh sách search: kéo shopDetail + chuỗi doanh thu 90 ngày → ghi sh_shop & sh_shop_revenue_daily (lên chấm Xanh 🟢).
+  async syncShopFull(shopId: string, listingItem?: any): Promise<'ok' | 'skip'> {
+    if (!shopId || shopId === 'undefined') return 'skip';
+    const bundle = await this.shopDetail(shopId);
+    const item: any = { ...(listingItem || {}), ...(bundle?.detail || {}), shop_id: shopId };
+    let chart = Array.isArray(bundle?.revenueChart) ? bundle.revenueChart : [];
+    if (!chart.length && typeof this.client?.shopChartRevenue === 'function') {
+      const revR = await this.client.shopChartRevenue(shopId).catch(() => null);
+      if (Array.isArray(revR?.items) && revR.items.length) {
+        chart = revR.items;
+        if (bundle && typeof bundle === 'object') bundle.revenueChart = chart;
+      }
+    }
+    if (chart.some((p: any) => p && p.revenue != null) && item.month_current_period_revenue == null) {
+      const s = summarizeShopChart(chart);
+      item.day_current_period_revenue = s.dRev;
+      item.week_current_period_revenue = s.wRev;
+      item.month_current_period_revenue = s.mRev;
+      item.day_current_period_sale_count = s.dCnt;
+      item.week_current_period_sale_count = s.wCnt;
+      item.month_current_period_sale_count = s.mCnt;
+    }
+    if (!chart.length) {
+      const fallbackDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      chart = [
+        {
+          date_str: fallbackDate,
+          revenue: Number(item.day_current_period_revenue) || 0,
+          sale_count: Number(item.day_current_period_sale_count) || 0,
+        },
+      ];
+      if (bundle && typeof bundle === 'object') bundle.revenueChart = chart;
+    }
+    await this.mysql.appendRevenueDaily?.(shopId, chart)?.catch?.(() => {});
+    await this.mysql.setRevenueSynced?.(shopId)?.catch?.(() => {});
+    await this.mysql.upsertShop?.(shopId, item, bundle, parseShopColumns(item, bundle));
+    return 'ok';
+  }
+
+  // Đồng bộ theo lô danh sách shop (dùng cho nút "⚡ Quét & Đồng bộ tự động" và đồng bộ chấm Đỏ/Xám trên UI).
+  async syncShopsBatch(shops: any[], concurrency = 2): Promise<{ syncedIds: string[]; failedIds: string[]; blocked: boolean }> {
+    const map = new Map<string, any>();
+    for (const s of Array.isArray(shops) ? shops : []) {
+      const id = String(typeof s === 'string' || typeof s === 'number' ? s : s?.shop_id || '');
+      if (id && id !== 'undefined' && !map.has(id) && map.size < 30) {
+        map.set(id, typeof s === 'object' && s ? s : { shop_id: id });
+      }
+    }
+    const ids = [...map.keys()];
+    if (!ids.length) return { syncedIds: [], failedIds: [], blocked: false };
+
+    const status = await this.mysql.getIdsDbStatus('shops', ids).catch(() => ({} as Record<string, 'green' | 'gray'>));
+    const syncedIds: string[] = [];
+    const failedIds: string[] = [];
+    const todo: [string, any][] = [];
+
+    for (const [id, item] of map.entries()) {
+      if (status[id] === 'green') {
+        syncedIds.push(id);
+      } else {
+        todo.push([id, item]);
+      }
+    }
+
+    let blocked = false;
+    let idx = 0;
+    const conc = Math.max(1, Math.min(3, Number(concurrency) || 2));
+    const worker = async () => {
+      while (idx < todo.length && !blocked) {
+        const [shopId, item] = todo[idx++];
+        try {
+          await this.syncShopFull(shopId, item);
+          syncedIds.push(shopId);
+        } catch (e) {
+          if (isGlobalBlock(e)) {
+            blocked = true;
+            failedIds.push(shopId);
+            break;
+          }
+          failedIds.push(shopId);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(conc, todo.length) }, () => worker()));
+    return { syncedIds, failedIds, blocked };
   }
 
   // Gắn cờ _db ('green'|'gray'|'red') cho mỗi item để FE vẽ chấm màu. ID không có trong map trạng thái = 'red' (chưa có trong DB).
@@ -129,7 +270,12 @@ export class ShService {
       const simV: any = simR.status === 'fulfilled' ? simR.value : null;
       // Chart: ưu tiên chart 90 ngày live; live rỗng/lỗi → dùng chuỗi tích luỹ (revsync) trong DB.
       let revenueChart = Array.isArray(revV?.items) ? revV.items : [];
-      if (!revenueChart.length) revenueChart = await this.mysql.getRevenueDaily(shopId).catch(() => []);
+      if (revenueChart.length) {
+        await this.mysql.appendRevenueDaily?.(shopId, revenueChart)?.catch?.(() => {});
+        await this.mysql.setRevenueSynced?.(shopId)?.catch?.(() => {});
+      } else {
+        revenueChart = await this.mysql.getRevenueDaily(shopId).catch(() => []);
+      }
       const out: any = {
         detail,
         revenueChart,

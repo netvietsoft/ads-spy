@@ -4,6 +4,21 @@ Nhật ký thay đổi. Ngày mới nhất ở trên. Chi tiết kiến trúc: [
 
 ---
 
+## 2026-11-07 — Tự Động Quét & Đồng Bộ Hàng Ngày 8 Tiêu Chí Sort + 53 Lát Cắt Trên ShopHunter, Lên Thẳng Chấm Xanh 90 Ngày Khi Xem `/shophuntershopify` & Nút Quét Tự Động (TASK-072)
+
+- **Tự Động Quét & Đồng Bộ Hàng Ngày Ở Nền (`sh.harvest.service.ts`, `sh.mysql.ts`)**:
+  - Mở rộng `SH_HARVEST_ALL_SLICES` bổ sung 8 lát cắt theo 8 tiêu chí Sort (`SH_SORTS_SHOPS`, `seq: -8..-1`, quét từ `from = 0 → 1000`) chạy ưu tiên trước 53 lát cắt Danh mục/Quốc gia (`seq: 0..52`).
+  - Khi hoàn tất 1 vòng (`all_done` / `cap_1000`), sang ngày mới (`sh_harvest_slices_day !== today`) hệ thống tự động gọi `resetSlices()` / `resetHarvestState()` đưa con trỏ về `0` để quét vòng mới tìm shop mới hàng ngày.
+  - Cập nhật `isShopFresh()` kiểm tra đồng thời `detail_raw IS NOT NULL` và `EXISTS(SELECT 1 FROM sh_shop_revenue_daily ...)` + bổ sung `enrichAndUpsertShop()` để mọi shop chưa có trong DB (`🔴`) hoặc chưa có doanh thu ngày (`⚪`) đều được tự động kéo `shopDetail` + chuỗi doanh thu 90 ngày (`sh_shop_revenue_daily`) lên thẳng chấm Xanh (`🟢`).
+- **Tự Động Đồng Bộ Ngầm Ngay Khi Xem `/shophuntershopify` (`sh.service.ts`, `sh.controller.ts`)**:
+  - Trong `ShService.explore()`, tự động xếp hàng ngầm (`enqueueBgShopSync`, fire-and-forget) kéo `shopDetail` + `sh_shop_revenue_daily` cho mọi shop chấm Đỏ (`🔴`) hoặc Xám (`⚪`).
+  - Bổ sung endpoint `POST /api/sh/shops/sync-batch` (`syncShopsBatch`) để đồng bộ nhanh theo lô các shop chấm Đỏ/Xám trên trang hiện tại và trả về `syncedIds` để giao diện chuyển chấm màu sang Xanh (`🟢`) theo thời gian thực.
+- **Nút `"⚡ Quét & Đồng bộ tự động"` Trên Giao Diện (`ShopHunterPanel.tsx`, `api.ts`)**:
+  - Tự động nâng cấp các shop chấm Đỏ/Xám trên trang đang xem lên chấm Xanh (`🟢`) ngay ở nền.
+  - Thêm nút `"⚡ Quét & Đồng bộ tự động"` cho phép tự động lật trang từ `0 → 1000` theo bộ lọc/danh mục/sort đang chọn và đồng bộ toàn bộ shop chưa có trong DB lên chấm Xanh (`🟢`) mà không cần cuộn chuột thủ công.
+
+---
+
 ## 2026-11-06 — Mở Rộng Job `bwtraffic` Quét Xuyên Suốt 3 Kho (Ưu Tiên Affiliate & Doanh Thu) & Hiển Thị Cột Traffic Trên `/localdb/shops` (TASK-071)
 
 - **Quét Traffic Xuyên Suốt 3 Kho `sh_shop` → `aff_library` → `shopify_buildwith` (`shopify-bw.mysql.ts`, `afflib.mysql.ts`, `sh.jobs.service.ts`)**:

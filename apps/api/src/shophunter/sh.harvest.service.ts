@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { ShClient, ShBlockedError } from './sh.client';
+import { ShClient, ShBlockedError, SH_SORTS_SHOPS } from './sh.client';
 import { ShService, SH_SNAPSHOT_DEFAULT_DIR, summarizeShopChart } from './sh.service';
 import { ShMysql, HarvestState, SliceState } from './sh.mysql';
 import { parseSearch, parseShopColumns } from './sh.parser';
@@ -12,9 +12,24 @@ const HARVEST_ID = 'shops';
 
 const HARVEST_CATS = ['aa','ae','ap','bi','bt','bu','co','el','fb','fr','gc','ha','hb','hg','lb','ma','me','os','pa','rc','se','sg','so','tg','vp'];
 const HARVEST_COUNTRIES = ['US','CA','GB','DE','FR','IE','IT','NL','NZ','NO','ES','SE','CH','TR','IL','FI','DK','BE','GR','AU','IN','PK','AT','BR','PL','PT','LU','HU'];
+
+// 8 tiêu chí Sort của ShopHunter (seq -8 .. -1 để luôn quét ưu tiên từ from=0→1000 trước 53 lát cắt Danh mục/Quốc gia).
+export const SH_HARVEST_SORT_SLICES: { sliceKey: string; dimension: string; filterValue: string; seq: number }[] =
+  SH_SORTS_SHOPS.map((s, i) => ({
+    sliceKey: `sort:${s.value}`,
+    dimension: 'sort',
+    filterValue: s.value,
+    seq: i - SH_SORTS_SHOPS.length,
+  }));
+
 export const SH_HARVEST_SLICES: { sliceKey: string; dimension: string; filterValue: string; seq: number }[] = [
   ...HARVEST_CATS.map((c, i) => ({ sliceKey: `cat:${c}`, dimension: 'category', filterValue: c, seq: i })),
   ...HARVEST_COUNTRIES.map((c, i) => ({ sliceKey: `country:${c}`, dimension: 'country', filterValue: c, seq: HARVEST_CATS.length + i })),
+];
+
+export const SH_HARVEST_ALL_SLICES: { sliceKey: string; dimension: string; filterValue: string; seq: number }[] = [
+  ...SH_HARVEST_SORT_SLICES,
+  ...SH_HARVEST_SLICES,
 ];
 
 export interface HarvestSummary {
@@ -190,7 +205,16 @@ export class ShHarvestService {
     const concurrency = this.hcfg.concurrency;
     const maxRetries = 5;
 
-    const state = await this.mysql.getHarvestState(HARVEST_ID);
+    let state = await this.mysql.getHarvestState(HARVEST_ID);
+    const today = new Date().toISOString().slice(0, 10);
+    if (
+      (state.cursorFrom > 1000 || state.lastStatus === 'cap_1000' || state.lastStatus === 'exhausted') &&
+      state.lastRunAt &&
+      new Date(state.lastRunAt).toISOString().slice(0, 10) < today &&
+      typeof this.mysql.resetHarvestState === 'function'
+    ) {
+      state = await this.mysql.resetHarvestState(HARVEST_ID);
+    }
     const cursorFrom = state.cursorFrom;
     let processed = 0;
     let ok = 0;
@@ -286,21 +310,37 @@ export class ShHarvestService {
     const freshMs = (Number(process.env.SH_HARVEST_FRESH_DAYS) || 7) * 86400000;
     const maxRetries = 5;
 
-    await this.mysql.ensureSlices(SH_HARVEST_SLICES);
+    await this.mysql.ensureSlices(SH_HARVEST_ALL_SLICES);
     let processed = 0, ok = 0, skipped = 0, failed = 0, status = 'ok', sliceKey = '';
+    const today = new Date().toISOString().slice(0, 10);
     try {
       while (processed < quota) {
-        const slice = await this.mysql.getNextSlice();
-        if (!slice) { status = 'all_done'; break; }
+        let slice = await this.mysql.getNextSlice();
+        if (!slice && processed === 0 && typeof this.mysql.resetSlices === 'function') {
+          const lastCycleDay = await this.mysql.getSetting?.('sh_harvest_slices_day')?.catch?.(() => null);
+          if (lastCycleDay !== today) {
+            await this.mysql.resetSlices();
+            await this.mysql.setSetting?.('sh_harvest_slices_day', today)?.catch?.(() => {});
+            slice = await this.mysql.getNextSlice();
+          }
+        }
+        if (!slice) {
+          if (processed > 0) {
+            await this.mysql.setSetting?.('sh_harvest_slices_day', today)?.catch?.(() => {});
+          }
+          status = 'all_done';
+          break;
+        }
         sliceKey = slice.sliceKey;
         const from = slice.cursorFrom;
         if (from > 1000) { await this.mysql.setSlice(slice.sliceKey, { done: true, lastRunAt: Date.now() }); continue; } // trần ~1000/lát → đánh dấu done, sang lát kế
 
+        const sliceSort = slice.dimension === 'sort' && slice.filterValue ? slice.filterValue : sort;
         const categoryIds = slice.dimension === 'category' ? [slice.filterValue] : [];
         const lists: Record<string, string[]> = slice.dimension === 'country' ? { country: [slice.filterValue] } : {};
         let page: any;
         try {
-          page = await this.searchSliceWithBackoff(sort, from, categoryIds, lists, maxRetries);
+          page = await this.searchSliceWithBackoff(sliceSort, from, categoryIds, lists, maxRetries);
         } catch (e) {
           this.logger.warn(`Dừng do bị chặn tại ${slice.sliceKey} from=${from}: ${(e as Error).message}`);
           status = 'blocked'; break;
@@ -537,10 +577,41 @@ export class ShHarvestService {
   private async harvestOneDedup(item: any, freshMs: number): Promise<{ outcome: 'ok' | 'skip' | 'fail'; blocked?: boolean }> {
     const shopId = String(item.shop_id);
     if (!shopId || shopId === 'undefined') return { outcome: 'skip' };
-    if (await this.mysql.isShopFresh(shopId, freshMs)) return { outcome: 'skip' }; // đã có detail gần đây → không refetch (tránh xoá detail cũ)
+    if (await this.mysql.isShopFresh(shopId, freshMs)) return { outcome: 'skip' }; // đã có detail gần đây + đã có doanh thu ngày → không refetch (tránh xoá detail cũ)
     const bundle = await this.detailWithBackoff(shopId);
-    await this.mysql.upsertShop(shopId, item, bundle, parseShopColumns(item, bundle));
+    await this.enrichAndUpsertShop(shopId, item, bundle);
     return { outcome: 'ok' };
+  }
+
+  private async enrichAndUpsertShop(shopId: string, item: any, bundle: any): Promise<void> {
+    let chart = Array.isArray(bundle?.revenueChart) ? bundle.revenueChart : [];
+    if (!chart.length && typeof this.client?.shopChartRevenue === 'function') {
+      const revR = await this.client.shopChartRevenue(shopId).catch(() => null);
+      if (Array.isArray(revR?.items) && revR.items.length) {
+        chart = revR.items;
+        if (bundle && typeof bundle === 'object') bundle.revenueChart = chart;
+      }
+    }
+    if (chart.some((p: any) => p && p.revenue != null) && item && item.month_current_period_revenue == null) {
+      const s = summarizeShopChart(chart);
+      item.day_current_period_revenue = s.dRev;
+      item.week_current_period_revenue = s.wRev;
+      item.month_current_period_revenue = s.mRev;
+      item.day_current_period_sale_count = s.dCnt;
+      item.week_current_period_sale_count = s.wCnt;
+      item.month_current_period_sale_count = s.mCnt;
+    }
+    if (!chart.length && bundle && typeof bundle === 'object') {
+      const fallbackDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      bundle.revenueChart = [
+        {
+          date_str: fallbackDate,
+          revenue: Number(item?.day_current_period_revenue ?? bundle?.detail?.day_current_period_revenue) || 0,
+          sale_count: Number(item?.day_current_period_sale_count ?? bundle?.detail?.day_current_period_sale_count) || 0,
+        },
+      ];
+    }
+    await this.mysql.upsertShop(shopId, item, bundle, parseShopColumns(item, bundle));
   }
 
   private async searchSliceWithBackoff(sort: string, from: number, categoryIds: string[], lists: Record<string, string[]>, maxRetries: number, type: 'shops' | 'products' = 'shops'): Promise<any> {
@@ -562,8 +633,7 @@ export class ShHarvestService {
     const shopId = String(item.shop_id);
     if (!shopId || shopId === 'undefined') return;
     const bundle = await this.detailWithBackoff(shopId);
-    const cols = parseShopColumns(item, bundle);
-    await this.mysql.upsertShop(shopId, item, bundle, cols);
+    await this.enrichAndUpsertShop(shopId, item, bundle);
   }
 
   private async detailWithBackoff(shopId: string): Promise<any> {

@@ -247,6 +247,14 @@ export class ShController {
     return { ok: true, result: await this.svc.syncShopRevenue(id) };
   }
 
+  // Đồng bộ trọn vẹn theo lô (detail + chuỗi doanh thu 90 ngày → lên chấm Xanh 🟢) cho danh sách shop trên /shophuntershopify.
+  @Roles('admin', 'manager', 'user')
+  @RequiresModule('shophunter')
+  @Post('sh/shops/sync-batch')
+  async syncShopsBatch(@Body('shops') shops: any[]) {
+    return this.svc.syncShopsBatch(Array.isArray(shops) ? shops : []);
+  }
+
   // Đồng bộ NGAY giá (storefront, tiền tệ thật) + doanh thu ngày = giá(USD)×số đơn → ghi thẳng DB (ghi đè).
   // Qua jobsSvc để MƯỢN proxy xoay (storefront chặn IP datacenter → 429; phải đi proxy như catalog).
   @Post('sh/product/:shopId/:productId/sync-revenue')

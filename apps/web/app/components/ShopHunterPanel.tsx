@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import {
-  ShExplore, ShSort, shExplore, shSorts, shAssetProxy, shShopSite, shProductUrl,
+  ShExplore, ShSort, shExplore, shSorts, shAssetProxy, shShopSite, shProductUrl, shSyncShopsBatch,
 } from '../api';
 import { toUsd } from '../currency';
 import { ShShopModal } from './ShShopModal';
@@ -117,21 +117,145 @@ export function ShopHunterPanel() {
   const [err, setErr] = useState<string | null>(null);
   const [openShop, setOpenShop] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const [autoScanning, setAutoScanning] = useState(false);
+  const [autoStats, setAutoStats] = useState<{ pages: number; synced: number; msg?: string }>({ pages: 0, synced: 0 });
+  const autoStopRef = useRef(false);
 
   useEffect(() => { shSorts().then(setSorts).catch(() => {}); }, []);
 
+  // Tự động đồng bộ ngầm các shop chấm Đỏ (🔴) / Xám (⚪) trên trang vừa tải để chuyển thẳng lên chấm Xanh (🟢).
+  async function syncShopsToGreen(pageItems: any[]): Promise<{ synced: number; blocked: boolean }> {
+    const needSync = (pageItems || []).filter((it) => it && it.shop_id && it._db !== 'green');
+    if (!needSync.length) return { synced: 0, blocked: false };
+    try {
+      const res = await shSyncShopsBatch(needSync);
+      if (Array.isArray(res?.syncedIds) && res.syncedIds.length > 0) {
+        const greenSet = new Set(res.syncedIds.map(String));
+        setItems((prev) => prev.map((it) => (greenSet.has(String(it.shop_id)) ? { ...it, _db: 'green' } : it)));
+      }
+      return { synced: res?.syncedIds?.length || 0, blocked: !!res?.blocked };
+    } catch {
+      return { synced: 0, blocked: false };
+    }
+  }
+
   async function load(reset: boolean, sortVal?: string) {
+    if (reset && autoScanning) autoStopRef.current = true;
     setLoading(true); setErr(null);
     try {
       const nextFrom = reset ? 0 : from;
       const useSort = sortVal ?? sort;
       const r: ShExplore = await shExplore(tab, { sort: useSort || undefined, q: q || undefined, from: nextFrom, filters, categories: cats.join(','), lists });
-      setItems((prev) => (reset ? r.items : [...prev, ...r.items])); // nối tiếp (không đọc `items` cũ trong closure)
+      setItems((prev) => {
+        if (reset) return r.items;
+        const pk = tab === 'shops' ? 'shop_id' : 'product_id';
+        const seen = new Set(prev.map((x) => String(x[pk])));
+        return [...prev, ...r.items.filter((x) => !seen.has(String(x[pk])))];
+      });
       setTotal(r.totalHits);
       setCapped(!!r.capped);
       setFrom(typeof r.nextFromValue === 'number' ? r.nextFromValue : nextFrom + r.items.length);
+      if (tab === 'shops' && !r.capped && r.items.some((it: any) => it._db !== 'green')) {
+        void syncShopsToGreen(r.items);
+      }
     } catch (e) { setErr((e as Error).message); }
     setLoading(false);
+  }
+
+  // Nút "⚡ Quét & Đồng bộ tự động": tự động lật trang từ đầu tới cuối (0 → 1000) theo bộ lọc/danh mục hiện tại
+  // và đồng bộ toàn bộ shop chấm Đỏ (🔴) / Xám (⚪) lên chấm Xanh (🟢) mà không cần cuộn chuột.
+  async function toggleAutoScan() {
+    if (autoScanning) {
+      autoStopRef.current = true;
+      return;
+    }
+    autoStopRef.current = false;
+    setAutoScanning(true);
+    setErr(null);
+    let pages = 0;
+    let syncedTotal = 0;
+    setAutoStats({ pages: 0, synced: 0, msg: 'Đang khởi chạy quét & đồng bộ tự động…' });
+
+    try {
+      const useSort = sort || (tab === 'shops' ? sorts.shops[0]?.value : sorts.products[0]?.value) || undefined;
+      let curFrom = from;
+      let curTotal = total;
+      let curItems = items;
+
+      // Nếu danh sách đang trống, tải trang đầu tiên (from = 0)
+      if (curItems.length === 0) {
+        const first: ShExplore = await shExplore(tab, { sort: useSort, q: q || undefined, from: 0, filters, categories: cats.join(','), lists });
+        curItems = first.items || [];
+        curTotal = first.totalHits || 0;
+        curFrom = typeof first.nextFromValue === 'number' ? first.nextFromValue : curItems.length;
+        pages++;
+        setItems(curItems);
+        setTotal(curTotal);
+        setCapped(!!first.capped);
+        setFrom(curFrom);
+        if (first.capped) {
+          setAutoStats({ pages, synced: 0, msg: 'Tài khoản giới hạn bản ghi.' });
+          return;
+        }
+      }
+
+      // Đồng bộ các shop chấm Đỏ/Xám đang có sẵn trên màn hình trước
+      if (tab === 'shops') {
+        const pendingExisting = curItems.filter((it) => it && it._db !== 'green');
+        for (let i = 0; i < pendingExisting.length && !autoStopRef.current; i += 24) {
+          const chunk = pendingExisting.slice(i, i + 24);
+          const sr = await syncShopsToGreen(chunk);
+          syncedTotal += sr.synced;
+          setAutoStats({ pages, synced: syncedTotal, msg: `Đang đồng bộ trang hiện tại (+${syncedTotal} shop 🟢)…` });
+          if (sr.blocked) {
+            setAutoStats({ pages, synced: syncedTotal, msg: `Tạm dừng do giới hạn token (+${syncedTotal} shop 🟢).` });
+            return;
+          }
+        }
+      }
+
+      // Tự động lật trang liên tiếp tới trần 1000 của ShopHunter
+      while (!autoStopRef.current && curFrom <= 1000 && (curTotal === 0 || curFrom < curTotal)) {
+        setAutoStats({ pages, synced: syncedTotal, msg: `Đang tải trang từ vị trí #${curFrom} (+${syncedTotal} shop 🟢)…` });
+        const r: ShExplore = await shExplore(tab, { sort: useSort, q: q || undefined, from: curFrom, filters, categories: cats.join(','), lists });
+        if (!r.items || r.items.length === 0) break;
+        pages++;
+        const pk = tab === 'shops' ? 'shop_id' : 'product_id';
+        setItems((prev) => {
+          const seen = new Set(prev.map((x) => String(x[pk])));
+          return [...prev, ...r.items.filter((x) => !seen.has(String(x[pk])))];
+        });
+        curTotal = r.totalHits || curTotal;
+        setTotal(curTotal);
+        curFrom = typeof r.nextFromValue === 'number' ? r.nextFromValue : curFrom + r.items.length;
+        setFrom(curFrom);
+
+        if (tab === 'shops') {
+          const sr = await syncShopsToGreen(r.items);
+          syncedTotal += sr.synced;
+          setAutoStats({ pages, synced: syncedTotal, msg: `Đã quét tới #${curFrom} · Đồng bộ +${syncedTotal} shop 🟢` });
+          if (sr.blocked) {
+            setAutoStats({ pages, synced: syncedTotal, msg: `Tạm dừng tại #${curFrom} do giới hạn token (+${syncedTotal} shop 🟢).` });
+            break;
+          }
+        } else {
+          setAutoStats({ pages, synced: syncedTotal, msg: `Đã quét tới #${curFrom}/${curTotal}` });
+        }
+
+        if (r.capped) break;
+        await new Promise((res) => setTimeout(res, 500));
+      }
+
+      if (!autoStopRef.current) {
+        setAutoStats({ pages, synced: syncedTotal, msg: `Hoàn tất quét tự động (${pages} trang · +${syncedTotal} shop 🟢)` });
+      } else {
+        setAutoStats({ pages, synced: syncedTotal, msg: `Đã dừng quét (${pages} trang · +${syncedTotal} shop 🟢)` });
+      }
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setAutoScanning(false);
+    }
   }
 
   // Tải NỀN: prefetch trang kế khi còn cách đáy 1200px → thẻ mới có sẵn trước khi cuộn tới, không giật.
@@ -181,10 +305,34 @@ export function ShopHunterPanel() {
               );
             })}
           </div>
-          <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, margin: '10px 0', flexWrap: 'wrap', alignItems: 'center' }}>
             <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') load(true); }} placeholder={`Tìm ${tab}...`} className="shsearch" />
-            <button className="srcbtn findbtn" onClick={() => load(true)} disabled={loading}>{loading ? 'Đang tải...' : 'Tìm'}</button>
+            <button className="srcbtn findbtn" onClick={() => load(true)} disabled={loading || autoScanning}>{loading ? 'Đang tải...' : 'Tìm'}</button>
+            {!capped && (
+              <button
+                type="button"
+                className={`srcbtn ${autoScanning ? 'active' : ''}`}
+                style={{
+                  background: autoScanning ? '#dc2626' : '#16a34a',
+                  color: '#fff',
+                  borderColor: autoScanning ? '#dc2626' : '#16a34a',
+                  fontWeight: 600,
+                }}
+                onClick={toggleAutoScan}
+                disabled={loading && !autoScanning}
+                title="Tự động lật trang từ 0 → 1000 theo bộ lọc hiện tại và đồng bộ đầy đủ doanh thu 90 ngày (lên chấm Xanh 🟢)"
+              >
+                {autoScanning
+                  ? `⏹ Dừng quét (${items.length}/${Math.min(total || 1000, 1008)} · +${autoStats.synced} 🟢)`
+                  : '⚡ Quét & Đồng bộ tự động'}
+              </button>
+            )}
             {total > 0 && <span style={{ alignSelf: 'center', opacity: 0.7 }}>{items.length}/{total}</span>}
+            {autoStats.msg && (
+              <span style={{ fontSize: 12, color: '#4ade80', fontWeight: 500 }}>
+                {autoStats.msg}
+              </span>
+            )}
           </div>
 
           {err && <div className="err">{err}</div>}

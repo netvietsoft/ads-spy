@@ -735,10 +735,11 @@ export class ShMysql implements OnModuleInit {
       ],
     );
     // Piggyback: dồn 90 điểm doanh thu ngày vào kho tích luỹ (miễn phí, không thêm call API).
-    if (detail && (detail as any).revenueChart) {
+    if (detail && Array.isArray((detail as any).revenueChart) && (detail as any).revenueChart.length) {
       await this.appendRevenueDaily(id, (detail as any).revenueChart).catch((e) => {
         console.warn('[upsertShop] appendRevenueDaily error:', (e as Error).message);
       });
+      await this.setRevenueSynced(id).catch(() => {});
     }
   }
 
@@ -1101,11 +1102,14 @@ export class ShMysql implements OnModuleInit {
   async isShopFresh(shopId: string, ttlMs: number): Promise<boolean> {
     await this.ensureReady();
     const [rows] = await this.pool!.query(
-      'SELECT harvested_at FROM sh_shop WHERE shop_id = ? AND detail_raw IS NOT NULL',
+      `SELECT s.harvested_at,
+              EXISTS(SELECT 1 FROM sh_shop_revenue_daily d WHERE d.shop_id = s.shop_id LIMIT 1) AS has_daily
+         FROM sh_shop s
+        WHERE s.shop_id = ? AND s.detail_raw IS NOT NULL`,
       [shopId],
     );
     const r = (rows as any[])[0];
-    if (!r || r.harvested_at == null) return false;
+    if (!r || r.harvested_at == null || !r.has_daily) return false;
     return Date.now() - Number(r.harvested_at) < ttlMs;
   }
 
